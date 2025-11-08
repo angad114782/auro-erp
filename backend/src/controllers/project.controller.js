@@ -12,7 +12,7 @@ export const create = async (req, res, next) => {
       company,
       brand,
       category,
-      projectName,
+      color,
       artName,
       size,
       gender,
@@ -22,16 +22,13 @@ export const create = async (req, res, next) => {
       type,
       country,
       assignPerson,
+      autoCode,
     } = req.body;
 
     if (!company || !brand || !category) {
       return res
         .status(400)
         .json({ message: "company, brand, category are required" });
-    }
-
-    if (!projectName) {
-      return res.status(400).json({ message: "projectName is required" });
     }
 
     // files
@@ -49,7 +46,7 @@ export const create = async (req, res, next) => {
       company,
       brand,
       category,
-      projectName,
+      color,
       artName,
       size,
       gender,
@@ -61,6 +58,7 @@ export const create = async (req, res, next) => {
       assignPerson,
       coverImage,
       sampleImages,
+      autoCode,
     });
 
     return res.status(201).json({
@@ -105,7 +103,7 @@ export const update = async (req, res, next) => {
       company,
       brand,
       category,
-      projectName,
+      color,
       artName,
       size,
       gender,
@@ -121,7 +119,7 @@ export const update = async (req, res, next) => {
       company,
       brand,
       category,
-      projectName,
+      color,
       artName,
       size,
       gender,

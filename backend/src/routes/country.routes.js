@@ -7,7 +7,7 @@ import {
   remove,
 } from "../controllers/country.controller.js";
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 router.post("/", create);
 router.get("/", list);

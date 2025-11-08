@@ -5,12 +5,13 @@ export const createProject = async (payload) => {
     company: payload.company,
     brand: payload.brand,
     category: payload.category,
+    autoCode: payload.autoCode || null,
 
     type: payload.type || null,
     country: payload.country || null,
     assignPerson: payload.assignPerson || null,
 
-    projectName: payload.projectName,
+    color: payload.color,
     artName: payload.artName,
     size: payload.size,
     gender: payload.gender,
