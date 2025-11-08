@@ -10,7 +10,7 @@ import assignPersonRoutes from "./assignPerson.routes.js";
 const router = Router();
 
 router.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok111" });
 });
 
 router.use("/companies", companyRoutes);

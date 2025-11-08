@@ -1,0 +1,37 @@
+# node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-lock.yaml.ignore
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# builds
+dist/
+build/
+.next/
+out/
+.tmp/
+.cache/
+
+# frontend tools
+.vite/
+storybook-static/
+coverage/
+
+# backend tools
+logs/
+*.log
+pids/
+coverage/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
