@@ -1,85 +1,142 @@
-import { Project } from "../models/Project.model.js";
+// controllers/project.controller.js
+import {
+  createProject,
+  getProjects,
+  getProjectById,
+  updateProjectById,
+  deleteProjectById,
+} from "../services/project.service.js";
 
-export const createProject = async (payload) => {
-  const project = await Project.create({
-    company: payload.company,
-    brand: payload.brand,
-    category: payload.category,
+export const create = async (req, res, next) => {
+  try {
+    const {
+      company,
+      brand,
+      category,
+      // CHANGED:
+      color,
+      artName,
+      size,
+      gender,
+      priority,
+      productDesc,
+      redSealTargetDate,
+      type,
+      country,
+      assignPerson,
+    } = req.body;
 
-    type: payload.type || null,
-    country: payload.country || null,
-    assignPerson: payload.assignPerson || null,
+    if (!company || !brand || !category) {
+      return res.status(400).json({ message: "company, brand, category are required" });
+    }
+    if (!color) {
+      return res.status(400).json({ message: "color is required" });
+    }
 
-    projectName: payload.projectName,
-    artName: payload.artName,
-    size: payload.size,
-    gender: payload.gender,
-    priority: payload.priority,
-    productDesc: payload.productDesc,
-    redSealTargetDate: payload.redSealTargetDate
-      ? new Date(payload.redSealTargetDate)
-      : null,
+    // files
+    let coverImage = "";
+    let sampleImages = [];
 
-    coverImage: payload.coverImage || "",
-    sampleImages: payload.sampleImages || [],
-  });
-  return project;
+    if (req.files?.coverImage?.[0]) {
+      coverImage = req.files.coverImage[0].path;
+    }
+    if (req.files?.sampleImages?.length) {
+      sampleImages = req.files.sampleImages.map((f) => f.path);
+    }
+
+    const project = await createProject({
+      company,
+      brand,
+      category,
+      color,            // CHANGED
+      artName,
+      size,
+      gender,
+      priority,
+      productDesc,
+      redSealTargetDate,
+      type,
+      country,
+      assignPerson,
+      coverImage,
+      sampleImages,
+      // projectCode is generated in service (read-only here)
+    });
+
+    return res.status(201).json({ message: "project created", data: project });
+  } catch (err) {
+    next(err);
+  }
 };
 
-export const getProjects = async (query = {}) => {
-  const filter = {};
-  if (query.company) filter.company = query.company;
-  if (query.brand) filter.brand = query.brand;
-  if (query.category) filter.category = query.category;
-
-  return await Project.find(filter)
-    .populate("company", "name")
-    .populate("brand", "name")
-    .populate("category", "name")
-    .populate("type", "name")
-    .populate("country", "name")
-    .populate("assignPerson", "name")
-    .sort({ createdAt: -1 });
+export const list = async (req, res, next) => {
+  try {
+    const projects = await getProjects(req.query);
+    return res.json({ message: "project list", data: projects });
+  } catch (err) { next(err); }
 };
 
-export const getProjectById = async (id) => {
-  return await Project.findById(id)
-    .populate("company", "name")
-    .populate("brand", "name")
-    .populate("category", "name")
-    .populate("type", "name")
-    .populate("country", "name")
-    .populate("assignPerson", "name");
+export const get = async (req, res, next) => {
+  try {
+    const project = await getProjectById(req.params.id);
+    if (!project) return res.status(404).json({ message: "project not found" });
+    return res.json({ message: "project detail", data: project });
+  } catch (err) { next(err); }
 };
 
-export const updateProjectById = async (id, payload) => {
-  return await Project.findByIdAndUpdate(
-    id,
-    {
-      $set: {
-        company: payload.company,
-        brand: payload.brand,
-        category: payload.category,
-        type: payload.type || null,
-        country: payload.country || null,
-        assignPerson: payload.assignPerson || null,
-        projectName: payload.projectName,
-        artName: payload.artName,
-        size: payload.size,
-        gender: payload.gender,
-        priority: payload.priority,
-        productDesc: payload.productDesc,
-        redSealTargetDate: payload.redSealTargetDate
-          ? new Date(payload.redSealTargetDate)
-          : null,
-        ...(payload.coverImage ? { coverImage: payload.coverImage } : {}),
-        ...(payload.sampleImages ? { sampleImages: payload.sampleImages } : {}),
-      },
-    },
-    { new: true }
-  );
+export const update = async (req, res, next) => {
+  try {
+    const {
+      company,
+      brand,
+      category,
+      // CHANGED:
+      color,
+      artName,
+      size,
+      gender,
+      priority,
+      productDesc,
+      redSealTargetDate,
+      type,
+      country,
+      assignPerson,
+    } = req.body;
+
+    const payload = {
+      company,
+      brand,
+      category,
+      color, // CHANGED
+      artName,
+      size,
+      gender,
+      priority,
+      productDesc,
+      redSealTargetDate,
+      type,
+      country,
+      assignPerson,
+    };
+
+    if (req.files?.coverImage?.[0]) {
+      payload.coverImage = req.files.coverImage[0].path;
+    }
+    if (req.files?.sampleImages?.length) {
+      payload.sampleImages = req.files.sampleImages.map((f) => f.path);
+    }
+
+    const project = await updateProjectById(req.params.id, payload);
+    if (!project) return res.status(404).json({ message: "project not found" });
+
+    return res.json({ message: "project updated", data: project });
+  } catch (err) { next(err); }
 };
 
-export const deleteProjectById = async (id) => {
-  return await Project.findByIdAndDelete(id);
+export const remove = async (req, res, next) => {
+  try {
+    const project = await deleteProjectById(req.params.id);
+    if (!project) return res.status(404).json({ message: "project not found" });
+    return res.json({ message: "project deleted", data: project });
+  } catch (err) { next(err); }
 };
