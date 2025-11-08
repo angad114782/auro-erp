@@ -24,6 +24,7 @@ export const create = async (req, res, next) => {
       type,
       country,
       assignPerson,
+      autoCode,
     } = req.body;
 
     if (!company || !brand || !category) {
