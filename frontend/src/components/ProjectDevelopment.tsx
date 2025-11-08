@@ -503,7 +503,9 @@ export function ProjectDevelopment() {
                               {/* <Package className="w-6 h-6 text-gray-400" /> */}
                               {project.coverPhoto ? (
                                 <img
-                                  src={`http://localhost:5002/${project.coverPhoto}`}
+                                  src={`${import.meta.env.VITE_BACKEND_URL}/${
+                                    project.coverPhoto
+                                  }`}
                                   alt="Cover"
                                   className="w-full h-full object-cover rounded-lg"
                                 />
