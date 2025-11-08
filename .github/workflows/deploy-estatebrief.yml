@@ -1,0 +1,48 @@
+name: Deploy estatebrief
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/deploy-estatebrief.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd /var/www/fairplays
+            git fetch --all
+            git reset --hard origin/main
+
+            # ---- Backend ----
+            cd /var/www/fairplays/backend
+            npm ci || npm i
+            pm2 reload fairplays-backend || pm2 start npm --name fairplays-backend -- start
+            pm2 save
+
+            # ---- Frontend ----
+            cd /var/www/fairplays/frontend
+            npm ci || npm i
+            npm run build
+
+            sudo mkdir -p /var/www/fairplays_site
+            # Handle either Vite 'dist' or custom 'build'
+            rsync -a --delete dist/ /var/www/fairplays_site/ 2>/dev/null || \
+            rsync -a --delete build/ /var/www/fairplays_site/
+
+            # Nginx reload (estatebrief.com → 5002 already set up)
+            sudo nginx -t && sudo systemctl reload nginx
