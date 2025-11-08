@@ -25,7 +25,7 @@ const projectSchema = new mongoose.Schema(
     sampleImages: [{ type: String }],
 
     // NEW: auto-generated, unique project code (read-only for clients)
-    projectCode: { type: String, unique: true, index: true, required: true },
+    // projectCode: { type: String, unique: true, index: true, required: true },
   },
   { timestamps: true }
 );
