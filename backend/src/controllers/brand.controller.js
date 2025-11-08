@@ -8,12 +8,14 @@ import {
 
 export const create = async (req, res, next) => {
   try {
-    const { name, company } = req.body;
-    if (!name || !company) {
+    const { name } = req.body;
+    const { companyId } = req.params;
+    console.log("Creating brand with:", name, companyId);
+    if (!name || !companyId) {
       return res.status(400).json({ message: "name and company are required" });
     }
 
-    const brand = await createBrand({ name, company });
+    const brand = await createBrand({ name, company: companyId });
     return res.status(201).json({
       message: "brand created",
       data: brand,

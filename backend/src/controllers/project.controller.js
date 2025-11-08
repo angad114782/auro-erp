@@ -13,7 +13,6 @@ export const create = async (req, res, next) => {
       company,
       brand,
       category,
-      // CHANGED:
       color,
       artName,
       size,
@@ -24,10 +23,13 @@ export const create = async (req, res, next) => {
       type,
       country,
       assignPerson,
+      autoCode,
     } = req.body;
 
     if (!company || !brand || !category) {
-      return res.status(400).json({ message: "company, brand, category are required" });
+      return res
+        .status(400)
+        .json({ message: "company, brand, category are required" });
     }
     if (!color) {
       return res.status(400).json({ message: "color is required" });
@@ -48,7 +50,7 @@ export const create = async (req, res, next) => {
       company,
       brand,
       category,
-      color,            // CHANGED
+      color,
       artName,
       size,
       gender,
@@ -60,7 +62,7 @@ export const create = async (req, res, next) => {
       assignPerson,
       coverImage,
       sampleImages,
-      // projectCode is generated in service (read-only here)
+      autoCode,
     });
 
     return res.status(201).json({ message: "project created", data: project });
@@ -73,7 +75,9 @@ export const list = async (req, res, next) => {
   try {
     const projects = await getProjects(req.query);
     return res.json({ message: "project list", data: projects });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 export const get = async (req, res, next) => {
@@ -81,7 +85,9 @@ export const get = async (req, res, next) => {
     const project = await getProjectById(req.params.id);
     if (!project) return res.status(404).json({ message: "project not found" });
     return res.json({ message: "project detail", data: project });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 export const update = async (req, res, next) => {
@@ -90,7 +96,6 @@ export const update = async (req, res, next) => {
       company,
       brand,
       category,
-      // CHANGED:
       color,
       artName,
       size,
@@ -107,7 +112,7 @@ export const update = async (req, res, next) => {
       company,
       brand,
       category,
-      color, // CHANGED
+      color,
       artName,
       size,
       gender,
@@ -130,7 +135,9 @@ export const update = async (req, res, next) => {
     if (!project) return res.status(404).json({ message: "project not found" });
 
     return res.json({ message: "project updated", data: project });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 export const remove = async (req, res, next) => {
@@ -138,5 +145,7 @@ export const remove = async (req, res, next) => {
     const project = await deleteProjectById(req.params.id);
     if (!project) return res.status(404).json({ message: "project not found" });
     return res.json({ message: "project deleted", data: project });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };

@@ -1,37 +1,26 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Target,
   Calculator,
-  Users,
   AlertCircle,
   CheckCircle,
-  Workflow,
-  Clock,
-  IndianRupee,
   X,
   Upload,
   Image as ImageIcon,
   Trash2,
+  Check,
 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
+  DialogTitle,
 } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 import {
   Command,
   CommandEmpty,
@@ -39,19 +28,33 @@ import {
   CommandInput,
   CommandItem,
 } from "./ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "./ui/popover";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Separator } from "./ui/separator";
-import { Badge } from "./ui/badge";
-import { toast } from "sonner@2.0.3";
-import { useERPStore } from "../lib/data-store";
+import { toast } from "sonner";
+import api from "../lib/api";
 
+type Id = string;
+
+// ---- minimal view models (mapped from backend) ----
+type CompanyVM = { id: Id; companyName: string };
+type BrandVM = {
+  id: Id;
+  brandName: string;
+  companyId: Id;
+  status: "Active" | "Inactive";
+};
+type CategoryVM = { id: Id; categoryName: string; companyId: Id; brandId: Id };
+type TypeVM = {
+  id: Id;
+  typeName: string;
+  usageArea: "Sole" | "Upper" | "Both";
+};
+type CountryVM = { id: Id; countryName: string; isoCode?: string };
+
+// ---- local form shape (kept same as yours) ----
 interface NewProject {
-  projectName: string;
+  color: string;
+  artName?: string;
   productCode?: string;
   company: string;
   brand: string;
@@ -69,23 +72,79 @@ interface NewProject {
   priority: string;
   taskInc: string;
   assignedTeam: string[];
-  targetDate: string;
+  targetDate: string; // red seal target date
   requirements: string;
 }
 
 interface CreateProjectDialogProps {
   open: boolean;
   onClose: () => void;
+  onCreated?: () => void;
 }
+
+// ---------- helpers ----------
+const mapCompany = (db: any): CompanyVM => ({
+  id: db._id,
+  companyName: db.name,
+});
+
+const mapBrand = (db: any): BrandVM => ({
+  id: db._id,
+  brandName: db.name,
+  companyId: typeof db.company === "object" ? db.company._id : db.company,
+  status: db.isActive ? "Active" : "Inactive",
+});
+
+const mapCategory = (
+  db: any,
+  companyId?: string,
+  brandId?: string
+): CategoryVM => ({
+  id: db._id,
+  categoryName: db.name,
+  companyId: (db.company ?? companyId) as string,
+  brandId: (db.brand ?? brandId) as string,
+});
+
+const mapType = (db: any): TypeVM => ({
+  id: db._id,
+  typeName: db.name,
+  usageArea: (db.usageArea ?? "Both") as "Sole" | "Upper" | "Both",
+});
+
+const mapCountry = (db: any): CountryVM => ({
+  id: db._id,
+  countryName: db.name,
+  isoCode: db.isoCode,
+});
+
+const dataURLtoFile = (dataUrl: string, filename: string) => {
+  const arr = dataUrl.split(",");
+  const mime = arr[0].match(/:(.*?);/)?.[1] || "image/png";
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) u8arr[n] = bstr.charCodeAt(n);
+  return new File([u8arr], filename, { type: mime });
+};
 
 export function CreateProjectDialog({
   open,
   onClose,
+  onCreated,
 }: CreateProjectDialogProps) {
-  const { companies, brands, categories, countries, types, rdProjects, addBrand, addCategory } = useERPStore();
+  // masters (fetched from backend)
+  const [companies, setCompanies] = useState<CompanyVM[]>([]);
+  const [brands, setBrands] = useState<BrandVM[]>([]);
+  const [categories, setCategories] = useState<CategoryVM[]>([]);
+  const [types, setTypes] = useState<TypeVM[]>([]);
+  const [countries, setCountries] = useState<CountryVM[]>([]);
+  const [loadingMasters, setLoadingMasters] = useState(false);
 
+  // form state
   const [newProject, setNewProject] = useState<NewProject>({
-    projectName: "",
+    color: "",
+    artName: "",
     company: "",
     brand: "",
     collection: "",
@@ -106,6 +165,7 @@ export function CreateProjectDialog({
     requirements: "",
   });
 
+  // popovers
   const [companyOpen, setCompanyOpen] = useState(false);
   const [brandOpen, setBrandOpen] = useState(false);
   const [taskIncOpen, setTaskIncOpen] = useState(false);
@@ -114,7 +174,7 @@ export function CreateProjectDialog({
   const [typeOpen, setTypeOpen] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
 
-  // Image upload states
+  // images
   const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
   const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [dynamicImages, setDynamicImages] = useState<string[]>([]);
@@ -122,7 +182,7 @@ export function CreateProjectDialog({
   const additionalInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
   const dynamicInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
 
-  // Create new item states
+  // inline new master names
   const [addingNewCompany, setAddingNewCompany] = useState(false);
   const [addingNewType, setAddingNewType] = useState(false);
   const [addingNewBrand, setAddingNewBrand] = useState(false);
@@ -133,117 +193,140 @@ export function CreateProjectDialog({
   const [newBrandName, setNewBrandName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCountryName, setNewCountryName] = useState("");
-  
-  // Local storage for dynamically created items (until store supports them)
-  const [customTypes, setCustomTypes] = useState<Array<{id: string; typeId: string; typeName: string; usageArea: string}>>([]);
-  const [customCompanies, setCustomCompanies] = useState<Array<{id: string; companyCode: string; companyName: string; status: string; createdDate: string}>>([]);
-  const [customCountries, setCustomCountries] = useState<Array<{id: string; countryId: string; countryName: string; isoCode: string}>>([]);
-  const [customBrands, setCustomBrands] = useState<Array<{id: string; brandCode: string; brandName: string; companyId: string; status: string; createdDate: string}>>([]);
-  const [customCategories, setCustomCategories] = useState<Array<{id: string; categoryId: string; categoryName: string; companyId: string; status: string}>>([]);
 
-  // Combine store data with custom items
-  const allTypes = [...types, ...customTypes];
-  const allCompanies = [...companies, ...customCompanies];
-  const allCountries = [...countries, ...customCountries];
-  const allBrands = [...brands, ...customBrands];
-  const allCategories = [...categories, ...customCategories];
+  // ---- derived filters ----
+  const filteredBrands = useMemo(
+    () =>
+      newProject.company
+        ? brands.filter((b) => b.companyId === newProject.company)
+        : [],
+    [brands, newProject.company]
+  );
 
-  // Filter brands and categories based on selected company
-  const filteredBrands = newProject.company
-    ? allBrands.filter((brand) => brand.companyId === newProject.company)
-    : [];
+  const filteredCategories = useMemo(
+    () =>
+      newProject.company && newProject.brand
+        ? categories.filter(
+            (c) =>
+              c.companyId === newProject.company &&
+              c.brandId === newProject.brand
+          )
+        : [],
+    [categories, newProject.company, newProject.brand]
+  );
 
-  const filteredCategories = newProject.company
-    ? allCategories.filter((cat) => cat.companyId === newProject.company)
-    : [];
+  // ---- load masters when dialog opens ----
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      try {
+        setLoadingMasters(true);
+        const [cRes, tRes, coRes] = await Promise.all([
+          api.get("/companies"),
+          api.get("/types"),
+          api.get("/countries"),
+        ]);
+        const comp = (cRes.data?.data || cRes.data || []).map(mapCompany);
+        const typ = (tRes.data?.data || tRes.data || []).map(mapType);
+        const cnt = (coRes.data?.data || coRes.data || []).map(mapCountry);
+        setCompanies(comp);
+        setTypes(typ);
+        setCountries(cnt);
+      } catch (e: any) {
+        toast.error(e?.response?.data?.message || "Failed to load masters");
+      } finally {
+        setLoadingMasters(false);
+      }
+    })();
+  }, [open]);
 
-  // Get unique task assignees from existing projects
-  const getUniqueTaskAssignees = () => {
-    const uniqueNames = [
-      ...new Set(
-        rdProjects
-          .map((project) => project.taskInc)
-          .filter(Boolean),
-      ),
-    ];
-    // Add additional predefined names that aren't in the current projects
-    const additionalNames = [
-      "John Doe",
-      "Sarah Wilson",
-      "Mike Chen",
-    ];
-    const allNames = [...uniqueNames, ...additionalNames];
-    // Remove duplicates and sort alphabetically
-    return [...new Set(allNames)].sort();
-  };
+  // ---- when company changes, fetch its brands ----
+  useEffect(() => {
+    if (!newProject.company) {
+      setBrands([]);
+      setCategories([]);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await api.get("/brands", {
+          params: { company: newProject.company },
+        });
+        const list = (res.data?.data || res.data || []).map(mapBrand);
+        setBrands(list);
+      } catch (e: any) {
+        toast.error(e?.response?.data?.message || "Failed to load brands");
+      }
+    })();
+  }, [newProject.company]);
 
+  // ---- when brand changes, fetch categories under (company, brand) ----
+  useEffect(() => {
+    if (!newProject.company || !newProject.brand) {
+      setCategories([]);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await api.get(
+          `/companies/${newProject.company}/brands/${newProject.brand}/categories`
+        );
+        const cat = (res.data?.data || res.data || []).map((c: any) =>
+          mapCategory(c, newProject.company, newProject.brand)
+        );
+        setCategories(cat);
+      } catch (e: any) {
+        toast.error(e?.response?.data?.message || "Failed to load categories");
+      }
+    })();
+  }, [newProject.company, newProject.brand]);
+
+  // ---- code generator (kept same) ----
   const generateProjectCode = () => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const nextYear = currentYear + 1;
-    const month = (now.getMonth() + 1)
+    const month = (now.getMonth() + 1).toString().padStart(2, "0");
+    // you were scanning rdProjects; here we just produce a timestamp-based suffix
+    const seq = String(now.getTime()).slice(-3);
+    return `RND/${currentYear.toString().slice(-2)}-${nextYear
       .toString()
-      .padStart(2, "0");
-
-    // Extract current year projects to get max number
-    const currentYearPrefix = `RND/${currentYear.toString().slice(-2)}-${nextYear.toString().slice(-2)}/${month}/`;
-    const currentYearProjects = rdProjects.filter((p) =>
-      p.autoCode.startsWith(currentYearPrefix),
-    );
-
-    const maxNum =
-      currentYearProjects.length > 0
-        ? Math.max(
-            ...currentYearProjects.map((p) => {
-              const parts = p.autoCode.split("/");
-              return parseInt(parts[3]) || 0;
-            }),
-          )
-        : 100; // Start from 101
-
-    return `RND/${currentYear.toString().slice(-2)}-${nextYear.toString().slice(-2)}/${month}/${(maxNum + 1).toString().padStart(3, "0")}`;
+      .slice(-2)}/${month}/${seq}`;
   };
 
-  // Image upload handlers
+  // ---------- upload handlers ----------
   const handleCoverPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image size must be less than 5MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCoverPhoto(reader.result as string);
-        toast.success("Cover photo uploaded successfully");
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024)
+      return toast.error("Image size must be less than 5MB");
+    const reader = new FileReader();
+    reader.onloadend = () => setCoverPhoto(reader.result as string);
+    reader.readAsDataURL(file);
+    toast.success("Cover photo uploaded");
   };
 
-  const handleAdditionalImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+  const handleAdditionalImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number
+  ) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image size must be less than 5MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newImages = [...additionalImages];
-        newImages[index] = reader.result as string;
-        setAdditionalImages(newImages);
-        toast.success("Image uploaded successfully");
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024)
+      return toast.error("Image size must be less than 5MB");
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const newImages = [...additionalImages];
+      newImages[index] = reader.result as string;
+      setAdditionalImages(newImages);
+      toast.success("Image uploaded");
+    };
+    reader.readAsDataURL(file);
   };
 
   const removeCoverPhoto = () => {
     setCoverPhoto(null);
-    if (coverInputRef.current) {
-      coverInputRef.current.value = "";
-    }
+    if (coverInputRef.current) coverInputRef.current.value = "";
   };
 
   const removeAdditionalImage = (index: number) => {
@@ -255,251 +338,255 @@ export function CreateProjectDialog({
     }
   };
 
-  // Handler for adding new dynamic image slot
-  const handleAddImageSlot = () => {
-    setDynamicImages([...dynamicImages, ""]);
-  };
+  const handleAddImageSlot = () => setDynamicImages([...dynamicImages, ""]);
 
-  // Handler for uploading dynamic images
-  const handleDynamicImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+  const handleDynamicImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number
+  ) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image size must be less than 5MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newImages = [...dynamicImages];
-        newImages[index] = reader.result as string;
-        setDynamicImages(newImages);
-        toast.success("Image uploaded successfully");
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024)
+      return toast.error("Image size must be less than 5MB");
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const newImages = [...dynamicImages];
+      newImages[index] = reader.result as string;
+      setDynamicImages(newImages);
+      toast.success("Image uploaded");
+    };
+    reader.readAsDataURL(file);
   };
 
-  // Handler for removing dynamic images
   const removeDynamicImage = (index: number) => {
     const newImages = dynamicImages.filter((_, i) => i !== index);
     setDynamicImages(newImages);
-    if (dynamicInputRefs.current[index]) {
+    if (dynamicInputRefs.current[index])
       dynamicInputRefs.current[index]!.value = "";
+  };
+
+  // ---------- create masters (API) ----------
+  const handleCreateNewCompany = async () => {
+    if (!newCompanyName.trim())
+      return toast.error("Please enter a company name");
+    try {
+      const res = await api.post("/companies", { name: newCompanyName.trim() });
+      const created = res.data?.data || res.data;
+      const vm = mapCompany(created);
+      setCompanies((prev) => [vm, ...prev]);
+      setNewProject((p) => ({ ...p, company: vm.id, brand: "", category: "" }));
+      localStorage.setItem("selectedCompanyId", vm.id);
+
+      toast.success(`Company "${vm.companyName}" created`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create company");
+    } finally {
+      setNewCompanyName("");
+      setAddingNewCompany(false);
+      setCompanyOpen(false);
     }
   };
 
-  // Handler for creating new company
-  const handleCreateNewCompany = () => {
-    if (!newCompanyName.trim()) {
-      toast.error("Please enter a company name");
-      return;
+  const handleCreateNewBrand = async () => {
+    if (!newBrandName.trim()) return toast.error("Please enter a brand name");
+    if (!newProject.company)
+      return toast.error("Please select a company first");
+    try {
+      // BRAND CREATE API = /api/brands with { name, company }
+      // await api.post(`/companies/${companyId}/brands`, { name });
+
+      const res = await api.post(`/companies/${newProject.company}/brands`, {
+        name: newBrandName.trim(),
+      });
+
+      console.log("Created brand response:", newProject.company);
+
+      const created = res.data?.data || res.data;
+      const vm = mapBrand(created);
+      setBrands((prev) => [vm, ...prev]);
+      setNewProject((p) => ({ ...p, brand: vm.id }));
+      toast.success(`Brand "${vm.brandName}" created`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create brand");
+    } finally {
+      setNewBrandName("");
+      setAddingNewBrand(false);
+      setBrandOpen(false);
     }
-
-    // Create a new company with a temporary ID
-    const newCompanyId = `custom-company-${Date.now()}`;
-    const newCompany = {
-      id: newCompanyId,
-      companyCode: `COM${(companies.length + customCompanies.length + 1).toString().padStart(3, '0')}`,
-      companyName: newCompanyName.trim(),
-      status: 'Active',
-      createdDate: new Date().toISOString()
-    };
-
-    // Add to custom companies
-    setCustomCompanies([...customCompanies, newCompany]);
-
-    // Select the newly created company and clear dependent fields
-    setNewProject({ 
-      ...newProject, 
-      company: newCompanyId,
-      brand: "",
-      category: ""
-    });
-    
-    toast.success(`Company "${newCompanyName}" created and selected`);
-    setNewCompanyName("");
-    setAddingNewCompany(false);
-    setCompanyOpen(false);
   };
 
-  // Handler for creating new country
-  const handleCreateNewCountry = () => {
-    if (!newCountryName.trim()) {
-      toast.error("Please enter a country name");
-      return;
+  const handleCreateNewCategory = async () => {
+    if (!newCategoryName.trim())
+      return toast.error("Please enter a category name");
+    if (!newProject.company) return toast.error("Select company first");
+    if (!newProject.brand) return toast.error("Select brand first");
+    try {
+      const res = await api.post(
+        `/companies/${newProject.company}/brands/${newProject.brand}/categories`,
+        { name: newCategoryName.trim() }
+      );
+      const created = res.data?.data || res.data;
+      const vm = mapCategory(created, newProject.company, newProject.brand);
+      setCategories((prev) => [vm, ...prev]);
+      setNewProject((p) => ({ ...p, category: vm.id }));
+      toast.success(`Category "${vm.categoryName}" created`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create category");
+    } finally {
+      setNewCategoryName("");
+      setAddingNewCategory(false);
+      setCategoryOpen(false);
     }
-
-    // Create a new country with a temporary ID
-    const newCountryId = `custom-country-${Date.now()}`;
-    const newCountry = {
-      id: newCountryId,
-      countryId: `CN${(countries.length + customCountries.length + 1).toString().padStart(3, '0')}`,
-      countryName: newCountryName.trim(),
-      isoCode: newCountryName.trim().substring(0, 2).toUpperCase()
-    };
-
-    // Add to custom countries
-    setCustomCountries([...customCountries, newCountry]);
-
-    // Select the newly created country
-    setNewProject({ ...newProject, country: newCountryId });
-
-    toast.success(`Country "${newCountryName}" created and selected`);
-    setNewCountryName("");
-    setAddingNewCountry(false);
-    setCountryOpen(false);
   };
 
-  // Handler for creating new type
-  const handleCreateNewType = () => {
-    if (!newTypeName.trim()) {
-      toast.error("Please enter a type name");
-      return;
+  const handleCreateNewType = async () => {
+    if (!newTypeName.trim()) return toast.error("Please enter a type name");
+    try {
+      const res = await api.post("/types", { name: newTypeName.trim() });
+      const created = res.data?.data || res.data;
+      const vm = mapType(created);
+      setTypes((prev) => [vm, ...prev]);
+      setNewProject((p) => ({ ...p, type: vm.id }));
+      toast.success(`Type "${vm.typeName}" created`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create type");
+    } finally {
+      setNewTypeName("");
+      setAddingNewType(false);
+      setTypeOpen(false);
     }
-
-    // Create a new type with a temporary ID
-    const newTypeId = `custom-type-${Date.now()}`;
-    const newType = {
-      id: newTypeId,
-      typeId: `TYP${(types.length + customTypes.length + 1).toString().padStart(3, '0')}`,
-      typeName: newTypeName.trim(),
-      usageArea: 'Both' as const
-    };
-
-    // Add to custom types
-    setCustomTypes([...customTypes, newType]);
-
-    // Select the newly created type
-    setNewProject({ ...newProject, type: newTypeId });
-
-    toast.success(`Type "${newTypeName}" created and selected`);
-    setNewTypeName("");
-    setAddingNewType(false);
-    setTypeOpen(false);
   };
 
-  // Handler for creating new brand
-  const handleCreateNewBrand = () => {
-    if (!newBrandName.trim()) {
-      toast.error("Please enter a brand name");
-      return;
+  const handleCreateNewCountry = async () => {
+    if (!newCountryName.trim())
+      return toast.error("Please enter a country name");
+    try {
+      const res = await api.post("/countries", { name: newCountryName.trim() });
+      const created = res.data?.data || res.data;
+      const vm = mapCountry(created);
+      setCountries((prev) => [vm, ...prev]);
+      setNewProject((p) => ({ ...p, country: vm.id }));
+      toast.success(`Country "${vm.countryName}" created`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create country");
+    } finally {
+      setNewCountryName("");
+      setAddingNewCountry(false);
+      setCountryOpen(false);
     }
-
-    if (!newProject.company) {
-      toast.error("Please select a company first");
-      return;
-    }
-
-    // Create a new brand with a temporary ID
-    const newBrandId = `custom-brand-${Date.now()}`;
-    const newBrand = {
-      id: newBrandId,
-      brandCode: `BR${(brands.length + customBrands.length + 1).toString().padStart(3, '0')}`,
-      brandName: newBrandName.trim(),
-      companyId: newProject.company,
-      status: 'Active' as const,
-      createdDate: new Date().toISOString()
-    };
-
-    // Add to custom brands
-    setCustomBrands([...customBrands, newBrand]);
-
-    // Select the newly created brand
-    setNewProject({ ...newProject, brand: newBrandId });
-
-    toast.success(`Brand "${newBrandName}" created and selected`);
-    setNewBrandName("");
-    setAddingNewBrand(false);
-    setBrandOpen(false);
   };
 
-  // Handler for creating new category
-  const handleCreateNewCategory = () => {
-    if (!newCategoryName.trim()) {
-      toast.error("Please enter a category name");
-      return;
-    }
-
-    if (!newProject.company) {
-      toast.error("Please select a company first");
-      return;
-    }
-
-    // Create a new category with a temporary ID
-    const newCategoryId = `custom-category-${Date.now()}`;
-    const newCategory = {
-      id: newCategoryId,
-      categoryId: `CAT${(categories.length + customCategories.length + 1).toString().padStart(3, '0')}`,
-      categoryName: newCategoryName.trim(),
-      companyId: newProject.company,
-      status: 'Active' as const
-    };
-
-    // Add to custom categories
-    setCustomCategories([...customCategories, newCategory]);
-
-    // Select the newly created category
-    setNewProject({ ...newProject, category: newCategoryId });
-
-    toast.success(`Category "${newCategoryName}" created and selected`);
-    setNewCategoryName("");
-    setAddingNewCategory(false);
-    setCategoryOpen(false);
-  };
-
+  // ---------- project create ----------
   const handleCreateProject = async () => {
     if (
-      !newProject.projectName ||
+      !newProject.color ||
+      !newProject.company ||
       !newProject.brand ||
-      !newProject.category
+      !newProject.category ||
+      !newProject.type ||
+      !newProject.country
     ) {
-      toast.error("Please fill in all required fields");
-      return;
+      return toast.error("Please fill all required fields (*)");
     }
 
-    // Mock project creation - in real app this would call addRDProject
-    toast.success("R&D Project created successfully!");
+    try {
+      const fd = new FormData();
+      // textual fields matching your project schema
+      fd.append("color", newProject.color);
+      fd.append("company", newProject.company);
+      fd.append("brand", newProject.brand);
+      fd.append("category", newProject.category);
+      fd.append("type", newProject.type);
+      fd.append("country", newProject.country);
+      fd.append("artName", newProject.artName || "");
+      // optional/renamed fields
+      if (newProject.priority)
+        fd.append("priority", newProject.priority.toLowerCase());
+      if (newProject.description)
+        fd.append("productDesc", newProject.description);
+      if (newProject.productType) fd.append("gender", newProject.productType);
+      if (newProject.collection) fd.append("size", newProject.collection);
+      if (newProject.taskInc) fd.append("assignPerson", newProject.taskInc);
+      if (newProject.targetDate)
+        fd.append("redSealTargetDate", newProject.targetDate);
 
-    // Reset form
-    setNewProject({
-      projectName: "",
-      company: "",
-      brand: "",
-      collection: "",
-      category: "",
-      productType: "",
-      country: "",
-      type: "",
-      targetCost: "",
-      retailPrice: "",
-      upperMaterial: "",
-      soleType: "",
-      heelHeight: "",
-      description: "",
-      priority: "",
-      taskInc: "",
-      assignedTeam: [],
-      targetDate: "",
-      requirements: "",
-    });
+      // generated code (if your backend stores it differently you can ignore)
+      fd.append("autoCode", newProject.productCode || generateProjectCode());
 
-    // Reset images
-    setCoverPhoto(null);
-    setAdditionalImages([]);
-    setDynamicImages([]);
+      // images: field names must be coverImage, sampleImages[] (your upload.fields)
+      if (coverPhoto) {
+        const f = dataURLtoFile(coverPhoto, "cover.png");
+        fd.append("coverImage", f);
+      }
+      const gallery = [
+        ...additionalImages.filter(Boolean),
+        ...dynamicImages.filter(Boolean),
+      ];
+      gallery.forEach((img, i) => {
+        const f = dataURLtoFile(img, `sample-${i + 1}.png`);
+        fd.append("sampleImages", f);
+      });
 
-    onClose();
+      const res = await api.post("/projects", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const created = res.data?.data || res.data;
+      onCreated && onCreated(); // <---- trigger reload
+      toast.success(`R&D Project created ✓`);
+
+      // reset form
+      setNewProject({
+        color: "",
+        artName: "",
+        company: "",
+        brand: "",
+        collection: "",
+        category: "",
+        productType: "",
+        country: "",
+        type: "",
+        targetCost: "",
+        retailPrice: "",
+        upperMaterial: "",
+        soleType: "",
+        heelHeight: "",
+        description: "",
+        priority: "",
+        taskInc: "",
+        assignedTeam: [],
+        targetDate: "",
+        requirements: "",
+      });
+      setCoverPhoto(null);
+      setAdditionalImages([]);
+      setDynamicImages([]);
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create project");
+    }
   };
+  useEffect(() => {
+    const savedCompany = localStorage.getItem("selectedCompanyId");
+    if (savedCompany) {
+      setNewProject((p) => ({ ...p, company: savedCompany }));
+      // *** force load brands ***
+      api.get("/brands", { params: { company: savedCompany } }).then((res) => {
+        const list = (res.data?.data || res.data || []).map(mapBrand);
+        setBrands(list);
+      });
+    }
+  }, []);
 
+  // --------- UI (unchanged except sources now use API state) ---------
   return (
     <Dialog
       open={open}
-      onOpenChange={(isOpen) => {
+      onOpenChange={(isOpen: boolean) => {
         if (!isOpen) onClose();
       }}
     >
       <DialogContent className="!max-w-[96vw] !w-[96vw] max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
-        {/* Sticky Header Section */}
+        {/* Sticky Header */}
         <div className="sticky top-0 z-50 px-12 py-8 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-8">
@@ -508,12 +595,11 @@ export function CreateProjectDialog({
               </div>
               <div>
                 <DialogTitle className="text-4xl font-semibold text-gray-900 mb-2">
-                  Create New R&D Project
+                  Create New R&amp;D Project
                 </DialogTitle>
                 <DialogDescription className="text-xl text-gray-600">
-                  Initialize a comprehensive footwear design and
-                  development project with full project
-                  management capabilities
+                  Initialize a comprehensive footwear design and development
+                  project
                 </DialogDescription>
               </div>
             </div>
@@ -535,8 +621,7 @@ export function CreateProjectDialog({
                 onClick={onClose}
                 variant="ghost"
                 size="sm"
-                className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center"
-                type="button"
+                className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full"
               >
                 <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
               </Button>
@@ -544,10 +629,10 @@ export function CreateProjectDialog({
           </div>
         </div>
 
-        {/* Scrollable Main Content */}
+        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-12 py-10 space-y-12">
-            {/* Product Development Section */}
+            {/* Product Development */}
             <div className="space-y-8">
               <div className="flex items-center gap-6">
                 <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
@@ -560,30 +645,49 @@ export function CreateProjectDialog({
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-6 gap-8">
-                {/* First Row - 6 columns */}
                 {/* 1. Art/Colour Name */}
                 <div className="space-y-4">
                   <Label
-                    htmlFor="artColour"
+                    htmlFor="art"
                     className="text-base font-semibold text-gray-700"
                   >
-                    Art/Colour Name *
+                    Art *
                   </Label>
                   <Input
-                    id="artColour"
-                    value={newProject.projectName}
+                    id="art"
+                    value={newProject.artName}
                     onChange={(e) =>
                       setNewProject({
                         ...newProject,
-                        projectName: e.target.value,
+                        artName: e.target.value,
                       })
                     }
-                    placeholder="e.g., Midnight Black Runner, Ocean Blue Casual"
+                    placeholder="e.g., Midnight Runner"
+                    className="h-12 text-base border-2 focus:border-[#0c9dcb]"
+                  />
+                </div>
+                <div className="space-y-4">
+                  <Label
+                    htmlFor="colour"
+                    className="text-base font-semibold text-gray-700"
+                  >
+                    Colour *
+                  </Label>
+                  <Input
+                    id="colour"
+                    value={newProject.color}
+                    onChange={(e) =>
+                      setNewProject({
+                        ...newProject,
+                        color: e.target.value,
+                      })
+                    }
+                    placeholder="e.g., Black"
                     className="h-12 text-base border-2 focus:border-[#0c9dcb]"
                   />
                 </div>
 
-                {/* 2. Product Code */}
+                {/* 2. Product Code (display) */}
                 <div className="space-y-4">
                   <Label className="text-base font-semibold text-gray-700">
                     Product Code
@@ -591,7 +695,12 @@ export function CreateProjectDialog({
                   <Input
                     id="productCode"
                     value={newProject.productCode || generateProjectCode()}
-                    onChange={(e) => setNewProject({ ...newProject, productCode: e.target.value })}
+                    onChange={(e) =>
+                      setNewProject({
+                        ...newProject,
+                        productCode: e.target.value,
+                      })
+                    }
                     placeholder="Auto-generated code"
                     className="h-12 text-base border-2 focus:border-[#0c9dcb] font-mono font-bold"
                   />
@@ -605,37 +714,30 @@ export function CreateProjectDialog({
                   >
                     Company *
                   </Label>
-                  <Popover
-                    open={companyOpen}
-                    onOpenChange={setCompanyOpen}
-                  >
+                  <Popover open={companyOpen} onOpenChange={setCompanyOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={companyOpen}
-                        className="w-full h-12 justify-between hover:bg-transparent data-[state=open]:border-[#0c9dcb]"
+                        className="w-full h-12 justify-between"
                       >
                         {newProject.company
-                          ? allCompanies.find(
-                              (company) =>
-                                company.id === newProject.company,
-                            )?.companyName
+                          ? companies.find((c) => c.id === newProject.company)
+                              ?.companyName
+                          : loadingMasters
+                          ? "Loading..."
                           : "Select company"}
                         <svg
                           width="15"
                           height="15"
                           viewBox="0 0 15 15"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
                           className="h-4 w-4 opacity-50"
                         >
                           <path
-                            d="m4.93179 5.43179c.20081-.20081.52632-.20081.72713 0l2.34108 2.34108 2.34108-2.34108c.20081-.20081.52632-.20081.72713 0 .20081.20081.20081.52632 0 .72713l-2.70711 2.70711c-.20081.20081-.52632.20081-.72713 0l-2.70711-2.70711c-.20081-.20081-.20081-.52632 0-.72713z"
+                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
                             fill="currentColor"
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                          ></path>
+                          />
                         </svg>
                       </Button>
                     </PopoverTrigger>
@@ -645,21 +747,19 @@ export function CreateProjectDialog({
                           placeholder="Search companies..."
                           className="h-9"
                         />
-                        <CommandEmpty>
-                          No company found.
-                        </CommandEmpty>
+                        <CommandEmpty>No company found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-auto">
-                          {allCompanies.map((company) => (
+                          {companies.map((company) => (
                             <CommandItem
                               key={company.id}
                               value={company.companyName}
                               onSelect={() => {
-                                setNewProject({
-                                  ...newProject,
+                                setNewProject((p) => ({
+                                  ...p,
                                   company: company.id,
                                   brand: "",
                                   category: "",
-                                });
+                                }));
                                 setCompanyOpen(false);
                               }}
                             >
@@ -674,28 +774,30 @@ export function CreateProjectDialog({
                             </CommandItem>
                           ))}
                         </CommandGroup>
+
+                        {/* Inline Create Company */}
                         <div className="border-t p-2">
                           {!addingNewCompany ? (
                             <Button
                               type="button"
                               variant="ghost"
-                              className="w-full justify-start text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              className="w-full justify-start text-blue-600"
                               onClick={() => setAddingNewCompany(true)}
                             >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Create New Company
+                              <Plus className="w-4 h-4 mr-2" /> Create New
+                              Company
                             </Button>
                           ) : (
                             <div className="space-y-2">
                               <Input
                                 placeholder="Enter new company name..."
                                 value={newCompanyName}
-                                onChange={(e) => setNewCompanyName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleCreateNewCompany();
-                                  }
-                                }}
+                                onChange={(e) =>
+                                  setNewCompanyName(e.target.value)
+                                }
+                                onKeyDown={(e) =>
+                                  e.key === "Enter" && handleCreateNewCompany()
+                                }
                                 autoFocus
                               />
                               <div className="flex gap-2">
@@ -705,8 +807,7 @@ export function CreateProjectDialog({
                                   onClick={handleCreateNewCompany}
                                   className="flex-1"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" />
-                                  Add
+                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -718,8 +819,7 @@ export function CreateProjectDialog({
                                   }}
                                   className="flex-1"
                                 >
-                                  <X className="w-4 h-4 mr-1" />
-                                  Cancel
+                                  <X className="w-4 h-4 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -738,38 +838,32 @@ export function CreateProjectDialog({
                   >
                     Brand *
                   </Label>
-                  <Popover
-                    open={brandOpen}
-                    onOpenChange={setBrandOpen}
-                  >
+                  <Popover open={brandOpen} onOpenChange={setBrandOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={brandOpen}
                         disabled={!newProject.company}
-                        className="w-full h-12 justify-between hover:bg-transparent data-[state=open]:border-[#0c9dcb] px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full h-12 justify-between"
                       >
                         {newProject.brand
                           ? filteredBrands.find(
-                              (brand) =>
-                                brand.id === newProject.brand,
+                              (b) => b.id === newProject.brand
                             )?.brandName
-                          : newProject.company ? "Select brand" : "Select company first"}
+                          : newProject.company
+                          ? "Select brand"
+                          : "Select company first"}
                         <svg
                           width="15"
                           height="15"
                           viewBox="0 0 15 15"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
                           className="h-4 w-4 opacity-50"
                         >
                           <path
-                            d="m4.93179 5.43179c.20081-.20081.52632-.20081.72713 0l2.34108 2.34108 2.34108-2.34108c.20081-.20081.52632-.20081.72713 0 .20081.20081.20081.52632 0 .72713l-2.70711 2.70711c-.20081.20081-.52632.20081-.72713 0l-2.70711-2.70711c-.20081-.20081-.20081-.52632 0-.72713z"
+                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
                             fill="currentColor"
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                          ></path>
+                          />
                         </svg>
                       </Button>
                     </PopoverTrigger>
@@ -779,19 +873,17 @@ export function CreateProjectDialog({
                           placeholder="Search brands..."
                           className="h-9"
                         />
-                        <CommandEmpty>
-                          No brand found.
-                        </CommandEmpty>
+                        <CommandEmpty>No brand found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-auto">
                           {filteredBrands.map((brand) => (
                             <CommandItem
                               key={brand.id}
                               value={brand.brandName}
                               onSelect={() => {
-                                setNewProject({
-                                  ...newProject,
+                                setNewProject((p) => ({
+                                  ...p,
                                   brand: brand.id,
-                                });
+                                }));
                                 setBrandOpen(false);
                               }}
                             >
@@ -806,28 +898,29 @@ export function CreateProjectDialog({
                             </CommandItem>
                           ))}
                         </CommandGroup>
+
+                        {/* Inline Create Brand */}
                         <div className="border-t p-2">
                           {!addingNewBrand ? (
                             <Button
                               type="button"
                               variant="ghost"
-                              className="w-full justify-start text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              className="w-full justify-start text-blue-600"
                               onClick={() => setAddingNewBrand(true)}
                             >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Create New Brand
+                              <Plus className="w-4 h-4 mr-2" /> Create New Brand
                             </Button>
                           ) : (
                             <div className="space-y-2">
                               <Input
                                 placeholder="Enter new brand name..."
                                 value={newBrandName}
-                                onChange={(e) => setNewBrandName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleCreateNewBrand();
-                                  }
-                                }}
+                                onChange={(e) =>
+                                  setNewBrandName(e.target.value)
+                                }
+                                onKeyDown={(e) =>
+                                  e.key === "Enter" && handleCreateNewBrand()
+                                }
                                 autoFocus
                               />
                               <div className="flex gap-2">
@@ -837,8 +930,7 @@ export function CreateProjectDialog({
                                   onClick={handleCreateNewBrand}
                                   className="flex-1"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" />
-                                  Add
+                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -850,8 +942,7 @@ export function CreateProjectDialog({
                                   }}
                                   className="flex-1"
                                 >
-                                  <X className="w-4 h-4 mr-1" />
-                                  Cancel
+                                  <X className="w-4 h-4 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -862,7 +953,7 @@ export function CreateProjectDialog({
                   </Popover>
                 </div>
 
-                {/* 5. Footwear Category */}
+                {/* 5. Category */}
                 <div className="space-y-4">
                   <Label
                     htmlFor="category"
@@ -870,65 +961,55 @@ export function CreateProjectDialog({
                   >
                     Footwear Category *
                   </Label>
-                  <Popover
-                    open={categoryOpen}
-                    onOpenChange={setCategoryOpen}
-                  >
+                  <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={categoryOpen}
-                        disabled={!newProject.company}
-                        className="w-full h-12 justify-between hover:bg-transparent data-[state=open]:border-[#0c9dcb]"
+                        disabled={!newProject.brand}
+                        className="w-full h-12 justify-between"
                       >
                         {newProject.category
                           ? filteredCategories.find(
-                              (category) =>
-                                category.id ===
-                                newProject.category,
+                              (c) => c.id === newProject.category
                             )?.categoryName
-                          : newProject.company ? "Select category" : "Select company first"}
+                          : newProject.brand
+                          ? "Select category"
+                          : "Select brand first"}
                         <svg
                           width="15"
                           height="15"
                           viewBox="0 0 15 15"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
                           className="h-4 w-4 opacity-50"
                         >
                           <path
-                            d="m4.93179 5.43179c.20081-.20081.52632-.20081.72713 0l2.34108 2.34108 2.34108-2.34108c.20081-.20081.52632-.20081.72713 0 .20081.20081.20081.52632 0 .72713l-2.70711 2.70711c-.20081.20081-.52632.20081-.72713 0l-2.70711-2.70711c-.20081-.20081-.20081-.52632 0-.72713z"
+                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
                             fill="currentColor"
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                          ></path>
+                          />
                         </svg>
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0">
                       <Command>
                         <CommandInput placeholder="Search category..." />
-                        <CommandEmpty>
-                          No category found.
-                        </CommandEmpty>
+                        <CommandEmpty>No category found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-auto">
                           {filteredCategories.map((category) => (
                             <CommandItem
                               key={category.id}
                               value={category.categoryName}
                               onSelect={() => {
-                                setNewProject({
-                                  ...newProject,
+                                setNewProject((p) => ({
+                                  ...p,
                                   category: category.id,
-                                });
+                                }));
                                 setCategoryOpen(false);
                               }}
                             >
                               <Check
                                 className={`mr-2 h-4 w-4 ${
-                                  newProject.category ===
-                                  category.id
+                                  newProject.category === category.id
                                     ? "opacity-100"
                                     : "opacity-0"
                                 }`}
@@ -937,28 +1018,30 @@ export function CreateProjectDialog({
                             </CommandItem>
                           ))}
                         </CommandGroup>
+
+                        {/* Inline Create Category */}
                         <div className="border-t p-2">
                           {!addingNewCategory ? (
                             <Button
                               type="button"
                               variant="ghost"
-                              className="w-full justify-start text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              className="w-full justify-start text-blue-600"
                               onClick={() => setAddingNewCategory(true)}
                             >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Create New Category
+                              <Plus className="w-4 h-4 mr-2" /> Create New
+                              Category
                             </Button>
                           ) : (
                             <div className="space-y-2">
                               <Input
                                 placeholder="Enter new category name..."
                                 value={newCategoryName}
-                                onChange={(e) => setNewCategoryName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleCreateNewCategory();
-                                  }
-                                }}
+                                onChange={(e) =>
+                                  setNewCategoryName(e.target.value)
+                                }
+                                onKeyDown={(e) =>
+                                  e.key === "Enter" && handleCreateNewCategory()
+                                }
                                 autoFocus
                               />
                               <div className="flex gap-2">
@@ -968,8 +1051,7 @@ export function CreateProjectDialog({
                                   onClick={handleCreateNewCategory}
                                   className="flex-1"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" />
-                                  Add
+                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -981,8 +1063,7 @@ export function CreateProjectDialog({
                                   }}
                                   className="flex-1"
                                 >
-                                  <X className="w-4 h-4 mr-1" />
-                                  Cancel
+                                  <X className="w-4 h-4 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -1001,37 +1082,28 @@ export function CreateProjectDialog({
                   >
                     Type *
                   </Label>
-                  <Popover
-                    open={typeOpen}
-                    onOpenChange={setTypeOpen}
-                  >
+                  <Popover open={typeOpen} onOpenChange={setTypeOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={typeOpen}
-                        className="w-full h-12 justify-between hover:bg-transparent data-[state=open]:border-[#0c9dcb]"
+                        className="w-full h-12 justify-between"
                       >
                         {newProject.type
-                          ? allTypes.find(
-                              (type) =>
-                                type.id === newProject.type,
-                            )?.typeName
+                          ? types.find((t) => t.id === newProject.type)
+                              ?.typeName
                           : "Select type"}
                         <svg
                           width="15"
                           height="15"
                           viewBox="0 0 15 15"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
                           className="h-4 w-4 opacity-50"
                         >
                           <path
-                            d="m4.93179 5.43179c.20081-.20081.52632-.20081.72713 0l2.34108 2.34108 2.34108-2.34108c.20081-.20081.52632-.20081.72713 0 .20081.20081.20081.52632 0 .72713l-2.70711 2.70711c-.20081.20081-.52632.20081-.72713 0l-2.70711-2.70711c-.20081-.20081-.20081-.52632 0-.72713z"
+                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
                             fill="currentColor"
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                          ></path>
+                          />
                         </svg>
                       </Button>
                     </PopoverTrigger>
@@ -1041,19 +1113,14 @@ export function CreateProjectDialog({
                           placeholder="Search types..."
                           className="h-9"
                         />
-                        <CommandEmpty>
-                          No type found.
-                        </CommandEmpty>
+                        <CommandEmpty>No type found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-auto">
-                          {allTypes.map((type) => (
+                          {types.map((type) => (
                             <CommandItem
                               key={type.id}
                               value={type.typeName}
                               onSelect={() => {
-                                setNewProject({
-                                  ...newProject,
-                                  type: type.id,
-                                });
+                                setNewProject((p) => ({ ...p, type: type.id }));
                                 setTypeOpen(false);
                               }}
                             >
@@ -1068,16 +1135,17 @@ export function CreateProjectDialog({
                             </CommandItem>
                           ))}
                         </CommandGroup>
+
+                        {/* Inline Create Type */}
                         <div className="border-t p-2">
                           {!addingNewType ? (
                             <Button
                               type="button"
                               variant="ghost"
-                              className="w-full justify-start text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              className="w-full justify-start text-blue-600"
                               onClick={() => setAddingNewType(true)}
                             >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Create New Type
+                              <Plus className="w-4 h-4 mr-2" /> Create New Type
                             </Button>
                           ) : (
                             <div className="space-y-2">
@@ -1085,11 +1153,9 @@ export function CreateProjectDialog({
                                 placeholder="Enter new type name..."
                                 value={newTypeName}
                                 onChange={(e) => setNewTypeName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleCreateNewType();
-                                  }
-                                }}
+                                onKeyDown={(e) =>
+                                  e.key === "Enter" && handleCreateNewType()
+                                }
                                 autoFocus
                               />
                               <div className="flex gap-2">
@@ -1099,8 +1165,7 @@ export function CreateProjectDialog({
                                   onClick={handleCreateNewType}
                                   className="flex-1"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" />
-                                  Add
+                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -1112,8 +1177,7 @@ export function CreateProjectDialog({
                                   }}
                                   className="flex-1"
                                 >
-                                  <X className="w-4 h-4 mr-1" />
-                                  Cancel
+                                  <X className="w-4 h-4 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -1124,7 +1188,6 @@ export function CreateProjectDialog({
                   </Popover>
                 </div>
 
-                {/* Second Row - 4 columns + 2 empty */}
                 {/* 7. Country */}
                 <div className="space-y-4">
                   <Label
@@ -1133,37 +1196,28 @@ export function CreateProjectDialog({
                   >
                     Country *
                   </Label>
-                  <Popover
-                    open={countryOpen}
-                    onOpenChange={setCountryOpen}
-                  >
+                  <Popover open={countryOpen} onOpenChange={setCountryOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={countryOpen}
-                        className="w-full h-12 justify-between hover:bg-transparent data-[state=open]:border-[#0c9dcb]"
+                        className="w-full h-12 justify-between"
                       >
                         {newProject.country
-                          ? allCountries.find(
-                              (country) =>
-                                country.id === newProject.country,
-                            )?.countryName
+                          ? countries.find((c) => c.id === newProject.country)
+                              ?.countryName
                           : "Select country"}
                         <svg
                           width="15"
                           height="15"
                           viewBox="0 0 15 15"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
                           className="h-4 w-4 opacity-50"
                         >
                           <path
-                            d="m4.93179 5.43179c.20081-.20081.52632-.20081.72713 0l2.34108 2.34108 2.34108-2.34108c.20081-.20081.52632-.20081.72713 0 .20081.20081.20081.52632 0 .72713l-2.70711 2.70711c-.20081.20081-.52632.20081-.72713 0l-2.70711-2.70711c-.20081-.20081-.20081-.52632 0-.72713z"
+                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
                             fill="currentColor"
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                          ></path>
+                          />
                         </svg>
                       </Button>
                     </PopoverTrigger>
@@ -1173,19 +1227,17 @@ export function CreateProjectDialog({
                           placeholder="Search countries..."
                           className="h-9"
                         />
-                        <CommandEmpty>
-                          No country found.
-                        </CommandEmpty>
+                        <CommandEmpty>No country found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-auto">
-                          {allCountries.map((country) => (
+                          {countries.map((country) => (
                             <CommandItem
                               key={country.id}
                               value={country.countryName}
                               onSelect={() => {
-                                setNewProject({
-                                  ...newProject,
+                                setNewProject((p) => ({
+                                  ...p,
                                   country: country.id,
-                                });
+                                }));
                                 setCountryOpen(false);
                               }}
                             >
@@ -1200,28 +1252,30 @@ export function CreateProjectDialog({
                             </CommandItem>
                           ))}
                         </CommandGroup>
+
+                        {/* Inline Create Country */}
                         <div className="border-t p-2">
                           {!addingNewCountry ? (
                             <Button
                               type="button"
                               variant="ghost"
-                              className="w-full justify-start text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              className="w-full justify-start text-blue-600"
                               onClick={() => setAddingNewCountry(true)}
                             >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Create New Country
+                              <Plus className="w-4 h-4 mr-2" /> Create New
+                              Country
                             </Button>
                           ) : (
                             <div className="space-y-2">
                               <Input
                                 placeholder="Enter new country name..."
                                 value={newCountryName}
-                                onChange={(e) => setNewCountryName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleCreateNewCountry();
-                                  }
-                                }}
+                                onChange={(e) =>
+                                  setNewCountryName(e.target.value)
+                                }
+                                onKeyDown={(e) =>
+                                  e.key === "Enter" && handleCreateNewCountry()
+                                }
                                 autoFocus
                               />
                               <div className="flex gap-2">
@@ -1231,8 +1285,7 @@ export function CreateProjectDialog({
                                   onClick={handleCreateNewCountry}
                                   className="flex-1"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" />
-                                  Add
+                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -1244,8 +1297,7 @@ export function CreateProjectDialog({
                                   }}
                                   className="flex-1"
                                 >
-                                  <X className="w-4 h-4 mr-1" />
-                                  Cancel
+                                  <X className="w-4 h-4 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -1274,7 +1326,7 @@ export function CreateProjectDialog({
                         collection: e.target.value,
                       })
                     }
-                    placeholder="e.g., Men's: 6-12 UK, Women's: 3-9 UK"
+                    placeholder="e.g., Men's: 6-12 UK"
                     className="h-12 text-base border-2 focus:border-[#0c9dcb]"
                   />
                 </div>
@@ -1287,33 +1339,22 @@ export function CreateProjectDialog({
                   >
                     Target Gender
                   </Label>
-                  <Select
+                  <select
+                    className="h-12 w-full border rounded-md px-3"
                     value={newProject.productType}
-                    onValueChange={(value) =>
+                    onChange={(e) =>
                       setNewProject({
                         ...newProject,
-                        productType: value,
+                        productType: e.target.value,
                       })
                     }
                   >
-                    <SelectTrigger className="h-12 border-2 focus:border-[#0c9dcb]">
-                      <SelectValue placeholder="Select gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Men">
-                        Men's Collection
-                      </SelectItem>
-                      <SelectItem value="Women">
-                        Women's Collection
-                      </SelectItem>
-                      <SelectItem value="Kids">
-                        Kids Collection
-                      </SelectItem>
-                      <SelectItem value="Unisex">
-                        Unisex Collection
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <option value="">Select gender</option>
+                    <option value="Men">Men's Collection</option>
+                    <option value="Women">Women's Collection</option>
+                    <option value="Kids">Kids Collection</option>
+                    <option value="Unisex">Unisex Collection</option>
+                  </select>
                 </div>
 
                 {/* 10. Priority */}
@@ -1324,47 +1365,37 @@ export function CreateProjectDialog({
                   >
                     Priority *
                   </Label>
-                  <Popover
-                    open={priorityOpen}
-                    onOpenChange={setPriorityOpen}
-                  >
+                  <Popover open={priorityOpen} onOpenChange={setPriorityOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={priorityOpen}
-                        className="w-full h-12 justify-between hover:bg-transparent data-[state=open]:border-[#0c9dcb]"
+                        className="w-full h-12 justify-between"
                       >
                         {newProject.priority || "Select priority"}
                         <svg
                           width="15"
                           height="15"
                           viewBox="0 0 15 15"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
                           className="h-4 w-4 opacity-50"
                         >
                           <path
-                            d="m4.93179 5.43179c.20081-.20081.52632-.20081.72713 0l2.34108 2.34108 2.34108-2.34108c.20081-.20081.52632-.20081.72713 0 .20081.20081.20081.52632 0 .72713l-2.70711 2.70711c-.20081.20081-.52632.20081-.72713 0l-2.70711-2.70711c-.20081-.20081-.20081-.52632 0-.72713z"
+                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
                             fill="currentColor"
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                          ></path>
+                          />
                         </svg>
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0">
                       <Command>
                         <CommandGroup>
-                          {['High', 'Medium', 'Low'].map((priority) => (
+                          {["High", "Medium", "Low"].map((priority) => (
                             <CommandItem
                               key={priority}
                               value={priority}
                               onSelect={() => {
-                                setNewProject({
-                                  ...newProject,
-                                  priority: priority,
-                                });
+                                setNewProject({ ...newProject, priority });
                                 setPriorityOpen(false);
                               }}
                             >
@@ -1384,10 +1415,10 @@ export function CreateProjectDialog({
                   </Popover>
                 </div>
 
-                {/* Empty columns */}
+                {/* spacer */}
                 <div className="xl:col-span-2"></div>
 
-                {/* Third Row - Product Description */}
+                {/* Description */}
                 <div className="xl:col-span-6 space-y-4">
                   <Label
                     htmlFor="description"
@@ -1404,7 +1435,7 @@ export function CreateProjectDialog({
                         description: e.target.value,
                       })
                     }
-                    placeholder="Describe the product design concept, key features, comfort elements, aesthetic details, target use cases, unique selling points, and any special technologies or innovations being incorporated..."
+                    placeholder="Describe the product design concept…"
                     rows={4}
                     className="resize-none text-base border-2 focus:border-[#0c9dcb] leading-relaxed"
                   />
@@ -1414,7 +1445,7 @@ export function CreateProjectDialog({
 
             <Separator className="my-10" />
 
-            {/* Image & Profile Section */}
+            {/* Images Section */}
             <div className="space-y-8">
               <div className="flex items-center gap-6">
                 <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
@@ -1427,13 +1458,12 @@ export function CreateProjectDialog({
               </div>
 
               <div className="grid grid-cols-1 gap-6">
-                {/* Cover Photo Upload */}
                 <div>
                   <Label className="text-base font-semibold text-gray-700 mb-4 block">
                     Cover Photo
                   </Label>
                   <div className="flex items-center gap-4 flex-wrap">
-                    {/* Cover Photo Upload Area */}
+                    {/* Cover */}
                     <div className="flex-shrink-0">
                       <input
                         ref={coverInputRef}
@@ -1466,25 +1496,26 @@ export function CreateProjectDialog({
                           onClick={() => coverInputRef.current?.click()}
                           className="w-32 h-32 border-2 border-dashed border-blue-400 rounded-lg bg-blue-50/50 hover:bg-blue-50 transition-all cursor-pointer group flex flex-col items-center justify-center gap-2"
                         >
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200">
                             <ImageIcon className="w-5 h-5 text-blue-600" />
                           </div>
                           <div className="text-center px-2">
-                            <p className="text-xs font-medium text-gray-700">Cover Photo</p>
+                            <p className="text-xs font-medium text-gray-700">
+                              Cover Photo
+                            </p>
                             <p className="text-xs text-blue-600">Upload</p>
                           </div>
                         </div>
                       )}
                     </div>
 
-                    {/* Additional Images - Horizontal Row (Fixed 5 slots) */}
+                    {/* 5 static slots */}
                     {[0, 1, 2, 3, 4].map((i) => (
                       <div key={i}>
                         <input
                           ref={(el) => {
-                            if (additionalInputRefs.current) {
+                            if (additionalInputRefs.current)
                               additionalInputRefs.current[i] = el;
-                            }
                           }}
                           type="file"
                           accept="image/*"
@@ -1512,23 +1543,24 @@ export function CreateProjectDialog({
                           </div>
                         ) : (
                           <div
-                            onClick={() => additionalInputRefs.current[i]?.click()}
+                            onClick={() =>
+                              additionalInputRefs.current[i]?.click()
+                            }
                             className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-blue-400 transition-all cursor-pointer flex items-center justify-center group"
                           >
-                            <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                            <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500" />
                           </div>
                         )}
                       </div>
                     ))}
 
-                    {/* Dynamic Image Slots */}
+                    {/* Dynamic */}
                     {dynamicImages.map((image, i) => (
-                      <div key={`dynamic-${i}`}>
+                      <div key={`dyn-${i}`}>
                         <input
                           ref={(el) => {
-                            if (dynamicInputRefs.current) {
+                            if (dynamicInputRefs.current)
                               dynamicInputRefs.current[i] = el;
-                            }
                           }}
                           type="file"
                           accept="image/*"
@@ -1559,30 +1591,27 @@ export function CreateProjectDialog({
                             onClick={() => dynamicInputRefs.current[i]?.click()}
                             className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-blue-400 transition-all cursor-pointer flex items-center justify-center group"
                           >
-                            <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                            <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500" />
                           </div>
                         )}
                       </div>
                     ))}
 
-                    {/* Add More Images Button */}
+                    {/* add slot */}
                     <div
                       onClick={handleAddImageSlot}
                       className="w-24 h-24 border-2 border-dashed border-blue-400 rounded-lg bg-blue-50/50 hover:bg-blue-100 transition-all cursor-pointer flex items-center justify-center group"
                     >
-                      <Plus className="w-6 h-6 text-blue-600 group-hover:text-blue-700 transition-colors" />
+                      <Plus className="w-6 h-6 text-blue-600 group-hover:text-blue-700" />
                     </div>
                   </div>
                 </div>
-
-                {/* Image Guidelines */}
-
               </div>
             </div>
 
             <Separator className="my-10" />
 
-            {/* Cost & Timeline Section */}
+            {/* Timeline */}
             <div className="space-y-8">
               <div className="flex items-center gap-6">
                 <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
@@ -1595,11 +1624,6 @@ export function CreateProjectDialog({
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-                {/* Cost Fields */}
-
-
-
-
                 <div className="space-y-4">
                   <Label
                     htmlFor="targetDate"
@@ -1618,9 +1642,7 @@ export function CreateProjectDialog({
                       })
                     }
                     className="h-12 text-base border-2 focus:border-[#0c9dcb]"
-                    style={{
-                      colorScheme: "light",
-                    }}
+                    style={{ colorScheme: "light" }}
                   />
                 </div>
 
@@ -1631,33 +1653,25 @@ export function CreateProjectDialog({
                   >
                     Task-INC (Assigned Person)
                   </Label>
-                  <Popover
-                    open={taskIncOpen}
-                    onOpenChange={setTaskIncOpen}
-                  >
+                  <Popover open={taskIncOpen} onOpenChange={setTaskIncOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
                         aria-expanded={taskIncOpen}
-                        className="w-full h-12 border-2 focus:border-[#0c9dcb] justify-between hover:bg-transparent data-[state=open]:border-[#0c9dcb] px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full h-12 border-2 justify-between"
                       >
-                        {newProject.taskInc ||
-                          "e.g., Priyanka, John Doe"}
+                        {newProject.taskInc || "e.g., Priyanka, John Doe"}
                         <svg
                           width="15"
                           height="15"
                           viewBox="0 0 15 15"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
                           className="h-4 w-4 opacity-50"
                         >
                           <path
-                            d="m4.93179 5.43179c.20081-.20081.52632-.20081.72713 0l2.34108 2.34108 2.34108-2.34108c.20081-.20081.52632-.20081.72713 0 .20081.20081.20081.52632 0 .72713l-2.70711 2.70711c-.20081.20081-.52632.20081-.72713 0l-2.70711-2.70711c-.20081-.20081-.20081-.52632 0-.72713z"
+                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
                             fill="currentColor"
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                          ></path>
+                          />
                         </svg>
                       </Button>
                     </PopoverTrigger>
@@ -1669,17 +1683,16 @@ export function CreateProjectDialog({
                     >
                       <Command>
                         <CommandInput
-                          placeholder="Search or type new name..."
+                          placeholder="Type a name..."
                           className="h-9"
                         />
                         <CommandEmpty>
                           <div className="p-2 text-sm text-muted-foreground">
-                            No existing assignee found. Type to
-                            add new name.
+                            Type a name and press Enter
                           </div>
                         </CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-auto">
-                          {getUniqueTaskAssignees().map(
+                          {["John Doe", "Sarah Wilson", "Mike Chen"].map(
                             (assignee) => (
                               <CommandItem
                                 key={assignee}
@@ -1694,15 +1707,14 @@ export function CreateProjectDialog({
                               >
                                 <Check
                                   className={`mr-2 h-4 w-4 ${
-                                    newProject.taskInc ===
-                                    assignee
+                                    newProject.taskInc === assignee
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
                                 {assignee}
                               </CommandItem>
-                            ),
+                            )
                           )}
                         </CommandGroup>
                       </Command>
@@ -1714,17 +1726,16 @@ export function CreateProjectDialog({
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Footer */}
         <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-12 py-8 flex justify-between items-center shadow-lg z-50">
           <div className="flex items-center gap-4">
             <AlertCircle className="w-6 h-6 text-blue-600" />
             <div>
               <p className="text-base font-semibold text-gray-900">
-                Ready to Create Your R&D Project?
+                Ready to Create Your R&amp;D Project?
               </p>
               <p className="text-sm text-gray-600">
-                Double-check all required fields marked with *
-                before submission
+                Double-check all required fields marked with * before submission
               </p>
             </div>
           </div>
@@ -1745,8 +1756,7 @@ export function CreateProjectDialog({
               className="px-8 py-3 text-base bg-[#0c9dcb] hover:bg-[#0c9dcb]/90"
               type="button"
             >
-              <Plus className="w-5 h-5 mr-3" />
-              Create R&D Project
+              <Plus className="w-5 h-5 mr-3" /> Create R&amp;D Project
             </Button>
           </div>
         </div>

@@ -16,6 +16,9 @@ router.get("/health", (req, res) => {
 router.use("/companies", companyRoutes);
 
 // /companies/:companyId/brands
+
+router.use("/brands", companyBrandRoutes);
+
 router.use("/companies/:companyId/brands", companyBrandRoutes);
 
 // /companies/:companyId/brands/:brandId/categories

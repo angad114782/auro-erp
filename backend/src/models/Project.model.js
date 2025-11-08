@@ -2,16 +2,39 @@ import mongoose from "mongoose";
 
 const projectSchema = new mongoose.Schema(
   {
-    company: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
-    brand: { type: mongoose.Schema.Types.ObjectId, ref: "Brand", required: true },
-    category: { type: mongoose.Schema.Types.ObjectId, ref: "Category", required: true },
+    autoCode: { type: String, required: true, unique: true },
+
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+    },
+    brand: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: true,
+    },
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
+      required: true,
+    },
 
     // optional masters
     type: { type: mongoose.Schema.Types.ObjectId, ref: "Type", default: null },
-    country: { type: mongoose.Schema.Types.ObjectId, ref: "Country", default: null },
-    assignPerson: { type: mongoose.Schema.Types.ObjectId, ref: "AssignPerson", default: null },
+    country: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Country",
+      default: null,
+    },
+    // assignPerson: {
+    //   type: mongoose.Schema.Types.ObjectId,
+    //   ref: "AssignPerson",
+    //   default: null,
+    // },
 
-    projectName: { type: String, required: true, trim: true },
+    assignPerson: { type: String, default: null },
+    color: { type: String, required: true, trim: true },
     artName: { type: String, default: "" },
     size: { type: String, default: "" },
     gender: { type: String, default: "" },
