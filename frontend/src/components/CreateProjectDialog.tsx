@@ -10,6 +10,7 @@ import {
   Image as ImageIcon,
   Trash2,
   Check,
+  ChevronDown,
 } from "lucide-react";
 import {
   Dialog,
@@ -771,17 +772,7 @@ export function CreateProjectDialog({
                           : loadingMasters
                           ? "Loading..."
                           : "Select company"}
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 15 15"
-                          className="h-4 w-4 opacity-50"
-                        >
-                          <path
-                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
-                            fill="currentColor"
-                          />
-                        </svg>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0">
@@ -796,6 +787,7 @@ export function CreateProjectDialog({
                             <CommandItem
                               key={company.id}
                               value={company.companyName}
+                              className="flex items-center justify-between"
                               onSelect={() => {
                                 setNewProject((p) => ({
                                   ...p,
@@ -806,14 +798,44 @@ export function CreateProjectDialog({
                                 setCompanyOpen(false);
                               }}
                             >
-                              <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  newProject.company === company.id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {company.companyName}
+                              <div className="flex items-center flex-1">
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    newProject.company === company.id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                {company.companyName}
+                              </div>
+
+                              <button
+                                type="button"
+                                className="p-1 hover:bg-red-50 rounded"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+
+                                  // Uncomment when ready:
+                                  try {
+                                    await api.delete(
+                                      `/companies/${company.id}`
+                                    );
+                                    setCompanies((prev) =>
+                                      prev.filter((b) => b.id !== company.id)
+                                    );
+                                    toast.success("Company removed");
+                                  } catch (err) {
+                                    toast.error("Remove company failed");
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                              </button>
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -897,17 +919,7 @@ export function CreateProjectDialog({
                           : newProject.company
                           ? "Select brand"
                           : "Select company first"}
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 15 15"
-                          className="h-4 w-4 opacity-50"
-                        >
-                          <path
-                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
-                            fill="currentColor"
-                          />
-                        </svg>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0">
@@ -921,7 +933,7 @@ export function CreateProjectDialog({
                           {filteredBrands.map((brand) => (
                             <CommandItem
                               key={brand.id}
-                              value={brand.brandName}
+                              className="flex items-center justify-between"
                               onSelect={() => {
                                 setNewProject((p) => ({
                                   ...p,
@@ -930,14 +942,42 @@ export function CreateProjectDialog({
                                 setBrandOpen(false);
                               }}
                             >
-                              <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  newProject.brand === brand.id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {brand.brandName}
+                              <div className="flex items-center flex-1">
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    newProject.brand === brand.id
+                                      ? ""
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                {brand.brandName}
+                              </div>
+
+                              <button
+                                type="button"
+                                className="p-1 hover:bg-red-50 rounded"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+
+                                  // Uncomment when ready:
+                                  try {
+                                    await api.delete(`/brands/${brand.id}`);
+                                    setBrands((prev) =>
+                                      prev.filter((b) => b.id !== brand.id)
+                                    );
+                                    toast.success("Brand deleted");
+                                  } catch (err) {
+                                    toast.error("Delete failed");
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                              </button>
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -1020,17 +1060,7 @@ export function CreateProjectDialog({
                           : newProject.brand
                           ? "Select category"
                           : "Select brand first"}
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 15 15"
-                          className="h-4 w-4 opacity-50"
-                        >
-                          <path
-                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
-                            fill="currentColor"
-                          />
-                        </svg>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0">
@@ -1041,6 +1071,7 @@ export function CreateProjectDialog({
                           {filteredCategories.map((category) => (
                             <CommandItem
                               key={category.id}
+                              className="flex items-center justify-between"
                               value={category.categoryName}
                               onSelect={() => {
                                 setNewProject((p) => ({
@@ -1050,14 +1081,46 @@ export function CreateProjectDialog({
                                 setCategoryOpen(false);
                               }}
                             >
-                              <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  newProject.category === category.id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {category.categoryName}
+                              <div className="flex items-center flex-1">
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    newProject.category === category.id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                {category.categoryName}
+                              </div>
+
+                              <button
+                                type="button"
+                                className="p-1 hover:bg-red-50 rounded"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+
+                                  try {
+                                    await api.delete(
+                                      `/companies/${newProject.company}/brands/${newProject.brand}/categories/${category.id}`
+                                    );
+                                    setCategories((prev) =>
+                                      prev.filter((x) => x.id !== category.id)
+                                    );
+                                    toast.success("Category deleted");
+                                  } catch (err: any) {
+                                    toast.error(
+                                      err?.response?.data?.message ||
+                                        "Failed to delete category"
+                                    );
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                              </button>
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -1137,17 +1200,7 @@ export function CreateProjectDialog({
                           ? types.find((t) => t.id === newProject.type)
                               ?.typeName
                           : "Select type"}
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 15 15"
-                          className="h-4 w-4 opacity-50"
-                        >
-                          <path
-                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
-                            fill="currentColor"
-                          />
-                        </svg>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0">
@@ -1161,20 +1214,48 @@ export function CreateProjectDialog({
                           {types.map((type) => (
                             <CommandItem
                               key={type.id}
+                              className="flex items-center justify-between"
                               value={type.typeName}
                               onSelect={() => {
                                 setNewProject((p) => ({ ...p, type: type.id }));
                                 setTypeOpen(false);
                               }}
                             >
-                              <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  newProject.type === type.id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {type.typeName} ({type.usageArea})
+                              <div className="flex flex-1 items-center">
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    newProject.type === type.id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                {type.typeName} ({type.usageArea})
+                              </div>
+
+                              <button
+                                type="button"
+                                className="p-1 hover:bg-red-50 rounded"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+
+                                  try {
+                                    await api.delete(`/types/${type.id}`);
+                                    setTypes((prev) =>
+                                      prev.filter((x) => x.id !== type.id)
+                                    );
+                                    toast.success("Type removed");
+                                  } catch (err: any) {
+                                    toast.error("Type remove failed");
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                              </button>
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -1251,17 +1332,7 @@ export function CreateProjectDialog({
                           ? countries.find((c) => c.id === newProject.country)
                               ?.countryName
                           : "Select country"}
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 15 15"
-                          className="h-4 w-4 opacity-50"
-                        >
-                          <path
-                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
-                            fill="currentColor"
-                          />
-                        </svg>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0">
@@ -1276,6 +1347,7 @@ export function CreateProjectDialog({
                             <CommandItem
                               key={country.id}
                               value={country.countryName}
+                              className="flex items-center justify-between"
                               onSelect={() => {
                                 setNewProject((p) => ({
                                   ...p,
@@ -1284,14 +1356,43 @@ export function CreateProjectDialog({
                                 setCountryOpen(false);
                               }}
                             >
-                              <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  newProject.country === country.id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {country.countryName}
+                              <div className="flex items-center flex-1">
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    newProject.country === country.id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                {country.countryName}
+                              </div>
+
+                              <button
+                                type="button"
+                                className="p-1 hover:bg-red-50 rounded"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+
+                                  try {
+                                    await api.delete(
+                                      `/countries/${country.id}`
+                                    );
+                                    setCountries((prev) =>
+                                      prev.filter((x) => x.id !== country.id)
+                                    );
+                                    toast.success("Country removed");
+                                  } catch (err: any) {
+                                    toast.error("Country remove failed");
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                              </button>
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -1417,17 +1518,7 @@ export function CreateProjectDialog({
                         className="w-full h-12 justify-between"
                       >
                         {newProject.priority || "Select priority"}
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 15 15"
-                          className="h-4 w-4 opacity-50"
-                        >
-                          <path
-                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
-                            fill="currentColor"
-                          />
-                        </svg>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-full p-0">
@@ -1713,17 +1804,7 @@ export function CreateProjectDialog({
                               (p) => p.id === newProject.taskInc
                             )?.name
                           : "Select assignee"}
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 15 15"
-                          className="h-4 w-4 opacity-50"
-                        >
-                          <path
-                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34-..."
-                            fill="currentColor"
-                          />
-                        </svg>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
@@ -1738,19 +1819,46 @@ export function CreateProjectDialog({
                             <CommandItem
                               key={p.id}
                               value={p.name}
+                              className="flex justify-between items-center"
                               onSelect={() => {
                                 setNewProject({ ...newProject, taskInc: p.id });
                                 setAssignPersonOpen(false);
                               }}
                             >
-                              <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  newProject.taskInc === p.id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {p.name}
+                              <div className="flex items-center flex-1">
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    newProject.taskInc === p.id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                {p.name}
+                              </div>
+                              <button
+                                type="button"
+                                className="p-1 hover:bg-red-50 rounded"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+
+                                  try {
+                                    await api.delete(`/assign-persons/${p.id}`);
+                                    setAssignPersons((prev) =>
+                                      prev.filter((x) => x.id !== p.id)
+                                    );
+                                    toast.success("Assign person deleted");
+                                  } catch (err: any) {
+                                    toast.error("Delete failed");
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                              </button>
                             </CommandItem>
                           ))}
                         </CommandGroup>

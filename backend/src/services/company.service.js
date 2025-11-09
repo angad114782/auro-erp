@@ -23,5 +23,10 @@ export const updateCompanyById = async (id, payload) => {
 };
 
 export const deleteCompanyById = async (id) => {
-  return await Company.findByIdAndDelete(id);
+  // return await Company.findByIdAndDelete(id);
+  return await Company.findByIdAndUpdate(
+    id,
+    { isActive: false },
+    { new: true }
+  );
 };

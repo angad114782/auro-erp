@@ -8,6 +8,10 @@ const typeSchema = new mongoose.Schema(
       trim: true,
       unique: true, // chaahe to hata sakta hai
     },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );

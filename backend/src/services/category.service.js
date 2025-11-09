@@ -1,10 +1,6 @@
 import { Category } from "../models/Category.model.js";
 
-export const createCategoryForBrand = async (
-  companyId,
-  brandId,
-  payload
-) => {
+export const createCategoryForBrand = async (companyId, brandId, payload) => {
   return await Category.create({
     name: payload.name,
     company: companyId,
@@ -48,9 +44,15 @@ export const deleteCategoryForBrand = async (
   brandId,
   categoryId
 ) => {
-  return await Category.findOneAndDelete({
-    _id: categoryId,
-    company: companyId,
-    brand: brandId,
-  });
+  //
+  // return await Category.findOneAndDelete({
+  //   _id: categoryId,
+  //   company: companyId,
+  //   brand: brandId,
+  // });
+  return await Category.findOneAndUpdate(
+    { _id: categoryId, company: companyId, brand: brandId },
+    { isActive: false },
+    { new: true }
+  );
 };

@@ -21,5 +21,9 @@ export const updateAssignPersonById = async (id, payload) => {
 };
 
 export const deleteAssignPersonById = async (id) => {
-  return await AssignPerson.findByIdAndDelete(id);
+  return await AssignPerson.findByIdAndUpdate(
+    id,
+    { isActive: false },
+    { new: true }
+  );
 };

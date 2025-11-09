@@ -13,6 +13,7 @@ const categorySchema = new mongoose.Schema(
       ref: "Brand",
       required: true,
     },
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

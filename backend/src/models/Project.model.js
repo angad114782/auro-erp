@@ -44,6 +44,7 @@ const projectSchema = new mongoose.Schema(
 
     coverImage: { type: String, default: "" },
     sampleImages: [{ type: String }],
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

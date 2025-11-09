@@ -21,5 +21,6 @@ export const updateTypeById = async (id, payload) => {
 };
 
 export const deleteTypeById = async (id) => {
-  return await Type.findByIdAndDelete(id);
+  // return await Type.findByIdAndDelete(id);
+  return await Type.findByIdAndUpdate(id, { isActive: false }, { new: true });
 };

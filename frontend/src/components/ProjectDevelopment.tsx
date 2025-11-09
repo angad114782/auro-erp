@@ -54,6 +54,7 @@ import { ImportTemplateGenerator } from "./ImportTemplateGenerator";
 import { toast } from "sonner";
 import type { RDProject } from "../lib/data-store";
 import api from "../lib/api";
+import { set } from "mongoose";
 
 export function ProjectDevelopment() {
   const {
@@ -67,11 +68,12 @@ export function ProjectDevelopment() {
     addRDProject,
     setRDProjects,
   } = useERPStore();
-
+  const [loading, setLoading] = useState(false);
   const reloadProjects = () => {
     api
       .get("/projects")
       .then((res) => {
+        setLoading(false);
         const mapped = res.data.data.map((p: any) => ({
           id: p._id,
           autoCode: p.autoCode,
@@ -123,7 +125,8 @@ export function ProjectDevelopment() {
 
         useERPStore.getState().setRDProjects(mapped);
       })
-      .catch((err: any) => console.log("projects load error", err));
+      .catch((err: any) => console.log("projects load error", err))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {

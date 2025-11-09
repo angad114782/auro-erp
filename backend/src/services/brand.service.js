@@ -42,7 +42,7 @@ export const updateBrandById = async (id, payload) => {
 
 export const deleteBrandById = async (id) => {
   // hard delete
-  return await Brand.findByIdAndDelete(id);
+  // return await Brand.findByIdAndDelete(id);
   // soft:
-  // return await Brand.findByIdAndUpdate(id, { isActive: false }, { new: true });
+  return await Brand.findByIdAndUpdate(id, { isActive: false }, { new: true });
 };
