@@ -27,13 +27,13 @@ const projectSchema = new mongoose.Schema(
       ref: "Country",
       default: null,
     },
-    // assignPerson: {
-    //   type: mongoose.Schema.Types.ObjectId,
-    //   ref: "AssignPerson",
-    //   default: null,
-    // },
+    assignPerson: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AssignPerson",
+      default: null,
+    },
 
-    assignPerson: { type: String, default: null },
+    // assignPerson: { type: String, default: null },
     color: { type: String, required: true, trim: true },
     artName: { type: String, default: "" },
     size: { type: String, default: "" },

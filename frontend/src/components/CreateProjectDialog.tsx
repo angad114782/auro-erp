@@ -32,6 +32,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner";
 import api from "../lib/api";
+import { useERPStore } from "../lib/data-store";
 
 type Id = string;
 
@@ -71,7 +72,7 @@ interface NewProject {
   description: string;
   priority: string;
   taskInc: string;
-  assignedTeam: string[];
+  assignPerson: string;
   targetDate: string; // red seal target date
   requirements: string;
 }
@@ -160,7 +161,7 @@ export function CreateProjectDialog({
     description: "",
     priority: "",
     taskInc: "",
-    assignedTeam: [],
+    assignPerson: "",
     targetDate: "",
     requirements: "",
   });
@@ -194,6 +195,13 @@ export function CreateProjectDialog({
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCountryName, setNewCountryName] = useState("");
 
+  type AssignPersonVM = { id: string; name: string };
+
+  const [assignPersons, setAssignPersons] = useState<AssignPersonVM[]>([]);
+  const [assignPersonOpen, setAssignPersonOpen] = useState(false);
+  const [addingNewAssignPerson, setAddingNewAssignPerson] = useState(false);
+  const [newAssignPersonName, setNewAssignPersonName] = useState("");
+
   // ---- derived filters ----
   const filteredBrands = useMemo(
     () =>
@@ -221,19 +229,32 @@ export function CreateProjectDialog({
     (async () => {
       try {
         setLoadingMasters(true);
-        const [cRes, tRes, coRes] = await Promise.all([
+        const [cRes, tRes, coRes, aRes] = await Promise.all([
           api.get("/companies"),
           api.get("/types"),
           api.get("/countries"),
+          api.get("/assign-persons"), // <--- add this line
         ]);
-        const comp = (cRes.data?.data || cRes.data || []).map(mapCompany);
-        const typ = (tRes.data?.data || tRes.data || []).map(mapType);
-        const cnt = (coRes.data?.data || coRes.data || []).map(mapCountry);
+
+        const comp = (cRes.data?.data || []).map(mapCompany);
+        const typ = (tRes.data?.data || []).map(mapType);
+        const cnt = (coRes.data?.data || []).map(mapCountry);
+        const aps = (aRes.data?.data || []).map((d: any) => ({
+          id: d._id,
+          name: d.name,
+        }));
+
         setCompanies(comp);
         setTypes(typ);
         setCountries(cnt);
+
+        // set local project dialog store
+        setAssignPersons(aps);
+
+        // ALSO push to global zentral store
+        useERPStore.getState().setAssignPersons(aps);
       } catch (e: any) {
-        toast.error(e?.response?.data?.message || "Failed to load masters");
+        toast.error("Failed loading masters");
       } finally {
         setLoadingMasters(false);
       }
@@ -476,6 +497,28 @@ export function CreateProjectDialog({
     }
   };
 
+  // ---------- create assign person ----------
+
+  const handleCreateNewAssignPerson = async () => {
+    if (!newAssignPersonName.trim()) return toast.error("Enter name");
+    try {
+      const res = await api.post("/assign-persons", {
+        name: newAssignPersonName.trim(),
+      });
+      const created = res.data?.data || res.data;
+      const vm = { id: created._id, name: created.name };
+      setAssignPersons((prev) => [vm, ...prev]);
+      setNewProject((p) => ({ ...p, taskInc: vm.id }));
+      toast.success("Assign person created");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed");
+    } finally {
+      setAddingNewAssignPerson(false);
+      setNewAssignPersonName("");
+      setAssignPersonOpen(false);
+    }
+  };
+
   // ---------- project create ----------
   const handleCreateProject = async () => {
     if (
@@ -553,7 +596,7 @@ export function CreateProjectDialog({
         description: "",
         priority: "",
         taskInc: "",
-        assignedTeam: [],
+        assignPerson: "",
         targetDate: "",
         requirements: "",
       });
@@ -1653,15 +1696,23 @@ export function CreateProjectDialog({
                   >
                     Task-INC (Assigned Person)
                   </Label>
-                  <Popover open={taskIncOpen} onOpenChange={setTaskIncOpen}>
+                  {/* Task-INC */}
+                  <Popover
+                    open={assignPersonOpen}
+                    onOpenChange={setAssignPersonOpen}
+                  >
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
-                        aria-expanded={taskIncOpen}
+                        aria-expanded={assignPersonOpen}
                         className="w-full h-12 border-2 justify-between"
                       >
-                        {newProject.taskInc || "e.g., Priyanka, John Doe"}
+                        {newProject.taskInc
+                          ? assignPersons.find(
+                              (p) => p.id === newProject.taskInc
+                            )?.name
+                          : "Select assignee"}
                         <svg
                           width="15"
                           height="15"
@@ -1669,54 +1720,89 @@ export function CreateProjectDialog({
                           className="h-4 w-4 opacity-50"
                         >
                           <path
-                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34 2.34-2.34c.2-.2.53-.2.73 0 .2.2.2.53 0 .73l-2.71 2.71c-.2.2-.53.2-.73 0L4.2 6.16c-.2-.2-.2-.53 0-.73z"
+                            d="m4.93 5.43c.2-.2.53-.2.73 0l2.34 2.34-..."
                             fill="currentColor"
                           />
                         </svg>
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent
-                      className="w-[--radix-popover-trigger-width] p-0"
-                      side="bottom"
-                      align="start"
-                      sideOffset={4}
-                    >
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                       <Command>
                         <CommandInput
-                          placeholder="Type a name..."
+                          placeholder="Search person..."
                           className="h-9"
                         />
-                        <CommandEmpty>
-                          <div className="p-2 text-sm text-muted-foreground">
-                            Type a name and press Enter
-                          </div>
-                        </CommandEmpty>
+                        <CommandEmpty>No person found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-auto">
-                          {["John Doe", "Sarah Wilson", "Mike Chen"].map(
-                            (assignee) => (
-                              <CommandItem
-                                key={assignee}
-                                value={assignee}
-                                onSelect={() => {
-                                  setNewProject({
-                                    ...newProject,
-                                    taskInc: assignee,
-                                  });
-                                  setTaskIncOpen(false);
-                                }}
-                              >
-                                <Check
-                                  className={`mr-2 h-4 w-4 ${
-                                    newProject.taskInc === assignee
-                                      ? "opacity-100"
-                                      : "opacity-0"
-                                  }`}
-                                />
-                                {assignee}
-                              </CommandItem>
-                            )
-                          )}
+                          {assignPersons.map((p) => (
+                            <CommandItem
+                              key={p.id}
+                              value={p.name}
+                              onSelect={() => {
+                                setNewProject({ ...newProject, taskInc: p.id });
+                                setAssignPersonOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={`mr-2 h-4 w-4 ${
+                                  newProject.taskInc === p.id
+                                    ? "opacity-100"
+                                    : "opacity-0"
+                                }`}
+                              />
+                              {p.name}
+                            </CommandItem>
+                          ))}
                         </CommandGroup>
+
+                        {/* inline add new */}
+                        <div className="border-t p-2">
+                          {!addingNewAssignPerson ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="w-full justify-start text-blue-600"
+                              onClick={() => setAddingNewAssignPerson(true)}
+                            >
+                              <Plus className="w-4 h-4 mr-2" /> Add new person
+                            </Button>
+                          ) : (
+                            <div className="space-y-2">
+                              <Input
+                                placeholder="Enter new person name..."
+                                value={newAssignPersonName}
+                                onChange={(e) =>
+                                  setNewAssignPersonName(e.target.value)
+                                }
+                                onKeyDown={(e) =>
+                                  e.key === "Enter" &&
+                                  handleCreateNewAssignPerson()
+                                }
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={handleCreateNewAssignPerson}
+                                  className="flex-1"
+                                >
+                                  Add
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={() => {
+                                    setAddingNewAssignPerson(false);
+                                    setNewAssignPersonName("");
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </Command>
                     </PopoverContent>
                   </Popover>
