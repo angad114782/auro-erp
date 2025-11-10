@@ -1,4 +1,5 @@
 import { Router } from "express";
+import sequenceRoutes from "./sequence.routes.js";
 import companyRoutes from "./company.routes.js";
 import companyBrandRoutes from "./brand.routes.js";
 import companyBrandCategoryRoutes from "./companyBrandCategory.routes.js";
@@ -10,9 +11,12 @@ import assignPersonRoutes from "./assignPerson.routes.js";
 const router = Router();
 
 router.get("/health", (req, res) => {
-  res.json({ status: "ok111" });
+  res.json({ status: "ok" });
 });
 
+
+
+router.use("/sequences", sequenceRoutes);
 router.use("/companies", companyRoutes);
 
 // /companies/:companyId/brands

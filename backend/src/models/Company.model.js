@@ -1,21 +1,11 @@
+// models/Company.model.js
 import mongoose from "mongoose";
-
-const companySchema = new mongoose.Schema(
+const schema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-      unique: true, // agar same naam 2 bar allow nahi hai to is line ko ON kar de
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
+    name: { type: String, required: true, trim: true },
+    isActive: { type: Boolean, default: true, index: true },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
-
-export const Company = mongoose.model("Company", companySchema);
+schema.index({ name: 1 }, { unique: true, collation: { locale: "en", strength: 2 } });
+export default mongoose.model("Company", schema);

@@ -1,7 +1,7 @@
 import { Project } from "../models/Project.model.js";
 
-export const createProject = async (payload) => {
-  const project = await Project.create({
+export const createProject = async (payload, { session } = {}) => {
+  const [project] = await Project.create([{
     company: payload.company,
     brand: payload.brand,
     category: payload.category,
@@ -23,17 +23,19 @@ export const createProject = async (payload) => {
 
     coverImage: payload.coverImage || "",
     sampleImages: payload.sampleImages || [],
-  });
+  }], { session });
+
   return project;
 };
 
+
 export const getProjects = async (query = {}) => {
-  const filter = {};
-  if (query.company) filter.company = query.company;
-  if (query.brand) filter.brand = query.brand;
+  const filter = { isActive: true };          // <-- only active
+  if (query.company)  filter.company  = query.company;
+  if (query.brand)    filter.brand    = query.brand;
   if (query.category) filter.category = query.category;
 
-  return await Project.find(filter)
+  return Project.find(filter)
     .populate("company", "name")
     .populate("brand", "name")
     .populate("category", "name")
@@ -44,7 +46,7 @@ export const getProjects = async (query = {}) => {
 };
 
 export const getProjectById = async (id) => {
-  return await Project.findById(id)
+  return Project.findOne({ _id: id, isActive: true })   // <-- only active
     .populate("company", "name")
     .populate("brand", "name")
     .populate("category", "name")
@@ -52,6 +54,7 @@ export const getProjectById = async (id) => {
     .populate("country", "name")
     .populate("assignPerson", "name");
 };
+
 
 export const updateProjectById = async (id, payload) => {
   return await Project.findByIdAndUpdate(
@@ -82,5 +85,10 @@ export const updateProjectById = async (id, payload) => {
 };
 
 export const deleteProjectById = async (id) => {
-  return await Project.findByIdAndDelete(id);
+  return Project.findByIdAndUpdate(
+    id,
+    { $set: { isActive: false } },   // <-- soft delete
+    { new: true }
+  );
 };
+

@@ -1,48 +1,82 @@
-import { Brand } from "../models/Brand.model.js";
+// services/brand.service.js
+import mongoose from "mongoose";
+import Brand from "../models/Brand.model.js";
 
-export const createBrand = async (payload) => {
-  // payload: { name, company }
-  const brand = await Brand.create({
-    name: payload.name,
-    company: payload.company,
-  });
-  return brand;
+export const createOrReactivateBrand = async ({ companyId, name }) => {
+  // Reactivate if same (company, name) exists but inactive
+  const reactivated = await Brand.findOneAndUpdate(
+    { company: companyId, name, isActive: false },
+    { $set: { isActive: true } },
+    { new: true, collation: { locale: "en", strength: 2 } }
+  ).populate("company", "name").lean();
+
+  if (reactivated) return { action: "reactivated", data: reactivated };
+
+  // If already active, treat as duplicate
+  const exists = await Brand.findOne(
+    { company: companyId, name, isActive: true },
+    null,
+    { collation: { locale: "en", strength: 2 } }
+  ).lean();
+
+  if (exists) return { action: "exists", data: exists };
+
+  // Create fresh
+  const created = await Brand.create({ company: companyId, name, isActive: true });
+  const populated = await Brand.findById(created._id).populate("company", "name").lean();
+  return { action: "created", data: populated };
 };
 
 export const getBrands = async (query = {}) => {
-  const filter = {};
-  if (query.company) {
-    filter.company = query.company;
-  }
-  if (typeof query.isActive !== "undefined") {
-    filter.isActive = query.isActive === "true";
-  }
+  const {
+    company,                // companyId
+    includeInactive,        // "true" | "false"
+    q,                      // optional search by name
+    limit = 50,
+    page = 1,
+  } = query;
 
-  // populate company name
-  return await Brand.find(filter)
+  const filter = {};
+  if (company) filter.company = company;
+  if (includeInactive !== "true") filter.isActive = true; // default only active
+  if (q?.trim()) filter.name = { $regex: q.trim(), $options: "i" };
+
+  const docs = await Brand.find(filter)
     .populate("company", "name")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .skip((Number(page) - 1) * Number(limit))
+    .limit(Number(limit))
+    .lean();
+
+  const total = await Brand.countDocuments(filter);
+
+  return { items: docs, total, page: Number(page), limit: Number(limit) };
 };
 
 export const getBrandById = async (id) => {
-  return await Brand.findById(id).populate("company", "name");
+  return Brand.findOne({ _id: id, isActive: true })
+    .populate("company", "name")
+    .lean();
 };
 
 export const updateBrandById = async (id, payload) => {
-  return await Brand.findByIdAndUpdate(
+  // allow moving company and/or renaming; keep isActive if provided
+  const update = {};
+  if (typeof payload.name === "string") update.name = payload.name.trim();
+  if (payload.company) update.company = payload.company;
+  if (typeof payload.isActive === "boolean") update.isActive = payload.isActive;
+
+  const updated = await Brand.findByIdAndUpdate(
     id,
-    {
-      name: payload.name,
-      company: payload.company, // allow move to another company
-      isActive: payload.isActive,
-    },
-    { new: true }
+    { $set: update },
+    { new: true, runValidators: true, collation: { locale: "en", strength: 2 } }
   ).populate("company", "name");
+
+  return updated;
 };
 
 export const deleteBrandById = async (id) => {
-  // hard delete
-  // return await Brand.findByIdAndDelete(id);
-  // soft:
-  return await Brand.findByIdAndUpdate(id, { isActive: false }, { new: true });
+  // soft delete
+  return Brand.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true })
+    .populate("company", "name");
 };

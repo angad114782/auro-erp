@@ -609,17 +609,33 @@ export function CreateProjectDialog({
       toast.error(e?.response?.data?.message || "Failed to create project");
     }
   };
-  useEffect(() => {
-    const savedCompany = localStorage.getItem("selectedCompanyId");
-    if (savedCompany) {
-      setNewProject((p) => ({ ...p, company: savedCompany }));
-      // *** force load brands ***
-      api.get("/brands", { params: { company: savedCompany } }).then((res) => {
-        const list = (res.data?.data || res.data || []).map(mapBrand);
-        setBrands(list);
-      });
+// helper: safest way to extract an array from any API response shape
+const pickArray = (payload: any) => {
+  if (Array.isArray(payload?.data)) return payload.data;     // { data: [...] }
+  if (Array.isArray(payload?.items)) return payload.items;   // { items: [...] }
+  if (Array.isArray(payload)) return payload;                // [...]
+  return [];                                                 // fallback
+};
+
+useEffect(() => {
+  const savedCompany = localStorage.getItem("selectedCompanyId");
+  if (!savedCompany) return;
+
+  setNewProject((p) => ({ ...p, company: savedCompany }));
+
+  (async () => {
+    try {
+      const res = await api.get("/brands", { params: { company: savedCompany } });
+      const arr = pickArray(res.data);
+      const list = arr.map(mapBrand); // mapBrand guard करे तो और बढ़िया
+      setBrands(list);
+    } catch (e) {
+      console.error("Failed to load brands", e);
+      setBrands([]); // graceful fallback
     }
-  }, []);
+  })();
+}, []);
+
 
   // --------- UI (unchanged except sources now use API state) ---------
   return (

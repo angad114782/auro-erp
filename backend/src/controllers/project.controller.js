@@ -6,68 +6,74 @@ import {
   updateProjectById,
   deleteProjectById,
 } from "../services/project.service.js";
+import mongoose from "mongoose";
+import SequenceCode from "../models/SequenceCode.model.js";
 
 export const create = async (req, res, next) => {
+  const session = await mongoose.startSession();
   try {
-    const {
-      company,
-      brand,
-      category,
-      color,
-      artName,
-      size,
-      gender,
-      priority,
-      productDesc,
-      redSealTargetDate,
-      type,
-      country,
-      assignPerson,
-      autoCode,
-    } = req.body;
+    await session.withTransaction(async () => {
+      const {
+        sequenceId, // <-- REQUIRED
+        company, brand, category,
+        color, artName, size, gender,
+        priority, productDesc, redSealTargetDate,
+        type, country, assignPerson
+      } = req.body;
 
-    if (!company || !brand || !category) {
-      return res
-        .status(400)
-        .json({ message: "company, brand, category are required" });
-    }
-    if (!color) {
-      return res.status(400).json({ message: "color is required" });
-    }
+      if (!sequenceId) {
+        return res.status(400).json({ message: "sequenceId is required" });
+      }
+      if (!company || !brand || !category) {
+        return res.status(400).json({ message: "company, brand, category are required" });
+      }
+      if (!color) {
+        return res.status(400).json({ message: "color is required" });
+      }
 
-    // files
-    let coverImage = "";
-    let sampleImages = [];
+      // 1) Fetch the reserved sequence & code (and lock intent)
+      const seq = await SequenceCode.findOne({ _id: sequenceId }).session(session);
+      if (!seq) return res.status(404).json({ message: "sequence not found" });
+      if (seq.status !== "reserved") {
+        return res.status(409).json({ message: "sequence is not reserved" });
+      }
+      const autoCode = seq.code; // we will store this in Project.autoCode
 
-    if (req.files?.coverImage?.[0]) {
-      coverImage = req.files.coverImage[0].path;
-    }
-    if (req.files?.sampleImages?.length) {
-      sampleImages = req.files.sampleImages.map((f) => f.path);
-    }
+      // 2) Files
+      let coverImage = "";
+      let sampleImages = [];
+      if (req.files?.coverImage?.[0]) coverImage = req.files.coverImage[0].path;
+      if (req.files?.sampleImages?.length) {
+        sampleImages = req.files.sampleImages.map(f => f.path);
+      }
 
-    const project = await createProject({
-      company,
-      brand,
-      category,
-      color,
-      artName,
-      size,
-      gender,
-      priority,
-      productDesc,
-      redSealTargetDate,
-      type,
-      country,
-      assignPerson,
-      coverImage,
-      sampleImages,
-      autoCode,
+      // 3) Create project WITH the autoCode
+      const project = await createProject({
+        company, brand, category,
+        autoCode,                  // <- IMPORTANT
+        type, country, assignPerson,
+        color, artName, size, gender,
+        priority, productDesc, redSealTargetDate,
+        coverImage, sampleImages
+      }, { session });
+
+      // 4) Mark sequence as assigned to this project
+      seq.status = "assigned";
+      seq.project = project._id;
+      seq.assignedAt = new Date();
+      await seq.save({ session });
+
+      // 5) Respond
+      return res.status(201).json({ message: "project created", data: project });
     });
-
-    return res.status(201).json({ message: "project created", data: project });
   } catch (err) {
+    // Unique autoCode clash safety net
+    if (err?.code === 11000) {
+      return res.status(409).json({ message: "autoCode already exists" });
+    }
     next(err);
+  } finally {
+    session.endSession();
   }
 };
 

@@ -1,5 +1,7 @@
+// controllers/brand.controller.js
+import mongoose from "mongoose";
 import {
-  createBrand,
+  createOrReactivateBrand,
   getBrands,
   getBrandById,
   updateBrandById,
@@ -8,61 +10,48 @@ import {
 
 export const create = async (req, res, next) => {
   try {
-    const { name } = req.body;
-    const { companyId } = req.params;
-    console.log("Creating brand with:", name, companyId);
+    const name = (req.body.name || "").trim();
+    const companyId = req.params.companyId || req.body.company; // support both
     if (!name || !companyId) {
       return res.status(400).json({ message: "name and company are required" });
     }
+    if (!mongoose.Types.ObjectId.isValid(companyId)) {
+      return res.status(400).json({ message: "invalid company id" });
+    }
 
-    const brand = await createBrand({ name, company: companyId });
-    return res.status(201).json({
-      message: "brand created",
-      data: brand,
-    });
+    const { action, data } = await createOrReactivateBrand({ companyId, name });
+
+    if (action === "reactivated") return res.status(200).json({ message: "brand reactivated", data });
+    if (action === "exists")      return res.status(409).json({ message: "brand already exists" });
+    return res.status(201).json({ message: "brand created", data });
   } catch (err) {
+    if (err?.code === 11000) return res.status(409).json({ message: "brand already exists" });
     next(err);
   }
 };
 
 export const list = async (req, res, next) => {
   try {
-    const brands = await getBrands(req.query);
-    return res.json({
-      message: "brand list",
-      data: brands,
-    });
-  } catch (err) {
-    next(err);
-  }
+    const result = await getBrands(req.query);
+    res.json({ message: "brand list", ...result });
+  } catch (err) { next(err); }
 };
 
 export const get = async (req, res, next) => {
   try {
     const brand = await getBrandById(req.params.id);
-    if (!brand) {
-      return res.status(404).json({ message: "brand not found" });
-    }
-    return res.json({
-      message: "brand detail",
-      data: brand,
-    });
-  } catch (err) {
-    next(err);
-  }
+    if (!brand) return res.status(404).json({ message: "brand not found" });
+    res.json({ message: "brand detail", data: brand });
+  } catch (err) { next(err); }
 };
 
 export const update = async (req, res, next) => {
   try {
     const brand = await updateBrandById(req.params.id, req.body);
-    if (!brand) {
-      return res.status(404).json({ message: "brand not found" });
-    }
-    return res.json({
-      message: "brand updated",
-      data: brand,
-    });
+    if (!brand) return res.status(404).json({ message: "brand not found" });
+    res.json({ message: "brand updated", data: brand });
   } catch (err) {
+    if (err?.code === 11000) return res.status(409).json({ message: "brand already exists" });
     next(err);
   }
 };
@@ -70,14 +59,7 @@ export const update = async (req, res, next) => {
 export const remove = async (req, res, next) => {
   try {
     const brand = await deleteBrandById(req.params.id);
-    if (!brand) {
-      return res.status(404).json({ message: "brand not found" });
-    }
-    return res.json({
-      message: "brand deleted",
-      data: brand,
-    });
-  } catch (err) {
-    next(err);
-  }
+    if (!brand) return res.status(404).json({ message: "brand not found" });
+    res.json({ message: "brand deleted", data: brand });
+  } catch (err) { next(err); }
 };
