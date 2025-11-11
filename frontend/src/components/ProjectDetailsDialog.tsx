@@ -111,71 +111,6 @@ export function ProjectDetailsDialog({
 }: ProjectDetailsDialogProps) {
   const { updateRDProject } = useERPStore();
 
-  // Add safe defaults at the top
-  const safeBrands = brands || [];
-  const safeCategories = categories || [];
-  const safeTypes = types || [];
-  const safeColors = colors || [];
-  const safeCountries = countries || [];
-
-  const handleCloseDialog = () => {
-    if (onOpenChange) {
-      onOpenChange(false);
-    }
-  };
-
-  // Red Seal Development table data - matching exact table content
-  const redSealDevelopmentData = [
-    {
-      productCode: "RND/24-25/01/102",
-      brand: "UA Sports",
-      brandCode: "UAS01",
-      category: "Formal",
-      type: "Leather",
-      gender: "Men",
-      artColour: "Chunky Mickey",
-      color: "Brown",
-      country: "China",
-      startDate: "05/01/2024",
-      targetDate: "20/04/2024",
-      status: "Prototype",
-      nextDate: "08/09/2025",
-      remarks: "Update Required",
-    },
-    {
-      productCode: "RND/24-25/01/107",
-      brand: "AquaTech",
-      brandCode: "AQT02",
-      category: "Casual",
-      type: "CKD",
-      gender: "Men",
-      artColour: "Hydro Dipping Film",
-      color: "White",
-      country: "India",
-      startDate: "12/01/2024",
-      targetDate: "30/04/2024",
-      status: "Costing Received",
-      nextDate: "08/09/2025",
-      remarks: "OK",
-    },
-    {
-      productCode: "RND/24-25/01/110",
-      brand: "ZipStyle",
-      brandCode: "ZPS03",
-      category: "Formal",
-      type: "Leather",
-      gender: "Men",
-      artColour: "Red zip pocket",
-      color: "Navy Blue",
-      country: "India",
-      startDate: "18/01/2024",
-      targetDate: "05/05/2024",
-      status: "Prototype",
-      nextDate: "08/09/2025",
-      remarks: "Pending",
-    },
-  ];
-
   const [isEditing, setIsEditing] = useState(false);
   const [editedProject, setEditedProject] = useState<RDProject | null>(null);
   const [tentativeCostOpen, setTentativeCostOpen] = useState(false);
@@ -201,50 +136,24 @@ export function ProjectDetailsDialog({
 
   if (!project || !editedProject) return null;
 
-  // Get project data based on project code
-  const getProjectData = () => {
-    const projectData = redSealDevelopmentData.find(
-      (p) => p.productCode === project.autoCode
-    );
-    return projectData || redSealDevelopmentData[0]; // fallback to first item
-  };
-
-  const projectData = getProjectData();
-
-  const getBrandName = (brandId: string) => {
-    if (!brands || brands.length === 0) return projectData.brand;
-    const brand = brands.find((b) => b.id === brandId);
-    return brand?.brandName || projectData.brand;
-  };
-
-  const getBrandCode = (brandId: string) => {
-    if (!brands || brands.length === 0) return projectData.brandCode;
-    const brand = brands.find((b) => b.id === brandId);
-    return brand?.brandCode || projectData.brandCode;
-  };
-
-  const getCategoryName = (categoryId: string) => {
-    if (!categories || categories.length === 0) return projectData.category;
-    const category = categories.find((c) => c.id === categoryId);
-    return category?.categoryName || projectData.category;
-  };
-
   const getTypeName = (typeId: string) => {
-    if (!types || types.length === 0) return projectData.type;
-    const type = types.find((t) => t.id === typeId);
-    return type?.typeName || projectData.type;
+    return (
+      project.typeName || types.find((t) => t.id === typeId)?.typeName || "-"
+    );
   };
 
   const getColorName = (colorId: string) => {
-    if (!colors || colors.length === 0) return projectData.color;
-    const color = colors.find((c) => c.id === colorId);
-    return color?.colorName || projectData.color;
+    return (
+      project.color || colors.find((c) => c.id === colorId)?.colorName || "-"
+    );
   };
 
   const getCountryName = (countryId: string) => {
-    if (!countries || countries.length === 0) return projectData.country;
-    const country = countries.find((c) => c.id === countryId);
-    return country?.countryName || projectData.country;
+    return (
+      project.countryName ||
+      countries.find((c) => c.id === countryId)?.countryName ||
+      "-"
+    );
   };
 
   const getDesignerName = (designerId: string) => {
@@ -263,7 +172,7 @@ export function ProjectDetailsDialog({
   const getCurrentStage = () => {
     return (
       workflowStages.find((stage) => stage.id === project.status) ||
-      workflowStages.find((stage) => stage.id === projectData.status) ||
+      workflowStages.find((stage) => stage.id === project.status) ||
       workflowStages[0]
     );
   };
@@ -278,7 +187,7 @@ export function ProjectDetailsDialog({
   };
 
   const formatDate = (dateString: string) => {
-    if (!dateString) return projectData.startDate;
+    if (!dateString) return project.startDate;
     // If it's already in DD/MM/YYYY format, return as is
     if (dateString.includes("/")) return dateString;
     return new Date(dateString).toLocaleDateString("en-GB", {
@@ -300,8 +209,8 @@ export function ProjectDetailsDialog({
     const nextStage = getNextStage();
     if (nextStage && editedProject) {
       const updatedProject = { ...editedProject, status: nextStage.id };
-      setEditedProject(updatedProject);
-      updateRDProject(editedProject.id, updatedProject);
+      setEditedProject(updatedProject as RDProject);
+      updateRDProject(editedProject.id, updatedProject as RDProject);
       toast.success(`Project advanced to ${nextStage.name}!`);
     }
   };
@@ -422,7 +331,7 @@ export function ProjectDetailsDialog({
 
   // Get color based on project color
   const getColorDisplay = () => {
-    const colorName = getColorName(project.colorId);
+    const colorName = getColorName(project.color);
     const colorMap: Record<string, string> = {
       Black: "bg-gray-900",
       White: "bg-gray-100 border border-gray-300",
@@ -430,7 +339,7 @@ export function ProjectDetailsDialog({
       "Navy Blue": "bg-blue-900",
       Red: "bg-red-600",
     };
-    return colorMap[colorName] || colorMap[projectData.color] || "bg-gray-400";
+    return colorMap[colorName] || colorMap[project.color] || "bg-gray-400";
   };
 
   return (
@@ -453,7 +362,7 @@ export function ProjectDetailsDialog({
                   </DialogDescription>
                   <div className="flex items-center gap-4">
                     <span className="text-lg text-gray-600">
-                      {projectData.productCode}
+                      {project.autoCode}
                     </span>
                     <Badge
                       className={`${currentStage.color} text-sm px-3 py-1`}
@@ -515,7 +424,7 @@ export function ProjectDetailsDialog({
                   </>
                 )}
                 <Button
-                  onClick={(e) => {
+                  onClick={(e: any) => {
                     e.stopPropagation();
                     e.preventDefault();
                     onOpenChange(false);
@@ -638,7 +547,9 @@ export function ProjectDetailsDialog({
                         <div className="w-20 h-20 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm mx-auto mb-2">
                           <img
                             src={
-                              coverPhoto ||
+                              `${import.meta.env.VITE_BACKEND_URL}/${
+                                project.coverPhoto
+                              }` ||
                               "https://images.unsplash.com/photo-1648501570189-0359dab185e6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBzbmVha2VyJTIwc2hvZSUyMHByb2R1Y3R8ZW58MXx8fHwxNzU2NzM1OTMwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
                             }
                             alt={project.autoCode}
@@ -666,8 +577,9 @@ export function ProjectDetailsDialog({
                               Images
                             </Label>
                           </div>
-                          {(coverPhoto ||
-                            additionalImages.filter((img) => img).length > 0 ||
+                          {(project.coverPhoto ||
+                            project.additionalImages!.filter((img) => img)
+                              .length > 0 ||
                             dynamicImages.length > 0) && (
                             <Badge
                               variant="secondary"
@@ -675,8 +587,10 @@ export function ProjectDetailsDialog({
                             >
                               {
                                 [
-                                  coverPhoto,
-                                  ...additionalImages.filter((img) => img),
+                                  project.coverPhoto,
+                                  ...project.additionalImages!.filter(
+                                    (img) => img
+                                  ),
                                   ...dynamicImages,
                                 ].length
                               }
@@ -687,11 +601,13 @@ export function ProjectDetailsDialog({
                         {!isEditing ? (
                           // View Mode - Horizontal scrollable gallery
                           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                            {coverPhoto && (
+                            {project.coverPhoto && (
                               <div className="group relative flex-shrink-0">
                                 <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
                                   <img
-                                    src={coverPhoto}
+                                    src={`${import.meta.env.VITE_BACKEND_URL}/${
+                                      project.coverPhoto
+                                    }`}
                                     alt="Cover"
                                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                                   />
@@ -705,8 +621,8 @@ export function ProjectDetailsDialog({
                                 </div>
                               </div>
                             )}
-                            {additionalImages
-                              .filter((img) => img)
+                            {project
+                              .additionalImages!.filter((img) => img)
                               .map((image, i) => (
                                 <div
                                   key={i}
@@ -714,7 +630,9 @@ export function ProjectDetailsDialog({
                                 >
                                   <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
                                     <img
-                                      src={image}
+                                      src={`${
+                                        import.meta.env.VITE_BACKEND_URL
+                                      }/${image}`}
                                       alt={`Image ${i + 1}`}
                                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                                     />
@@ -962,7 +880,7 @@ export function ProjectDetailsDialog({
                         </Select>
                       ) : (
                         <div className="mt-1 text-gray-900">
-                          Phoenix Footwear
+                          {project.companyName}
                         </div>
                       )}
                     </div>
@@ -992,7 +910,7 @@ export function ProjectDetailsDialog({
                         </Select>
                       ) : (
                         <div className="mt-1 text-gray-900">
-                          {getBrandName(project.brandId)}
+                          {project.brandName}
                         </div>
                       )}
                     </div>
@@ -1022,7 +940,7 @@ export function ProjectDetailsDialog({
                         </Select>
                       ) : (
                         <div className="mt-1 text-gray-900">
-                          {getCategoryName(project.categoryId)}
+                          {project.categoryName}
                         </div>
                       )}
                     </div>
@@ -1085,7 +1003,9 @@ export function ProjectDetailsDialog({
                           className="mt-1"
                         />
                       ) : (
-                        <div className="mt-1 text-gray-900">Modern Design</div>
+                        <div className="mt-1 text-gray-900">
+                          {project.artName}
+                        </div>
                       )}
                     </div>
 
@@ -1093,11 +1013,11 @@ export function ProjectDetailsDialog({
                       <Label>Colour</Label>
                       {isEditing ? (
                         <Select
-                          value={editedProject.colorId}
+                          value={editedProject.color}
                           onValueChange={(value) =>
                             setEditedProject({
                               ...editedProject,
-                              colorId: value,
+                              color: value,
                             })
                           }
                         >
@@ -1124,7 +1044,7 @@ export function ProjectDetailsDialog({
                             className={`w-4 h-4 rounded-full ${getColorDisplay()}`}
                           ></div>
                           <span className="text-gray-900">
-                            {getColorName(project.colorId)}
+                            {getColorName(project.color)}
                           </span>
                         </div>
                       )}
@@ -1267,7 +1187,7 @@ export function ProjectDetailsDialog({
                         />
                       ) : (
                         <div className="mt-1 text-gray-900">
-                          {project.taskInc}
+                          {project.assignPerson.name}
                         </div>
                       )}
                     </div>
@@ -1313,7 +1233,7 @@ export function ProjectDetailsDialog({
                         ) : (
                           <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px]">
                             {editedProject.remarks ||
-                              projectData.remarks ||
+                              project.remarks ||
                               "Elegant formal shoes for business professionals"}
                           </div>
                         )}
@@ -1355,25 +1275,25 @@ export function ProjectDetailsDialog({
                               variant="secondary"
                               className={
                                 (editedProject.clientFeedback ||
-                                  projectData.remarks) === "OK"
+                                  project.remarks) === "OK"
                                   ? "bg-green-100 text-green-700"
                                   : (editedProject.clientFeedback ||
-                                      projectData.remarks) === "Update Required"
+                                      project.remarks) === "Update Required"
                                   ? "bg-orange-100 text-orange-700"
                                   : (editedProject.clientFeedback ||
-                                      projectData.remarks) === "Pending"
+                                      project.remarks) === "Pending"
                                   ? "bg-blue-100 text-blue-700"
                                   : "bg-red-100 text-red-700"
                               }
                             >
                               {(editedProject.clientFeedback ||
-                                projectData.remarks) === "OK"
+                                project.remarks) === "OK"
                                 ? "✓ Approved"
                                 : (editedProject.clientFeedback ||
-                                    projectData.remarks) === "Update Required"
+                                    project.remarks) === "Update Required"
                                 ? "⚠ Update Required"
                                 : (editedProject.clientFeedback ||
-                                    projectData.remarks) === "Pending"
+                                    project.remarks) === "Pending"
                                 ? "⏳ Pending Review"
                                 : "⚠ Update Required"}
                             </Badge>
@@ -1412,7 +1332,7 @@ export function ProjectDetailsDialog({
                             <span className="text-gray-900">
                               {editedProject.nextUpdateDate
                                 ? formatDate(editedProject.nextUpdateDate)
-                                : projectData.nextDate || "30/01/2024"}
+                                : project.updatedDate || "30/01/2024"}
                             </span>
                           </div>
                         )}
@@ -1446,7 +1366,7 @@ export function ProjectDetailsDialog({
                       {(() => {
                         const nextDate =
                           editedProject.nextUpdateDate ||
-                          projectData.nextDate ||
+                          project.updatedDate ||
                           "2024-01-30";
                         const today = new Date();
                         const updateDate = new Date(nextDate);

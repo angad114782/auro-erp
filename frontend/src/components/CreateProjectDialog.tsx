@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { use, useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Target,
@@ -35,23 +35,28 @@ import { toast } from "sonner";
 import api from "../lib/api";
 import { useERPStore } from "../lib/data-store";
 
-type Id = string;
+export type Id = string;
 
 // ---- minimal view models (mapped from backend) ----
-type CompanyVM = { id: Id; companyName: string };
-type BrandVM = {
+export type CompanyVM = { id: Id; companyName: string };
+export type BrandVM = {
   id: Id;
   brandName: string;
   companyId: Id;
   status: "Active" | "Inactive";
 };
-type CategoryVM = { id: Id; categoryName: string; companyId: Id; brandId: Id };
-type TypeVM = {
+export type CategoryVM = {
+  id: Id;
+  categoryName: string;
+  companyId: Id;
+  brandId: Id;
+};
+export type TypeVM = {
   id: Id;
   typeName: string;
   usageArea: "Sole" | "Upper" | "Both";
 };
-type CountryVM = { id: Id; countryName: string; isoCode?: string };
+export type CountryVM = { id: Id; countryName: string; isoCode?: string };
 
 // ---- local form shape (kept same as yours) ----
 interface NewProject {
@@ -85,39 +90,34 @@ interface CreateProjectDialogProps {
 }
 
 // ---------- helpers ----------
-const mapCompany = (db: any): CompanyVM => ({
+export const mapCompany = (db: any): CompanyVM => ({
   id: db._id,
   companyName: db.name,
 });
 
-const mapBrand = (db: any): BrandVM => ({
+export const mapBrand = (db: any): BrandVM => ({
   id: db._id,
   brandName: db.name,
   companyId: typeof db.company === "object" ? db.company._id : db.company,
   status: db.isActive ? "Active" : "Inactive",
 });
 
-const mapCategory = (
-  db: any,
-  companyId?: string,
-  brandId?: string
-): CategoryVM => ({
+export const mapCategory = (db: any): CategoryVM => ({
   id: db._id,
   categoryName: db.name,
-  companyId: (db.company ?? companyId) as string,
-  brandId: (db.brand ?? brandId) as string,
+  companyId: typeof db.company === "object" ? db.company._id : db.company,
+  brandId: typeof db.brand === "object" ? db.brand._id : db.brand,
 });
 
-const mapType = (db: any): TypeVM => ({
+export const mapType = (db: any): TypeVM => ({
   id: db._id,
   typeName: db.name,
   usageArea: (db.usageArea ?? "Both") as "Sole" | "Upper" | "Both",
 });
 
-const mapCountry = (db: any): CountryVM => ({
+export const mapCountry = (db: any): CountryVM => ({
   id: db._id,
   countryName: db.name,
-  isoCode: db.isoCode,
 });
 
 const dataURLtoFile = (dataUrl: string, filename: string) => {
@@ -142,6 +142,12 @@ export function CreateProjectDialog({
   const [types, setTypes] = useState<TypeVM[]>([]);
   const [countries, setCountries] = useState<CountryVM[]>([]);
   const [loadingMasters, setLoadingMasters] = useState(false);
+
+  console.log(companies);
+  console.log(brands);
+  console.log(categories);
+  console.log(types);
+  console.log(countries);
 
   // form state
   const [newProject, setNewProject] = useState<NewProject>({
@@ -225,22 +231,26 @@ export function CreateProjectDialog({
   );
 
   // ---- load masters when dialog opens ----
+  const [sequenceId, setSequenceId] = useState<string>("");
+
   useEffect(() => {
     if (!open) return;
+
     (async () => {
       try {
         setLoadingMasters(true);
+
+        // 1) load all masters in parallel
         const [cRes, tRes, coRes, aRes] = await Promise.all([
           api.get("/companies"),
           api.get("/types"),
           api.get("/countries"),
-          api.get("/assign-persons"), // <--- add this line
+          api.get("/assign-persons"),
         ]);
-
         const comp = (cRes.data?.data || []).map(mapCompany);
-        const typ = (tRes.data?.data || []).map(mapType);
-        const cnt = (coRes.data?.data || []).map(mapCountry);
-        const aps = (aRes.data?.data || []).map((d: any) => ({
+        const typ = (tRes.data?.items || []).map(mapType);
+        const cnt = (coRes.data?.items || []).map(mapCountry);
+        const aps = (aRes.data?.items || []).map((d: any) => ({
           id: d._id,
           name: d.name,
         }));
@@ -248,14 +258,22 @@ export function CreateProjectDialog({
         setCompanies(comp);
         setTypes(typ);
         setCountries(cnt);
-
-        // set local project dialog store
         setAssignPersons(aps);
-
-        // ALSO push to global zentral store
         useERPStore.getState().setAssignPersons(aps);
+
+        // 2) reserve a new project code
+        const seqRes = await api.post(`/sequences/PRJ/reserve`);
+        const seq = seqRes.data.data;
+
+        setSequenceId(seq._id);
+
+        // set display productCode from reserved code
+        setNewProject((p) => ({
+          ...p,
+          productCode: seq.code,
+        }));
       } catch (e: any) {
-        toast.error("Failed loading masters");
+        toast.error("Failed loading masters & sequence");
       } finally {
         setLoadingMasters(false);
       }
@@ -264,11 +282,7 @@ export function CreateProjectDialog({
 
   // ---- when company changes, fetch its brands ----
   useEffect(() => {
-    if (!newProject.company) {
-      setBrands([]);
-      setCategories([]);
-      return;
-    }
+    if (!newProject.company) return; // <-- important
     (async () => {
       try {
         const res = await api.get("/brands", {
@@ -277,15 +291,15 @@ export function CreateProjectDialog({
         const list = (res.data?.data || res.data || []).map(mapBrand);
         setBrands(list);
       } catch (e: any) {
-        toast.error(e?.response?.data?.message || "Failed to load brands");
+        if (open)
+          toast.error(e?.response?.data?.message || "Failed to load brands");
       }
     })();
-  }, [newProject.company]);
+  }, [newProject.company, open]);
 
   // ---- when brand changes, fetch categories under (company, brand) ----
   useEffect(() => {
     if (!newProject.company || !newProject.brand) {
-      setCategories([]);
       return;
     }
     (async () => {
@@ -293,12 +307,12 @@ export function CreateProjectDialog({
         const res = await api.get(
           `/companies/${newProject.company}/brands/${newProject.brand}/categories`
         );
-        const cat = (res.data?.data || res.data || []).map((c: any) =>
-          mapCategory(c, newProject.company, newProject.brand)
-        );
+
+        const arr = res.data?.items || [];
+        const cat = arr.map(mapCategory);
         setCategories(cat);
-      } catch (e: any) {
-        toast.error(e?.response?.data?.message || "Failed to load categories");
+      } catch {
+        setCategories([]);
       }
     })();
   }, [newProject.company, newProject.brand]);
@@ -442,15 +456,19 @@ export function CreateProjectDialog({
       return toast.error("Please enter a category name");
     if (!newProject.company) return toast.error("Select company first");
     if (!newProject.brand) return toast.error("Select brand first");
+
     try {
       const res = await api.post(
         `/companies/${newProject.company}/brands/${newProject.brand}/categories`,
         { name: newCategoryName.trim() }
       );
+
       const created = res.data?.data || res.data;
-      const vm = mapCategory(created, newProject.company, newProject.brand);
+      const vm = mapCategory(created); // <---- updated
+
       setCategories((prev) => [vm, ...prev]);
       setNewProject((p) => ({ ...p, category: vm.id }));
+
       toast.success(`Category "${vm.categoryName}" created`);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to create category");
@@ -532,6 +550,7 @@ export function CreateProjectDialog({
     ) {
       return toast.error("Please fill all required fields (*)");
     }
+    if (!sequenceId) return toast.error("Sequence not created");
 
     try {
       const fd = new FormData();
@@ -555,7 +574,8 @@ export function CreateProjectDialog({
         fd.append("redSealTargetDate", newProject.targetDate);
 
       // generated code (if your backend stores it differently you can ignore)
-      fd.append("autoCode", newProject.productCode || generateProjectCode());
+      fd.append("sequenceId", sequenceId); // add this
+      // fd.append("autoCode", newProject.productCode || generateProjectCode());
 
       // images: field names must be coverImage, sampleImages[] (your upload.fields)
       if (coverPhoto) {
@@ -609,40 +629,46 @@ export function CreateProjectDialog({
       toast.error(e?.response?.data?.message || "Failed to create project");
     }
   };
-// helper: safest way to extract an array from any API response shape
-const pickArray = (payload: any) => {
-  if (Array.isArray(payload?.data)) return payload.data;     // { data: [...] }
-  if (Array.isArray(payload?.items)) return payload.items;   // { items: [...] }
-  if (Array.isArray(payload)) return payload;                // [...]
-  return [];                                                 // fallback
-};
+  // helper: safest way to extract an array from any API response shape
+  const pickArray = (payload: any) => {
+    if (Array.isArray(payload?.data)) return payload.data; // { data: [...] }
+    if (Array.isArray(payload?.items)) return payload.items; // { items: [...] }
+    if (Array.isArray(payload)) return payload; // [...]
+    return []; // fallback
+  };
 
-useEffect(() => {
-  const savedCompany = localStorage.getItem("selectedCompanyId");
-  if (!savedCompany) return;
+  useEffect(() => {
+    const savedCompany = localStorage.getItem("selectedCompanyId");
+    if (!savedCompany) return;
 
-  setNewProject((p) => ({ ...p, company: savedCompany }));
+    setNewProject((p) => ({ ...p, company: savedCompany }));
 
-  (async () => {
-    try {
-      const res = await api.get("/brands", { params: { company: savedCompany } });
-      const arr = pickArray(res.data);
-      const list = arr.map(mapBrand); // mapBrand guard करे तो और बढ़िया
-      setBrands(list);
-    } catch (e) {
-      console.error("Failed to load brands", e);
-      setBrands([]); // graceful fallback
-    }
-  })();
-}, []);
-
+    (async () => {
+      try {
+        const res = await api.get("/brands", {
+          params: { company: savedCompany },
+        });
+        const arr = pickArray(res.data);
+        const list = arr.map(mapBrand); // mapBrand guard करे तो और बढ़िया
+        setBrands(list);
+      } catch (e) {
+        console.error("Failed to load brands", e);
+        setBrands([]); // graceful fallback
+      }
+    })();
+  }, []);
 
   // --------- UI (unchanged except sources now use API state) ---------
   return (
     <Dialog
       open={open}
-      onOpenChange={(isOpen: boolean) => {
-        if (!isOpen) onClose();
+      onOpenChange={async (isOpen: boolean) => {
+        if (!isOpen) {
+          if (sequenceId) {
+            await api.post(`/sequences/${sequenceId}/cancel`).catch(() => {});
+          }
+          onClose();
+        }
       }}
     >
       <DialogContent className="!max-w-[96vw] !w-[96vw] max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
@@ -678,7 +704,15 @@ useEffect(() => {
                 </div>
               </div>
               <Button
-                onClick={onClose}
+                onClick={async () => {
+                  // cancel sequence here
+                  if (sequenceId) {
+                    await api
+                      .post(`/sequences/${sequenceId}/cancel`)
+                      .catch(() => {});
+                  }
+                  onClose();
+                }}
                 variant="ghost"
                 size="sm"
                 className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full"
@@ -1955,7 +1989,15 @@ useEffect(() => {
               variant="outline"
               size="lg"
               className="px-8 py-3 text-base border-2 hover:bg-gray-50"
-              onClick={onClose}
+              onClick={async () => {
+                // cancel sequence here
+                if (sequenceId) {
+                  await api
+                    .post(`/sequences/${sequenceId}/cancel`)
+                    .catch(() => {});
+                }
+                onClose();
+              }}
               type="button"
             >
               Cancel

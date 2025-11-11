@@ -62,11 +62,12 @@ export interface CountryMaster {
 export interface RDProject {
   id: string;
   autoCode: string; // RND/25-26/09/103 format
+  artName: string;
   companyId: string;
   brandId: string;
   categoryId: string;
   typeId: string;
-  colorId: string;
+  color: string;
   countryId: string;
   companyName?: string;
   brandName?: string;
