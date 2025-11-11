@@ -288,7 +288,8 @@ export function CreateProjectDialog({
         const res = await api.get("/brands", {
           params: { company: newProject.company },
         });
-        const list = (res.data?.data || res.data || []).map(mapBrand);
+        const list = (res.data?.items || res.data || []).map(mapBrand);
+
         setBrands(list);
       } catch (e: any) {
         if (open)
