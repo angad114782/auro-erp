@@ -39,6 +39,7 @@ const projectSchema = new mongoose.Schema(
     size: { type: String, default: "" },
     gender: { type: String, default: "" },
     priority: { type: String, default: "normal" },
+    status: { type: String, default: "prototype" },
     productDesc: { type: String, default: "" },
     redSealTargetDate: { type: Date, default: null },
 
