@@ -1,6 +1,8 @@
+// src/routes/project.routes.js
 import { Router } from "express";
 import {
-  create, list, get, update, remove, updateStatus,
+  create, list, get, update, remove,
+  updateStatus, updateNextUpdate, updateClientCost, updateClientApproval,
 } from "../controllers/project.controller.js";
 import { upload } from "../utils/upload.js";
 
@@ -12,13 +14,16 @@ const uploadFields = upload.fields([
 ]);
 
 // CRUD
-router.post("/", uploadFields, create);     // POST   /api/projects
-router.get("/", list);                      // GET    /api/projects?status=Prototype&company=...
-router.get("/:id", get);                    // GET    /api/projects/:id
-router.put("/:id", uploadFields, update);   // PUT    /api/projects/:id
-router.delete("/:id", remove);              // DELETE /api/projects/:id
+router.post("/", uploadFields, create);
+router.get("/", list);
+router.get("/:id", get);
+router.put("/:id", uploadFields, update);
+router.delete("/:id", remove);
 
-// ✅ Status-only update with history
-router.patch("/:id/status", updateStatus);  // PATCH  /api/projects/:id/status
+// Atomic PATCH actions
+router.patch("/:id/status", updateStatus);
+router.patch("/:id/next-update", updateNextUpdate);
+router.patch("/:id/client-cost", updateClientCost);
+router.patch("/:id/client-approval", updateClientApproval);
 
 export default router;

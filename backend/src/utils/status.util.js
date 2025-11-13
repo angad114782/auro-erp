@@ -1,4 +1,4 @@
-// utils/status.util.js
+// src/utils/status.util.js
 export const PROJECT_STATUS = {
   PROTOTYPE:   "prototype",
   RED_SEAL:    "red_seal",
@@ -23,7 +23,6 @@ const aliasTable = [
 
 const canonSet = new Set(Object.values(PROJECT_STATUS));
 
-/** normalize input -> canonical status or null */
 export function normalizeProjectStatus(input) {
   if (!input) return null;
   const s = String(input)
@@ -32,26 +31,23 @@ export function normalizeProjectStatus(input) {
     .replace(/\s+/g, " ")
     .replace(/[_-]+/g, " ");
 
-  // direct canonical hit?
   if (canonSet.has(s.replace(" ", "_"))) return s.replace(" ", "_");
 
-  // try alias table
   for (const row of aliasTable) {
     if (row.canon === s || row.aliases.includes(s)) return row.canon;
-    // also try collapsing spaces
     const collapsed = s.replace(/\s+/g, "");
     if (row.aliases.some(a => a.replace(/\s+/g, "") === collapsed)) return row.canon;
   }
   return null;
 }
 
-/** throw 400 if invalid */
 export function requireValidProjectStatus(input) {
   const norm = normalizeProjectStatus(input);
   if (!norm) {
     const allowed = Array.from(canonSet).join(", ");
-    const msg = `Invalid status "${input}". Allowed: ${allowed}. Aliases like "Red Seal", "PO Approved" are accepted.`;
-    const err = new Error(msg);
+    const err = new Error(
+      `Invalid status "${input}". Allowed: ${allowed}. Aliases like "Red Seal", "PO Approved" are accepted.`
+    );
     err.status = 400;
     throw err;
   }
