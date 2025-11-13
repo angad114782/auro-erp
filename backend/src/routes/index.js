@@ -7,7 +7,8 @@ import projectRoutes from "./project.routes.js";
 import typeRoutes from "./type.routes.js";
 import countryRoutes from "./country.routes.js";
 import assignPersonRoutes from "./assignPerson.routes.js";
-import costSheetRoutes from "./costsheet.routes.js";
+import costRoutes from "./cost.routes.js";
+
 
 
 const router = Router();
@@ -44,6 +45,7 @@ router.use("/types", typeRoutes);
 router.use("/countries", countryRoutes);
 router.use("/assign-persons", assignPersonRoutes);
 router.use("/projects", projectRoutes);
-router.use("/projects/:projectId/costsheet", costSheetRoutes);
+router.use("/projects/:projectId/costs", costRoutes);
+
 
 export default router;
