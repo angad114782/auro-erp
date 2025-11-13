@@ -5,6 +5,7 @@ import {
   getProjectById,
   updateProjectById,
   deleteProjectById,
+  updateProjectStatus,
 } from "../services/project.service.js";
 import mongoose from "mongoose";
 import SequenceCode from "../models/SequenceCode.model.js";
@@ -151,6 +152,33 @@ export const remove = async (req, res, next) => {
     const project = await deleteProjectById(req.params.id);
     if (!project) return res.status(404).json({ message: "project not found" });
     return res.json({ message: "project deleted", data: project });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    // OPTIONAL: user id if you have auth middleware
+    const by = req.user?._id || null;
+
+    if (!status) {
+      return res.status(400).json({ message: "status is required" });
+    }
+
+    const project = await updateProjectStatus(req.params.id, status, by);
+    if (!project) return res.status(404).json({ message: "project not found" });
+
+    return res.json({
+      message: "project status updated",
+      data: {
+        _id: project._id,
+        status: project.status,
+        statusHistory: project.statusHistory.slice(-5), 
+        updatedAt: project.updatedAt,
+      },
+    });
   } catch (err) {
     next(err);
   }
