@@ -347,6 +347,7 @@ export function GreenSealProjectDetailsDialog({ open, onOpenChange, project, bra
     }
   };
 
+
   const removeCoverPhoto = () => {
     setCoverPhoto(null);
   };
