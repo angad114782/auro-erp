@@ -1,9 +1,16 @@
-// src/routes/project.routes.js
 import { Router } from "express";
 import {
   create, list, get, update, remove,
-  updateStatus, updateNextUpdate, updateClientCost, updateClientApproval,
+  updateStatus, updateNextUpdate, updateClientCost, updateClientApproval,updatePO,  
 } from "../controllers/project.controller.js";
+
+import {
+  cloneDefault as cloneDefaultVariants,
+  getOne as getColorVariant,
+  upsertOne as upsertColorVariant,
+  removeOne as deleteColorVariant,
+} from "../controllers/colorVariant.controller.js";
+
 import { upload } from "../utils/upload.js";
 
 const router = Router({ mergeParams: true });
@@ -13,17 +20,24 @@ const uploadFields = upload.fields([
   { name: "sampleImages", maxCount: 5 },
 ]);
 
-// CRUD
+/** CRUD */
 router.post("/", uploadFields, create);
 router.get("/", list);
 router.get("/:id", get);
 router.put("/:id", uploadFields, update);
 router.delete("/:id", remove);
 
-// Atomic PATCH actions
+/** Atomic project actions */
 router.patch("/:id/status", updateStatus);
-router.patch("/:id/next-update", updateNextUpdate);
-router.patch("/:id/client-cost", updateClientCost);
-router.patch("/:id/client-approval", updateClientApproval);
+router.patch("/:id/next-update", updateNextUpdate);     // { date, note }
+router.patch("/:id/client-cost", updateClientCost);     // { amount }
+router.patch("/:id/client-approval", updateClientApproval); // { status }
+router.patch("/:id/po", updatePO);
+
+/** Color Variant APIs (colorId is an ID like 'c_black') */
+router.post("/:id/color-variants/clone-default", cloneDefaultVariants);
+router.get("/:id/color-variants/:colorId", getColorVariant);
+router.put("/:id/color-variants/:colorId", upsertColorVariant);
+router.delete("/:id/color-variants/:colorId", deleteColorVariant);
 
 export default router;
