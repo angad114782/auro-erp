@@ -1,1489 +1,1268 @@
-import React, { useState, useEffect } from "react";
+// ProjectDetailsDialog.tsx - Optimized Version
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+} from "react";
 import {
   Eye,
   Edit2,
   ArrowRight,
   Calendar,
-  User,
-  IndianRupee,
   Clock,
   CheckCircle,
   AlertTriangle,
   Workflow,
   Target,
-  Building,
-  Users,
   X,
   Save,
-  RefreshCw,
-  Calculator,
-  MessageSquare,
-  ImageIcon,
   Upload,
   Trash2,
   Plus,
+  ImageIcon,
+  MessageSquare,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "./ui/dialog";
+
+import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
-import { Separator } from "./ui/separator";
+import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
-import { toast } from "sonner@2.0.3";
-import { useERPStore } from "../lib/data-store";
-import type { RDProject } from "../lib/data-store";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectValue,
+  SelectItem,
+} from "./ui/select";
+
+import api from "../lib/api";
+import { toast } from "sonner";
 import { TentativeCostDialog } from "./TentativeCostDialog";
 
-interface ProjectDetailsDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  project: RDProject | null;
-  brands: any[];
-  categories: any[];
-  types: any[];
-  colors: any[];
-  countries: any[];
+// ------------------------- Types -------------------------
+export interface MasterItem {
+  _id: string;
+  name: string;
 }
 
+export interface ProductDevelopment {
+  _id: string;
+  autoCode: string;
+  company: MasterItem | null;
+  brand: MasterItem | null;
+  category: MasterItem | null;
+  type: MasterItem | null;
+  country: MasterItem | null;
+  assignPerson: MasterItem | null;
+  artName?: string;
+  color?: string;
+  gender?: string;
+  size?: string;
+  priority?: string;
+  productDesc?: string;
+  status?: string;
+  redSealTargetDate?: string;
+  coverImage?: string | null;
+  sampleImages?: string[];
+  clientRemarks?: string;
+  updateNotes?: string;
+  nextUpdateDate?: string;
+  clientApproval?: {
+    status?: string;
+    by?: string | null;
+    at?: string | null;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface Props {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  project: ProductDevelopment | null;
+  reloadProjects: () => Promise<void>;
+  companies: MasterItem[];
+  brands: MasterItem[];
+  categories: MasterItem[];
+  types: MasterItem[];
+  countries: MasterItem[];
+  assignPersons: MasterItem[];
+  setBrands: (items: MasterItem[]) => void;
+  setCategories: (items: MasterItem[]) => void;
+  setSelectedSubModule?: (sub: string) => void;
+}
+
+// ------------------------- Constants -------------------------
 const workflowStages = [
   {
-    id: "Idea Submitted",
+    id: "idea",
     name: "Idea Submitted",
+    progress: 12,
     color: "bg-blue-100 text-blue-800",
-    progress: 17,
   },
   {
-    id: "Prototype",
+    id: "prototype",
     name: "Prototype",
+    progress: 30,
     color: "bg-purple-100 text-purple-800",
-    progress: 33,
   },
   {
-    id: "Red Seal",
+    id: "red_seal",
     name: "Red Seal",
-    color: "bg-red-100 text-red-800",
     progress: 50,
+    color: "bg-red-100 text-red-800",
   },
   {
-    id: "Green Seal",
+    id: "green_seal",
     name: "Green Seal",
+    progress: 70,
     color: "bg-green-100 text-green-800",
-    progress: 67,
   },
   {
-    id: "PO Pending",
+    id: "po_pending",
     name: "PO Pending",
+    progress: 86,
     color: "bg-orange-100 text-orange-800",
-    progress: 83,
   },
   {
-    id: "PO Approved",
+    id: "po_approved",
     name: "PO Approved",
-    color: "bg-emerald-100 text-emerald-800",
     progress: 100,
+    color: "bg-emerald-100 text-emerald-800",
   },
 ];
 
-export function ProjectDetailsDialog({
-  open,
-  onOpenChange,
-  project,
-  brands,
-  categories,
-  types,
-  colors,
-  countries,
-}: ProjectDetailsDialogProps) {
-  const { updateRDProject } = useERPStore();
+// ------------------------- Helpers -------------------------
+const getStage = (id?: string) =>
+  workflowStages.find((s) => s.id === id) || workflowStages[0];
+
+const dataUrlToFile = (dataUrl: string, filename: string) => {
+  const arr = dataUrl.split(",");
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : "image/png";
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8 = new Uint8Array(n);
+  while (n--) u8[n] = bstr.charCodeAt(n);
+  return new File([u8], filename, { type: mime });
+};
+
+const getFullImageUrl = (img?: string | null) => {
+  if (!img) return "";
+  if (img.startsWith("http") || img.startsWith("data:")) return img;
+  return `${import.meta.env.VITE_BACKEND_URL}/${img}`;
+};
+
+const formatDateDisplay = (d?: string | null) => {
+  if (!d) return "TBD";
+  try {
+    return new Date(d).toLocaleDateString("en-GB");
+  } catch {
+    return d;
+  }
+};
+
+// ------------------------- Component -------------------------
+export default function ProjectDetailsDialog(props: Props) {
+  const {
+    open,
+    onOpenChange,
+    project,
+    companies,
+    brands,
+    categories,
+    types,
+    countries,
+    assignPersons,
+    setBrands,
+    setCategories,
+    reloadProjects,
+    setSelectedSubModule,
+  } = props;
 
   const [isEditing, setIsEditing] = useState(false);
-  const [editedProject, setEditedProject] = useState<RDProject | null>(null);
-  const [tentativeCostOpen, setTentativeCostOpen] = useState(false);
-
-  // Image editing states
-  const [editingImages, setEditingImages] = useState(false);
+  const [edited, setEdited] = useState<ProductDevelopment | null>(null);
+  const [tentativeDialogOpen, setTentativeDialogOpen] = useState(false);
   const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
-  const [additionalImages, setAdditionalImages] = useState<string[]>([]);
-  const [dynamicImages, setDynamicImages] = useState<string[]>([]);
-  const coverInputRef = React.useRef<HTMLInputElement>(null);
-  const additionalInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
-  const dynamicInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
+  const [samples, setSamples] = useState<string[]>([]);
 
+  const coverRef = useRef<HTMLInputElement | null>(null);
+  const sampleRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // 🚀 Memoize computed values
+  const currentStage = useMemo(
+    () => getStage(edited?.status),
+    [edited?.status]
+  );
+  const currentIndex = useMemo(
+    () => workflowStages.findIndex((s) => s.id === edited?.status),
+    [edited?.status]
+  );
+  const nextStage = useMemo(
+    () =>
+      currentIndex >= 0 && currentIndex < workflowStages.length - 1
+        ? workflowStages[currentIndex + 1]
+        : null,
+    [currentIndex]
+  );
+
+  // 🚀 Memoize image URLs
+  const coverImageUrl = useMemo(
+    () => getFullImageUrl(coverPhoto),
+    [coverPhoto]
+  );
+  const sampleImageUrls = useMemo(
+    () => samples.map(getFullImageUrl),
+    [samples]
+  );
+
+  // 🚀 Initialize state only when dialog opens
   useEffect(() => {
-    if (project) {
-      setEditedProject({ ...project });
-      // Load existing images
-      setCoverPhoto(project.coverPhoto || null);
-      setAdditionalImages(project.additionalImages || []);
-      setDynamicImages(project.dynamicImages || []);
+    if (!project || !open) return;
+    setEdited({ ...project });
+    setCoverPhoto(project.coverImage || null);
+    setSamples(project.sampleImages ? [...project.sampleImages] : []);
+    setIsEditing(false);
+  }, [project, open]);
+
+  // 🚀 Fetch brands - debounced and only in edit mode
+  useEffect(() => {
+    if (!isEditing || !edited?.company?._id) {
+      if (isEditing) setBrands([]);
+      return;
     }
+
+    const companyId = edited.company._id;
+    let cancelled = false;
+
+    api
+      .get("/brands", { params: { company: companyId } })
+      .then((res) => {
+        if (cancelled) return;
+        const arr = res.data?.items || res.data?.data || res.data || [];
+        setBrands(arr);
+      })
+      .catch(() => !cancelled && setBrands([]));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [edited?.company?._id, isEditing, setBrands]);
+
+  // 🚀 Fetch categories - debounced and only in edit mode
+  useEffect(() => {
+    if (!isEditing || !edited?.company?._id || !edited?.brand?._id) {
+      if (isEditing) setCategories([]);
+      return;
+    }
+
+    const c = edited.company._id;
+    const b = edited.brand._id;
+    let cancelled = false;
+
+    api
+      .get(`/companies/${c}/brands/${b}/categories`)
+      .then((res) => {
+        if (cancelled) return;
+        const arr = res.data?.items || res.data?.data || res.data || [];
+        setCategories(arr);
+      })
+      .catch(() => !cancelled && setCategories([]));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [edited?.company?._id, edited?.brand?._id, isEditing, setCategories]);
+
+  // 🚀 Memoized callbacks
+  const handleCoverUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Image must be < 5MB");
+        return;
+      }
+      const r = new FileReader();
+      r.onloadend = () => setCoverPhoto(r.result as string);
+      r.readAsDataURL(file);
+    },
+    []
+  );
+
+  const handleSampleUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>, i: number) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Image must be < 5MB");
+        return;
+      }
+      const r = new FileReader();
+      r.onloadend = () => {
+        setSamples((prev) => {
+          const arr = [...prev];
+          arr[i] = r.result as string;
+          return arr;
+        });
+      };
+      r.readAsDataURL(file);
+    },
+    []
+  );
+
+  const removeSample = useCallback((i: number) => {
+    setSamples((s) => s.filter((_, idx) => idx !== i));
+  }, []);
+
+  const addSampleSlot = useCallback(() => setSamples((s) => [...s, ""]), []);
+
+  const updateStatus = useCallback(
+    async (newStatus: string) => {
+      if (!edited) return;
+      const companyId = edited.company?._id;
+      const brandId = edited.brand?._id;
+      const categoryId = edited.category?._id;
+      const projectId = edited._id;
+
+      await api.patch(
+        `/companies/${companyId}/brands/${brandId}/categories/${categoryId}/projects/${projectId}/status`,
+        { status: newStatus }
+      );
+    },
+    [edited]
+  );
+
+  const handleAdvanceStage = useCallback(async () => {
+    if (!nextStage) {
+      toast.info("Project is already at the final stage");
+      return;
+    }
+
+    if (nextStage.id === "red_seal") {
+      setTentativeDialogOpen(true);
+      return;
+    }
+
+    try {
+      await updateStatus(nextStage.id);
+      toast.success(`Moved to ${nextStage.name}`);
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to update project stage");
+    }
+  }, [nextStage, updateStatus, onOpenChange]);
+
+  const handleSave = useCallback(async () => {
+    if (!edited) return;
+
+    if (!edited.company?._id || !edited.brand?._id || !edited.category?._id) {
+      toast.error("Company, Brand and Category are required");
+      return;
+    }
+
+    try {
+      const fd = new FormData();
+
+      fd.append("company", edited.company._id);
+      fd.append("brand", edited.brand._id);
+      fd.append("category", edited.category._id);
+
+      if (edited.type) fd.append("type", String(edited.type._id));
+      if (edited.country) fd.append("country", String(edited.country._id));
+      if (edited.assignPerson)
+        fd.append("assignPerson", String(edited.assignPerson._id));
+      if (edited.artName) fd.append("artName", edited.artName);
+      if (edited.color) fd.append("color", edited.color);
+      if (edited.size) fd.append("size", edited.size);
+      if (edited.gender) fd.append("gender", edited.gender);
+      if (edited.priority) fd.append("priority", edited.priority);
+      if (edited.productDesc) fd.append("productDesc", edited.productDesc);
+      if (edited.redSealTargetDate)
+        fd.append("redSealTargetDate", edited.redSealTargetDate);
+      if (edited.clientRemarks)
+        fd.append("clientRemarks", edited.clientRemarks);
+      if (edited.updateNotes) fd.append("updateNotes", edited.updateNotes);
+      if (edited.nextUpdateDate)
+        fd.append(
+          "nextUpdate",
+          JSON.stringify({
+            date: edited.nextUpdateDate,
+            note: edited.updateNotes || "",
+          })
+        );
+
+      if (coverPhoto) {
+        if (coverPhoto.startsWith("data:")) {
+          const file = dataUrlToFile(coverPhoto, "cover.png");
+          fd.append("coverImage", file);
+        } else {
+          fd.append("keepExistingCover", "true");
+        }
+      }
+
+      const existingSamples = samples.filter(
+        (s) => s && !s.startsWith("data:")
+      );
+      const newSamplesData = samples.filter((s) => s && s.startsWith("data:"));
+
+      if (existingSamples.length > 0)
+        fd.append("keepExistingSamples", JSON.stringify(existingSamples));
+      newSamplesData.forEach((d, idx) => {
+        const file = dataUrlToFile(d, `sample-${Date.now()}-${idx}.png`);
+        fd.append("sampleImages", file);
+      });
+
+      const url = `/companies/${edited.company._id}/brands/${edited.brand._id}/categories/${edited.category._id}/projects/${edited._id}`;
+
+      await api.put(url, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      toast.success("Project updated");
+      setIsEditing(false);
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error("Update failed", err);
+      toast.error(err?.response?.data?.message || "Update failed");
+    }
+  }, [edited, coverPhoto, samples, onOpenChange]);
+
+  const handleCancelEdit = useCallback(() => {
+    if (!project) return;
+    setIsEditing(false);
+    setEdited({ ...project });
+    setCoverPhoto(project.coverImage || null);
+    setSamples(project.sampleImages || []);
   }, [project]);
 
-  if (!project || !editedProject) return null;
-
-  const getTypeName = (typeId: string) => {
-    return (
-      project.typeName || types.find((t) => t.id === typeId)?.typeName || "-"
-    );
-  };
-
-  const getColorName = (colorId: string) => {
-    return (
-      project.color || colors.find((c) => c.id === colorId)?.colorName || "-"
-    );
-  };
-
-  const getCountryName = (countryId: string) => {
-    return (
-      project.countryName ||
-      countries.find((c) => c.id === countryId)?.countryName ||
-      "-"
-    );
-  };
-
-  const getDesignerName = (designerId: string) => {
-    // For now, return the designer ID or a default value
-    // In future, this can be connected to a designers master data
-    const designerNames: { [key: string]: string } = {
-      "1": "Rahul Sharma",
-      "2": "Priyanka Patel",
-      "3": "Amit Kumar",
-      "4": "Sneha Reddy",
-      "5": "Vikram Singh",
-    };
-    return designerNames[designerId] || "Designer " + designerId;
-  };
-
-  const getCurrentStage = () => {
-    return (
-      workflowStages.find((stage) => stage.id === project.status) ||
-      workflowStages.find((stage) => stage.id === project.status) ||
-      workflowStages[0]
-    );
-  };
-
-  const getNextStage = () => {
-    const currentIndex = workflowStages.findIndex(
-      (stage) => stage.id === project.status
-    );
-    return currentIndex < workflowStages.length - 1
-      ? workflowStages[currentIndex + 1]
-      : null;
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return project.startDate;
-    // If it's already in DD/MM/YYYY format, return as is
-    if (dateString.includes("/")) return dateString;
-    return new Date(dateString).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  };
-
-  const handleSave = () => {
-    if (editedProject) {
-      updateRDProject(editedProject.id, editedProject);
-      toast.success("Project updated successfully!");
-      setIsEditing(false);
-    }
-  };
-
-  const handleAdvanceStage = () => {
-    const nextStage = getNextStage();
-    if (nextStage && editedProject) {
-      const updatedProject = { ...editedProject, status: nextStage.id };
-      setEditedProject(updatedProject as RDProject);
-      updateRDProject(editedProject.id, updatedProject as RDProject);
-      toast.success(`Project advanced to ${nextStage.name}!`);
-    }
-  };
-
-  const handleTentativeCostCalculation = () => {
-    setTentativeCostOpen(true);
-  };
-
-  const handleTentativeCostApproved = () => {
-    // Advance to Red Seal stage after tentative cost approval
-    handleAdvanceStage();
-  };
-
-  // Image upload handlers
-  const handleCoverPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image size must be less than 5MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCoverPhoto(reader.result as string);
-        toast.success("Cover photo uploaded");
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleAdditionalImageUpload = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    index: number
-  ) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image size must be less than 5MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newImages = [...additionalImages];
-        while (newImages.length <= index) {
-          newImages.push("");
-        }
-        newImages[index] = reader.result as string;
-        setAdditionalImages(newImages);
-        toast.success("Image uploaded");
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleDynamicImageUpload = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    index: number
-  ) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image size must be less than 5MB");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newImages = [...dynamicImages];
-        newImages[index] = reader.result as string;
-        setDynamicImages(newImages);
-        toast.success("Image uploaded");
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const removeCoverPhoto = () => {
-    setCoverPhoto(null);
-    if (coverInputRef.current) {
-      coverInputRef.current.value = "";
-    }
-  };
-
-  const removeAdditionalImage = (index: number) => {
-    const newImages = [...additionalImages];
-    newImages[index] = "";
-    setAdditionalImages(newImages);
-    if (additionalInputRefs.current[index]) {
-      additionalInputRefs.current[index]!.value = "";
-    }
-  };
-
-  const removeDynamicImage = (index: number) => {
-    const newImages = dynamicImages.filter((_, i) => i !== index);
-    setDynamicImages(newImages);
-  };
-
-  const handleAddImageSlot = () => {
-    setDynamicImages([...dynamicImages, ""]);
-  };
-
-  const handleSaveImages = () => {
-    if (editedProject) {
-      const updatedProject = {
-        ...editedProject,
-        coverPhoto: coverPhoto || undefined,
-        additionalImages: additionalImages.filter((img) => img !== ""),
-        dynamicImages: dynamicImages.filter((img) => img !== ""),
-      };
-      setEditedProject(updatedProject);
-      updateRDProject(editedProject.id, updatedProject);
-      toast.success("Images updated successfully!");
-      setEditingImages(false);
-    }
-  };
-
-  const currentStage = getCurrentStage();
-  const nextStage = getNextStage();
-
-  // Get color based on project color
-  const getColorDisplay = () => {
-    const colorName = getColorName(project.color);
-    const colorMap: Record<string, string> = {
-      Black: "bg-gray-900",
-      White: "bg-gray-100 border border-gray-300",
-      Brown: "bg-yellow-600",
-      "Navy Blue": "bg-blue-900",
-      Red: "bg-red-600",
-    };
-    return colorMap[colorName] || colorMap[project.color] || "bg-gray-400";
-  };
+  if (!project || !edited) return null;
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 flex flex-col">
-          {/* Sticky Header Section */}
-          <div className="sticky top-0 z-50 px-8 py-6 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-b border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                <div className="w-14 h-14 bg-gradient-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
-                  <Eye className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <DialogTitle className="text-3xl font-semibold text-gray-900 mb-2">
-                    Project Development Details
-                  </DialogTitle>
-                  <DialogDescription className="sr-only">
-                    View and manage Project Development details and information
-                  </DialogDescription>
-                  <div className="flex items-center gap-4">
-                    <span className="text-lg text-gray-600">
-                      {project.autoCode}
-                    </span>
-                    <Badge
-                      className={`${currentStage.color} text-sm px-3 py-1`}
-                    >
-                      {currentStage.name}
-                    </Badge>
-                  </div>
-                </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 flex flex-col">
+        {/* Header */}
+        <div className="sticky top-0 z-50 px-8 py-6 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-b border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div className="w-14 h-14 bg-gradient-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
+                <Eye className="w-7 h-7 text-white" />
               </div>
-              <div className="flex items-center gap-3">
-                {!isEditing ? (
-                  <Button
-                    onClick={() => setIsEditing(true)}
-                    className="bg-blue-500 hover:bg-blue-600"
-                  >
-                    <Edit2 className="w-4 h-4 mr-2" />
-                    Edit Project
-                  </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleSave}
-                      className="bg-green-500 hover:bg-green-600"
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Changes
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setIsEditing(false);
-                        setEditedProject({ ...project });
-                      }}
-                      variant="outline"
-                    >
-                      Cancel Edit
-                    </Button>
-                  </div>
-                )}
-                {nextStage && (
-                  <>
-                    {project.status === "Prototype" &&
-                    nextStage.id === "Red Seal" ? (
-                      <Button
-                        onClick={handleTentativeCostCalculation}
-                        className="bg-[rgba(0,188,125,1)] hover:bg-blue-600"
-                      >
-                        <ArrowRight className="w-4 h-4 mr-2" />
-                        Advance to Red Seal
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={handleAdvanceStage}
-                        className="bg-emerald-500 hover:bg-emerald-600"
-                      >
-                        <ArrowRight className="w-4 h-4 mr-2" />
-                        Advance to {nextStage.name}
-                      </Button>
-                    )}
-                  </>
-                )}
-                <Button
-                  onClick={(e: any) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onOpenChange(false);
-                  }}
-                  variant="ghost"
-                  size="sm"
-                  className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center"
-                  type="button"
-                >
-                  <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
-                </Button>
+              <div>
+                <DialogTitle className="text-3xl font-semibold text-gray-900 mb-2">
+                  Project Development Details
+                </DialogTitle>
+                <div className="flex items-center gap-4">
+                  <span className="text-lg text-gray-600">
+                    {project.autoCode}
+                  </span>
+                  <Badge className={`${currentStage.color} text-sm px-3 py-1`}>
+                    {currentStage.name}
+                  </Badge>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Scrollable Main Content */}
-          <div className="flex-1 overflow-y-auto scrollbar-hide">
-            <div className="px-8 py-8 space-y-10">
-              {/* Workflow Progress */}
-              <div className="space-y-5">
-                <div className="flex items-center gap-5">
-                  <div className="w-10 h-10 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
-                    <Workflow className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-3">
+              {!isEditing ? (
+                <Button
+                  onClick={() => setIsEditing(true)}
+                  className="bg-blue-500 hover:bg-blue-600"
+                >
+                  <Edit2 className="w-4 h-4 mr-2" />
+                  Edit Project
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    onClick={handleSave}
+                    className="bg-green-500 hover:bg-green-600"
+                  >
+                    <Save className="w-4 h-4 mr-2" /> Save Changes
+                  </Button>
+                  <Button variant="outline" onClick={handleCancelEdit}>
+                    Cancel Edit
+                  </Button>
+                </>
+              )}
+
+              {nextStage && (
+                <Button
+                  onClick={handleAdvanceStage}
+                  className="bg-emerald-500 hover:bg-emerald-600"
+                >
+                  <ArrowRight className="w-4 h-4 mr-2" />
+                  Advance to {nextStage.name}
+                </Button>
+              )}
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-10 w-10 p-0 rounded-full"
+                onClick={() => onOpenChange(false)}
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
+          <div className="px-8 py-8 space-y-12">
+            {/* Workflow Progress */}
+            <div>
+              <div className="flex items-center gap-5 mb-4">
+                <div className="w-10 h-10 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
+                  <Workflow className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Development Progress
+                </h3>
+              </div>
+
+              <div className="bg-white border rounded-xl p-6">
+                <div className="mb-6">
+                  <div className="flex justify-between mb-2">
+                    <span className="text-gray-600 text-sm">
+                      Overall Progress
+                    </span>
+                    <span className="font-semibold text-gray-900">
+                      {currentStage.progress}%
+                    </span>
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    Development Progress
-                  </h3>
+                  <Progress value={currentStage.progress} className="h-2" />
                 </div>
 
-                <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-                  <div className="mb-5">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium text-gray-600">
-                        Overall Progress
-                      </span>
-                      <span className="text-sm font-bold text-gray-900">
-                        {currentStage.progress}%
-                      </span>
-                    </div>
-                    <Progress value={currentStage.progress} className="h-2" />
-                  </div>
-
-                  <div className="grid grid-cols-6 gap-2">
-                    {workflowStages.map((stage, index) => {
-                      const isCompleted =
-                        workflowStages.findIndex(
-                          (s) => s.id === project.status
-                        ) >= index;
-                      const isCurrent = stage.id === project.status;
-
-                      return (
+                <div className="grid grid-cols-6 gap-2">
+                  {workflowStages.map((stage, index) => {
+                    const isCompleted = currentIndex >= index;
+                    const isCurrent = stage.id === edited.status;
+                    return (
+                      <div
+                        key={stage.id}
+                        className={`p-2 rounded-lg text-center transition-all ${
+                          isCurrent
+                            ? "bg-blue-100 border border-blue-400 shadow-md"
+                            : isCompleted
+                            ? "bg-green-50 border border-green-200"
+                            : "bg-gray-50 border border-gray-200"
+                        }`}
+                      >
                         <div
-                          key={stage.id}
-                          className={`text-center p-2 rounded-lg transition-all ${
+                          className={`mx-auto mb-1 w-6 h-6 rounded-full flex items-center justify-center text-xs ${
                             isCurrent
-                              ? "bg-blue-100 border-2 border-blue-400 shadow-md"
+                              ? "bg-blue-500 text-white"
                               : isCompleted
-                              ? "bg-green-50 border border-green-200"
-                              : "bg-gray-50 border border-gray-200"
+                              ? "bg-green-500 text-white"
+                              : "bg-gray-300 text-gray-600"
                           }`}
                         >
-                          <div
-                            className={`w-6 h-6 mx-auto mb-1 rounded-full flex items-center justify-center text-xs ${
-                              isCurrent
-                                ? "bg-blue-500 text-white"
-                                : isCompleted
-                                ? "bg-green-500 text-white"
-                                : "bg-gray-300 text-gray-600"
-                            }`}
-                          >
-                            {isCompleted ? (
-                              <CheckCircle className="w-3 h-3" />
-                            ) : (
-                              index + 1
-                            )}
-                          </div>
-                          <div className="text-xs font-medium text-gray-700">
-                            {stage.name}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Project Information */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                    <Target className="w-5 h-5 text-white" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    Development Information
-                  </h3>
-                </div>
-
-                {/* Combined Horizontal Layout */}
-                <div className="bg-white border-2 border-gray-200 rounded-xl p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-base font-semibold text-gray-900">
-                      Product & Brand Details
-                    </h4>
-                    <Badge
-                      variant="secondary"
-                      className="bg-purple-50 text-purple-700 border-purple-200 text-xs"
-                    >
-                      {currentStage.name}
-                    </Badge>
-                  </div>
-
-                  {/* Horizontal Layout: Preview + Images */}
-                  <div className="flex gap-4 mb-5">
-                    {/* Product Preview - Compact */}
-                    <div className="flex-shrink-0 w-44">
-                      <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 h-full">
-                        <Label className="text-xs font-medium text-gray-600 mb-2 block">
-                          Preview
-                        </Label>
-                        <div className="w-20 h-20 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm mx-auto mb-2">
-                          <img
-                            src={
-                              `${import.meta.env.VITE_BACKEND_URL}/${
-                                project.coverPhoto
-                              }` ||
-                              "https://images.unsplash.com/photo-1648501570189-0359dab185e6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBzbmVha2VyJTIwc2hvZSUyMHByb2R1Y3R8ZW58MXx8fHwxNzU2NzM1OTMwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-                            }
-                            alt={project.autoCode}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="text-xs font-medium text-gray-900 text-center">
-                          {project.autoCode}
-                        </div>
-                        <div className="text-xs text-gray-500 text-center mt-0.5">
-                          Sample
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Product Images Gallery - Horizontal Scroll */}
-                    <div className="flex-1 min-w-0">
-                      <div className="p-3 bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
-                              <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
-                            </div>
-                            <Label className="text-xs font-semibold text-gray-800">
-                              Images
-                            </Label>
-                          </div>
-                          {(project.coverPhoto ||
-                            project.additionalImages!.filter((img) => img)
-                              .length > 0 ||
-                            dynamicImages.length > 0) && (
-                            <Badge
-                              variant="secondary"
-                              className="bg-blue-50 text-blue-700 border-blue-200 text-xs h-5"
-                            >
-                              {
-                                [
-                                  project.coverPhoto,
-                                  ...project.additionalImages!.filter(
-                                    (img) => img
-                                  ),
-                                  ...dynamicImages,
-                                ].length
-                              }
-                            </Badge>
-                          )}
-                        </div>
-
-                        {!isEditing ? (
-                          // View Mode - Horizontal scrollable gallery
-                          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                            {project.coverPhoto && (
-                              <div className="group relative flex-shrink-0">
-                                <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
-                                  <img
-                                    src={`${import.meta.env.VITE_BACKEND_URL}/${
-                                      project.coverPhoto
-                                    }`}
-                                    alt="Cover"
-                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                  />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                    <div className="absolute bottom-1 left-1 right-1">
-                                      <span className="text-xs font-semibold text-white">
-                                        Cover
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                            {project
-                              .additionalImages!.filter((img) => img)
-                              .map((image, i) => (
-                                <div
-                                  key={i}
-                                  className="group relative flex-shrink-0"
-                                >
-                                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
-                                    <img
-                                      src={`${
-                                        import.meta.env.VITE_BACKEND_URL
-                                      }/${image}`}
-                                      alt={`Image ${i + 1}`}
-                                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                      <div className="absolute bottom-1 left-1">
-                                        <Eye className="w-3 h-3 text-white" />
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            {dynamicImages.map((image, i) => (
-                              <div
-                                key={`dynamic-${i}`}
-                                className="group relative flex-shrink-0"
-                              >
-                                <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
-                                  <img
-                                    src={image}
-                                    alt={`Image ${i + 1}`}
-                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                  />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                    <div className="absolute bottom-1 left-1">
-                                      <Eye className="w-3 h-3 text-white" />
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            {!coverPhoto &&
-                              additionalImages.filter((img) => img).length ===
-                                0 &&
-                              dynamicImages.length === 0 && (
-                                <div className="w-full text-center py-4">
-                                  <ImageIcon className="w-8 h-8 mx-auto mb-1 text-gray-400" />
-                                  <p className="text-xs text-gray-500">
-                                    No images
-                                  </p>
-                                </div>
-                              )}
-                          </div>
-                        ) : (
-                          // Edit Mode - Horizontal scrollable upload
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                              {/* Cover Photo */}
-                              <div className="flex-shrink-0">
-                                <input
-                                  ref={coverInputRef}
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={handleCoverPhotoUpload}
-                                />
-                                {coverPhoto ? (
-                                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md group">
-                                    <img
-                                      src={coverPhoto}
-                                      alt="Cover"
-                                      className="w-full h-full object-cover"
-                                    />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                      <Button
-                                        type="button"
-                                        variant="destructive"
-                                        size="sm"
-                                        onClick={removeCoverPhoto}
-                                        className="h-6 w-6 p-0 shadow-lg"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div
-                                    onClick={() =>
-                                      coverInputRef.current?.click()
-                                    }
-                                    className="w-20 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md"
-                                  >
-                                    <ImageIcon className="w-5 h-5 text-blue-600" />
-                                    <span className="text-xs text-blue-700 mt-0.5">
-                                      Cover
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Additional Images (5 fixed slots) */}
-                              {[0, 1, 2, 3, 4].map((i) => (
-                                <div key={i} className="flex-shrink-0">
-                                  <input
-                                    ref={(el) => {
-                                      if (additionalInputRefs.current) {
-                                        additionalInputRefs.current[i] = el;
-                                      }
-                                    }}
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(e) =>
-                                      handleAdditionalImageUpload(e, i)
-                                    }
-                                  />
-                                  {additionalImages[i] ? (
-                                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
-                                      <img
-                                        src={additionalImages[i]}
-                                        alt={`Image ${i + 1}`}
-                                        className="w-full h-full object-cover"
-                                      />
-                                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          onClick={() =>
-                                            removeAdditionalImage(i)
-                                          }
-                                          className="h-6 w-6 p-0 shadow-lg"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div
-                                      onClick={() =>
-                                        additionalInputRefs.current[i]?.click()
-                                      }
-                                      className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md"
-                                    >
-                                      <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-
-                              {/* Dynamic Images */}
-                              {dynamicImages.map((image, i) => (
-                                <div
-                                  key={`dynamic-${i}`}
-                                  className="flex-shrink-0"
-                                >
-                                  <input
-                                    ref={(el) => {
-                                      if (dynamicInputRefs.current) {
-                                        dynamicInputRefs.current[i] = el;
-                                      }
-                                    }}
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(e) =>
-                                      handleDynamicImageUpload(e, i)
-                                    }
-                                  />
-                                  {image ? (
-                                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
-                                      <img
-                                        src={image}
-                                        alt={`Image ${i + 1}`}
-                                        className="w-full h-full object-cover"
-                                      />
-                                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          onClick={() => removeDynamicImage(i)}
-                                          className="h-6 w-6 p-0 shadow-lg"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div
-                                      onClick={() =>
-                                        dynamicInputRefs.current[i]?.click()
-                                      }
-                                      className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md"
-                                    >
-                                      <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-
-                              {/* Add More Button */}
-                              <div
-                                onClick={handleAddImageSlot}
-                                className="w-20 h-20 flex-shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md"
-                              >
-                                <Plus className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-all duration-200" />
-                              </div>
-                            </div>
-
-                            <div className="flex justify-end pt-2 border-t border-gray-200">
-                              <Button
-                                onClick={handleSaveImages}
-                                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-7 text-xs"
-                                size="sm"
-                              >
-                                <Save className="w-3 h-3 mr-1.5" />
-                                Save
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* All Fields in Horizontal Grid - 6 columns */}
-                  <div className="grid grid-cols-6 gap-x-3 gap-y-3">
-                    {/* Row 1 */}
-                    <div>
-                      <Label>Product Code</Label>
-                      <div className="mt-1 font-mono font-bold text-gray-900">
-                        {project.autoCode}
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label>Company</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject.companyId}
-                          onValueChange={(value) =>
-                            setEditedProject({
-                              ...editedProject,
-                              companyId: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">Phoenix Footwear</SelectItem>
-                            <SelectItem value="2">Urban Sole</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project.companyName}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Brand</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject.brandId}
-                          onValueChange={(value) =>
-                            setEditedProject({
-                              ...editedProject,
-                              brandId: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(brands || []).map((brand) => (
-                              <SelectItem key={brand.id} value={brand.id}>
-                                {brand.brandName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project.brandName}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Category</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject.categoryId}
-                          onValueChange={(value) =>
-                            setEditedProject({
-                              ...editedProject,
-                              categoryId: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(categories || []).map((category) => (
-                              <SelectItem key={category.id} value={category.id}>
-                                {category.categoryName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project.categoryName}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Type</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject.typeId}
-                          onValueChange={(value) =>
-                            setEditedProject({
-                              ...editedProject,
-                              typeId: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(types || []).map((type) => (
-                              <SelectItem key={type.id} value={type.id}>
-                                {type.typeName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {getTypeName(project.typeId)}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Gender</Label>
-                      {isEditing ? (
-                        <Select defaultValue="unisex">
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="male">Male</SelectItem>
-                            <SelectItem value="female">Female</SelectItem>
-                            <SelectItem value="unisex">Unisex</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">Unisex</div>
-                      )}
-                    </div>
-
-                    {/* Row 2 */}
-                    <div>
-                      <Label>Art</Label>
-                      {isEditing ? (
-                        <Input
-                          type="text"
-                          defaultValue="Modern Design"
-                          className="mt-1"
-                        />
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project.artName}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Colour</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject.color}
-                          onValueChange={(value) =>
-                            setEditedProject({
-                              ...editedProject,
-                              color: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(colors || []).map((color) => (
-                              <SelectItem key={color.id} value={color.id}>
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className="w-4 h-4 rounded-full"
-                                    style={{ backgroundColor: color.hexCode }}
-                                  ></div>
-                                  {color.colorName}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 flex items-center gap-2">
-                          <div
-                            className={`w-4 h-4 rounded-full ${getColorDisplay()}`}
-                          ></div>
-                          <span className="text-gray-900">
-                            {getColorName(project.color)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Country</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject.countryId}
-                          onValueChange={(value) =>
-                            setEditedProject({
-                              ...editedProject,
-                              countryId: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(countries || []).map((country) => (
-                              <SelectItem key={country.id} value={country.id}>
-                                {country.countryName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {getCountryName(project.countryId)}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Status</Label>
-                      <div className="mt-1">
-                        <Badge className={currentStage.color}>
-                          {currentStage.name}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label>Start Date</Label>
-                      {isEditing ? (
-                        <Input
-                          type="date"
-                          value={editedProject.startDate}
-                          onChange={(e) =>
-                            setEditedProject({
-                              ...editedProject,
-                              startDate: e.target.value,
-                            })
-                          }
-                          className="mt-1"
-                        />
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {formatDate(project.startDate)}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Target Date</Label>
-                      {isEditing ? (
-                        <Input
-                          type="date"
-                          value={editedProject.endDate}
-                          onChange={(e) =>
-                            setEditedProject({
-                              ...editedProject,
-                              endDate: e.target.value,
-                            })
-                          }
-                          className="mt-1"
-                        />
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {formatDate(project.endDate)}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Row 3 */}
-                    <div>
-                      <Label>Priority</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject.priority || "Low"}
-                          onValueChange={(value) =>
-                            setEditedProject({
-                              ...editedProject,
-                              priority: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Low">Low</SelectItem>
-                            <SelectItem value="Medium">Medium</SelectItem>
-                            <SelectItem value="High">High</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1">
-                          <Badge
-                            className={
-                              project.priority === "High"
-                                ? "bg-red-500 text-white"
-                                : project.priority === "Medium"
-                                ? "bg-amber-500 text-white"
-                                : "bg-green-500 text-white"
-                            }
-                          >
-                            {project.priority}
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Assigned To</Label>
-                      {isEditing ? (
-                        <Input
-                          type="text"
-                          value={editedProject.taskInc}
-                          onChange={(e) =>
-                            setEditedProject({
-                              ...editedProject,
-                              taskInc: e.target.value,
-                            })
-                          }
-                          className="mt-1"
-                          placeholder="Person name"
-                        />
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project.assignPerson.name}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Client Feedback & Updates Section */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
-                    <MessageSquare className="w-5 h-5 text-white" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    Client Feedback & Updates
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Client Feedback Card */}
-                  <div className="bg-white border border-gray-200 rounded-lg p-6">
-                    <h4 className="text-lg font-semibold text-gray-900 mb-4">
-                      Client Feedback
-                    </h4>
-
-                    <div className="space-y-4">
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600 mb-2 block">
-                          Client Remarks
-                        </Label>
-                        {isEditing ? (
-                          <Textarea
-                            value={editedProject.remarks || ""}
-                            onChange={(e) =>
-                              setEditedProject({
-                                ...editedProject,
-                                remarks: e.target.value,
-                              })
-                            }
-                            placeholder="Enter client feedback and remarks..."
-                            className="min-h-[80px] resize-none text-sm"
-                          />
-                        ) : (
-                          <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px]">
-                            {editedProject.remarks ||
-                              project.remarks ||
-                              "Elegant formal shoes for business professionals"}
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600 mb-2 block">
-                          Client Approval Status
-                        </Label>
-                        <div className="flex items-center gap-2">
-                          {isEditing ? (
-                            <Select
-                              value={editedProject.clientFeedback}
-                              onValueChange={(value) =>
-                                setEditedProject({
-                                  ...editedProject,
-                                  clientFeedback: value,
-                                })
-                              }
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="OK">Approved</SelectItem>
-                                <SelectItem value="Update Required">
-                                  Update Required
-                                </SelectItem>
-                                <SelectItem value="Pending">
-                                  Pending Review
-                                </SelectItem>
-                                <SelectItem value="Rejected">
-                                  Rejected
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
+                          {isCompleted ? (
+                            <CheckCircle className="w-3 h-3" />
                           ) : (
-                            <Badge
-                              variant="secondary"
-                              className={
-                                (editedProject.clientFeedback ||
-                                  project.remarks) === "OK"
-                                  ? "bg-green-100 text-green-700"
-                                  : (editedProject.clientFeedback ||
-                                      project.remarks) === "Update Required"
-                                  ? "bg-orange-100 text-orange-700"
-                                  : (editedProject.clientFeedback ||
-                                      project.remarks) === "Pending"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : "bg-red-100 text-red-700"
-                              }
-                            >
-                              {(editedProject.clientFeedback ||
-                                project.remarks) === "OK"
-                                ? "✓ Approved"
-                                : (editedProject.clientFeedback ||
-                                    project.remarks) === "Update Required"
-                                ? "⚠ Update Required"
-                                : (editedProject.clientFeedback ||
-                                    project.remarks) === "Pending"
-                                ? "⏳ Pending Review"
-                                : "⚠ Update Required"}
-                            </Badge>
+                            index + 1
                           )}
                         </div>
+                        <span className="text-xs font-medium text-gray-700">
+                          {stage.name}
+                        </span>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Next Update Schedule Card */}
-                  <div className="bg-white border border-gray-200 rounded-lg p-6">
-                    <h4 className="text-lg font-semibold text-gray-900 mb-4">
-                      Next Update Schedule
-                    </h4>
-
-                    <div className="space-y-4">
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600 mb-2 block">
-                          Next Update Date
-                        </Label>
-                        {isEditing ? (
-                          <Input
-                            type="date"
-                            value={editedProject.nextUpdateDate || ""}
-                            onChange={(e) =>
-                              setEditedProject({
-                                ...editedProject,
-                                nextUpdateDate: e.target.value,
-                              })
-                            }
-                            className="w-full"
-                          />
-                        ) : (
-                          <div className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
-                            <Calendar className="w-4 h-4 text-gray-500" />
-                            <span className="text-gray-900">
-                              {editedProject.nextUpdateDate
-                                ? formatDate(editedProject.nextUpdateDate)
-                                : project.updatedDate || "30/01/2024"}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600 mb-2 block">
-                          Update Notes
-                        </Label>
-                        {isEditing ? (
-                          <Textarea
-                            value={editedProject.updateNotes || ""}
-                            onChange={(e) =>
-                              setEditedProject({
-                                ...editedProject,
-                                updateNotes: e.target.value,
-                              })
-                            }
-                            placeholder="Enter notes for next update meeting..."
-                            className="min-h-[60px] resize-none text-sm"
-                          />
-                        ) : (
-                          <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[60px]">
-                            {editedProject.updateNotes ||
-                              "Client requested changes to heel design - revisions needed"}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Days Until Next Update */}
-                      {(() => {
-                        const nextDate =
-                          editedProject.nextUpdateDate ||
-                          project.updatedDate ||
-                          "2024-01-30";
-                        const today = new Date();
-                        const updateDate = new Date(nextDate);
-                        const diffTime = updateDate.getTime() - today.getTime();
-                        const diffDays = Math.ceil(
-                          diffTime / (1000 * 60 * 60 * 24)
-                        );
-                        const isOverdue = diffDays <= 0;
-
-                        return (
-                          <div
-                            className={`${
-                              isOverdue
-                                ? "bg-red-50 border-red-200"
-                                : "bg-blue-50 border-blue-200"
-                            } border rounded-lg p-4`}
-                          >
-                            <div className="flex items-center gap-2 mb-2">
-                              <Clock
-                                className={`w-4 h-4 ${
-                                  isOverdue ? "text-red-600" : "text-blue-600"
-                                }`}
-                              />
-                              <span
-                                className={`text-sm ${
-                                  isOverdue ? "text-red-700" : "text-blue-700"
-                                }`}
-                              >
-                                Days Until Next Update
-                              </span>
-                            </div>
-                            <div
-                              className={`text-xl font-bold ${
-                                isOverdue ? "text-red-600" : "text-blue-600"
-                              }`}
-                            >
-                              {diffDays > 0 ? `${diffDays} days` : "Overdue"}
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
-
-                {/* Quick Actions for Client Feedback */}
-                {isEditing && (
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <Label className="text-sm font-medium text-gray-700 mb-3 block">
-                      Quick Update Actions
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const nextWeek = new Date();
-                          nextWeek.setDate(nextWeek.getDate() + 7);
-                          setEditedProject({
-                            ...editedProject,
-                            nextUpdateDate: nextWeek
-                              .toISOString()
-                              .split("T")[0],
-                            updateNotes:
-                              "Schedule follow-up meeting for next week",
-                          });
-                        }}
-                      >
-                        <Calendar className="w-4 h-4 mr-1" />
-                        Schedule Next Week
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setEditedProject({
-                            ...editedProject,
-                            clientFeedback: "Update Required",
-                            updateNotes:
-                              "Client requested modifications - awaiting detailed feedback",
-                          });
-                        }}
-                      >
-                        <AlertTriangle className="w-4 h-4 mr-1" />
-                        Mark Update Required
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setEditedProject({
-                            ...editedProject,
-                            clientFeedback: "OK",
-                            updateNotes:
-                              "Client approved - ready to proceed to next stage",
-                          });
-                        }}
-                      >
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        Mark Approved
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Tentative Cost Dialog */}
-      <TentativeCostDialog
-        open={tentativeCostOpen}
-        onOpenChange={setTentativeCostOpen}
-        project={project}
-        onApproved={handleTentativeCostApproved}
-      />
-    </>
+            {/* Product Details */}
+            <div>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
+                  <Target className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Product Details
+                </h3>
+              </div>
+
+              <div className="bg-white border rounded-xl p-6">
+                {/* Images Section */}
+                <div className="flex gap-4 mb-6">
+                  <div className="w-44">
+                    <div className="bg-gray-50 border rounded-lg p-3 text-center">
+                      <div className="w-20 h-20 rounded-lg overflow-hidden mx-auto mb-2 border shadow-sm">
+                        <img
+                          src={coverImageUrl}
+                          alt="cover"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="font-medium text-xs">
+                        {project.autoCode}
+                      </div>
+                      <div className="text-gray-400 text-xs">Sample</div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 p-3 bg-gray-50/50 border rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <ImageIcon className="w-4 h-4 text-blue-600" />
+                        <span className="text-xs font-semibold text-gray-800">
+                          Images
+                        </span>
+                      </div>
+                      <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                        {samples.filter(Boolean).length + (coverPhoto ? 1 : 0)}
+                      </Badge>
+                    </div>
+
+                    {!isEditing ? (
+                      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                        {coverPhoto && (
+                          <div className="w-20 h-20 border rounded-md overflow-hidden flex-shrink-0">
+                            <img
+                              src={coverImageUrl}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                        {samples.map((s, i) => (
+                          <div
+                            key={i}
+                            className="w-20 h-20 border rounded-md overflow-hidden flex-shrink-0"
+                          >
+                            <img
+                              src={sampleImageUrls[i]}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ))}
+                        {!coverPhoto &&
+                          samples.filter(Boolean).length === 0 && (
+                            <div className="w-full text-center py-4">
+                              <ImageIcon className="w-8 h-8 mx-auto mb-1 text-gray-400" />
+                              <p className="text-xs text-gray-500">No images</p>
+                            </div>
+                          )}
+                      </div>
+                    ) : (
+                      <div className="flex gap-3 overflow-x-auto pb-2">
+                        <div className="flex-shrink-0">
+                          <input
+                            ref={coverRef}
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            onChange={handleCoverUpload}
+                          />
+                          <div
+                            className="w-20 h-20 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer"
+                            onClick={() => coverRef.current?.click()}
+                          >
+                            {coverPhoto ? (
+                              <img
+                                src={coverImageUrl}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <Upload className="w-5 h-5 text-gray-400" />
+                            )}
+                          </div>
+                        </div>
+
+                        {samples.map((s, idx) => (
+                          <div key={idx} className="flex-shrink-0 relative">
+                            <input
+                              ref={(el) => (sampleRefs.current[idx] = el)}
+                              type="file"
+                              accept="image/*"
+                              hidden
+                              onChange={(e) => handleSampleUpload(e, idx)}
+                            />
+                            <div
+                              className="w-20 h-20 border rounded-lg overflow-hidden cursor-pointer"
+                              onClick={() => sampleRefs.current[idx]?.click()}
+                            >
+                              {s ? (
+                                <img
+                                  src={sampleImageUrls[idx]}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <Upload className="w-5 h-5 text-gray-400 mx-auto mt-6" />
+                              )}
+                            </div>
+                            {s && (
+                              <Button
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-1/2 right-1/2 h-6 w-6"
+                                onClick={() => removeSample(idx)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+
+                        <div
+                          className="w-20 h-20 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer"
+                          onClick={addSampleSlot}
+                        >
+                          <Plus className="w-5 h-5 text-blue-600" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Fields Grid */}
+                <div className="grid grid-cols-6 gap-4">
+                  <div>
+                    <Label>Product Code</Label>
+                    <div className="mt-1 font-mono font-bold text-gray-900">
+                      {project.autoCode}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label>Company</Label>
+                    {isEditing ? (
+                      <Select
+                        value={edited.company?._id}
+                        onValueChange={(v) =>
+                          setEdited({
+                            ...edited,
+                            company: companies.find((c) => c._id === v) || null,
+                            brand: null,
+                            category: null,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {companies.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1">{project.company?.name}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Brand</Label>
+                    {isEditing ? (
+                      <Select
+                        value={edited.brand?._id}
+                        onValueChange={(v) =>
+                          setEdited({
+                            ...edited,
+                            brand: brands.find((b) => b._id === v) || null,
+                            category: null,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {brands.map((b) => (
+                            <SelectItem key={b._id} value={b._id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1">{project.brand?.name}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Category</Label>
+                    {isEditing ? (
+                      <Select
+                        value={edited.category?._id}
+                        onValueChange={(v) =>
+                          setEdited({
+                            ...edited,
+                            category:
+                              categories.find((c) => c._id === v) || null,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1">{project.category?.name}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Type</Label>
+                    {isEditing ? (
+                      <Select
+                        value={edited.type?._id}
+                        onValueChange={(v) =>
+                          setEdited({
+                            ...edited,
+                            type: types.find((t) => t._id === v) || null,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {types.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1">{project.type?.name}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Gender</Label>
+                    {isEditing ? (
+                      <Select
+                        value={edited.gender || ""}
+                        onValueChange={(v) =>
+                          setEdited({ ...edited, gender: v })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Unisex">Unisex</SelectItem>
+                          <SelectItem value="Men">Men</SelectItem>
+                          <SelectItem value="Women">Women</SelectItem>
+                          <SelectItem value="Kids">Kids</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1">{project.gender || "N/A"}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Art</Label>
+                    {isEditing ? (
+                      <Input
+                        value={edited.artName || ""}
+                        onChange={(e) =>
+                          setEdited({ ...edited, artName: e.target.value })
+                        }
+                        className="mt-1"
+                      />
+                    ) : (
+                      <div className="mt-1">{project.artName || "N/A"}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Color</Label>
+                    {isEditing ? (
+                      <Input
+                        value={edited.color || ""}
+                        onChange={(e) =>
+                          setEdited({ ...edited, color: e.target.value })
+                        }
+                        className="mt-1"
+                      />
+                    ) : (
+                      <div className="mt-1">{project.color || "N/A"}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Country</Label>
+                    {isEditing ? (
+                      <Select
+                        value={edited.country?._id}
+                        onValueChange={(v) =>
+                          setEdited({
+                            ...edited,
+                            country: countries.find((c) => c._id === v) || null,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {countries.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1">{project.country?.name}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Priority</Label>
+                    {isEditing ? (
+                      <Select
+                        value={edited.priority || ""}
+                        onValueChange={(v) =>
+                          setEdited({ ...edited, priority: v })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge
+                        className={
+                          project.priority === "high"
+                            ? "bg-red-500 text-white"
+                            : project.priority === "medium"
+                            ? "bg-purple-500 text-white"
+                            : "bg-green-600 text-white"
+                        }
+                      >
+                        {project.priority || "N/A"}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Target Date</Label>
+                    {isEditing ? (
+                      <Input
+                        type="date"
+                        value={
+                          edited.redSealTargetDate
+                            ? edited.redSealTargetDate.split("T")[0]
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setEdited({
+                            ...edited,
+                            redSealTargetDate: e.target.value,
+                          })
+                        }
+                      />
+                    ) : (
+                      <div className="mt-1">
+                        {formatDateDisplay(project.redSealTargetDate)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Assigned Person</Label>
+                    {isEditing ? (
+                      <Select
+                        value={edited.assignPerson?._id}
+                        onValueChange={(v) =>
+                          setEdited({
+                            ...edited,
+                            assignPerson:
+                              assignPersons.find((p) => p._id === v) || null,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assignPersons.map((p) => (
+                            <SelectItem key={p._id} value={p._id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1">
+                        {project.assignPerson?.name || "N/A"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="col-span-6">
+                    <Label>Description</Label>
+                    {isEditing ? (
+                      <Textarea
+                        value={edited.productDesc || ""}
+                        onChange={(e) =>
+                          setEdited({ ...edited, productDesc: e.target.value })
+                        }
+                        className="min-h-[80px]"
+                      />
+                    ) : (
+                      <div className="mt-1 bg-gray-50 border rounded-lg p-3 text-sm">
+                        {project.productDesc || "No description"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Client Feedback & Next Update */}
+            <div className="space-y-10">
+              <div className="flex items-center gap-5">
+                <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
+                  <MessageSquare className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Client Feedback & Updates
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Client Feedback */}
+                <div className="bg-white border rounded-lg p-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                    Client Feedback
+                  </h4>
+
+                  <div className="mb-6">
+                    <Label className="text-sm font-medium text-gray-600 mb-2 block">
+                      Client Remarks
+                    </Label>
+                    {isEditing ? (
+                      <Textarea
+                        value={edited.clientRemarks || ""}
+                        onChange={(e) =>
+                          setEdited({
+                            ...edited,
+                            clientRemarks: e.target.value,
+                          })
+                        }
+                        className="min-h-[100px]"
+                      />
+                    ) : (
+                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[100px]">
+                        {project.clientRemarks || "No remarks yet"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600 mb-2 block">
+                      Approval Status
+                    </Label>
+                    <Badge
+                      className={
+                        project.clientApproval?.status === "approved"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : project.clientApproval?.status === "pending"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-orange-100 text-orange-700"
+                      }
+                    >
+                      {project.clientApproval?.status === "approved"
+                        ? "✓ Approved"
+                        : project.clientApproval?.status === "pending"
+                        ? "⏳ Pending"
+                        : "⚠ Revision Needed"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Next Update */}
+                <div className="bg-white border rounded-lg p-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                    Next Update Schedule
+                  </h4>
+
+                  <div className="mb-6">
+                    <Label className="text-sm font-medium text-gray-600 mb-2 block">
+                      Next Update Date
+                    </Label>
+                    {isEditing ? (
+                      <Input
+                        type="date"
+                        value={edited.nextUpdateDate || ""}
+                        onChange={(e) =>
+                          setEdited({
+                            ...edited,
+                            nextUpdateDate: e.target.value,
+                          })
+                        }
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                        <Calendar className="w-4 h-4 text-gray-500" />
+                        <span className="text-gray-900">
+                          {project.nextUpdateDate
+                            ? formatDateDisplay(project.nextUpdateDate)
+                            : "Not scheduled"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mb-6">
+                    <Label className="text-sm font-medium text-gray-600 mb-2 block">
+                      Update Notes
+                    </Label>
+                    {isEditing ? (
+                      <Textarea
+                        value={edited.updateNotes || ""}
+                        onChange={(e) =>
+                          setEdited({ ...edited, updateNotes: e.target.value })
+                        }
+                        className="min-h-[80px]"
+                      />
+                    ) : (
+                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px]">
+                        {project.updateNotes || "No update notes"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    {(() => {
+                      const next =
+                        edited.nextUpdateDate || project.nextUpdateDate;
+                      if (!next) {
+                        return (
+                          <div className="p-4 border rounded-lg bg-gray-50 text-center text-gray-600">
+                            <Clock className="w-4 h-4 mx-auto mb-1" />
+                            Not Scheduled
+                          </div>
+                        );
+                      }
+                      const diff = Math.ceil(
+                        (new Date(next).getTime() - new Date().getTime()) /
+                          (1000 * 60 * 60 * 24)
+                      );
+                      const overdue = diff < 0;
+                      return (
+                        <div
+                          className={`p-4 border rounded-lg text-center ${
+                            overdue
+                              ? "bg-red-50 border-red-200 text-red-700"
+                              : "bg-blue-50 border-blue-200 text-blue-700"
+                          }`}
+                        >
+                          <Clock className="w-4 h-4 mx-auto mb-1" />
+                          <span className="text-lg font-bold">
+                            {diff === 0
+                              ? "Due Today"
+                              : overdue
+                              ? "Overdue"
+                              : `${diff} days remaining`}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              {isEditing && (
+                <div className="bg-gray-50 border rounded-lg p-4">
+                  <Label className="text-sm font-medium text-gray-700 mb-3 block">
+                    Quick Update Actions
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 7);
+                        const iso = d.toISOString().split("T")[0];
+                        setEdited({
+                          ...edited,
+                          nextUpdateDate: iso,
+                          updateNotes: "Follow-up scheduled for next week.",
+                        });
+                      }}
+                    >
+                      <Calendar className="w-4 h-4 mr-1" /> Schedule Next Week
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setEdited({
+                          ...edited,
+                          updateNotes: "Client requested revision.",
+                        })
+                      }
+                    >
+                      <AlertTriangle className="w-4 h-4 mr-1" /> Revision
+                      Required
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setEdited({
+                          ...edited,
+                          updateNotes: "Client approved the update.",
+                        })
+                      }
+                    >
+                      <CheckCircle className="w-4 h-4 mr-1" /> Mark Approved
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <TentativeCostDialog
+          open={tentativeDialogOpen}
+          onOpenChange={setTentativeDialogOpen}
+          project={{ ...edited, _id: edited._id }}
+          onApproved={async () => {
+            await reloadProjects();
+            setTentativeDialogOpen(false);
+            onOpenChange(false);
+            setSelectedSubModule?.("red-seal");
+          }}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }

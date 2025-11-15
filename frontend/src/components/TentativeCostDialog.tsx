@@ -1,38 +1,107 @@
-import React, { useState, useEffect } from 'react';
-import { Calculator, IndianRupee, CheckCircle, AlertTriangle, TrendingUp, DollarSign, Percent, Save, X, ArrowRight, Plus, Trash2, Scissors, Printer, Shirt, Wrench, Package, FileCheck } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
-import { Separator } from './ui/separator';
-import { Badge } from './ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { toast } from 'sonner@2.0.3';
-import { useERPStore } from '../lib/data-store';
-import type { RDProject } from '../lib/data-store';
+import {
+  ArrowRight,
+  Calculator,
+  CheckCircle,
+  FileCheck,
+  IndianRupee,
+  Package,
+  Percent,
+  Plus,
+  Printer,
+  Save,
+  Scissors,
+  Shirt,
+  Trash2,
+  Wrench,
+  X,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import type { RDProject } from "../lib/data-store";
+import { useERPStore } from "../lib/data-store";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Separator } from "./ui/separator";
+import { Textarea } from "./ui/textarea";
+import api from "../lib/api";
+import { ProductDevelopment } from "./ProjectDetailsDialog";
 
 interface TentativeCostDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  project: RDProject | null;
+  project: ProductDevelopment | null;
   onApproved: () => void;
 }
 
-// Add New Item Dialog Component - moved outside to prevent re-creation on render
-const AddNewItemDialog = ({ 
-  category, 
-  isOpen, 
-  onClose, 
-  formData, 
-  onFormChange, 
-  onAddItem 
-}: { 
+// Cost item interface matching backend
+interface CostItem {
+  _id: string;
+  item: string;
+  description: string;
+  consumption: string;
+  cost: number;
+  department?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Labour cost interface matching backend
+interface LabourCost {
+  directTotal: number;
+  items: Array<{
+    _id: string;
+    name: string;
+    cost: number;
+  }>;
+}
+
+// Cost summary interface matching backend
+interface CostSummary {
+  additionalCosts: number;
+  profitMargin: number;
+  remarks: string;
+  upperTotal: number;
+  componentTotal: number;
+  materialTotal: number;
+  packagingTotal: number;
+  miscTotal: number;
+  labourTotal: number;
+  totalAllCosts: number;
+  profitAmount: number;
+  tentativeCost: number;
+  status: "draft" | "ready_for_red_seal";
+  approvedAt?: string;
+  approvedBy?: string;
+}
+
+// Add New Item Dialog Component
+const AddNewItemDialog = ({
+  category,
+  isOpen,
+  onClose,
+  formData,
+  onFormChange,
+  onAddItem,
+}: {
   category: string;
   isOpen: boolean;
   onClose: () => void;
-  formData: { item: string; description: string; consumption: string; cost: number };
+  formData: {
+    item: string;
+    description: string;
+    consumption: string;
+    cost: number;
+  };
   onFormChange: (field: string, value: string | number) => void;
   onAddItem: () => void;
 }) => (
@@ -53,7 +122,7 @@ const AddNewItemDialog = ({
           <Input
             id={`item-${category}`}
             value={formData.item}
-            onChange={(e) => onFormChange('item', e.target.value)}
+            onChange={(e) => onFormChange("item", e.target.value)}
             placeholder="Enter item name"
             className="mt-1"
           />
@@ -63,7 +132,7 @@ const AddNewItemDialog = ({
           <Input
             id={`description-${category}`}
             value={formData.description}
-            onChange={(e) => onFormChange('description', e.target.value)}
+            onChange={(e) => onFormChange("description", e.target.value)}
             placeholder="Enter description (optional)"
             className="mt-1"
           />
@@ -73,7 +142,7 @@ const AddNewItemDialog = ({
           <Input
             id={`consumption-${category}`}
             value={formData.consumption}
-            onChange={(e) => onFormChange('consumption', e.target.value)}
+            onChange={(e) => onFormChange("consumption", e.target.value)}
             placeholder="Enter consumption details (optional)"
             className="mt-1"
           />
@@ -85,8 +154,10 @@ const AddNewItemDialog = ({
             <Input
               id={`cost-${category}`}
               type="number"
-              value={formData.cost || ''}
-              onChange={(e) => onFormChange('cost', Number(e.target.value) || 0)}
+              value={formData.cost || ""}
+              onChange={(e) =>
+                onFormChange("cost", Number(e.target.value) || 0)
+              }
               placeholder="0.00"
               className="pl-10"
               min="0"
@@ -98,32 +169,74 @@ const AddNewItemDialog = ({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={onAddItem}>
-            Add Item
-          </Button>
+          <Button onClick={onAddItem}>Add Item</Button>
         </div>
       </div>
     </DialogContent>
   </Dialog>
 );
 
-// Stage Selector Component - inline dropdown for row-level stage advancement
-const StageSelector = ({ itemKey, category }: { itemKey: string; category: string }) => {
+// Stage Selector Component
+const StageSelector = ({
+  itemId,
+  category,
+  onStageSelect,
+}: {
+  itemId: string;
+  category: string;
+  onStageSelect: (itemId: string, department: string) => void;
+}) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const stages = [
-    { value: 'cutting', label: 'Cutting', icon: Scissors, color: 'text-purple-600' },
-    { value: 'printing', label: 'Printing', icon: Printer, color: 'text-blue-600' },
-    { value: 'stitching', label: 'Stitching', icon: Shirt, color: 'text-indigo-600' },
-    { value: 'lasting', label: 'Lasting', icon: Wrench, color: 'text-orange-600' },
-    { value: 'packing', label: 'Packing', icon: Package, color: 'text-green-600' },
-    { value: 'quality', label: 'Quality Check', icon: FileCheck, color: 'text-emerald-600' },
+    {
+      value: "cutting",
+      label: "Cutting",
+      icon: Scissors,
+      color: "text-purple-600",
+    },
+    {
+      value: "printing",
+      label: "Printing",
+      icon: Printer,
+      color: "text-blue-600",
+    },
+    {
+      value: "stitching",
+      label: "Stitching",
+      icon: Shirt,
+      color: "text-indigo-600",
+    },
+    {
+      value: "lasting",
+      label: "Lasting",
+      icon: Wrench,
+      color: "text-orange-600",
+    },
+    {
+      value: "packing",
+      label: "Packing",
+      icon: Package,
+      color: "text-green-600",
+    },
+    {
+      value: "quality",
+      label: "Quality Check",
+      icon: FileCheck,
+      color: "text-emerald-600",
+    },
   ];
 
-  const handleStageSelect = (stage: string, label: string) => {
+  const handleStageSelect = (department: string, label: string) => {
     setIsOpen(false);
-    toast.success(`${itemKey} will advance to ${label}`);
+    onStageSelect(itemId, department);
+    toast.success(`Item will advance to ${label}`);
   };
+
+  // Only show department selector for upper and component categories
+  if (!["upper", "component"].includes(category)) {
+    return null;
+  }
 
   return (
     <div className="relative">
@@ -136,11 +249,11 @@ const StageSelector = ({ itemKey, category }: { itemKey: string; category: strin
       >
         <Plus className="w-4 h-4" />
       </Button>
-      
+
       {isOpen && (
         <>
-          <div 
-            className="fixed inset-0 z-40" 
+          <div
+            className="fixed inset-0 z-40"
             onClick={() => setIsOpen(false)}
           />
           <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
@@ -164,463 +277,907 @@ const StageSelector = ({ itemKey, category }: { itemKey: string; category: strin
   );
 };
 
-export function TentativeCostDialog({ open, onOpenChange, project, onApproved }: TentativeCostDialogProps) {
+// Cost Category Card Component
+const CostCategoryCard = ({
+  title,
+  category,
+  items,
+  onUpdateCost,
+  onDeleteItem,
+  onAddItem,
+  onStageSelect,
+  color = "orange",
+}: {
+  title: string;
+  category: string;
+  items: CostItem[];
+  onUpdateCost: (itemId: string, cost: number) => void;
+  onDeleteItem: (itemId: string) => void;
+  onAddItem: () => void;
+  onStageSelect: (itemId: string, department: string) => void;
+  color?: "orange" | "purple" | "teal" | "rose" | "gray" | "amber";
+}) => {
+  const colorClasses = {
+    orange: {
+      border: "border-orange-200",
+      header: "bg-orange-50",
+      icon: "text-orange-600",
+      button: "text-orange-600 border-orange-200 hover:bg-orange-50",
+      total: "bg-orange-50 text-orange-900",
+    },
+    purple: {
+      border: "border-purple-200",
+      header: "bg-purple-50",
+      icon: "text-purple-600",
+      button: "text-purple-600 border-purple-200 hover:bg-purple-50",
+      total: "bg-purple-50 text-purple-900",
+    },
+    teal: {
+      border: "border-teal-200",
+      header: "bg-teal-50",
+      icon: "text-teal-600",
+      button: "text-teal-600 border-teal-200 hover:bg-teal-50",
+      total: "bg-teal-50 text-teal-900",
+    },
+    rose: {
+      border: "border-rose-200",
+      header: "bg-rose-50",
+      icon: "text-rose-600",
+      button: "text-rose-600 border-rose-200 hover:bg-rose-50",
+      total: "bg-rose-50 text-rose-900",
+    },
+    gray: {
+      border: "border-gray-200",
+      header: "bg-gray-50",
+      icon: "text-gray-600",
+      button: "text-gray-600 border-gray-200 hover:bg-gray-50",
+      total: "bg-gray-50 text-gray-900",
+    },
+    amber: {
+      border: "border-amber-200",
+      header: "bg-amber-50",
+      icon: "text-amber-600",
+      button: "text-amber-600 border-amber-200 hover:bg-amber-50",
+      total: "bg-amber-50 text-amber-900",
+    },
+  };
+
+  const currentColor = colorClasses[color];
+
+  // Ensure items is always an array and handle undefined/null values
+  const safeItems = Array.isArray(items) ? items : [];
+  const totalCost = safeItems.reduce(
+    (sum, item) => sum + (Number(item.cost) || 0),
+    0
+  );
+
+  // Define column headers based on category
+  const getColumnHeaders = () => {
+    switch (category) {
+      case "component":
+        return {
+          col1: "COMPONENT",
+          col2: "DESCRIPTION",
+          col3: "CONSUMPTION",
+          col4: "COST",
+        };
+      case "material":
+        return {
+          col1: "MATERIAL",
+          col2: "DESCRIPTION",
+          col3: "CONSUMPTION",
+          col4: "COST",
+        };
+      case "packaging":
+        return {
+          col1: "PACKING",
+          col2: "DESCRIPTION",
+          col3: "CONSUMPTION",
+          col4: "COST",
+        };
+      default:
+        return {
+          col1: "ITEM",
+          col2: "DESCRIPTION",
+          col3: "CONSUMPTION",
+          col4: "COST",
+        };
+    }
+  };
+
+  const headers = getColumnHeaders();
+
+  return (
+    <Card className={`border-2 ${currentColor.border} h-148`}>
+      <CardHeader className={currentColor.header}>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Calculator className={`w-5 h-5 ${currentColor.icon}`} />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4">
+        <div className="space-y-4">
+          {/* Table Header */}
+          <div className="grid grid-cols-12 gap-2 bg-gray-100 p-2 rounded text-sm font-medium">
+            <div className="col-span-3 text-center">{headers.col1}</div>
+            <div className="col-span-4 text-center">{headers.col2}</div>
+            <div className="col-span-2 text-center">{headers.col3}</div>
+            <div className="col-span-2 text-center">{headers.col4}</div>
+            <div className="col-span-1 text-center"></div>
+          </div>
+
+          {/* Scrollable Table Content */}
+          <div className="h-64 overflow-y-auto scrollbar-hide space-y-4">
+            {safeItems.map((item) => (
+              <div
+                key={item._id}
+                className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded"
+              >
+                <div className="col-span-3">
+                  <Input
+                    value={item.item || ""}
+                    readOnly
+                    className="text-center text-sm bg-gray-50"
+                  />
+                </div>
+                <div className="col-span-4">
+                  <Input
+                    value={item.description || ""}
+                    readOnly
+                    className="text-sm bg-gray-50"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Input
+                    value={item.consumption || ""}
+                    readOnly
+                    className="text-sm bg-gray-50"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <div className="relative">
+                    <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                    <Input
+                      type="number"
+                      value={item.cost || ""}
+                      onChange={(e) =>
+                        onUpdateCost(item._id, Number(e.target.value) || 0)
+                      }
+                      className="pl-6 text-sm"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                <div className="col-span-1 flex justify-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDeleteItem(item._id)}
+                    className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                  <StageSelector
+                    itemId={item._id}
+                    category={category}
+                    onStageSelect={onStageSelect}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Add New Item Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className={`w-full ${currentColor.button}`}
+            onClick={onAddItem}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add New Item
+          </Button>
+
+          <Separator />
+
+          {/* Total Cost */}
+          <div className={`p-3 rounded-lg ${currentColor.total}`}>
+            <div className="flex justify-between items-center">
+              <span className="font-medium">Total {title}:</span>
+              <span className="text-lg font-bold">₹{totalCost.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+export function TentativeCostDialog({
+  open,
+  onOpenChange,
+  project,
+  onApproved,
+}: TentativeCostDialogProps) {
   const { updateRDProject } = useERPStore();
-  
-  const [productionCost, setProductionCost] = useState<number>(0);
-  const [profitMargin, setProfitMargin] = useState<number>(25); // Default 25%
-  const [additionalCosts, setAdditionalCosts] = useState<number>(0);
-  const [remarks, setRemarks] = useState<string>('');
-  const [isApproved, setIsApproved] = useState<boolean>(false);
 
-  // Cost breakdown state
-  const [materialCost, setMaterialCost] = useState<number>(0);
-  const [laborCost, setLaborCost] = useState<number>(0);
-  const [overheadCost, setOverheadCost] = useState<number>(0);
-  const [toolingCost, setToolingCost] = useState<number>(0);
-
-  // Upper Cost state
-  const [upperCosts, setUpperCosts] = useState<{[key: string]: number}>({
-    upper: 0,
-    lining1: 6.20,
-    lining2: 0
+  // Initialize with proper default values to avoid undefined issues
+  const [costRows, setCostRows] = useState<{
+    upper: CostItem[];
+    component: CostItem[];
+    material: CostItem[];
+    packaging: CostItem[];
+    miscellaneous: CostItem[];
+  }>({
+    upper: [],
+    component: [],
+    material: [],
+    packaging: [],
+    miscellaneous: [],
   });
 
-  // Component Cost state
-  const [componentCosts, setComponentCosts] = useState<{[key: string]: number}>({
-    foam: 0,
-    velcro: 0,
-    elasticRoop: 0,
-    thread: 1.00,
-    taftaLabel: 1.00,
-    buckle: 0,
-    heatTransfer: 1.00,
-    trim: 0,
-    welding: 1.00
+  const [labourCost, setLabourCost] = useState<LabourCost>({
+    directTotal: 0,
+    items: [],
   });
 
-  // Material Cost state
-  const [materialCosts, setMaterialCosts] = useState<{[key: string]: number}>({
-    footbed1: 0,
-    footbed2: 0,
-    midSole1: 0,
-    midSole2: 0,
-    taperHeel: 0,
-    arch: 0,
-    outSole: 98.00,
-    thread: 0,
-    adhesive: 0,
-    puAdhesive: 7.00,
-    reinforcement: 0,
-    embossBuff: 0,
-    print: 4.00,
-    lazer: 0,
-    lazer2: 0
+  const [costSummary, setCostSummary] = useState<CostSummary>({
+    additionalCosts: 0,
+    profitMargin: 25,
+    remarks: "",
+    upperTotal: 0,
+    componentTotal: 0,
+    materialTotal: 0,
+    packagingTotal: 0,
+    miscTotal: 0,
+    labourTotal: 0,
+    totalAllCosts: 0,
+    profitAmount: 0,
+    tentativeCost: 0,
+    status: "draft",
   });
 
-  // Packaging Cost state
-  const [packagingCosts, setPackagingCosts] = useState<{[key: string]: number}>({
-    inner: 22.00,
-    outer: 0,
-    toeFit: 0,
-    tissue: 0,
-    wrappingPaper: 0,
-    barCode: 0,
-    brandTag: 0,
-    tagPin: 0,
-    outerLabel: 0,
-    tapeStrapping: 0
-  });
+  // Real-time summary for instant UI updates
+  const [realTimeSummary, setRealTimeSummary] = useState<CostSummary | null>(
+    null
+  );
 
-  // Labour + OH Cost state
-  const [labourCosts, setLabourCosts] = useState<{[key: string]: number}>({
-    upper: 0,
-    assembly: 0,
-    printing: 0,
-    packing: 0
-  });
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [dataLoaded, setDataLoaded] = useState<boolean>(false);
 
-  // Total Labour Cost (directly editable)
-  const [totalLabourCost, setTotalLabourCost] = useState<number>(62.00);
-
-  // Miscellaneous Cost state
-  const [miscellaneousCosts, setMiscellaneousCosts] = useState<{[key: string]: number}>({
-    consumables: 0,
-    secondsPercent: 4.064,
-    factoryExp: 0,
-    freight: 2
-  });
-
-  // Dialog states for adding new items
+  // Dialog states
   const [addItemDialogs, setAddItemDialogs] = useState({
     upper: false,
     component: false,
     material: false,
     packaging: false,
-    miscellaneous: false
+    labour: false,
+    miscellaneous: false,
   });
 
-  // Custom items state
-  const [customItems, setCustomItems] = useState<{[key: string]: Array<{id: string, item: string, description: string, consumption: string, cost: number}>}>({
-    upper: [],
-    component: [],
-    material: [],
-    packaging: [],
-    miscellaneous: []
-  });
-
-  // Form states for each dialog category - separate to prevent conflicts
   const [dialogForms, setDialogForms] = useState({
-    upper: { item: '', description: '', consumption: '', cost: 0 },
-    component: { item: '', description: '', consumption: '', cost: 0 },
-    material: { item: '', description: '', consumption: '', cost: 0 },
-    packaging: { item: '', description: '', consumption: '', cost: 0 },
-    miscellaneous: { item: '', description: '', consumption: '', cost: 0 }
+    upper: { item: "", description: "", consumption: "", cost: 0 },
+    component: { item: "", description: "", consumption: "", cost: 0 },
+    material: { item: "", description: "", consumption: "", cost: 0 },
+    packaging: { item: "", description: "", consumption: "", cost: 0 },
+    labour: { item: "", description: "", consumption: "", cost: 0 },
+    miscellaneous: { item: "", description: "", consumption: "", cost: 0 },
   });
 
+  // Use realTimeSummary for display, fallback to costSummary
+  const displaySummary = realTimeSummary || costSummary;
+
+  // Load all cost data from backend
   useEffect(() => {
-    if (project && open) {
-      // Initialize with project data or defaults
-      const baseCost = project.targetCost || 10000;
-      setMaterialCost(Math.round(baseCost * 0.4)); // 40% material
-      setLaborCost(Math.round(baseCost * 0.3)); // 30% labor
-      setOverheadCost(Math.round(baseCost * 0.2)); // 20% overhead
-      setToolingCost(Math.round(baseCost * 0.1)); // 10% tooling
-      setProductionCost(baseCost);
-      setRemarks('Tentative cost calculation for Red Seal approval process.');
+    if (project && open && !dataLoaded) {
+      loadAllCostData();
     }
-  }, [project, open]);
+  }, [project, open, dataLoaded]);
 
-  // Calculate upper cost total
-  const calculateUpperTotal = () => {
-    return Object.values(upperCosts).reduce((sum, cost) => sum + (cost || 0), 0);
-  };
-
-  // Calculate component cost total
-  const calculateComponentTotal = () => {
-    return Object.values(componentCosts).reduce((sum, cost) => sum + (cost || 0), 0);
-  };
-
-  // Calculate material cost total
-  const calculateMaterialTotal = () => {
-    return Object.values(materialCosts).reduce((sum, cost) => sum + (cost || 0), 0);
-  };
-
-  // Calculate packaging cost total
-  const calculatePackagingTotal = () => {
-    return Object.values(packagingCosts).reduce((sum, cost) => sum + (cost || 0), 0);
-  };
-
-  // Calculate labour cost total (from individual items)
-  const calculateLabourTotal = () => {
-    return Object.values(labourCosts).reduce((sum, cost) => sum + (cost || 0), 0);
-  };
-
-  // Update upper cost
-  const updateUpperCost = (key: string, value: number) => {
-    setUpperCosts(prev => ({
-      ...prev,
-      [key]: value || 0
-    }));
-  };
-
-  // Update component cost
-  const updateComponentCost = (key: string, value: number) => {
-    setComponentCosts(prev => ({
-      ...prev,
-      [key]: value || 0
-    }));
-  };
-
-  // Update material cost
-  const updateMaterialCost = (key: string, value: number) => {
-    setMaterialCosts(prev => ({
-      ...prev,
-      [key]: value || 0
-    }));
-  };
-
-  // Update packaging cost
-  const updatePackagingCost = (key: string, value: number) => {
-    setPackagingCosts(prev => ({
-      ...prev,
-      [key]: value || 0
-    }));
-  };
-
-  // Update labour cost
-  const updateLabourCost = (key: string, value: number) => {
-    setLabourCosts(prev => ({
-      ...prev,
-      [key]: value || 0
-    }));
-  };
-
-  // Update miscellaneous cost
-  const updateMiscellaneousCost = (key: string, value: number) => {
-    setMiscellaneousCosts(prev => ({
-      ...prev,
-      [key]: value || 0
-    }));
-  };
-
-  // Delete default item function
-  const deleteDefaultItem = (category: string, key: string) => {
-    const categoryMap: {[key: string]: any} = {
-      'upper': setUpperCosts,
-      'component': setComponentCosts,
-      'material': setMaterialCosts,
-      'packaging': setPackagingCosts,
-      'miscellaneous': setMiscellaneousCosts
-    };
-
-    const setter = categoryMap[category];
-    if (setter) {
-      setter((prev: any) => {
-        const newCosts = { ...prev };
-        delete newCosts[key];
-        return newCosts;
-      });
-      toast.success('Item deleted successfully');
+  // Reset data loaded state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setDataLoaded(false);
+      setRealTimeSummary(null); // Clear real-time calculations when closing
     }
-  };
+  }, [open]);
 
-  // Delete custom item function
-  const deleteCustomItem = (category: string, itemId: string) => {
-    setCustomItems(prev => ({
-      ...prev,
-      [category]: prev[category].filter(item => item.id !== itemId)
-    }));
-    
-    // Also remove the cost entry for this custom item
-    const categoryMap: {[key: string]: any} = {
-      'upper': setUpperCosts,
-      'component': setComponentCosts,
-      'material': setMaterialCosts,
-      'packaging': setPackagingCosts
-    };
-    
-    const setter = categoryMap[category];
-    if (setter) {
-      setter((prev: any) => {
-        const newCosts = { ...prev };
-        delete newCosts[itemId];
-        return newCosts;
-      });
+  // Reset real-time summary when data loads from backend
+  useEffect(() => {
+    if (dataLoaded) {
+      setRealTimeSummary(null); // Clear real-time calculations when we have fresh backend data
     }
-    
-    toast.success('Item deleted successfully');
-  };
+  }, [dataLoaded]);
 
-  // Calculate miscellaneous cost total
-  const calculateMiscellaneousTotal = () => {
-    return Object.values(miscellaneousCosts).reduce((sum, cost) => sum + (cost || 0), 0);
-  };
+  const loadAllCostData = async () => {
+    if (!project) return;
 
-  // Dialog management functions
-  const openAddItemDialog = (category: string) => {
-    setAddItemDialogs(prev => ({ ...prev, [category]: true }));
-    // Reset the form for this specific category
-    setDialogForms(prev => ({
-      ...prev,
-      [category]: { item: '', description: '', consumption: '', cost: 0 }
-    }));
-  };
+    setIsLoading(true);
+    try {
+      // Load cost summary
+      const summaryResponse = await api.get(`/projects/${project._id}/costs`);
 
-  const closeAddItemDialog = (category: string) => {
-    setAddItemDialogs(prev => ({ ...prev, [category]: false }));
-    // Reset the form for this specific category
-    setDialogForms(prev => ({
-      ...prev,
-      [category]: { item: '', description: '', consumption: '', cost: 0 }
-    }));
-  };
+      // Handle different response structures
+      const summaryData = summaryResponse.data.summary || summaryResponse.data;
 
-  // Update form field for specific category
-  const updateDialogForm = (category: string, field: string, value: string | number) => {
-    setDialogForms(prev => ({
-      ...prev,
-      [category]: {
-        ...prev[category as keyof typeof prev],
-        [field]: value
+      if (summaryData) {
+        setCostSummary((prev) => ({
+          ...prev,
+          ...summaryData,
+          // Ensure all number fields have safe defaults
+          additionalCosts: Number(summaryData.additionalCosts) || 0,
+          profitMargin: Number(summaryData.profitMargin) || 25,
+          upperTotal: Number(summaryData.upperTotal) || 0,
+          componentTotal: Number(summaryData.componentTotal) || 0,
+          materialTotal: Number(summaryData.materialTotal) || 0,
+          packagingTotal: Number(summaryData.packagingTotal) || 0,
+          miscTotal: Number(summaryData.miscTotal) || 0,
+          labourTotal: Number(summaryData.labourTotal) || 0,
+          totalAllCosts: Number(summaryData.totalAllCosts) || 0,
+          profitAmount: Number(summaryData.profitAmount) || 0,
+          tentativeCost: Number(summaryData.tentativeCost) || 0,
+          remarks: summaryData.remarks || "",
+          status: summaryData.status || "draft",
+        }));
       }
-    }));
-  };
 
-  // Add new item function
-  const handleAddNewItem = (category: string) => {
-    const currentForm = dialogForms[category as keyof typeof dialogForms];
-    if (!currentForm.item.trim()) {
-      toast.error('Please enter an item name');
-      return;
-    }
+      // Load cost rows for each section with safe defaults
+      const sections = [
+        "upper",
+        "component",
+        "material",
+        "packaging",
+        "miscellaneous",
+      ];
+      const rowPromises = sections.map((section) =>
+        api.get(`/projects/${project._id}/costs/${section}`)
+      );
+      const rowResponses = await Promise.all(rowPromises);
 
-    const newItem = {
-      id: `custom_${Date.now()}`,
-      item: currentForm.item,
-      description: currentForm.description,
-      consumption: currentForm.consumption,
-      cost: currentForm.cost
-    };
+      const newCostRows = {
+        upper: Array.isArray(rowResponses[0]?.data?.rows)
+          ? rowResponses[0].data.rows.map((item: any) => ({
+              _id: item._id || `upper_${Date.now()}_${Math.random()}`,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+              department: item.department || "",
+            }))
+          : [],
+        component: Array.isArray(rowResponses[1]?.data?.rows)
+          ? rowResponses[1].data.rows.map((item: any) => ({
+              _id: item._id || `component_${Date.now()}_${Math.random()}`,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+              department: item.department || "",
+            }))
+          : [],
+        material: Array.isArray(rowResponses[2]?.data?.rows)
+          ? rowResponses[2].data.rows.map((item: any) => ({
+              _id: item._id || `material_${Date.now()}_${Math.random()}`,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+            }))
+          : [],
+        packaging: Array.isArray(rowResponses[3]?.data?.rows)
+          ? rowResponses[3].data.rows.map((item: any) => ({
+              _id: item._id || `packaging_${Date.now()}_${Math.random()}`,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+            }))
+          : [],
+        miscellaneous: Array.isArray(rowResponses[4]?.data?.rows)
+          ? rowResponses[4].data.rows.map((item: any) => ({
+              _id: item._id || `misc_${Date.now()}_${Math.random()}`,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+            }))
+          : [],
+      };
 
-    setCustomItems(prev => ({
-      ...prev,
-      [category]: [...prev[category], newItem]
-    }));
+      setCostRows(newCostRows);
 
-    // Update respective cost state based on category
-    switch (category) {
-      case 'upper':
-        setUpperCosts(prev => ({ ...prev, [newItem.id]: newItem.cost }));
-        break;
-      case 'component':
-        setComponentCosts(prev => ({ ...prev, [newItem.id]: newItem.cost }));
-        break;
-      case 'material':
-        setMaterialCosts(prev => ({ ...prev, [newItem.id]: newItem.cost }));
-        break;
-      case 'packaging':
-        setPackagingCosts(prev => ({ ...prev, [newItem.id]: newItem.cost }));
-        break;
-      case 'miscellaneous':
-        setMiscellaneousCosts(prev => ({ ...prev, [newItem.id]: newItem.cost }));
-        break;
-    }
+      // Load labour cost with safe defaults
+      const labourResponse = await api.get(
+        `/projects/${project._id}/costs/labour`
+      );
 
-    closeAddItemDialog(category);
-    toast.success(`New ${category} item added successfully!`);
-  };
+      // Handle different labour response structures
+      const labourData = labourResponse.data.labour || labourResponse.data;
 
-  // Delete custom item function
-  const handleDeleteCustomItem = (category: string, itemId: string) => {
-    setCustomItems(prev => ({
-      ...prev,
-      [category]: prev[category].filter(item => item.id !== itemId)
-    }));
-
-    // Remove from respective cost state
-    switch (category) {
-      case 'upper':
-        setUpperCosts(prev => {
-          const newCosts = { ...prev };
-          delete newCosts[itemId];
-          return newCosts;
+      if (labourData) {
+        setLabourCost({
+          directTotal: Number(labourData.directTotal) || 0,
+          items: Array.isArray(labourData.items)
+            ? labourData.items.map((item: any) => ({
+                _id: item._id || `labour_${Date.now()}_${Math.random()}`,
+                name: item.name || "",
+                cost: Number(item.cost) || 0,
+              }))
+            : [],
         });
-        break;
-      case 'component':
-        setComponentCosts(prev => {
-          const newCosts = { ...prev };
-          delete newCosts[itemId];
-          return newCosts;
-        });
-        break;
-      case 'material':
-        setMaterialCosts(prev => {
-          const newCosts = { ...prev };
-          delete newCosts[itemId];
-          return newCosts;
-        });
-        break;
-      case 'packaging':
-        setPackagingCosts(prev => {
-          const newCosts = { ...prev };
-          delete newCosts[itemId];
-          return newCosts;
-        });
-        break;
-      case 'miscellaneous':
-        setMiscellaneousCosts(prev => {
-          const newCosts = { ...prev };
-          delete newCosts[itemId];
-          return newCosts;
-        });
-        break;
-    }
+      }
 
-    toast.success(`${category} item deleted successfully!`);
-  };
+      setDataLoaded(true);
+    } catch (error) {
+      console.error("Failed to load cost data:", error);
+      toast.error("Failed to load cost data");
 
-  // Update custom item cost
-  const updateCustomItemCost = (category: string, itemId: string, cost: number) => {
-    switch (category) {
-      case 'upper':
-        updateUpperCost(itemId, cost);
-        break;
-      case 'component':
-        updateComponentCost(itemId, cost);
-        break;
-      case 'material':
-        updateMaterialCost(itemId, cost);
-        break;
-      case 'packaging':
-        updatePackagingCost(itemId, cost);
-        break;
-      case 'miscellaneous':
-        updateMiscellaneousCost(itemId, cost);
-        break;
+      // Reset to safe defaults on error
+      setCostRows({
+        upper: [],
+        component: [],
+        material: [],
+        packaging: [],
+        miscellaneous: [],
+      });
+      setLabourCost({
+        directTotal: 0,
+        items: [],
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
-
-  // Calculate total production cost
-  const totalProductionCost = materialCost + laborCost + overheadCost + toolingCost;
-
-  // Calculate sum of all cost cards
-  const totalAllCosts = calculateUpperTotal() + calculateComponentTotal() + calculateMaterialTotal() + calculatePackagingTotal() + calculateMiscellaneousTotal() + totalLabourCost;
-
-  // Calculate subtotal before profit
-  const subtotalBeforeProfit = totalAllCosts + additionalCosts;
-
-  // Calculate profit amount based on subtotal
-  const profitAmount = Math.round((subtotalBeforeProfit * profitMargin) / 100);
-
-  // Calculate tentative cost (with profit)
-  const tentativeCost = subtotalBeforeProfit + profitAmount;
-
-  // Calculate margin percentage
-  const marginPercentage = totalAllCosts > 0 ? ((profitAmount / totalAllCosts) * 100).toFixed(1) : '0';
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
   };
 
-  const handleSave = () => {
-    if (!project) return;
+  // Real-time calculation handlers
+  const handleAdditionalCostsChange = (value: number) => {
+    const newAdditionalCosts = Number(value) || 0;
+    const newProfitMargin = costSummary.profitMargin || 25;
 
-    const updatedProject = {
-      ...project,
-      finalCost: tentativeCost,
-      remarks: remarks || `Tentative cost calculated: ${formatCurrency(tentativeCost)}. Total Cost: ${formatCurrency(totalAllCosts)}, Profit: ${formatCurrency(profitAmount)} (${marginPercentage}%)`
-    };
+    // Calculate real-time totals based on current backend data
+    const totalAllCosts =
+      (costSummary.upperTotal || 0) +
+      (costSummary.componentTotal || 0) +
+      (costSummary.materialTotal || 0) +
+      (costSummary.packagingTotal || 0) +
+      (costSummary.miscTotal || 0) +
+      (costSummary.labourTotal || 0);
 
-    updateRDProject(project.id, updatedProject);
-    toast.success('Tentative cost saved successfully!');
+    const subtotalBeforeProfit = totalAllCosts + newAdditionalCosts;
+    const profitAmount = Math.round(
+      (subtotalBeforeProfit * newProfitMargin) / 100
+    );
+    const tentativeCost = subtotalBeforeProfit + profitAmount;
+
+    setRealTimeSummary({
+      ...costSummary,
+      additionalCosts: newAdditionalCosts,
+      profitMargin: newProfitMargin,
+      totalAllCosts,
+      profitAmount,
+      tentativeCost,
+    });
+
+    // Also update the main state for saving
+    setCostSummary((prev) => ({
+      ...prev,
+      additionalCosts: newAdditionalCosts,
+    }));
   };
 
-  const handleApprove = () => {
-    if (tentativeCost === 0) {
-      toast.error('Please calculate tentative cost before approving');
+  const handleProfitMarginChange = (value: number) => {
+    const newProfitMargin = Number(value) || 25;
+    const newAdditionalCosts = costSummary.additionalCosts || 0;
+
+    // Calculate real-time totals based on current backend data
+    const totalAllCosts =
+      (costSummary.upperTotal || 0) +
+      (costSummary.componentTotal || 0) +
+      (costSummary.materialTotal || 0) +
+      (costSummary.packagingTotal || 0) +
+      (costSummary.miscTotal || 0) +
+      (costSummary.labourTotal || 0);
+
+    const subtotalBeforeProfit = totalAllCosts + newAdditionalCosts;
+    const profitAmount = Math.round(
+      (subtotalBeforeProfit * newProfitMargin) / 100
+    );
+    const tentativeCost = subtotalBeforeProfit + profitAmount;
+
+    setRealTimeSummary({
+      ...costSummary,
+      additionalCosts: newAdditionalCosts,
+      profitMargin: newProfitMargin,
+      totalAllCosts,
+      profitAmount,
+      tentativeCost,
+    });
+
+    // Also update the main state for saving
+    setCostSummary((prev) => ({
+      ...prev,
+      profitMargin: newProfitMargin,
+    }));
+  };
+
+  const handleRemarksChange = (value: string) => {
+    setCostSummary((prev) => ({
+      ...prev,
+      remarks: value,
+    }));
+
+    // Also update real-time summary if it exists
+    if (realTimeSummary) {
+      setRealTimeSummary((prev) => ({
+        ...prev!,
+        remarks: value,
+      }));
+    }
+  };
+
+  // Cost item management
+  const updateItemCost = async (itemId: string, cost: number) => {
+    if (!project) return;
+
+    try {
+      // Find which section contains this item
+      let section: string | null = null;
+      for (const [sec, items] of Object.entries(costRows)) {
+        if (items.find((item) => item._id === itemId)) {
+          section = sec;
+          break;
+        }
+      }
+
+      if (!section) {
+        toast.error("Item not found");
+        return;
+      }
+
+      // Update the cost via API
+      await api.patch(`/projects/${project._id}/costs/${section}/${itemId}`, {
+        cost: Number(cost) || 0,
+      });
+
+      // Update local state
+      setCostRows((prev) => ({
+        ...prev,
+        [section as string]: prev[section as keyof typeof prev].map((item) =>
+          item._id === itemId ? { ...item, cost: Number(cost) || 0 } : item
+        ),
+      }));
+
+      // Reload summary to get updated totals
+      await loadSummary();
+    } catch (error) {
+      console.error("Failed to update item cost:", error);
+      toast.error("Failed to update item cost");
+    }
+  };
+
+  const deleteItem = async (itemId: string) => {
+    if (!project) return;
+
+    try {
+      // Find which section contains this item
+      let section: string | null = null;
+      for (const [sec, items] of Object.entries(costRows)) {
+        if (items.find((item) => item._id === itemId)) {
+          section = sec;
+          break;
+        }
+      }
+
+      if (!section) {
+        toast.error("Item not found");
+        return;
+      }
+
+      // Delete via API
+      await api.delete(`/projects/${project._id}/costs/${section}/${itemId}`);
+
+      // Update local state
+      setCostRows((prev) => ({
+        ...prev,
+        [section as string]: prev[section as keyof typeof prev].filter(
+          (item) => item._id !== itemId
+        ),
+      }));
+
+      // Reload summary to get updated totals
+      await loadSummary();
+
+      toast.success("Item deleted successfully");
+    } catch (error) {
+      console.error("Failed to delete item:", error);
+      toast.error("Failed to delete item");
+    }
+  };
+
+  const setItemDepartment = async (itemId: string, department: string) => {
+    if (!project) return;
+
+    try {
+      // Find which section contains this item
+      let section: string | null = null;
+      for (const [sec, items] of Object.entries(costRows)) {
+        if (items.find((item) => item._id === itemId)) {
+          section = sec;
+          break;
+        }
+      }
+
+      if (!section || !["upper", "component"].includes(section)) {
+        toast.error(
+          "Department tagging only allowed for upper and component items"
+        );
+        return;
+      }
+
+      // Update department via API
+      await api.patch(
+        `/projects/${project._id}/costs/${section}/${itemId}/department`,
+        {
+          department,
+        }
+      );
+
+      // Update local state
+      setCostRows((prev) => ({
+        ...prev,
+        [section as string]: prev[section as keyof typeof prev].map((item) =>
+          item._id === itemId ? { ...item, department } : item
+        ),
+      }));
+
+      toast.success("Department updated successfully");
+    } catch (error) {
+      console.error("Failed to update department:", error);
+      toast.error("Failed to update department");
+    }
+  };
+
+  // Dialog management
+  const openAddItemDialog = (category: string) => {
+    setAddItemDialogs((prev) => ({ ...prev, [category]: true }));
+    setDialogForms((prev) => ({
+      ...prev,
+      [category]: { item: "", description: "", consumption: "", cost: 0 },
+    }));
+  };
+
+  const closeAddItemDialog = (category: string) => {
+    setAddItemDialogs((prev) => ({ ...prev, [category]: false }));
+  };
+
+  const updateDialogForm = (
+    category: string,
+    field: string,
+    value: string | number
+  ) => {
+    setDialogForms((prev) => ({
+      ...prev,
+      [category]: {
+        ...prev[category as keyof typeof prev],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleAddNewItem = async (category: string) => {
+    if (!project) return;
+
+    const currentForm = dialogForms[category as keyof typeof dialogForms];
+    if (!currentForm.item.trim()) {
+      toast.error("Please enter an item name");
       return;
     }
 
-    handleSave();
-    setIsApproved(true);
-    toast.success('Tentative cost approved! Ready to advance to Red Seal.');
-    
-    // Call the onApproved callback to advance the stage
-    setTimeout(() => {
-      onApproved();
-      onOpenChange(false);
-    }, 1000);
+    try {
+      const payload = {
+        item: currentForm.item.trim(),
+        description: currentForm.description || "",
+        consumption: currentForm.consumption || "",
+        cost: Number(currentForm.cost) || 0,
+      };
+
+      // Add item via API
+      const response = await api.post(
+        `/projects/${project._id}/costs/${category}`,
+        payload
+      );
+
+      console.log("Add item response:", response);
+
+      // Use the row returned from backend
+      if (response.data.row) {
+        setCostRows((prev) => ({
+          ...prev,
+          [category]: [
+            ...prev[category as keyof typeof prev],
+            {
+              _id: response.data.row._id,
+              item: response.data.row.item || "",
+              description: response.data.row.description || "",
+              consumption: response.data.row.consumption || "",
+              cost: Number(response.data.row.cost) || 0,
+              department: response.data.row.department || "",
+            },
+          ],
+        }));
+      }
+
+      // Reload summary to get updated totals
+      await loadSummary();
+
+      closeAddItemDialog(category);
+      toast.success(`New ${category} item added successfully!`);
+    } catch (error) {
+      console.error("Failed to add item:", error);
+      toast.error("Failed to add item");
+    }
   };
 
-  // Helper function to get current form data for a category
-  const getCurrentFormData = (category: string) => {
-    return dialogForms[category as keyof typeof dialogForms] || { item: '', description: '', consumption: '', cost: 0 };
+  const updateLabourCost = async (updates: Partial<LabourCost>) => {
+    if (!project) return;
+
+    try {
+      const response = await api.patch(
+        `/projects/${project._id}/costs/labour`,
+        updates
+      );
+
+      console.log("Labour update response:", response);
+
+      // Update local state with the new data
+      setLabourCost((prev) => ({ ...prev, ...updates }));
+
+      // Wait for the backend to process and then reload summary
+      setTimeout(async () => {
+        await loadSummary();
+      }, 500); // Small delay to ensure backend has processed
+    } catch (error) {
+      console.error("Failed to update labour cost:", error);
+      toast.error("Failed to update labour cost");
+    }
+  };
+
+  const loadSummary = async () => {
+    if (!project) return;
+
+    try {
+      const response = await api.get(`/projects/${project._id}/costs`);
+      console.log("Load summary response:", response);
+
+      // Handle different response structures
+      const summaryData = response.data.summary || response.data;
+
+      if (summaryData) {
+        setCostSummary((prev) => ({
+          ...prev,
+          ...summaryData,
+          // Ensure all number fields have safe defaults
+          additionalCosts: Number(summaryData.additionalCosts) || 0,
+          profitMargin: Number(summaryData.profitMargin) || 25,
+          upperTotal: Number(summaryData.upperTotal) || 0,
+          componentTotal: Number(summaryData.componentTotal) || 0,
+          materialTotal: Number(summaryData.materialTotal) || 0,
+          packagingTotal: Number(summaryData.packagingTotal) || 0,
+          miscTotal: Number(summaryData.miscTotal) || 0,
+          labourTotal: Number(summaryData.labourTotal) || 0,
+          totalAllCosts: Number(summaryData.totalAllCosts) || 0,
+          profitAmount: Number(summaryData.profitAmount) || 0,
+          tentativeCost: Number(summaryData.tentativeCost) || 0,
+          remarks: summaryData.remarks || "",
+          status: summaryData.status || "draft",
+        }));
+
+        // Clear real-time summary when we get fresh backend data
+        setRealTimeSummary(null);
+      }
+    } catch (error) {
+      console.error("Failed to load summary:", error);
+    }
+  };
+
+  const handleSaveSummary = async () => {
+    if (!project) return;
+
+    setIsLoading(true);
+
+    try {
+      const payload = {
+        additionalCosts: Number(costSummary.additionalCosts) || 0,
+        profitMargin: Number(costSummary.profitMargin) || 25,
+        remarks: costSummary.remarks || "",
+      };
+
+      console.log("🔄 Saving cost summary...", payload);
+
+      const response = await api.patch(
+        `/projects/${project._id}/costs`,
+        payload
+      );
+
+      console.log("✅ Save response:", response.data);
+
+      // Update the state with the fresh summary data from backend
+      if (response.data && response.data.summary) {
+        const freshSummary = response.data.summary;
+
+        setCostSummary((prev) => ({
+          ...prev,
+          // Update the input fields
+          additionalCosts: Number(freshSummary.additionalCosts) || 0,
+          profitMargin: Number(freshSummary.profitMargin) || 25,
+          remarks: freshSummary.remarks || "",
+          // Update ALL computed totals from backend
+          upperTotal: Number(freshSummary.upperTotal) || 0,
+          componentTotal: Number(freshSummary.componentTotal) || 0,
+          materialTotal: Number(freshSummary.materialTotal) || 0,
+          packagingTotal: Number(freshSummary.packagingTotal) || 0,
+          miscTotal: Number(freshSummary.miscTotal) || 0,
+          labourTotal: Number(freshSummary.labourTotal) || 0,
+          totalAllCosts: Number(freshSummary.totalAllCosts) || 0,
+          profitAmount: Number(freshSummary.profitAmount) || 0,
+          tentativeCost: Number(freshSummary.tentativeCost) || 0,
+          status: freshSummary.status || "draft",
+        }));
+
+        // Clear real-time summary after successful save
+        setRealTimeSummary(null);
+
+        console.log("✅ UI updated with fresh summary data");
+      }
+
+      toast.success("Cost summary saved successfully!");
+    } catch (error: any) {
+      console.error("❌ Failed to save cost summary:", error);
+      toast.error(
+        `Failed to save cost summary: ${
+          error.response?.data?.message || error.message
+        }`
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!project) return;
+
+    try {
+      await api.post(`/projects/${project._id}/costs/approve`);
+
+      toast.success("Tentative cost approved! Ready to advance to Red Seal.");
+
+      // Update local project state
+      const updatedProject = {
+        ...project,
+        finalCost: costSummary.tentativeCost,
+        remarks: costSummary.remarks,
+      };
+
+      updateRDProject(project._id, updatedProject as any);
+
+      // Call the onApproved callback to advance the stage
+      setTimeout(() => {
+        onApproved();
+        onOpenChange(false);
+      }, 1000);
+    } catch (error) {
+      console.error("Failed to approve cost:", error);
+      toast.error("Failed to approve cost");
+    }
   };
 
   if (!project) return null;
@@ -640,27 +1197,30 @@ export function TentativeCostDialog({ open, onOpenChange, project, onApproved }:
                   Tentative Cost Calculation
                 </DialogTitle>
                 <DialogDescription className="text-sm text-gray-600 mt-1">
-                  Calculate production cost and profit margin for {project.autoCode}
+                  Calculate production cost and profit margin for{" "}
+                  {project.autoCode}
+                  {isLoading && " (Loading...)"}
                 </DialogDescription>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Button 
-                onClick={handleSave}
+              <Button
+                onClick={handleSaveSummary}
                 variant="outline"
+                disabled={isLoading}
               >
                 <Save className="w-4 h-4 mr-2" />
-                Save
+                {isLoading ? "Saving..." : "Save"}
               </Button>
-              <Button 
+              <Button
                 onClick={handleApprove}
                 className="bg-[rgba(0,188,125,1)] hover:bg-green-600"
-                disabled={tentativeCost === 0}
+                disabled={displaySummary.tentativeCost === 0 || isLoading}
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
-                Approve & Proceed
+                {isLoading ? "Processing..." : "Approve & Proceed"}
               </Button>
-              <Button 
+              <Button
                 onClick={() => onOpenChange(false)}
                 variant="ghost"
                 size="sm"
@@ -674,1855 +1234,73 @@ export function TentativeCostDialog({ open, onOpenChange, project, onApproved }:
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="p-6 space-y-6">
-            {/* Cost Analysis & Comparison */}
-
-
             {/* Cost Breakdown Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Upper Cost Breakdown */}
-              <Card className="border-2 border-orange-200 h-148">
-                <CardHeader className="bg-orange-50">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Calculator className="w-5 h-5 text-orange-600" />
-                    Upper Cost Breakdown
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4">
-                  <div className="space-y-4">
-                    {/* Fixed Table Header */}
-                    <div className="grid grid-cols-12 gap-2 bg-yellow-100 p-2 rounded text-sm font-medium">
-                      <div className="col-span-2 text-center">ITEM</div>
-                      <div className="col-span-4 text-center">DESCRIPTION</div>
-                      <div className="col-span-2 text-center">CONSUMPTION</div>
-                      <div className="col-span-2 text-center">COST</div>
-                      <div className="col-span-2"></div>
-                    </div>
-
-                    {/* Scrollable Table Content */}
-                    <div className="h-64 overflow-y-auto scrollbar-hide space-y-4">
-                      {/* Upper Row */}
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input
-                            defaultValue="Upper"
-                            className="text-center text-sm"
-                            placeholder="Item"
-                          />
-                        </div>
-                        <div className="col-span-4">
-                          <Input
-                            defaultValue="Rexine"
-                            className="text-sm"
-                            placeholder="Description"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <Input
-                            defaultValue="26 pairs/mtr @/-"
-                            className="text-sm"
-                            placeholder="Consumption"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input
-                              type="number"
-                              value={upperCosts.upper || ''}
-                              onChange={(e) => updateUpperCost('upper', Number(e.target.value))}
-                              className="pl-6 text-sm"
-                              placeholder="0.00"
-                            />
-                          </div>
-                        </div>
-                        <div className="col-span-2 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('upper', 'upper')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="upper" category="upper" />
-                        </div>
-                      </div>
-
-                      {/* Lining Row 1 */}
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input
-                            defaultValue="Lining"
-                            className="text-center text-sm"
-                            placeholder="Item"
-                          />
-                        </div>
-                        <div className="col-span-4">
-                          <Input
-                            defaultValue="Skinfit"
-                            className="text-sm"
-                            placeholder="Description"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <Input
-                            defaultValue="25 pair @ 155/-"
-                            className="text-sm"
-                            placeholder="Consumption"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input
-                              type="number"
-                              value={upperCosts.lining1 || ''}
-                              onChange={(e) => updateUpperCost('lining1', Number(e.target.value))}
-                              className="pl-6 text-sm"
-                            />
-                          </div>
-                        </div>
-                        <div className="col-span-2 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('upper', 'lining1')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="lining1" category="upper" />
-                        </div>
-                      </div>
-
-                      {/* Lining Row 2 */}
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input
-                            defaultValue="Lining"
-                            className="text-center text-sm"
-                            placeholder="Item"
-                          />
-                        </div>
-                        <div className="col-span-4">
-                          <Input
-                            defaultValue="EVA"
-                            className="text-sm"
-                            placeholder="Description"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <Input
-                            defaultValue="33/70 - 1.5mm 35pair"
-                            className="text-sm"
-                            placeholder="Consumption"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input
-                              type="number"
-                              value={upperCosts.lining2 || ''}
-                              onChange={(e) => updateUpperCost('lining2', Number(e.target.value))}
-                              className="pl-6 text-sm"
-                              placeholder="0.00"
-                            />
-                          </div>
-                        </div>
-                        <div className="col-span-2 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('upper', 'lining2')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="lining2" category="upper" />
-                        </div>
-                      </div>
-
-                      {/* Custom Upper Items */}
-                      {customItems.upper.map((item) => (
-                        <div key={item.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                          <div className="col-span-2">
-                            <Input value={item.item} readOnly className="text-center text-sm bg-gray-50" />
-                          </div>
-                          <div className="col-span-4">
-                            <Input value={item.description} readOnly className="text-sm bg-gray-50" />
-                          </div>
-                          <div className="col-span-2">
-                            <Input value={item.consumption} readOnly className="text-sm bg-gray-50" />
-                          </div>
-                          <div className="col-span-2">
-                            <div className="relative">
-                              <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                              <Input
-                                type="number"
-                                value={upperCosts[item.id] || ''}
-                                onChange={(e) => {
-                                  setUpperCosts(prev => ({
-                                    ...prev,
-                                    [item.id]: Number(e.target.value) || 0
-                                  }));
-                                }}
-                                className="pl-6 text-sm"
-                                placeholder="0.00"
-                              />
-                            </div>
-                          </div>
-                          <div className="col-span-2 flex justify-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteCustomItem('upper', item.id)}
-                              className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                            <StageSelector itemKey={item.item} category="upper" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Fixed Add New Row Button */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full text-orange-600 border-orange-200 hover:bg-orange-50"
-                      onClick={() => openAddItemDialog('upper')}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add New Item
-                    </Button>
-
-                    <Separator />
-
-                    {/* Fixed Total Upper Cost */}
-                    <div className="bg-orange-50 p-3 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-orange-900">Total Upper Cost:</span>
-                        <span className="text-lg font-bold text-orange-900">₹{calculateUpperTotal().toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Component Cost Breakdown */}
-              <Card className="border-2 border-purple-200 h-148">
-                <CardHeader className="bg-purple-50">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Calculator className="w-5 h-5 text-purple-600" />
-                    Component Cost Breakdown
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4">
-                  <div className="space-y-4">
-                    {/* Fixed Table Header */}
-                    <div className="grid grid-cols-12 gap-2 bg-blue-100 p-2 rounded text-sm font-medium">
-                      <div className="col-span-2 text-center">COMPONENT</div>
-                      <div className="col-span-3 text-center">DESCRIPTION</div>
-                      <div className="col-span-2 text-center">CONSUMPTION</div>
-                      <div className="col-span-2 text-center">COST</div>
-                      <div className="col-span-3"></div>
-                    </div>
-
-                    {/* Scrollable Table Content */}
-                    <div className="h-64 overflow-y-auto scrollbar-hide space-y-4">
-                      {/* Component Rows */}
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input defaultValue="Foam" className="text-center text-sm" placeholder="Component" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input className="text-sm" placeholder="Description" />
-                        </div>
-                        <div className="col-span-2">
-                          <Input defaultValue="7.5grm" className="text-sm" placeholder="Consumption" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input type="number" value={componentCosts.foam || ''} onChange={(e) => updateComponentCost('foam', Number(e.target.value))} className="pl-6 text-sm" placeholder="0.00" />
-                          </div>
-                        </div>
-                        <div className="col-span-3 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('component', 'foam')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="foam" category="component" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input defaultValue="Velcro" className="text-center text-sm" placeholder="Component" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input defaultValue="75mm" className="text-sm" placeholder="Description" />
-                        </div>
-                        <div className="col-span-2">
-                          <Input defaultValue="1.25 pair" className="text-sm" placeholder="Consumption" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input type="number" value={componentCosts.velcro || ''} onChange={(e) => updateComponentCost('velcro', Number(e.target.value))} className="pl-6 text-sm" placeholder="0.00" />
-                          </div>
-                        </div>
-                        <div className="col-span-3 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('component', 'velcro')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="velcro" category="component" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input defaultValue="Elastic Roop" className="text-center text-sm" placeholder="Component" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input className="text-sm" placeholder="Description" />
-                        </div>
-                        <div className="col-span-2">
-                          <Input className="text-sm" placeholder="Consumption" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input type="number" value={componentCosts.elasticRoop || ''} onChange={(e) => updateComponentCost('elasticRoop', Number(e.target.value))} className="pl-6 text-sm" placeholder="0.00" />
-                          </div>
-                        </div>
-                        <div className="col-span-3 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('component', 'elasticRoop')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="elasticRoop" category="component" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input defaultValue="Thread" className="text-center text-sm" placeholder="Component" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input className="text-sm" placeholder="Description" />
-                        </div>
-                        <div className="col-span-2">
-                          <Input className="text-sm" placeholder="Consumption" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input type="number" value={componentCosts.thread || ''} onChange={(e) => updateComponentCost('thread', Number(e.target.value))} className="pl-6 text-sm" />
-                          </div>
-                        </div>
-                        <div className="col-span-3 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('component', 'thread')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="thread" category="component" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input defaultValue="Tafta Label" className="text-center text-sm" placeholder="Component" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input defaultValue="MRP" className="text-sm" placeholder="Description" />
-                        </div>
-                        <div className="col-span-2">
-                          <Input className="text-sm" placeholder="Consumption" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input type="number" value={componentCosts.taftaLabel || ''} onChange={(e) => updateComponentCost('taftaLabel', Number(e.target.value))} className="pl-6 text-sm" />
-                          </div>
-                        </div>
-                        <div className="col-span-3 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('component', 'taftaLabel')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="taftaLabel" category="component" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input defaultValue="Buckle" className="text-center text-sm" placeholder="Component" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input className="text-sm" placeholder="Description" />
-                        </div>
-                        <div className="col-span-2">
-                          <Input defaultValue="2pcs" className="text-sm" placeholder="Consumption" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input type="number" value={componentCosts.buckle || ''} onChange={(e) => updateComponentCost('buckle', Number(e.target.value))} className="pl-6 text-sm" placeholder="0.00" />
-                          </div>
-                        </div>
-                        <div className="col-span-3 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('component', 'buckle')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="buckle" category="component" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input defaultValue="Heat Transfer" className="text-center text-sm" placeholder="Component" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input className="text-sm" placeholder="Description" />
-                        </div>
-                        <div className="col-span-2">
-                          <Input className="text-sm" placeholder="Consumption" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input type="number" value={componentCosts.heatTransfer || ''} onChange={(e) => updateComponentCost('heatTransfer', Number(e.target.value))} className="pl-6 text-sm" />
-                          </div>
-                        </div>
-                        <div className="col-span-3 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('component', 'heatTransfer')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="heatTransfer" category="component" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input defaultValue="Trim" className="text-center text-sm" placeholder="Component" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input defaultValue="sticker" className="text-sm" placeholder="Description" />
-                        </div>
-                        <div className="col-span-2">
-                          <Input defaultValue="10 pcs" className="text-sm" placeholder="Consumption" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input type="number" value={componentCosts.trim || ''} onChange={(e) => updateComponentCost('trim', Number(e.target.value))} className="pl-6 text-sm" placeholder="0.00" />
-                          </div>
-                        </div>
-                        <div className="col-span-3 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('component', 'trim')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="trim" category="component" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-2">
-                          <Input defaultValue="Welding" className="text-center text-sm" placeholder="Component" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input className="text-sm" placeholder="Description" />
-                        </div>
-                        <div className="col-span-2">
-                          <Input className="text-sm" placeholder="Consumption" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input type="number" value={componentCosts.welding || ''} onChange={(e) => updateComponentCost('welding', Number(e.target.value))} className="pl-6 text-sm" />
-                          </div>
-                        </div>
-                        <div className="col-span-3 flex justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('component', 'welding')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <StageSelector itemKey="welding" category="component" />
-                        </div>
-                      </div>
-
-                      {/* Custom Component Items */}
-                      {customItems.component.map((item) => (
-                        <div key={item.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                          <div className="col-span-2">
-                            <Input value={item.item} readOnly className="text-center text-sm bg-gray-50" />
-                          </div>
-                          <div className="col-span-3">
-                            <Input value={item.description} readOnly className="text-sm bg-gray-50" />
-                          </div>
-                          <div className="col-span-2">
-                            <Input value={item.consumption} readOnly className="text-sm bg-gray-50" />
-                          </div>
-                          <div className="col-span-2">
-                            <div className="relative">
-                              <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                              <Input
-                                type="number"
-                                value={componentCosts[item.id] || ''}
-                                onChange={(e) => updateCustomItemCost('component', item.id, Number(e.target.value))}
-                                className="pl-6 text-sm"
-                                placeholder="0.00"
-                              />
-                            </div>
-                          </div>
-                          <div className="col-span-3 flex justify-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteCustomItem('component', item.id)}
-                              className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                            <StageSelector itemKey={item.item} category="component" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Add New Component Button */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full text-purple-600 border-purple-200 hover:bg-purple-50"
-                      onClick={() => openAddItemDialog('component')}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add New Component
-                    </Button>
-
-                    <Separator />
-
-                    {/* Fixed Total Component Cost */}
-                    <div className="bg-purple-50 p-3 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-purple-900">Total Component Cost:</span>
-                        <span className="text-lg font-bold text-purple-900">₹{calculateComponentTotal().toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Material Cost Breakdown */}
-              <Card className="border-2 border-teal-200 h-148">
-                <CardHeader className="bg-teal-50">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Calculator className="w-5 h-5 text-teal-600" />
-                    Material Cost Breakdown
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4">
-                  <div className="space-y-4">
-                    {/* Fixed Table Header */}
-                    <div className="grid grid-cols-12 gap-2 bg-teal-100 p-2 rounded text-sm font-medium">
-                      <div className="col-span-3 text-center">MATERIAL</div>
-                      <div className="col-span-3 text-center">DESCRIPTION</div>
-                      <div className="col-span-3 text-center">CONSUMPTION</div>
-                      <div className="col-span-2 text-center">COST</div>
-                      <div className="col-span-1 text-center">  </div>
-                    </div>
-
-                    {/* Scrollable Table Content */}
-                    <div className="h-64 overflow-y-auto scrollbar-hide space-y-4">
-
-                    {/* Footbed Row 1 */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Footbed" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.footbed1 || ''}
-                            onChange={(e) => updateMaterialCost('footbed1', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'footbed1')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Footbed Row 2 */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Footbed" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.footbed2 || ''}
-                            onChange={(e) => updateMaterialCost('footbed2', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'footbed2')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Mid Sole 1 */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Mid Sole 1" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.midSole1 || ''}
-                            onChange={(e) => updateMaterialCost('midSole1', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'midSole1')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Mid Sole 2 */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Mid Sole 2" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.midSole2 || ''}
-                            onChange={(e) => updateMaterialCost('midSole2', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'midSole2')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Taper/Heel */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Taper/Heel" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.taperHeel || ''}
-                            onChange={(e) => updateMaterialCost('taperHeel', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'taperHeel')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Arch */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Arch" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.arch || ''}
-                            onChange={(e) => updateMaterialCost('arch', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'arch')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Out Sole */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Out Sole" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.outSole || ''}
-                            onChange={(e) => updateMaterialCost('outSole', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'outSole')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Thread */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Thread" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.thread || ''}
-                            onChange={(e) => updateMaterialCost('thread', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'thread')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Adhesive */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Adhesive" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.adhesive || ''}
-                            onChange={(e) => updateMaterialCost('adhesive', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'adhesive')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* PU Adhesive */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="PU Adhesive" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.puAdhesive || ''}
-                            onChange={(e) => updateMaterialCost('puAdhesive', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'puAdhesive')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Reinforcement */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Reinforcement" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.reinforcement || ''}
-                            onChange={(e) => updateMaterialCost('reinforcement', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'reinforcement')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Emboss/Buff */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Emboss/Buff" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.embossBuff || ''}
-                            onChange={(e) => updateMaterialCost('embossBuff', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'embossBuff')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Print */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Print" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.print || ''}
-                            onChange={(e) => updateMaterialCost('print', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'print')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Lazer */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Lazer" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.lazer || ''}
-                            onChange={(e) => updateMaterialCost('lazer', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'lazer')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Lazer 2 */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Lazer 2" className="text-center text-sm" placeholder="Material" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={materialCosts.lazer2 || ''}
-                            onChange={(e) => updateMaterialCost('lazer2', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('material', 'lazer2')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Custom Material Items */}
-                    {customItems.material.map((item) => (
-                      <div key={item.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-3">
-                          <Input value={item.item} readOnly className="text-center text-sm bg-gray-50" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input value={item.description} readOnly className="text-sm bg-gray-50" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input value={item.consumption} readOnly className="text-sm bg-gray-50" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input
-                              type="number"
-                              value={materialCosts[item.id] || ''}
-                              onChange={(e) => updateCustomItemCost('material', item.id, Number(e.target.value))}
-                              className="pl-6 text-sm"
-                              placeholder="0.00"
-                            />
-                          </div>
-                        </div>
-                        <div className="col-span-1 flex justify-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteCustomItem('material', item.id)}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-
-                    </div>
-
-                    {/* Add New Item Button */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
-                      onClick={() => openAddItemDialog('material')}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add New Material
-                    </Button>
-
-                    <Separator />
-
-                    {/* Fixed Total Material Cost */}
-                    <div className="bg-teal-50 p-3 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-teal-900">Total Material Cost:</span>
-                        <span className="text-lg font-bold text-teal-900">₹{calculateMaterialTotal().toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Packaging Cost Breakdown */}
-              <Card className="border-2 border-rose-200 h-148">
-                <CardHeader className="bg-rose-50">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Calculator className="w-5 h-5 text-rose-600" />
-                    Packaging Cost Breakdown
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4">
-                  <div className="space-y-4">
-                    {/* Fixed Table Header */}
-                    <div className="grid grid-cols-12 gap-2 bg-rose-100 p-2 rounded text-sm font-medium">
-                      <div className="col-span-3 text-center">PACKING</div>
-                      <div className="col-span-3 text-center">DESCRIPTION</div>
-                      <div className="col-span-3 text-center">CONSUMPTION</div>
-                      <div className="col-span-2 text-center">COST</div>
-                      <div className="col-span-1 text-center">  </div>
-                    </div>
-
-                    {/* Scrollable Table Content */}
-                    <div className="h-64 overflow-y-auto scrollbar-hide space-y-4">
-
-                    {/* Inner */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Inner" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.inner || ''}
-                            onChange={(e) => updatePackagingCost('inner', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'inner')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Outer */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Outer" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.outer || ''}
-                            onChange={(e) => updatePackagingCost('outer', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'outer')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Toe Fit */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Toe Fit" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.toeFit || ''}
-                            onChange={(e) => updatePackagingCost('toeFit', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'toeFit')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Tissue */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Tissue" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.tissue || ''}
-                            onChange={(e) => updatePackagingCost('tissue', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'tissue')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Wrapping paper */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Wrapping paper" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.wrappingPaper || ''}
-                            onChange={(e) => updatePackagingCost('wrappingPaper', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'wrappingPaper')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Bar Code */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Bar Code" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.barCode || ''}
-                            onChange={(e) => updatePackagingCost('barCode', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'barCode')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Brand Tag */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Brand Tag" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.brandTag || ''}
-                            onChange={(e) => updatePackagingCost('brandTag', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'brandTag')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Tag Pin */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Tag Pin" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.tagPin || ''}
-                            onChange={(e) => updatePackagingCost('tagPin', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'tagPin')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Outer Label */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Outer Label" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.outerLabel || ''}
-                            onChange={(e) => updatePackagingCost('outerLabel', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'outerLabel')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Tape/Strapping */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Tape/Strapping" className="text-center text-sm" placeholder="Packing" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={packagingCosts.tapeStrapping || ''}
-                            onChange={(e) => updatePackagingCost('tapeStrapping', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('packaging', 'tapeStrapping')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Custom Packaging Items */}
-                    {customItems.packaging.map((item) => (
-                      <div key={item.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-3">
-                          <Input value={item.item} readOnly className="text-center text-sm bg-gray-50" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input value={item.description} readOnly className="text-sm bg-gray-50" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input value={item.consumption} readOnly className="text-sm bg-gray-50" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input
-                              type="number"
-                              value={packagingCosts[item.id] || ''}
-                              onChange={(e) => updateCustomItemCost('packaging', item.id, Number(e.target.value))}
-                              className="pl-6 text-sm"
-                              placeholder="0.00"
-                            />
-                          </div>
-                        </div>
-                        <div className="col-span-1 flex justify-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteCustomItem('packaging', item.id)}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-
-                    </div>
-
-                    {/* Add New Item Button */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full text-rose-600 border-rose-200 hover:bg-rose-50"
-                      onClick={() => openAddItemDialog('packaging')}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add New Packaging Item
-                    </Button>
-
-                    <Separator />
-
-                    {/* Fixed Total Packaging Cost */}
-                    <div className="bg-rose-50 p-3 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-rose-900">Total Packaging Cost:</span>
-                        <span className="text-lg font-bold text-rose-900">₹{calculatePackagingTotal().toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Miscellaneous Cost Breakdown */}
-              <Card className="border-2 border-gray-200 h-148">
-                <CardHeader className="bg-gray-50">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Calculator className="w-5 h-5 text-gray-600" />
-                    Miscellaneous Cost Breakdown
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4">
-                  <div className="space-y-4">
-                    {/* Fixed Table Header */}
-                    <div className="grid grid-cols-12 gap-2 bg-gray-100 p-2 rounded text-sm font-medium">
-                      <div className="col-span-3 text-center">ITEM</div>
-                      <div className="col-span-3 text-center">DESCRIPTION</div>
-                      <div className="col-span-3 text-center">CONSUMPTION</div>
-                      <div className="col-span-2 text-center">COST</div>
-                      <div className="col-span-1 text-center">  </div>
-                    </div>
-
-                    {/* Scrollable Table Content */}
-                    <div className="h-64 overflow-y-auto scrollbar-hide space-y-4">
-
-                    {/* Consumables */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Consumables" className="text-center text-sm" placeholder="Item" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={miscellaneousCosts.consumables || ''}
-                            onChange={(e) => updateMiscellaneousCost('consumables', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('miscellaneous', 'consumables')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* 2%seconds */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="2%seconds" className="text-center text-sm" placeholder="Item" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={miscellaneousCosts.secondsPercent || ''}
-                            onChange={(e) => updateMiscellaneousCost('secondsPercent', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('miscellaneous', 'secondsPercent')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Factory Exp. */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Factory Exp." className="text-center text-sm" placeholder="Item" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={miscellaneousCosts.factoryExp || ''}
-                            onChange={(e) => updateMiscellaneousCost('factoryExp', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                            placeholder="0.00" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('miscellaneous', 'factoryExp')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Freight */}
-                    <div className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                      <div className="col-span-3">
-                        <Input defaultValue="Freight" className="text-center text-sm" placeholder="Item" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Description" />
-                      </div>
-                      <div className="col-span-3">
-                        <Input className="text-sm" placeholder="Consumption" />
-                      </div>
-                      <div className="col-span-2">
-                        <div className="relative">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input 
-                            type="number" 
-                            value={miscellaneousCosts.freight || ''}
-                            onChange={(e) => updateMiscellaneousCost('freight', Number(e.target.value))}
-                            className="pl-6 text-sm" 
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteDefaultItem('miscellaneous', 'freight')}
-                          className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Custom Miscellaneous Items */}
-                    {customItems.miscellaneous.map((item) => (
-                      <div key={item.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded">
-                        <div className="col-span-3">
-                          <Input value={item.item} readOnly className="text-center text-sm bg-gray-50" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input value={item.description} readOnly className="text-sm bg-gray-50" />
-                        </div>
-                        <div className="col-span-3">
-                          <Input value={item.consumption} readOnly className="text-sm bg-gray-50" />
-                        </div>
-                        <div className="col-span-2">
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input
-                              type="number"
-                              value={miscellaneousCosts[item.id] || ''}
-                              onChange={(e) => updateCustomItemCost('miscellaneous', item.id, Number(e.target.value))}
-                              className="pl-6 text-sm"
-                              placeholder="0.00"
-                            />
-                          </div>
-                        </div>
-                        <div className="col-span-1 flex justify-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteCustomItem('miscellaneous', item.id)}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-
-                    </div>
-
-                    {/* Add New Item Button */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full text-gray-600 border-gray-200 hover:bg-gray-50"
-                      onClick={() => openAddItemDialog('miscellaneous')}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add New Miscellaneous Item
-                    </Button>
-
-                    <Separator />
-
-                    {/* Fixed Total Miscellaneous Cost */}
-                    <div className="bg-gray-50 p-3 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-gray-900">Total Miscellaneous Cost:</span>
-                        <span className="text-lg font-bold text-gray-900">₹{calculateMiscellaneousTotal().toFixed(2)}</span>
-      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Labour Cost + OH Breakdown */}
-              <Card className="border-2 border-amber-200 h-148">
+              <CostCategoryCard
+                key="upper-card"
+                title="Upper Cost Breakdown"
+                category="upper"
+                items={costRows.upper}
+                onUpdateCost={updateItemCost}
+                onDeleteItem={deleteItem}
+                onAddItem={() => openAddItemDialog("upper")}
+                onStageSelect={setItemDepartment}
+                color="orange"
+              />
+
+              <CostCategoryCard
+                key="component-card"
+                title="Component Cost Breakdown"
+                category="component"
+                items={costRows.component}
+                onUpdateCost={updateItemCost}
+                onDeleteItem={deleteItem}
+                onAddItem={() => openAddItemDialog("component")}
+                onStageSelect={setItemDepartment}
+                color="purple"
+              />
+
+              <CostCategoryCard
+                key="material-card"
+                title="Material Cost Breakdown"
+                category="material"
+                items={costRows.material}
+                onUpdateCost={updateItemCost}
+                onDeleteItem={deleteItem}
+                onAddItem={() => openAddItemDialog("material")}
+                onStageSelect={setItemDepartment}
+                color="teal"
+              />
+
+              <CostCategoryCard
+                key="packaging-card"
+                title="Packaging Cost Breakdown"
+                category="packaging"
+                items={costRows.packaging}
+                onUpdateCost={updateItemCost}
+                onDeleteItem={deleteItem}
+                onAddItem={() => openAddItemDialog("packaging")}
+                onStageSelect={setItemDepartment}
+                color="rose"
+              />
+
+              <CostCategoryCard
+                key="miscellaneous-card"
+                title="Miscellaneous Cost Breakdown"
+                category="miscellaneous"
+                items={costRows.miscellaneous}
+                onUpdateCost={updateItemCost}
+                onDeleteItem={deleteItem}
+                onAddItem={() => openAddItemDialog("miscellaneous")}
+                onStageSelect={setItemDepartment}
+                color="gray"
+              />
+
+              {/* Labour Cost Card */}
+              <Card
+                key="labour-card"
+                className="border-2 border-amber-200 h-148"
+              >
                 <CardHeader className="bg-amber-50">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Calculator className="w-5 h-5 text-amber-600" />
@@ -2534,162 +1312,85 @@ export function TentativeCostDialog({ open, onOpenChange, project, onApproved }:
                     {/* Direct Total Labour Cost Input */}
                     <div className="bg-amber-100 p-4 rounded-lg border-2 border-amber-300">
                       <div className="flex justify-between items-center">
-                        <span className="font-medium text-amber-900">Labour + OH Cost:</span>
+                        <span className="font-medium text-amber-900">
+                          Labour + OH Cost:
+                        </span>
                         <div className="relative">
                           <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-amber-600 w-4 h-4" />
-                          <Input 
-                            type="number" 
-                            value={totalLabourCost || ''}
-                            onChange={(e) => setTotalLabourCost(Number(e.target.value))}
-                            className="pl-8 text-lg font-bold text-amber-900 bg-white border-amber-300 w-32" 
+                          <Input
+                            type="number"
+                            value={labourCost.directTotal || 0}
+                            onChange={(e) =>
+                              updateLabourCost({
+                                directTotal: Number(e.target.value) || 0,
+                              })
+                            }
+                            className="pl-8 text-lg font-bold text-amber-900 bg-white border-amber-300 w-32"
                           />
                         </div>
                       </div>
                     </div>
 
-                    <h4 className="font-medium text-amber-900">Individual Labour Components:</h4>
+                    <h4 className="font-medium text-amber-900">
+                      Individual Labour Components:
+                    </h4>
 
-                    {/* Scrollable Labour Items */}
+                    {/* Labour Items */}
                     <div className="h-32 overflow-y-auto scrollbar-hide space-y-3">
-                        {/* Upper */}
-                        <div className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-2 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors">
+                      {labourCost.items.map((item) => (
+                        <div
+                          key={item._id}
+                          className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-2 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors"
+                        >
                           <div>
-                            <Label className="text-amber-800">Upper</Label>
+                            <Label className="text-amber-800">
+                              {item.name}
+                            </Label>
                           </div>
                           <div className="relative">
                             <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input 
-                              type="number" 
-                              value={labourCosts.upper || ''}
-                              onChange={(e) => updateLabourCost('upper', Number(e.target.value))}
-                              className="pl-6 text-sm" 
-                              placeholder="0.00" 
+                            <Input
+                              type="number"
+                              value={item.cost || 0}
+                              onChange={(e) => {
+                                const updatedItems = labourCost.items.map(
+                                  (labourItem) =>
+                                    labourItem._id === item._id
+                                      ? {
+                                          ...labourItem,
+                                          cost: Number(e.target.value) || 0,
+                                        }
+                                      : labourItem
+                                );
+                                updateLabourCost({ items: updatedItems });
+                              }}
+                              className="pl-6 text-sm"
+                              placeholder="0.00"
                             />
                           </div>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => deleteDefaultItem('labour', 'upper')}
+                            onClick={() => {
+                              const updatedItems = labourCost.items.filter(
+                                (labourItem) => labourItem._id !== item._id
+                              );
+                              updateLabourCost({ items: updatedItems });
+                            }}
                             className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
+                      ))}
+                    </div>
 
-                        {/* Assembly */}
-                        <div className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-2 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors">
-                          <div>
-                            <Label className="text-amber-800">Assembly</Label>
-                          </div>
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input 
-                              type="number" 
-                              value={labourCosts.assembly || ''}
-                              onChange={(e) => updateLabourCost('assembly', Number(e.target.value))}
-                              className="pl-6 text-sm" 
-                              placeholder="0.00" 
-                            />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('labour', 'assembly')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-
-                        {/* Printing */}
-                        <div className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-2 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors">
-                          <div>
-                            <Label className="text-amber-800">Printing</Label>
-                          </div>
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input 
-                              type="number" 
-                              value={labourCosts.printing || ''}
-                              onChange={(e) => updateLabourCost('printing', Number(e.target.value))}
-                              className="pl-6 text-sm" 
-                              placeholder="0.00" 
-                            />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('labour', 'printing')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-
-                        {/* Packing */}
-                        <div className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-2 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors">
-                          <div>
-                            <Label className="text-amber-800">Packing</Label>
-                          </div>
-                          <div className="relative">
-                            <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                            <Input 
-                              type="number" 
-                              value={labourCosts.packing || ''}
-                              onChange={(e) => updateLabourCost('packing', Number(e.target.value))}
-                              className="pl-6 text-sm" 
-                              placeholder="0.00" 
-                            />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDefaultItem('labour', 'packing')}
-                            className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-
-                        {/* Custom Labour Items */}
-                        {customItems.labour && customItems.labour.map((item) => (
-                          <div key={item.id} className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-2 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors">
-                            <div>
-                              <Label className="text-amber-800">{item.item}</Label>
-                            </div>
-                            <div className="relative">
-                              <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                              <Input 
-                                type="number" 
-                                value={labourCosts[item.id] || ''}
-                                onChange={(e) => {
-                                  setLabourCosts(prev => ({
-                                    ...prev,
-                                    [item.id]: Number(e.target.value) || 0
-                                  }));
-                                }}
-                                className="pl-6 text-sm" 
-                                placeholder="0.00" 
-                              />
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteCustomItem('labour', item.id)}
-                              className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-
-                    {/* Fixed Add New Labour Component Button */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    {/* Add New Labour Component Button */}
+                    <Button
+                      variant="outline"
+                      size="sm"
                       className="w-full text-amber-600 border-amber-200 hover:bg-amber-50"
-                      onClick={() => openAddItemDialog('labour')}
+                      onClick={() => openAddItemDialog("labour")}
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Add New Labour Component
@@ -2697,124 +1398,147 @@ export function TentativeCostDialog({ open, onOpenChange, project, onApproved }:
 
                     <Separator />
 
-                    {/* Fixed Total Labour Cost */}
+                    {/* Total Labour Cost */}
                     <div className="bg-amber-50 p-3 rounded-lg">
                       <div className="flex justify-between items-center">
-                        <span className="font-medium text-amber-900">Total Labour Cost:</span>
-                        <span className="text-lg font-bold text-amber-900">₹{totalLabourCost.toFixed(2)}</span>
+                        <span className="font-medium text-amber-900">
+                          Total Labour Cost:
+                        </span>
+                        <span className="text-lg font-bold text-amber-900">
+                          ₹{(labourCost.directTotal || 0).toFixed(2)}
+                        </span>
                       </div>
                     </div>
-
-                   
                   </div>
                 </CardContent>
               </Card>
             </div>
 
-            {/* Fourth row for Profit & Final Calculation */}
-            <div className="grid grid-cols-1">
-              {/* Profit & Final Calculation */}
-              <Card className="border-2 border-green-200">
-                <CardHeader className="bg-green-50">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Calculator className="w-5 h-5 text-green-600" />
-                    Final Cost Summary
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-600">Additional Costs</Label>
-                    <div className="relative mt-1">
-                      <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        type="number"
-                        value={additionalCosts}
-                        onChange={(e) => setAdditionalCosts(Number(e.target.value))}
-                        className="pl-10"
-                        placeholder="Additional costs (optional)"
-                      />
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Shipping, packaging, misc costs
-                    </div>
+            {/* Final Cost Summary */}
+            <Card className="border-2 border-green-200">
+              <CardHeader className="bg-green-50">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Calculator className="w-5 h-5 text-green-600" />
+                  Final Cost Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-600">
+                    Additional Costs
+                  </Label>
+                  <div className="relative mt-1">
+                    <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Input
+                      type="number"
+                      value={displaySummary.additionalCosts || 0}
+                      onChange={(e) =>
+                        handleAdditionalCostsChange(Number(e.target.value))
+                      }
+                      className="pl-10"
+                      placeholder="Additional costs (optional)"
+                    />
                   </div>
+                </div>
 
-                  <div>
-                    <Label className="text-sm font-medium text-gray-600">Profit Margin (%)</Label>
-                    <div className="relative mt-1">
-                      <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        type="number"
-                        value={profitMargin}
-                        onChange={(e) => setProfitMargin(Number(e.target.value))}
-                        className="pl-10"
-                        placeholder="Enter profit margin %"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                      />
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Profit percentage on total costs
-                    </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-600">
+                    Profit Margin (%)
+                  </Label>
+                  <div className="relative mt-1">
+                    <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Input
+                      type="number"
+                      value={displaySummary.profitMargin || 25}
+                      onChange={(e) =>
+                        handleProfitMarginChange(Number(e.target.value))
+                      }
+                      className="pl-10"
+                      placeholder="Enter profit margin %"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Cost Summary */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Upper Cost:</span>
+                    <span className="font-medium">
+                      {formatCurrency(displaySummary.upperTotal || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Component Cost:</span>
+                    <span className="font-medium">
+                      {formatCurrency(displaySummary.componentTotal || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Material Cost:</span>
+                    <span className="font-medium">
+                      {formatCurrency(displaySummary.materialTotal || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Packaging Cost:</span>
+                    <span className="font-medium">
+                      {formatCurrency(displaySummary.packagingTotal || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Miscellaneous Cost:</span>
+                    <span className="font-medium">
+                      {formatCurrency(displaySummary.miscTotal || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Labour + OH Cost:</span>
+                    <span className="font-medium">
+                      {formatCurrency(displaySummary.labourTotal || 0)}
+                    </span>
                   </div>
 
                   <Separator />
+                  <div className="flex justify-between text-sm font-medium bg-blue-50 p-2 rounded">
+                    <span className="text-blue-900">Total All Costs:</span>
+                    <span className="text-blue-900">
+                      {formatCurrency(displaySummary.totalAllCosts || 0)}
+                    </span>
+                  </div>
 
-                  {/* Cost Summary */}
-                  <div className="space-y-2">
-
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Upper Cost:</span>
-                      <span className="font-medium">{formatCurrency(calculateUpperTotal())}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Component Cost:</span>
-                      <span className="font-medium">{formatCurrency(calculateComponentTotal())}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Material Cost:</span>
-                      <span className="font-medium">{formatCurrency(calculateMaterialTotal())}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Packaging Cost:</span>
-                      <span className="font-medium">{formatCurrency(calculatePackagingTotal())}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Miscellaneous Cost:</span>
-                      <span className="font-medium">{formatCurrency(calculateMiscellaneousTotal())}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Labour + OH Cost:</span>
-                      <span className="font-medium">{formatCurrency(totalLabourCost)}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between text-sm font-medium bg-blue-50 p-2 rounded">
-                      <span className="text-blue-900">Total All Costs:</span>
-                      <span className="text-blue-900">{formatCurrency(calculateUpperTotal() + calculateComponentTotal() + calculateMaterialTotal() + calculatePackagingTotal() + calculateMiscellaneousTotal() + totalLabourCost)}</span>
-                    </div>
-
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Additional Costs:</span>
-                      <span className="font-medium">+{formatCurrency(additionalCosts)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Profit ({profitMargin}%):</span>
-                      <span className="font-medium">+{formatCurrency(profitAmount)}</span>
-                    </div>
-                    <Separator />
-                    <div className="bg-green-50 p-3 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-green-900">Tentative Cost:</span>
-                        <span className="text-xl font-bold text-green-900">{formatCurrency(tentativeCost)}</span>
-                      </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Additional Costs:</span>
+                    <span className="font-medium">
+                      +{formatCurrency(displaySummary.additionalCosts || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">
+                      Profit ({displaySummary.profitMargin || 25}%):
+                    </span>
+                    <span className="font-medium">
+                      +{formatCurrency(displaySummary.profitAmount || 0)}
+                    </span>
+                  </div>
+                  <Separator />
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-green-900">
+                        Tentative Cost:
+                      </span>
+                      <span className="text-xl font-bold text-green-900">
+                        {formatCurrency(displaySummary.tentativeCost || 0)}
+                      </span>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-
-
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Remarks Section */}
             <Card>
@@ -2822,10 +1546,12 @@ export function TentativeCostDialog({ open, onOpenChange, project, onApproved }:
                 <CardTitle className="text-lg">Notes</CardTitle>
               </CardHeader>
               <CardContent className="p-4">
-                <Label className="text-sm font-medium text-gray-600">Remarks & Justification</Label>
+                <Label className="text-sm font-medium text-gray-600">
+                  Remarks & Justification
+                </Label>
                 <Textarea
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
+                  value={displaySummary.remarks || ""}
+                  onChange={(e) => handleRemarksChange(e.target.value)}
                   className="mt-2"
                   rows={3}
                   placeholder="Add notes about cost calculation methodology, assumptions, or special considerations..."
@@ -2838,70 +1564,56 @@ export function TentativeCostDialog({ open, onOpenChange, project, onApproved }:
         {/* Sticky Footer */}
         <div className="sticky bottom-0 z-40 flex items-center justify-between px-6 py-4 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-t-2 border-gray-200 shadow-lg">
           <div className="flex items-center gap-4">
-            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+            <Badge
+              variant="outline"
+              className="bg-blue-50 text-blue-700 border-blue-200"
+            >
               Project: {project.autoCode}
             </Badge>
             <div className="text-sm text-gray-600">
-              Ready for Red Seal Approval
+              Status:{" "}
+              {displaySummary.status === "draft"
+                ? "Draft"
+                : "Ready for Red Seal"}
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-sm text-gray-600">
-              Total: <span className="font-bold text-green-600">{formatCurrency(tentativeCost)}</span>
+              Total:{" "}
+              <span className="font-bold text-green-600">
+                {formatCurrency(displaySummary.tentativeCost || 0)}
+              </span>
             </div>
-            <Button 
+            <Button
               onClick={handleApprove}
               className="bg-[rgba(0,188,125,1)] hover:bg-green-600"
-              disabled={tentativeCost === 0}
+              disabled={
+                displaySummary.tentativeCost === 0 ||
+                isLoading ||
+                displaySummary.status !== "ready_for_red_seal"
+              }
             >
               <ArrowRight className="w-4 h-4 mr-2" />
-              Approve & Advance to Red Seal
+              {isLoading ? "Processing..." : "Approve & Advance to Red Seal"}
             </Button>
           </div>
         </div>
       </DialogContent>
 
       {/* Add New Item Dialogs */}
-      <AddNewItemDialog 
-        category="upper" 
-        isOpen={addItemDialogs.upper} 
-        onClose={() => closeAddItemDialog('upper')}
-        formData={getCurrentFormData('upper')}
-        onFormChange={(field, value) => updateDialogForm('upper', field, value)}
-        onAddItem={() => handleAddNewItem('upper')}
-      />
-      <AddNewItemDialog 
-        category="component" 
-        isOpen={addItemDialogs.component} 
-        onClose={() => closeAddItemDialog('component')}
-        formData={getCurrentFormData('component')}
-        onFormChange={(field, value) => updateDialogForm('component', field, value)}
-        onAddItem={() => handleAddNewItem('component')}
-      />
-      <AddNewItemDialog 
-        category="material" 
-        isOpen={addItemDialogs.material} 
-        onClose={() => closeAddItemDialog('material')}
-        formData={getCurrentFormData('material')}
-        onFormChange={(field, value) => updateDialogForm('material', field, value)}
-        onAddItem={() => handleAddNewItem('material')}
-      />
-      <AddNewItemDialog 
-        category="packaging" 
-        isOpen={addItemDialogs.packaging} 
-        onClose={() => closeAddItemDialog('packaging')}
-        formData={getCurrentFormData('packaging')}
-        onFormChange={(field, value) => updateDialogForm('packaging', field, value)}
-        onAddItem={() => handleAddNewItem('packaging')}
-      />
-      <AddNewItemDialog 
-        category="miscellaneous" 
-        isOpen={addItemDialogs.miscellaneous} 
-        onClose={() => closeAddItemDialog('miscellaneous')}
-        formData={getCurrentFormData('miscellaneous')}
-        onFormChange={(field, value) => updateDialogForm('miscellaneous', field, value)}
-        onAddItem={() => handleAddNewItem('miscellaneous')}
-      />
+      {Object.keys(addItemDialogs).map((category) => (
+        <AddNewItemDialog
+          key={`dialog-${category}`}
+          category={category}
+          isOpen={addItemDialogs[category as keyof typeof addItemDialogs]}
+          onClose={() => closeAddItemDialog(category)}
+          formData={dialogForms[category as keyof typeof dialogForms]}
+          onFormChange={(field, value) =>
+            updateDialogForm(category, field, value)
+          }
+          onAddItem={() => handleAddNewItem(category)}
+        />
+      ))}
     </Dialog>
   );
 }

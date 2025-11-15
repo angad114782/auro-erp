@@ -35,23 +35,13 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "./ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "./ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { useERPStore } from "../lib/data-store";
 import { CreateProjectDialog } from "./CreateProjectDialog";
-import { ProjectDetailsDialog } from "./ProjectDetailsDialog";
+import ProjectDetailsDialog from "./ProjectDetailsDialog";
 import { POPendingProjectDetailsDialog } from "./POTargetProjectDetailsDialog";
 import { POApprovedProjectDetailsDialog } from "./POApprovedProjectDetailsDialog";
 import { toast } from "sonner@2.0.3";
@@ -71,14 +61,12 @@ export function POTargetDate() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
-  const [projectDetailsOpen, setProjectDetailsOpen] =
-    useState(false);
-  const [poPendingDetailsOpen, setPOPendingDetailsOpen] =
-    useState(false);
-  const [poApprovedDetailsOpen, setPOApprovedDetailsOpen] =
-    useState(false);
-  const [selectedProject, setSelectedProject] =
-    useState<RDProject | null>(null);
+  const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
+  const [poPendingDetailsOpen, setPOPendingDetailsOpen] = useState(false);
+  const [poApprovedDetailsOpen, setPOApprovedDetailsOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<RDProject | null>(
+    null
+  );
 
   const getStageColor = (stage: string) => {
     const colors: Record<string, string> = {
@@ -123,10 +111,10 @@ export function POTargetDate() {
     const searchFiltered = rdProjects.filter((project) => {
       const matchesSearch =
         (project.autoCode?.toLowerCase() || "").includes(
-          searchTerm.toLowerCase(),
+          searchTerm.toLowerCase()
         ) ||
         (project.remarks?.toLowerCase() || "").includes(
-          searchTerm.toLowerCase(),
+          searchTerm.toLowerCase()
         );
       return matchesSearch;
     });
@@ -137,15 +125,13 @@ export function POTargetDate() {
           (p) =>
             (p.status === "Final Approved" && p.poReceived) ||
             p.status === "PO Issued" ||
-            (p.status === "PO Target" &&
-              p.poStatus === "Approved"),
+            (p.status === "PO Target" && p.poStatus === "Approved")
         );
       case "po-pending":
         return searchFiltered.filter(
           (p) =>
             (p.status === "Final Approved" && !p.poReceived) ||
-            (p.status === "PO Target" &&
-              p.poStatus === "Pending"),
+            (p.status === "PO Target" && p.poStatus === "Pending")
         );
       default:
         return searchFiltered;
@@ -154,10 +140,7 @@ export function POTargetDate() {
 
   const getPaginatedProjects = (projects: any[]) => {
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return projects.slice(
-      startIndex,
-      startIndex + itemsPerPage,
-    );
+    return projects.slice(startIndex, startIndex + itemsPerPage);
   };
 
   const getTotalPages = (totalItems: number) => {
@@ -167,12 +150,14 @@ export function POTargetDate() {
   const handleProjectClick = (project: RDProject) => {
     setSelectedProject(project);
     // Open correct dialog based on project status
-    const isPending = (project.status === "Final Approved" && !project.poReceived) ||
-                      (project.status === "PO Target" && project.poStatus === "Pending");
-    const isApproved = (project.status === "Final Approved" && project.poReceived) ||
-                       project.status === "PO Issued" ||
-                       (project.status === "PO Target" && project.poStatus === "Approved");
-    
+    const isPending =
+      (project.status === "Final Approved" && !project.poReceived) ||
+      (project.status === "PO Target" && project.poStatus === "Pending");
+    const isApproved =
+      (project.status === "Final Approved" && project.poReceived) ||
+      project.status === "PO Issued" ||
+      (project.status === "PO Target" && project.poStatus === "Approved");
+
     if (isApproved) {
       setPOApprovedDetailsOpen(true);
     } else {
@@ -181,10 +166,7 @@ export function POTargetDate() {
   };
 
   // Calculate duration between start date and PO target date
-  const calculateDuration = (
-    startDate: string,
-    poTargetDate?: string,
-  ) => {
+  const calculateDuration = (startDate: string, poTargetDate?: string) => {
     if (!poTargetDate) return "TBD";
 
     const start = new Date(startDate);
@@ -192,12 +174,9 @@ export function POTargetDate() {
 
     // Calculate difference in days
     const diffTime = target.getTime() - start.getTime();
-    const diffDays = Math.ceil(
-      diffTime / (1000 * 60 * 60 * 24),
-    );
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays < 0)
-      return `${Math.abs(diffDays)} days overdue`;
+    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
     if (diffDays === 0) return "Due today";
     return `${diffDays} days`;
   };
@@ -214,9 +193,9 @@ export function POTargetDate() {
           Showing {paginatedProjects.length} of {allProjects.length} results
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             disabled={currentPage === 1}
             onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
           >
@@ -229,18 +208,24 @@ export function POTargetDate() {
                 key={pageNumber}
                 size="sm"
                 variant={currentPage === pageNumber ? "default" : "outline"}
-                className={currentPage === pageNumber ? "bg-blue-500 hover:bg-blue-600" : ""}
+                className={
+                  currentPage === pageNumber
+                    ? "bg-blue-500 hover:bg-blue-600"
+                    : ""
+                }
                 onClick={() => setCurrentPage(pageNumber)}
               >
                 {pageNumber}
               </Button>
             );
           })}
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+            onClick={() =>
+              setCurrentPage(Math.min(totalPages, currentPage + 1))
+            }
           >
             Next
           </Button>
@@ -264,8 +249,8 @@ export function POTargetDate() {
                   PO Target Date Management
                 </CardTitle>
                 <p className="text-sm text-gray-600 mt-1">
-                  Track and manage purchase order timelines and
-                  delivery schedules
+                  Track and manage purchase order timelines and delivery
+                  schedules
                 </p>
               </div>
             </div>
@@ -401,221 +386,200 @@ export function POTargetDate() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {getPaginatedProjects(
-                      getProjectsByTab("po-pending"),
-                    ).length > 0 ? (
-                      getPaginatedProjects(
-                        getProjectsByTab("po-pending"),
-                      ).map((project, index) => {
-                        const brand = brands.find(
-                          (b) => b.id === project.brandId,
-                        );
-                        const company = companies.find(
-                          (c) => c.id === brand?.companyId,
-                        );
-                        const category = categories.find(
-                          (c) => c.id === project.categoryId,
-                        );
-                        const type = types.find(
-                          (t) => t.id === project.typeId,
-                        );
-                        const color = colors.find(
-                          (cl) => cl.id === project.colorId,
-                        );
-                        const country = countries.find(
-                          (co) => co.id === project.countryId,
-                        );
+                    {getPaginatedProjects(getProjectsByTab("po-pending"))
+                      .length > 0 ? (
+                      getPaginatedProjects(getProjectsByTab("po-pending")).map(
+                        (project, index) => {
+                          const brand = brands.find(
+                            (b) => b.id === project.brandId
+                          );
+                          const company = companies.find(
+                            (c) => c.id === brand?.companyId
+                          );
+                          const category = categories.find(
+                            (c) => c.id === project.categoryId
+                          );
+                          const type = types.find(
+                            (t) => t.id === project.typeId
+                          );
+                          const color = colors.find(
+                            (cl) => cl.id === project.colorId
+                          );
+                          const country = countries.find(
+                            (co) => co.id === project.countryId
+                          );
 
-                        return (
-                          <tr
-                            key={project.id}
-                            className="hover:bg-gray-50 cursor-pointer"
-                            onClick={() =>
-                              handleProjectClick(project)
-                            }
-                          >
-                            {/* Product Code */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
-                                  {String(index + 1).padStart(
-                                    2,
-                                    "0",
+                          return (
+                            <tr
+                              key={project.id}
+                              className="hover:bg-gray-50 cursor-pointer"
+                              onClick={() => handleProjectClick(project)}
+                            >
+                              {/* Product Code */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center">
+                                  <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
+                                    {String(index + 1).padStart(2, "0")}
+                                  </div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {project.autoCode}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Image & Profile */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center justify-center">
+                                  {project.coverPhoto ? (
+                                    <img
+                                      src={project.coverPhoto}
+                                      alt="Product"
+                                      className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
+                                    />
+                                  ) : (
+                                    <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                                      <ImageIcon className="w-6 h-6 text-gray-400" />
+                                    </div>
                                   )}
                                 </div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {project.autoCode}
-                                </div>
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* Image & Profile */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center justify-center">
-                                {project.coverPhoto ? (
-                                  <img 
-                                    src={project.coverPhoto} 
-                                    alt="Product" 
-                                    className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
-                                  />
-                                ) : (
-                                  <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-                                    <ImageIcon className="w-6 h-6 text-gray-400" />
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Company & Brand */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {company?.companyName ||
-                                    "Unknown Company"}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  {brand?.brandName || "Unknown Brand"}
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Category, Type & Gender */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900">
-                                {category?.categoryName ||
-                                  "Unknown"}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {type?.typeName || "Unknown"}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                Unisex
-                              </div>
-                            </td>
-
-                            {/* Art & Colour */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div
-                                  className="w-4 h-4 rounded border border-gray-300 mr-2"
-                                  style={{
-                                    backgroundColor:
-                                      color?.hexCode ||
-                                      "#cccccc",
-                                  }}
-                                ></div>
+                              {/* Company & Brand */}
+                              <td className="px-6 py-4 whitespace-nowrap">
                                 <div>
                                   <div className="text-sm font-medium text-gray-900">
-                                    {project.remarks
-                                      ?.split(" ")
-                                      .slice(0, 2)
-                                      .join(" ") ||
-                                      "Product Design"}
+                                    {company?.companyName || "Unknown Company"}
                                   </div>
                                   <div className="text-sm text-gray-500">
-                                    {color?.colorName ||
-                                      "Unknown"}
+                                    {brand?.brandName || "Unknown Brand"}
                                   </div>
                                 </div>
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* Country */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900">
-                                {country?.countryName ||
-                                  "Unknown"}
-                              </div>
-                            </td>
-
-                            {/* PO Number */}
-                            <td className="px-6 py-4 whitespace-nowrap w-44 min-w-[176px]">
-                              <div className="text-sm font-medium text-gray-500">
-                                Pending Assignment
-                              </div>
-                              <div className="text-xs text-orange-600">
-                                Not Assigned
-                              </div>
-                            </td>
-
-                            {/* Timeline, Dates & Duration */}
-                            <td className="px-6 py-4 whitespace-nowrap w-48 min-w-[192px]">
-                              <div>
-                                <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
-                                  <Clock className="w-3 h-3 text-gray-500" />
-                                  <span>
-                                    Start:{" "}
-                                    {new Date(
-                                      project.startDate,
-                                    ).toLocaleDateString(
-                                      "en-IN",
-                                    )}
-                                  </span>
+                              {/* Category, Type & Gender */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {category?.categoryName || "Unknown"}
                                 </div>
-                                <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
-                                  <Target className="w-3 h-3 text-gray-500" />
-                                  <span>
-                                    Target:{" "}
-                                    {project.poTarget
-                                      ? new Date(
-                                          project.poTarget,
-                                        ).toLocaleDateString(
-                                          "en-IN",
-                                        )
-                                      : "TBD"}
-                                  </span>
+                                <div className="text-sm text-gray-500">
+                                  {type?.typeName || "Unknown"}
                                 </div>
-                                <div className="flex items-center space-x-1 text-xs mb-1">
-                                  <Calendar className="w-3 h-3 text-gray-500" />
-                                  <span
-                                    className={`font-medium ${
-                                      project.poTarget &&
-                                      calculateDuration(
-                                        project.startDate,
-                                        project.poTarget,
-                                      ).includes("overdue")
-                                        ? "text-red-600"
-                                        : project.poTarget &&
+                                <div className="text-sm text-gray-500">
+                                  Unisex
+                                </div>
+                              </td>
+
+                              {/* Art & Colour */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center">
+                                  <div
+                                    className="w-4 h-4 rounded border border-gray-300 mr-2"
+                                    style={{
+                                      backgroundColor:
+                                        color?.hexCode || "#cccccc",
+                                    }}
+                                  ></div>
+                                  <div>
+                                    <div className="text-sm font-medium text-gray-900">
+                                      {project.remarks
+                                        ?.split(" ")
+                                        .slice(0, 2)
+                                        .join(" ") || "Product Design"}
+                                    </div>
+                                    <div className="text-sm text-gray-500">
+                                      {color?.colorName || "Unknown"}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Country */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {country?.countryName || "Unknown"}
+                                </div>
+                              </td>
+
+                              {/* PO Number */}
+                              <td className="px-6 py-4 whitespace-nowrap w-44 min-w-[176px]">
+                                <div className="text-sm font-medium text-gray-500">
+                                  Pending Assignment
+                                </div>
+                                <div className="text-xs text-orange-600">
+                                  Not Assigned
+                                </div>
+                              </td>
+
+                              {/* Timeline, Dates & Duration */}
+                              <td className="px-6 py-4 whitespace-nowrap w-48 min-w-[192px]">
+                                <div>
+                                  <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
+                                    <Clock className="w-3 h-3 text-gray-500" />
+                                    <span>
+                                      Start:{" "}
+                                      {new Date(
+                                        project.startDate
+                                      ).toLocaleDateString("en-IN")}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
+                                    <Target className="w-3 h-3 text-gray-500" />
+                                    <span>
+                                      Target:{" "}
+                                      {project.poTarget
+                                        ? new Date(
+                                            project.poTarget
+                                          ).toLocaleDateString("en-IN")
+                                        : "TBD"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center space-x-1 text-xs mb-1">
+                                    <Calendar className="w-3 h-3 text-gray-500" />
+                                    <span
+                                      className={`font-medium ${
+                                        project.poTarget &&
+                                        calculateDuration(
+                                          project.startDate,
+                                          project.poTarget
+                                        ).includes("overdue")
+                                          ? "text-red-600"
+                                          : project.poTarget &&
                                             calculateDuration(
                                               project.startDate,
-                                              project.poTarget,
-                                            ).includes(
-                                              "Due today",
-                                            )
+                                              project.poTarget
+                                            ).includes("Due today")
                                           ? "text-orange-600"
                                           : "text-gray-700"
-                                    }`}
-                                  >
-                                    Duration:{" "}
-                                    {calculateDuration(
-                                      project.startDate,
-                                      project.poTarget,
-                                    )}
-                                  </span>
-                                </div>
-                                {project.nextUpdateDate && (
-                                  <div className="text-xs text-yellow-800 font-medium">
-                                    Next Update:{" "}
-                                    {new Date(
-                                      project.nextUpdateDate,
-                                    ).toLocaleDateString(
-                                      "en-IN",
-                                    )}
+                                      }`}
+                                    >
+                                      Duration:{" "}
+                                      {calculateDuration(
+                                        project.startDate,
+                                        project.poTarget
+                                      )}
+                                    </span>
                                   </div>
-                                )}
-                              </div>
-                            </td>
+                                  {project.nextUpdateDate && (
+                                    <div className="text-xs text-yellow-800 font-medium">
+                                      Next Update:{" "}
+                                      {new Date(
+                                        project.nextUpdateDate
+                                      ).toLocaleDateString("en-IN")}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
 
-                            {/* Remarks */}
-                            <td className="px-6 py-4">
-                              <div className="text-sm text-gray-900 max-w-xs truncate">
-                                {project.remarks ||
-                                  "No remarks"}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
+                              {/* Remarks */}
+                              <td className="px-6 py-4">
+                                <div className="text-sm text-gray-900 max-w-xs truncate">
+                                  {project.remarks || "No remarks"}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+                      )
                     ) : (
                       <tr>
                         <td
@@ -631,8 +595,7 @@ export function POTargetDate() {
                                 No pending PO projects found
                               </p>
                               <p className="text-sm text-gray-500 mt-1">
-                                Projects awaiting PO assignment
-                                will appear here
+                                Projects awaiting PO assignment will appear here
                               </p>
                             </div>
                           </div>
@@ -642,9 +605,7 @@ export function POTargetDate() {
                   </tbody>
                 </table>
               </div>
-              {renderPagination(
-                getProjectsByTab("po-pending"),
-              )}
+              {renderPagination(getProjectsByTab("po-pending"))}
             </TabsContent>
 
             <TabsContent value="po-approved">
@@ -730,227 +691,208 @@ export function POTargetDate() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {getPaginatedProjects(
-                      getProjectsByTab("po-approved"),
-                    ).length > 0 ? (
-                      getPaginatedProjects(
-                        getProjectsByTab("po-approved"),
-                      ).map((project, index) => {
-                        const brand = brands.find(
-                          (b) => b.id === project.brandId,
-                        );
-                        const company = companies.find(
-                          (c) => c.id === brand?.companyId,
-                        );
-                        const category = categories.find(
-                          (c) => c.id === project.categoryId,
-                        );
-                        const type = types.find(
-                          (t) => t.id === project.typeId,
-                        );
-                        const color = colors.find(
-                          (cl) => cl.id === project.colorId,
-                        );
-                        const country = countries.find(
-                          (co) => co.id === project.countryId,
-                        );
+                    {getPaginatedProjects(getProjectsByTab("po-approved"))
+                      .length > 0 ? (
+                      getPaginatedProjects(getProjectsByTab("po-approved")).map(
+                        (project, index) => {
+                          const brand = brands.find(
+                            (b) => b.id === project.brandId
+                          );
+                          const company = companies.find(
+                            (c) => c.id === brand?.companyId
+                          );
+                          const category = categories.find(
+                            (c) => c.id === project.categoryId
+                          );
+                          const type = types.find(
+                            (t) => t.id === project.typeId
+                          );
+                          const color = colors.find(
+                            (cl) => cl.id === project.colorId
+                          );
+                          const country = countries.find(
+                            (co) => co.id === project.countryId
+                          );
 
-                        return (
-                          <tr
-                            key={project.id}
-                            className="hover:bg-gray-50 cursor-pointer"
-                            onClick={() =>
-                              handleProjectClick(project)
-                            }
-                          >
-                            {/* Product Code */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
-                                  {String(index + 1).padStart(
-                                    2,
-                                    "0",
+                          return (
+                            <tr
+                              key={project.id}
+                              className="hover:bg-gray-50 cursor-pointer"
+                              onClick={() => handleProjectClick(project)}
+                            >
+                              {/* Product Code */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center">
+                                  <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
+                                    {String(index + 1).padStart(2, "0")}
+                                  </div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {project.autoCode}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Image & Profile */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center justify-center">
+                                  {project.coverPhoto ? (
+                                    <img
+                                      src={project.coverPhoto}
+                                      alt="Product"
+                                      className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
+                                    />
+                                  ) : (
+                                    <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                                      <ImageIcon className="w-6 h-6 text-gray-400" />
+                                    </div>
                                   )}
                                 </div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {project.autoCode}
-                                </div>
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* Image & Profile */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center justify-center">
-                                {project.coverPhoto ? (
-                                  <img 
-                                    src={project.coverPhoto} 
-                                    alt="Product" 
-                                    className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
-                                  />
-                                ) : (
-                                  <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-                                    <ImageIcon className="w-6 h-6 text-gray-400" />
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Company & Brand */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {company?.companyName ||
-                                    "Unknown Company"}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  {brand?.brandName || "Unknown Brand"}
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Category, Type & Gender */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900">
-                                {category?.categoryName ||
-                                  "Unknown"}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {type?.typeName || "Unknown"}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                Unisex
-                              </div>
-                            </td>
-
-                            {/* Art & Colour */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div
-                                  className="w-4 h-4 rounded border border-gray-300 mr-2"
-                                  style={{
-                                    backgroundColor:
-                                      color?.hexCode ||
-                                      "#cccccc",
-                                  }}
-                                ></div>
+                              {/* Company & Brand */}
+                              <td className="px-6 py-4 whitespace-nowrap">
                                 <div>
                                   <div className="text-sm font-medium text-gray-900">
-                                    {project.remarks
-                                      ?.split(" ")
-                                      .slice(0, 2)
-                                      .join(" ") ||
-                                      "Product Design"}
+                                    {company?.companyName || "Unknown Company"}
                                   </div>
                                   <div className="text-sm text-gray-500">
-                                    {color?.colorName ||
-                                      "Unknown"}
+                                    {brand?.brandName || "Unknown Brand"}
                                   </div>
                                 </div>
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* Country */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900">
-                                {country?.countryName ||
-                                  "Unknown"}
-                              </div>
-                            </td>
+                              {/* Category, Type & Gender */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {category?.categoryName || "Unknown"}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {type?.typeName || "Unknown"}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  Unisex
+                                </div>
+                              </td>
 
-                            {/* PO Number */}
-                            <td className="px-6 py-4 whitespace-nowrap w-44 min-w-[176px]">
-                              {project.poNumber ? (
+                              {/* Art & Colour */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center">
+                                  <div
+                                    className="w-4 h-4 rounded border border-gray-300 mr-2"
+                                    style={{
+                                      backgroundColor:
+                                        color?.hexCode || "#cccccc",
+                                    }}
+                                  ></div>
+                                  <div>
+                                    <div className="text-sm font-medium text-gray-900">
+                                      {project.remarks
+                                        ?.split(" ")
+                                        .slice(0, 2)
+                                        .join(" ") || "Product Design"}
+                                    </div>
+                                    <div className="text-sm text-gray-500">
+                                      {color?.colorName || "Unknown"}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Country */}
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {country?.countryName || "Unknown"}
+                                </div>
+                              </td>
+
+                              {/* PO Number */}
+                              <td className="px-6 py-4 whitespace-nowrap w-44 min-w-[176px]">
+                                {project.poNumber ? (
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <CheckCircle className="w-4 h-4 text-green-600" />
+                                      <span className="text-sm font-semibold text-gray-900 font-mono">
+                                        {project.poNumber}
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-green-600 ml-6">
+                                      Approved
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <div className="text-sm font-medium text-gray-500">
+                                      Pending Assignment
+                                    </div>
+                                    <div className="text-xs text-orange-600">
+                                      Not Assigned
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* Timeline, Dates & Duration */}
+                              <td className="px-6 py-4 whitespace-nowrap w-48 min-w-[192px]">
                                 <div>
-                                  <div className="flex items-center gap-2">
-                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                    <span className="text-sm font-semibold text-gray-900 font-mono">
-                                      {project.poNumber}
+                                  <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
+                                    <Clock className="w-3 h-3 text-gray-500" />
+                                    <span>
+                                      Start:{" "}
+                                      {new Date(
+                                        project.startDate
+                                      ).toLocaleDateString("en-IN")}
                                     </span>
                                   </div>
-                                  <div className="text-xs text-green-600 ml-6">
-                                    Approved
+                                  <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
+                                    <Target className="w-3 h-3 text-gray-500" />
+                                    <span>
+                                      Target:{" "}
+                                      {project.poTarget
+                                        ? new Date(
+                                            project.poTarget
+                                          ).toLocaleDateString("en-IN")
+                                        : "TBD"}
+                                    </span>
                                   </div>
-                                </div>
-                              ) : (
-                                <div>
-                                  <div className="text-sm font-medium text-gray-500">
-                                    Pending Assignment
-                                  </div>
-                                  <div className="text-xs text-orange-600">
-                                    Not Assigned
-                                  </div>
-                                </div>
-                              )}
-                            </td>
-
-                            {/* Timeline, Dates & Duration */}
-                            <td className="px-6 py-4 whitespace-nowrap w-48 min-w-[192px]">
-                              <div>
-                                <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
-                                  <Clock className="w-3 h-3 text-gray-500" />
-                                  <span>
-                                    Start:{" "}
-                                    {new Date(
-                                      project.startDate,
-                                    ).toLocaleDateString(
-                                      "en-IN",
-                                    )}
-                                  </span>
-                                </div>
-                                <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
-                                  <Target className="w-3 h-3 text-gray-500" />
-                                  <span>
-                                    Target:{" "}
-                                    {project.poTarget
-                                      ? new Date(
-                                          project.poTarget,
-                                        ).toLocaleDateString(
-                                          "en-IN",
-                                        )
-                                      : "TBD"}
-                                  </span>
-                                </div>
-                                <div className="flex items-center space-x-1 text-xs mb-1">
-                                  <Calendar className="w-3 h-3 text-gray-500" />
-                                  <span
-                                    className={`font-medium ${
-                                      project.poTarget &&
-                                      calculateDuration(
-                                        project.startDate,
-                                        project.poTarget,
-                                      ).includes("overdue")
-                                        ? "text-red-600"
-                                        : project.poTarget &&
+                                  <div className="flex items-center space-x-1 text-xs mb-1">
+                                    <Calendar className="w-3 h-3 text-gray-500" />
+                                    <span
+                                      className={`font-medium ${
+                                        project.poTarget &&
+                                        calculateDuration(
+                                          project.startDate,
+                                          project.poTarget
+                                        ).includes("overdue")
+                                          ? "text-red-600"
+                                          : project.poTarget &&
                                             calculateDuration(
                                               project.startDate,
-                                              project.poTarget,
-                                            ).includes(
-                                              "Due today",
-                                            )
+                                              project.poTarget
+                                            ).includes("Due today")
                                           ? "text-orange-600"
                                           : "text-gray-700"
-                                    }`}
-                                  >
-                                    Duration:{" "}
-                                    {calculateDuration(
-                                      project.startDate,
-                                      project.poTarget,
-                                    )}
-                                  </span>
+                                      }`}
+                                    >
+                                      Duration:{" "}
+                                      {calculateDuration(
+                                        project.startDate,
+                                        project.poTarget
+                                      )}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* Remarks */}
-                            <td className="px-6 py-4">
-                              <div className="text-sm text-gray-900 max-w-xs truncate">
-                                {project.remarks ||
-                                  "No remarks"}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
+                              {/* Remarks */}
+                              <td className="px-6 py-4">
+                                <div className="text-sm text-gray-900 max-w-xs truncate">
+                                  {project.remarks || "No remarks"}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+                      )
                     ) : (
                       <tr>
                         <td
@@ -966,8 +908,8 @@ export function POTargetDate() {
                                 No approved PO projects found
                               </p>
                               <p className="text-sm text-gray-500 mt-1">
-                                Projects with approved PO
-                                numbers will appear here
+                                Projects with approved PO numbers will appear
+                                here
                               </p>
                             </div>
                           </div>

@@ -1,27 +1,20 @@
-import React, { use, useEffect, useMemo, useState } from "react";
 import {
+  AlertCircle,
+  Calculator,
+  Check,
+  CheckCircle,
+  ChevronDown,
+  Image as ImageIcon,
   Plus,
   Target,
-  Calculator,
-  AlertCircle,
-  CheckCircle,
-  X,
-  Upload,
-  Image as ImageIcon,
   Trash2,
-  Check,
-  ChevronDown,
+  Upload,
+  X,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "./ui/dialog";
+import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import api from "../lib/api";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
-import { Textarea } from "./ui/textarea";
 import {
   Command,
   CommandEmpty,
@@ -29,58 +22,68 @@ import {
   CommandInput,
   CommandItem,
 } from "./ui/command";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Separator } from "./ui/separator";
-import { toast } from "sonner";
-import api from "../lib/api";
-import { useERPStore } from "../lib/data-store";
+import { Textarea } from "./ui/textarea";
 
-export type Id = string;
-
-// ---- minimal view models (mapped from backend) ----
-export type CompanyVM = { id: Id; companyName: string };
-export type BrandVM = {
-  id: Id;
-  brandName: string;
-  companyId: Id;
-  status: "Active" | "Inactive";
-};
-export type CategoryVM = {
-  id: Id;
-  categoryName: string;
-  companyId: Id;
-  brandId: Id;
-};
-export type TypeVM = {
-  id: Id;
-  typeName: string;
-  usageArea: "Sole" | "Upper" | "Both";
-};
-export type CountryVM = { id: Id; countryName: string; isoCode?: string };
-
-// ---- local form shape (kept same as yours) ----
-interface NewProject {
-  color: string;
-  artName?: string;
-  productCode?: string;
+export interface NewProject {
+  autoCode?: string;
   company: string;
   brand: string;
-  collection: string;
   category: string;
-  productType: string;
-  country: string;
   type: string;
-  targetCost: string;
-  retailPrice: string;
-  upperMaterial: string;
-  soleType: string;
-  heelHeight: string;
-  description: string;
-  priority: string;
-  taskInc: string;
+  country: string;
   assignPerson: string;
-  targetDate: string; // red seal target date
-  requirements: string;
+  color: string;
+  artName?: string;
+  size?: string;
+  gender?: string;
+  priority: string;
+  productDesc: string;
+  redSealTargetDate: string; // red seal target date
+  coverImage: string;
+  sampleImages: string[];
+  // clientFinalCost: number;
+  // clientCostHistory: {
+  //   amount: number;
+  //   by: string;
+  //   setAt: string;
+  // };
+  // nextUpdate: {
+  //   date: string;
+  //   note: string;
+  //   setBy: string;
+  //   setAt: string;
+  // };
+  // clientApproval: {
+  //   status: "pending" | "approved" | "rejected";
+  //   by: string;
+  //   at: string;
+  // };
+  // isActive: boolean;
+  // statusHistory: {
+  //   from: string;
+  //   to: string;
+  //   by: string;
+  //   at: string;
+  // };
+  // collection: string;
+  // productType: string;
+  // targetCost: string;
+  // retailPrice: string;
+  // upperMaterial: string;
+  // soleType: string;
+  // heelHeight: string;
+  // taskInc: string;
+  // requirements: string;
 }
 
 interface CreateProjectDialogProps {
@@ -88,37 +91,6 @@ interface CreateProjectDialogProps {
   onClose: () => void;
   onCreated?: () => void;
 }
-
-// ---------- helpers ----------
-export const mapCompany = (db: any): CompanyVM => ({
-  id: db._id,
-  companyName: db.name,
-});
-
-export const mapBrand = (db: any): BrandVM => ({
-  id: db._id,
-  brandName: db.name,
-  companyId: typeof db.company === "object" ? db.company._id : db.company,
-  status: db.isActive ? "Active" : "Inactive",
-});
-
-export const mapCategory = (db: any): CategoryVM => ({
-  id: db._id,
-  categoryName: db.name,
-  companyId: typeof db.company === "object" ? db.company._id : db.company,
-  brandId: typeof db.brand === "object" ? db.brand._id : db.brand,
-});
-
-export const mapType = (db: any): TypeVM => ({
-  id: db._id,
-  typeName: db.name,
-  usageArea: (db.usageArea ?? "Both") as "Sole" | "Upper" | "Both",
-});
-
-export const mapCountry = (db: any): CountryVM => ({
-  id: db._id,
-  countryName: db.name,
-});
 
 const dataURLtoFile = (dataUrl: string, filename: string) => {
   const arr = dataUrl.split(",");
@@ -135,52 +107,73 @@ export function CreateProjectDialog({
   onClose,
   onCreated,
 }: CreateProjectDialogProps) {
-  // masters (fetched from backend)
-  const [companies, setCompanies] = useState<CompanyVM[]>([]);
-  const [brands, setBrands] = useState<BrandVM[]>([]);
-  const [categories, setCategories] = useState<CategoryVM[]>([]);
-  const [types, setTypes] = useState<TypeVM[]>([]);
-  const [countries, setCountries] = useState<CountryVM[]>([]);
-  const [loadingMasters, setLoadingMasters] = useState(false);
+  type CompanyType = {
+    _id: string;
+    name: string;
+    isActive: boolean;
+  };
+  type BrandType = {
+    _id: string;
+    name: string;
+    company: {
+      _id: string;
+      name: string;
+    };
+    isActive: boolean;
+  };
+  type CategoryType = {
+    _id: string;
+    name: string;
+    company: {
+      _id: string;
+      name: string;
+    };
+    brand: {
+      _id: string;
+      name: string;
+    };
+    isActive: boolean;
+  };
+  type TypeType = CompanyType;
+  type CountryType = CompanyType;
+  type AssignPersonType = CompanyType;
 
-  console.log(companies);
-  console.log(brands);
-  console.log(categories);
-  console.log(types);
-  console.log(countries);
+  const [companies, setCompanies] = useState<CompanyType[]>([]);
+  const [brands, setBrands] = useState<BrandType[]>([]);
+  const [categories, setCategories] = useState<CategoryType[]>([]);
+  const [types, setTypes] = useState<TypeType[]>([]);
+  const [countries, setCountries] = useState<CountryType[]>([]);
+  const [assignPersons, setAssignPersons] = useState<AssignPersonType[]>([]);
+  const [loadingMasters, setLoadingMasters] = useState(false);
 
   // form state
   const [newProject, setNewProject] = useState<NewProject>({
-    color: "",
-    artName: "",
+    autoCode: "",
     company: "",
     brand: "",
-    collection: "",
     category: "",
-    productType: "",
-    country: "",
     type: "",
-    targetCost: "",
-    retailPrice: "",
-    upperMaterial: "",
-    soleType: "",
-    heelHeight: "",
-    description: "",
-    priority: "",
-    taskInc: "",
+    country: "",
     assignPerson: "",
-    targetDate: "",
-    requirements: "",
+    color: "",
+    artName: "",
+    size: "",
+    gender: "",
+    priority: "",
+    productDesc: "",
+    redSealTargetDate: "",
+    coverImage: "",
+    sampleImages: [""],
   });
 
   // popovers
   const [companyOpen, setCompanyOpen] = useState(false);
   const [brandOpen, setBrandOpen] = useState(false);
-  const [taskIncOpen, setTaskIncOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [countryOpen, setCountryOpen] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
+  const [assignPersonOpen, setAssignPersonOpen] = useState(false);
 
   // images
   const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
@@ -196,35 +189,33 @@ export function CreateProjectDialog({
   const [addingNewBrand, setAddingNewBrand] = useState(false);
   const [addingNewCategory, setAddingNewCategory] = useState(false);
   const [addingNewCountry, setAddingNewCountry] = useState(false);
+  const [addingNewAssignPerson, setAddingNewAssignPerson] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState("");
   const [newTypeName, setNewTypeName] = useState("");
   const [newBrandName, setNewBrandName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCountryName, setNewCountryName] = useState("");
-
-  type AssignPersonVM = { id: string; name: string };
-
-  const [assignPersons, setAssignPersons] = useState<AssignPersonVM[]>([]);
-  const [assignPersonOpen, setAssignPersonOpen] = useState(false);
-  const [addingNewAssignPerson, setAddingNewAssignPerson] = useState(false);
   const [newAssignPersonName, setNewAssignPersonName] = useState("");
 
   // ---- derived filters ----
   const filteredBrands = useMemo(
     () =>
       newProject.company
-        ? brands.filter((b) => b.companyId === newProject.company)
+        ? brands.filter((b) => b.company._id === newProject.company)
         : [],
     [brands, newProject.company]
   );
+  console.log(newProject, brands);
+
+  console.log(filteredBrands, "ff");
 
   const filteredCategories = useMemo(
     () =>
       newProject.company && newProject.brand
         ? categories.filter(
             (c) =>
-              c.companyId === newProject.company &&
-              c.brandId === newProject.brand
+              c.company._id === newProject.company &&
+              c.brand._id === newProject.brand
           )
         : [],
     [categories, newProject.company, newProject.brand]
@@ -247,19 +238,15 @@ export function CreateProjectDialog({
           api.get("/countries"),
           api.get("/assign-persons"),
         ]);
-        const comp = (cRes.data?.data || []).map(mapCompany);
-        const typ = (tRes.data?.items || []).map(mapType);
-        const cnt = (coRes.data?.items || []).map(mapCountry);
-        const aps = (aRes.data?.items || []).map((d: any) => ({
-          id: d._id,
-          name: d.name,
-        }));
+        const comp: CompanyType[] = cRes.data?.data || [];
+        const typ: TypeType[] = tRes.data?.items || [];
+        const cnt: CountryType[] = coRes.data?.items || [];
+        const aps: AssignPersonType[] = aRes.data?.items || [];
 
         setCompanies(comp);
         setTypes(typ);
         setCountries(cnt);
         setAssignPersons(aps);
-        useERPStore.getState().setAssignPersons(aps);
 
         // 2) reserve a new project code
         const seqRes = await api.post(`/sequences/PRJ/reserve`);
@@ -270,7 +257,7 @@ export function CreateProjectDialog({
         // set display productCode from reserved code
         setNewProject((p) => ({
           ...p,
-          productCode: seq.code,
+          autoCode: seq.code,
         }));
       } catch (e: any) {
         toast.error("Failed loading masters & sequence");
@@ -288,10 +275,11 @@ export function CreateProjectDialog({
         const res = await api.get("/brands", {
           params: { company: newProject.company },
         });
-        const list = (res.data?.items || res.data || []).map(mapBrand);
-
+        const list: BrandType[] = res.data?.items || res.data || [];
+        // console.log(list, "brands");
         setBrands(list);
       } catch (e: any) {
+        setBrands([]);
         if (open)
           toast.error(e?.response?.data?.message || "Failed to load brands");
       }
@@ -309,27 +297,14 @@ export function CreateProjectDialog({
           `/companies/${newProject.company}/brands/${newProject.brand}/categories`
         );
 
-        const arr = res.data?.items || [];
-        const cat = arr.map(mapCategory);
-        setCategories(cat);
+        const arr: CategoryType[] = res.data?.items || [];
+
+        setCategories(arr);
       } catch {
         setCategories([]);
       }
     })();
   }, [newProject.company, newProject.brand]);
-
-  // ---- code generator (kept same) ----
-  const generateProjectCode = () => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const nextYear = currentYear + 1;
-    const month = (now.getMonth() + 1).toString().padStart(2, "0");
-    // you were scanning rdProjects; here we just produce a timestamp-based suffix
-    const seq = String(now.getTime()).slice(-3);
-    return `RND/${currentYear.toString().slice(-2)}-${nextYear
-      .toString()
-      .slice(-2)}/${month}/${seq}`;
-  };
 
   // ---------- upload handlers ----------
   const handleCoverPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -408,13 +383,16 @@ export function CreateProjectDialog({
       return toast.error("Please enter a company name");
     try {
       const res = await api.post("/companies", { name: newCompanyName.trim() });
-      const created = res.data?.data || res.data;
-      const vm = mapCompany(created);
-      setCompanies((prev) => [vm, ...prev]);
-      setNewProject((p) => ({ ...p, company: vm.id, brand: "", category: "" }));
-      localStorage.setItem("selectedCompanyId", vm.id);
+      const createdCompanyResponse = res.data?.data || res.data;
+      setCompanies((prev) => [createdCompanyResponse, ...prev]);
+      setNewProject((p) => ({
+        ...p,
+        company: createdCompanyResponse._id,
+        brand: "",
+        category: "",
+      }));
 
-      toast.success(`Company "${vm.companyName}" created`);
+      toast.success(`Company ${createdCompanyResponse.company} created`);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to create company");
     } finally {
@@ -438,11 +416,12 @@ export function CreateProjectDialog({
 
       console.log("Created brand response:", newProject.company);
 
-      const created = res.data?.data || res.data;
-      const vm = mapBrand(created);
-      setBrands((prev) => [vm, ...prev]);
-      setNewProject((p) => ({ ...p, brand: vm.id }));
-      toast.success(`Brand "${vm.brandName}" created`);
+      const createdBrandResponse = res.data?.data || res.data;
+      console.log(createdBrandResponse, "mmmmmmmmmmmm");
+      // const vm = mapBrand(created);
+      setBrands((prev) => [createdBrandResponse, ...prev]);
+      setNewProject((p) => ({ ...p, brand: createdBrandResponse._id }));
+      toast.success(`Brand ${createdBrandResponse.name} created`);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to create brand");
     } finally {
@@ -464,13 +443,13 @@ export function CreateProjectDialog({
         { name: newCategoryName.trim() }
       );
 
-      const created = res.data?.data || res.data;
-      const vm = mapCategory(created); // <---- updated
+      const createdCategoryResponse = res.data?.data || res.data;
+      // const vm = mapCategory(created); // <---- updated
 
-      setCategories((prev) => [vm, ...prev]);
-      setNewProject((p) => ({ ...p, category: vm.id }));
+      setCategories((prev) => [createdCategoryResponse, ...prev]);
+      setNewProject((p) => ({ ...p, category: createdCategoryResponse._id }));
 
-      toast.success(`Category "${vm.categoryName}" created`);
+      toast.success(`Category ${createdCategoryResponse.name} created`);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to create category");
     } finally {
@@ -484,11 +463,11 @@ export function CreateProjectDialog({
     if (!newTypeName.trim()) return toast.error("Please enter a type name");
     try {
       const res = await api.post("/types", { name: newTypeName.trim() });
-      const created = res.data?.data || res.data;
-      const vm = mapType(created);
-      setTypes((prev) => [vm, ...prev]);
-      setNewProject((p) => ({ ...p, type: vm.id }));
-      toast.success(`Type "${vm.typeName}" created`);
+      const createdTypeResponse = res.data?.data || res.data;
+      // const vm = mapType(created);
+      setTypes((prev) => [createdTypeResponse, ...prev]);
+      setNewProject((p) => ({ ...p, type: createdTypeResponse._id }));
+      toast.success(`Type "${createdTypeResponse.type}" created`);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to create type");
     } finally {
@@ -503,11 +482,11 @@ export function CreateProjectDialog({
       return toast.error("Please enter a country name");
     try {
       const res = await api.post("/countries", { name: newCountryName.trim() });
-      const created = res.data?.data || res.data;
-      const vm = mapCountry(created);
-      setCountries((prev) => [vm, ...prev]);
-      setNewProject((p) => ({ ...p, country: vm.id }));
-      toast.success(`Country "${vm.countryName}" created`);
+      const createdCountryResponse = res.data?.data || res.data;
+      // const vm = mapCountry(created);
+      setCountries((prev) => [createdCountryResponse, ...prev]);
+      setNewProject((p) => ({ ...p, country: createdCountryResponse._id }));
+      toast.success(`Country "${createdCountryResponse.country}" created`);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to create country");
     } finally {
@@ -525,10 +504,13 @@ export function CreateProjectDialog({
       const res = await api.post("/assign-persons", {
         name: newAssignPersonName.trim(),
       });
-      const created = res.data?.data || res.data;
-      const vm = { id: created._id, name: created.name };
-      setAssignPersons((prev) => [vm, ...prev]);
-      setNewProject((p) => ({ ...p, taskInc: vm.id }));
+      const createdAssignPersonResponse = res.data?.data || res.data;
+      // const vm = { id: created._id, name: created.name };
+      setAssignPersons((prev) => [createdAssignPersonResponse, ...prev]);
+      setNewProject((p) => ({
+        ...p,
+        assignPerson: createdAssignPersonResponse._id,
+      }));
       toast.success("Assign person created");
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed");
@@ -566,19 +548,17 @@ export function CreateProjectDialog({
       // optional/renamed fields
       if (newProject.priority)
         fd.append("priority", newProject.priority.toLowerCase());
-      if (newProject.description)
-        fd.append("productDesc", newProject.description);
-      if (newProject.productType) fd.append("gender", newProject.productType);
-      if (newProject.collection) fd.append("size", newProject.collection);
-      if (newProject.taskInc) fd.append("assignPerson", newProject.taskInc);
-      if (newProject.targetDate)
-        fd.append("redSealTargetDate", newProject.targetDate);
+      if (newProject.productDesc)
+        fd.append("productDesc", newProject.productDesc);
+      if (newProject.gender) fd.append("gender", newProject.gender);
+      if (newProject.size) fd.append("size", newProject.size);
+      if (newProject.assignPerson)
+        fd.append("assignPerson", newProject.assignPerson);
+      if (newProject.redSealTargetDate)
+        fd.append("redSealTargetDate", newProject.redSealTargetDate);
 
-      // generated code (if your backend stores it differently you can ignore)
-      fd.append("sequenceId", sequenceId); // add this
-      // fd.append("autoCode", newProject.productCode || generateProjectCode());
+      fd.append("sequenceId", sequenceId);
 
-      // images: field names must be coverImage, sampleImages[] (your upload.fields)
       if (coverPhoto) {
         const f = dataURLtoFile(coverPhoto, "cover.png");
         fd.append("coverImage", f);
@@ -595,32 +575,30 @@ export function CreateProjectDialog({
       const res = await api.post("/projects", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      const created = res.data?.data || res.data;
+      const createdProjectResponse = res.data?.data || res.data;
+      console.log(createdProjectResponse, "Project create response");
       onCreated && onCreated(); // <---- trigger reload
       toast.success(`R&D Project created ✓`);
 
       // reset form
       setNewProject({
-        color: "",
-        artName: "",
+        autoCode: "",
         company: "",
         brand: "",
-        collection: "",
         category: "",
-        productType: "",
-        country: "",
         type: "",
-        targetCost: "",
-        retailPrice: "",
-        upperMaterial: "",
-        soleType: "",
-        heelHeight: "",
-        description: "",
-        priority: "",
-        taskInc: "",
+        country: "",
         assignPerson: "",
-        targetDate: "",
-        requirements: "",
+        color: "",
+        artName: "",
+        size: "",
+        gender: "",
+        priority: "",
+        productDesc: "",
+        redSealTargetDate: "",
+
+        coverImage: "",
+        sampleImages: [""],
       });
       setCoverPhoto(null);
       setAdditionalImages([]);
@@ -630,34 +608,33 @@ export function CreateProjectDialog({
       toast.error(e?.response?.data?.message || "Failed to create project");
     }
   };
-  // helper: safest way to extract an array from any API response shape
-  const pickArray = (payload: any) => {
-    if (Array.isArray(payload?.data)) return payload.data; // { data: [...] }
-    if (Array.isArray(payload?.items)) return payload.items; // { items: [...] }
-    if (Array.isArray(payload)) return payload; // [...]
-    return []; // fallback
-  };
+  // // helper: safest way to extract an array from any API response shape
+  // const pickArray = (payload: any) => {
+  //   if (Array.isArray(payload?.data)) return payload.data; // { data: [...] }
+  //   if (Array.isArray(payload?.items)) return payload.items; // { items: [...] }
+  //   if (Array.isArray(payload)) return payload; // [...]
+  //   return []; // fallback
+  // };
 
-  useEffect(() => {
-    const savedCompany = localStorage.getItem("selectedCompanyId");
-    if (!savedCompany) return;
+  // // useEffect(() => {
+  // //   // const savedCompany = localStorage.getItem("selectedCompanyId");
+  // //   if (!newProject.company) return;
 
-    setNewProject((p) => ({ ...p, company: savedCompany }));
+  // //   setNewProject((p) => ({ ...p, company: newProject.company }));
 
-    (async () => {
-      try {
-        const res = await api.get("/brands", {
-          params: { company: savedCompany },
-        });
-        const arr = pickArray(res.data);
-        const list = arr.map(mapBrand); // mapBrand guard करे तो और बढ़िया
-        setBrands(list);
-      } catch (e) {
-        console.error("Failed to load brands", e);
-        setBrands([]); // graceful fallback
-      }
-    })();
-  }, []);
+  // //   (async () => {
+  // //     try {
+  // //       const res = await api.get("/brands", {
+  // //         params: { company: newProject.company },
+  // //       });
+  // //       const arr = pickArray(res.data);
+  // //       setBrands(arr);
+  // //     } catch (e) {
+  // //       console.error("Failed to load brands", e);
+  // //       setBrands([]); // graceful fallback
+  // //     }
+  // //   })();
+  // // }, []);
 
   // --------- UI (unchanged except sources now use API state) ---------
   return (
@@ -699,7 +676,7 @@ export function CreateProjectDialog({
                       Auto-Generated Project Code
                     </p>
                     <p className="text-2xl font-mono font-bold text-blue-800">
-                      {newProject.productCode || generateProjectCode()}
+                      {newProject.autoCode}
                     </p>
                   </div>
                 </div>
@@ -746,7 +723,7 @@ export function CreateProjectDialog({
                     htmlFor="art"
                     className="text-base font-semibold text-gray-700"
                   >
-                    Art *
+                    Article Name *
                   </Label>
                   <Input
                     id="art"
@@ -789,13 +766,15 @@ export function CreateProjectDialog({
                   </Label>
                   <Input
                     id="productCode"
-                    value={newProject.productCode || generateProjectCode()}
-                    onChange={(e) =>
-                      setNewProject({
-                        ...newProject,
-                        productCode: e.target.value,
-                      })
-                    }
+                    contentEditable={false}
+                    value={newProject.autoCode}
+                    readOnly
+                    // onChange={(e) =>
+                    //   setNewProject({
+                    //     ...newProject,
+                    //     productCode: e.target.value,
+                    //   })
+                    // }
                     placeholder="Auto-generated code"
                     className="h-12 text-base border-2 focus:border-[#0c9dcb] font-mono font-bold"
                   />
@@ -818,8 +797,8 @@ export function CreateProjectDialog({
                         className="w-full h-12 justify-between"
                       >
                         {newProject.company
-                          ? companies.find((c) => c.id === newProject.company)
-                              ?.companyName
+                          ? companies.find((c) => c._id === newProject.company)
+                              ?.name
                           : loadingMasters
                           ? "Loading..."
                           : "Select company"}
@@ -836,13 +815,13 @@ export function CreateProjectDialog({
                         <CommandGroup className="max-h-64 overflow-auto">
                           {companies.map((company) => (
                             <CommandItem
-                              key={company.id}
-                              value={company.companyName}
+                              key={company._id}
+                              value={company.name}
                               className="flex items-center justify-between"
                               onSelect={() => {
                                 setNewProject((p) => ({
                                   ...p,
-                                  company: company.id,
+                                  company: company._id,
                                   brand: "",
                                   category: "",
                                 }));
@@ -852,12 +831,12 @@ export function CreateProjectDialog({
                               <div className="flex items-center flex-1">
                                 <Check
                                   className={`mr-2 h-4 w-4 ${
-                                    newProject.company === company.id
+                                    newProject.company === company._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
-                                {company.companyName}
+                                {company.name}
                               </div>
 
                               <button
@@ -874,10 +853,10 @@ export function CreateProjectDialog({
                                   // Uncomment when ready:
                                   try {
                                     await api.delete(
-                                      `/companies/${company.id}`
+                                      `/companies/${company._id}`
                                     );
                                     setCompanies((prev) =>
-                                      prev.filter((b) => b.id !== company.id)
+                                      prev.filter((b) => b._id !== company._id)
                                     );
                                     toast.success("Company removed");
                                   } catch (err) {
@@ -965,8 +944,8 @@ export function CreateProjectDialog({
                       >
                         {newProject.brand
                           ? filteredBrands.find(
-                              (b) => b.id === newProject.brand
-                            )?.brandName
+                              (b) => b._id === newProject.brand
+                            )?.name
                           : newProject.company
                           ? "Select brand"
                           : "Select company first"}
@@ -983,12 +962,12 @@ export function CreateProjectDialog({
                         <CommandGroup className="max-h-64 overflow-auto">
                           {filteredBrands.map((brand) => (
                             <CommandItem
-                              key={brand.id}
+                              key={brand._id}
                               className="flex items-center justify-between"
                               onSelect={() => {
                                 setNewProject((p) => ({
                                   ...p,
-                                  brand: brand.id,
+                                  brand: brand._id,
                                 }));
                                 setBrandOpen(false);
                               }}
@@ -996,12 +975,12 @@ export function CreateProjectDialog({
                               <div className="flex items-center flex-1">
                                 <Check
                                   className={`mr-2 h-4 w-4 ${
-                                    newProject.brand === brand.id
+                                    newProject.brand === brand._id
                                       ? ""
                                       : "opacity-0"
                                   }`}
                                 />
-                                {brand.brandName}
+                                {brand.name}
                               </div>
 
                               <button
@@ -1017,9 +996,9 @@ export function CreateProjectDialog({
 
                                   // Uncomment when ready:
                                   try {
-                                    await api.delete(`/brands/${brand.id}`);
+                                    await api.delete(`/brands/${brand._id}`);
                                     setBrands((prev) =>
-                                      prev.filter((b) => b.id !== brand.id)
+                                      prev.filter((b) => b._id !== brand._id)
                                     );
                                     toast.success("Brand deleted");
                                   } catch (err) {
@@ -1106,8 +1085,8 @@ export function CreateProjectDialog({
                       >
                         {newProject.category
                           ? filteredCategories.find(
-                              (c) => c.id === newProject.category
-                            )?.categoryName
+                              (c) => c._id === newProject.category
+                            )?.name
                           : newProject.brand
                           ? "Select category"
                           : "Select brand first"}
@@ -1121,13 +1100,13 @@ export function CreateProjectDialog({
                         <CommandGroup className="max-h-64 overflow-auto">
                           {filteredCategories.map((category) => (
                             <CommandItem
-                              key={category.id}
+                              key={category._id}
                               className="flex items-center justify-between"
-                              value={category.categoryName}
+                              value={category.name}
                               onSelect={() => {
                                 setNewProject((p) => ({
                                   ...p,
-                                  category: category.id,
+                                  category: category._id,
                                 }));
                                 setCategoryOpen(false);
                               }}
@@ -1135,12 +1114,12 @@ export function CreateProjectDialog({
                               <div className="flex items-center flex-1">
                                 <Check
                                   className={`mr-2 h-4 w-4 ${
-                                    newProject.category === category.id
+                                    newProject.category === category._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
-                                {category.categoryName}
+                                {category.name}
                               </div>
 
                               <button
@@ -1156,10 +1135,10 @@ export function CreateProjectDialog({
 
                                   try {
                                     await api.delete(
-                                      `/companies/${newProject.company}/brands/${newProject.brand}/categories/${category.id}`
+                                      `/companies/${newProject.company}/brands/${newProject.brand}/categories/${category._id}`
                                     );
                                     setCategories((prev) =>
-                                      prev.filter((x) => x.id !== category.id)
+                                      prev.filter((x) => x._id !== category._id)
                                     );
                                     toast.success("Category deleted");
                                   } catch (err: any) {
@@ -1248,8 +1227,7 @@ export function CreateProjectDialog({
                         className="w-full h-12 justify-between"
                       >
                         {newProject.type
-                          ? types.find((t) => t.id === newProject.type)
-                              ?.typeName
+                          ? types.find((t) => t._id === newProject.type)?.name
                           : "Select type"}
                         <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
@@ -1264,23 +1242,26 @@ export function CreateProjectDialog({
                         <CommandGroup className="max-h-64 overflow-auto">
                           {types.map((type) => (
                             <CommandItem
-                              key={type.id}
+                              key={type._id}
                               className="flex items-center justify-between"
-                              value={type.typeName}
+                              value={type.name}
                               onSelect={() => {
-                                setNewProject((p) => ({ ...p, type: type.id }));
+                                setNewProject((p) => ({
+                                  ...p,
+                                  type: type._id,
+                                }));
                                 setTypeOpen(false);
                               }}
                             >
                               <div className="flex flex-1 items-center">
                                 <Check
                                   className={`mr-2 h-4 w-4 ${
-                                    newProject.type === type.id
+                                    newProject.type === type._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
-                                {type.typeName} ({type.usageArea})
+                                {type.name}
                               </div>
 
                               <button
@@ -1295,9 +1276,9 @@ export function CreateProjectDialog({
                                   e.stopPropagation();
 
                                   try {
-                                    await api.delete(`/types/${type.id}`);
+                                    await api.delete(`/types/${type._id}`);
                                     setTypes((prev) =>
-                                      prev.filter((x) => x.id !== type.id)
+                                      prev.filter((x) => x._id !== type._id)
                                     );
                                     toast.success("Type removed");
                                   } catch (err: any) {
@@ -1380,8 +1361,8 @@ export function CreateProjectDialog({
                         className="w-full h-12 justify-between"
                       >
                         {newProject.country
-                          ? countries.find((c) => c.id === newProject.country)
-                              ?.countryName
+                          ? countries.find((c) => c._id === newProject.country)
+                              ?.name
                           : "Select country"}
                         <ChevronDown className="h-4 w-4 opacity-50" />
                       </Button>
@@ -1396,13 +1377,13 @@ export function CreateProjectDialog({
                         <CommandGroup className="max-h-64 overflow-auto">
                           {countries.map((country) => (
                             <CommandItem
-                              key={country.id}
-                              value={country.countryName}
+                              key={country._id}
+                              value={country.name}
                               className="flex items-center justify-between"
                               onSelect={() => {
                                 setNewProject((p) => ({
                                   ...p,
-                                  country: country.id,
+                                  country: country._id,
                                 }));
                                 setCountryOpen(false);
                               }}
@@ -1410,12 +1391,12 @@ export function CreateProjectDialog({
                               <div className="flex items-center flex-1">
                                 <Check
                                   className={`mr-2 h-4 w-4 ${
-                                    newProject.country === country.id
+                                    newProject.country === country._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
-                                {country.countryName}
+                                {country.name}
                               </div>
 
                               <button
@@ -1431,10 +1412,10 @@ export function CreateProjectDialog({
 
                                   try {
                                     await api.delete(
-                                      `/countries/${country.id}`
+                                      `/countries/${country._id}`
                                     );
                                     setCountries((prev) =>
-                                      prev.filter((x) => x.id !== country.id)
+                                      prev.filter((x) => x._id !== country._id)
                                     );
                                     toast.success("Country removed");
                                   } catch (err: any) {
@@ -1514,11 +1495,11 @@ export function CreateProjectDialog({
                   <Input
                     id="sizeRange"
                     type="text"
-                    value={newProject.collection}
+                    value={newProject.size}
                     onChange={(e) =>
                       setNewProject({
                         ...newProject,
-                        collection: e.target.value,
+                        size: e.target.value,
                       })
                     }
                     placeholder="e.g., Men's: 6-12 UK"
@@ -1536,11 +1517,11 @@ export function CreateProjectDialog({
                   </Label>
                   <select
                     className="h-12 w-full border rounded-md px-3"
-                    value={newProject.productType}
+                    value={newProject.gender}
                     onChange={(e) =>
                       setNewProject({
                         ...newProject,
-                        productType: e.target.value,
+                        gender: e.target.value,
                       })
                     }
                   >
@@ -1613,11 +1594,11 @@ export function CreateProjectDialog({
                   </Label>
                   <Textarea
                     id="description"
-                    value={newProject.description}
+                    value={newProject.productDesc}
                     onChange={(e) =>
                       setNewProject({
                         ...newProject,
-                        description: e.target.value,
+                        productDesc: e.target.value,
                       })
                     }
                     placeholder="Describe the product design concept…"
@@ -1819,11 +1800,11 @@ export function CreateProjectDialog({
                   <Input
                     id="targetDate"
                     type="date"
-                    value={newProject.targetDate}
+                    value={newProject.redSealTargetDate}
                     onChange={(e) =>
                       setNewProject({
                         ...newProject,
-                        targetDate: e.target.value,
+                        redSealTargetDate: e.target.value,
                       })
                     }
                     className="h-12 text-base border-2 focus:border-[#0c9dcb]"
@@ -1850,9 +1831,9 @@ export function CreateProjectDialog({
                         aria-expanded={assignPersonOpen}
                         className="w-full h-12 border-2 justify-between"
                       >
-                        {newProject.taskInc
+                        {newProject.assignPerson
                           ? assignPersons.find(
-                              (p) => p.id === newProject.taskInc
+                              (p) => p._id === newProject.assignPerson
                             )?.name
                           : "Select assignee"}
                         <ChevronDown className="h-4 w-4 opacity-50" />
@@ -1868,18 +1849,21 @@ export function CreateProjectDialog({
                         <CommandGroup className="max-h-64 overflow-auto">
                           {assignPersons.map((p) => (
                             <CommandItem
-                              key={p.id}
+                              key={p._id}
                               value={p.name}
                               className="flex justify-between items-center"
                               onSelect={() => {
-                                setNewProject({ ...newProject, taskInc: p.id });
+                                setNewProject({
+                                  ...newProject,
+                                  assignPerson: p._id,
+                                });
                                 setAssignPersonOpen(false);
                               }}
                             >
                               <div className="flex items-center flex-1">
                                 <Check
                                   className={`mr-2 h-4 w-4 ${
-                                    newProject.taskInc === p.id
+                                    newProject.assignPerson === p._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
@@ -1898,9 +1882,11 @@ export function CreateProjectDialog({
                                   e.stopPropagation();
 
                                   try {
-                                    await api.delete(`/assign-persons/${p.id}`);
+                                    await api.delete(
+                                      `/assign-persons/${p._id}`
+                                    );
                                     setAssignPersons((prev) =>
-                                      prev.filter((x) => x.id !== p.id)
+                                      prev.filter((x) => x._id !== p._id)
                                     );
                                     toast.success("Assign person deleted");
                                   } catch (err: any) {

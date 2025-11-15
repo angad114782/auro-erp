@@ -1,35 +1,45 @@
 import { Project } from "../models/Project.model.js";
-import { normalizeProjectStatus, requireValidProjectStatus } from "../utils/status.util.js";
+import {
+  normalizeProjectStatus,
+  requireValidProjectStatus,
+} from "../utils/status.util.js";
 
 // CREATE
 export const createProject = async (payload, { session } = {}) => {
-  const [project] = await Project.create([{
-    company: payload.company,
-    brand: payload.brand,
-    category: payload.category,
-    autoCode: payload.autoCode || null,
+  const [project] = await Project.create(
+    [
+      {
+        company: payload.company,
+        brand: payload.brand,
+        category: payload.category,
+        autoCode: payload.autoCode || null,
 
-    type: payload.type || null,
-    country: payload.country || null,
-    assignPerson: payload.assignPerson || null,
+        type: payload.type || null,
+        country: payload.country || null,
+        assignPerson: payload.assignPerson || null,
 
-    color: payload.color,
-    artName: payload.artName,
-    size: payload.size,
-    gender: payload.gender,
-    priority: payload.priority,
-    status: normalizeProjectStatus(payload.status) || undefined,
+        color: payload.color,
+        artName: payload.artName,
+        size: payload.size,
+        gender: payload.gender,
+        priority: payload.priority,
+        status: normalizeProjectStatus(payload.status) || undefined,
 
-    productDesc: payload.productDesc,
-    redSealTargetDate: payload.redSealTargetDate ? new Date(payload.redSealTargetDate) : null,
+        productDesc: payload.productDesc,
+        redSealTargetDate: payload.redSealTargetDate
+          ? new Date(payload.redSealTargetDate)
+          : null,
 
-    coverImage: payload.coverImage || "",
-    sampleImages: payload.sampleImages || [],
+        coverImage: payload.coverImage || "",
+        sampleImages: payload.sampleImages || [],
 
-    clientFinalCost: Number(payload.clientFinalCost ?? 0) || 0,
-    nextUpdate: payload.nextUpdate || null,
-    clientApproval: payload.clientApproval || undefined,
-  }], { session });
+        clientFinalCost: Number(payload.clientFinalCost ?? 0) || 0,
+        nextUpdate: payload.nextUpdate || null,
+        clientApproval: payload.clientApproval || undefined,
+      },
+    ],
+    { session }
+  );
 
   return project;
 };
@@ -37,8 +47,8 @@ export const createProject = async (payload, { session } = {}) => {
 // LIST
 export const getProjects = async (query = {}) => {
   const filter = { isActive: true };
-  if (query.company)  filter.company  = query.company;
-  if (query.brand)    filter.brand    = query.brand;
+  if (query.company) filter.company = query.company;
+  if (query.brand) filter.brand = query.brand;
   if (query.category) filter.category = query.category;
 
   if (query.status) {
@@ -46,8 +56,16 @@ export const getProjects = async (query = {}) => {
     filter.status = norm || "__no_match__";
   }
 
-  if (query.minCost) filter.clientFinalCost = { ...(filter.clientFinalCost || {}), $gte: Number(query.minCost) };
-  if (query.maxCost) filter.clientFinalCost = { ...(filter.clientFinalCost || {}), $lte: Number(query.maxCost) };
+  if (query.minCost)
+    filter.clientFinalCost = {
+      ...(filter.clientFinalCost || {}),
+      $gte: Number(query.minCost),
+    };
+  if (query.maxCost)
+    filter.clientFinalCost = {
+      ...(filter.clientFinalCost || {}),
+      $lte: Number(query.maxCost),
+    };
 
   if (query.dueBefore) {
     const d = new Date(query.dueBefore);
@@ -86,11 +104,14 @@ export const updateProjectById = async (id, payload) => {
     assignPerson: payload.assignPerson || null,
     projectName: payload.projectName,
     artName: payload.artName,
+    color: payload.color,
     size: payload.size,
     gender: payload.gender,
     priority: payload.priority,
     productDesc: payload.productDesc,
-    redSealTargetDate: payload.redSealTargetDate ? new Date(payload.redSealTargetDate) : null,
+    redSealTargetDate: payload.redSealTargetDate
+      ? new Date(payload.redSealTargetDate)
+      : null,
   };
 
   if (payload.coverImage) set.coverImage = payload.coverImage;
@@ -106,7 +127,9 @@ export const updateProjectById = async (id, payload) => {
   }
   if (payload.nextUpdate) {
     set.nextUpdate = {
-      date: payload.nextUpdate.date ? new Date(payload.nextUpdate.date) : new Date(),
+      date: payload.nextUpdate.date
+        ? new Date(payload.nextUpdate.date)
+        : new Date(),
       note: payload.nextUpdate.note || "",
       setBy: payload.nextUpdate.setBy || null,
       setAt: new Date(),
@@ -185,7 +208,9 @@ export const setProjectClientCost = async (id, { amount, by = null }) => {
 export const setClientApproval = async (id, { status, by = null }) => {
   const allowed = new Set(["pending", "approved", "rejected"]);
   if (!allowed.has(String(status))) {
-    const err = new Error('clientApproval.status must be "pending", "approved", or "rejected"');
+    const err = new Error(
+      'clientApproval.status must be "pending", "approved", or "rejected"'
+    );
     err.status = 400;
     throw err;
   }

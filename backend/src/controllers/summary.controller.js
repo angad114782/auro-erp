@@ -21,8 +21,13 @@ export async function patchSummary(req, res) {
 
     const summary = await ensureSummary(projectId);
 
-    if (additionalCosts !== undefined) summary.additionalCosts = Math.max(Number(additionalCosts) || 0, 0);
-    if (profitMargin !== undefined) summary.profitMargin = Math.min(Math.max(Number(profitMargin) || 0, 0), 100);
+    if (additionalCosts !== undefined)
+      summary.additionalCosts = Math.max(Number(additionalCosts) || 0, 0);
+    if (profitMargin !== undefined)
+      summary.profitMargin = Math.min(
+        Math.max(Number(profitMargin) || 0, 0),
+        100
+      );
     if (remarks !== undefined) summary.remarks = String(remarks);
 
     await summary.save();
@@ -53,7 +58,9 @@ export async function approveSummary(req, res) {
       const { default: mongoosePkg } = await import("mongoose");
       const Project = mongoosePkg.models.Project;
       if (Project) {
-        await Project.findByIdAndUpdate(projectId, { status: "ready_for_red_seal" }).catch(() => {});
+        await Project.findByIdAndUpdate(projectId, {
+          status: "red_seal",
+        }).catch(() => {});
       }
     } catch {}
 

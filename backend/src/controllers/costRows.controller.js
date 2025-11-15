@@ -38,15 +38,40 @@ export async function createRow(req, res) {
   try {
     const { projectId, section } = req.params;
     const { Model } = pickModel(section);
-    const { item, description = "", consumption = "", cost = 0, department } = req.body;
+    const {
+      item,
+      description = "",
+      consumption = "",
+      cost = 0,
+      department,
+    } = req.body;
 
     if (!item?.trim()) return fail(res, "item is required");
-    if (department && !DEPARTMENTS.includes(department)) return fail(res, "Invalid department");
+    if (department && !DEPARTMENTS.includes(department))
+      return fail(res, "Invalid department");
 
-    await Model.create({ projectId, item, description, consumption, cost, department });
+    // Create and get the created document
+    const row = await Model.create({
+      projectId,
+      item,
+      description,
+      consumption,
+      cost,
+      department,
+    });
 
     const summary = await recomputeSummary(projectId);
-    return ok(res, { message: "Created", summary }, 201);
+
+    // Return both the created row and summary
+    return ok(
+      res,
+      {
+        message: "Created",
+        row, // Add this line to return the created row
+        summary,
+      },
+      201
+    );
   } catch (e) {
     return fail(res, e.message, 400);
   }
@@ -63,7 +88,9 @@ export async function updateRow(req, res) {
       ...(cost !== undefined ? { cost } : {}),
     }))(req.body);
 
-    await Model.findOneAndUpdate({ _id: rowId, projectId }, payload, { new: true });
+    await Model.findOneAndUpdate({ _id: rowId, projectId }, payload, {
+      new: true,
+    });
     const summary = await recomputeSummary(projectId);
     return ok(res, { message: "Updated", summary });
   } catch (e) {
@@ -88,10 +115,20 @@ export async function setDepartment(req, res) {
     const { projectId, section, rowId } = req.params;
     const { department } = req.body;
     const cfg = pickModel(section);
-    if (!cfg.allowDept) return fail(res, "Department tagging not supported for this section", 400);
-    if (!DEPARTMENTS.includes(department)) return fail(res, "Invalid department", 400);
+    if (!cfg.allowDept)
+      return fail(
+        res,
+        "Department tagging not supported for this section",
+        400
+      );
+    if (!DEPARTMENTS.includes(department))
+      return fail(res, "Invalid department", 400);
 
-    await cfg.Model.findOneAndUpdate({ _id: rowId, projectId }, { department }, { new: true });
+    await cfg.Model.findOneAndUpdate(
+      { _id: rowId, projectId },
+      { department },
+      { new: true }
+    );
     return ok(res, { message: "Department set" });
   } catch (e) {
     return fail(res, e.message, 400);

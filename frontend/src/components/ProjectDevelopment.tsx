@@ -1,3 +1,5 @@
+// ProjectDevelopment.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Calendar,
   Clock,
@@ -10,259 +12,181 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import api from "../lib/api";
-import type { RDProject } from "../lib/data-store";
-import { useERPStore } from "../lib/data-store";
-import {
-  BrandVM,
-  CategoryVM,
-  CompanyVM,
-  CountryVM,
-  CreateProjectDialog,
-  mapBrand,
-  mapCategory,
-  mapCompany,
-  mapCountry,
-  mapType,
-  TypeVM,
-} from "./CreateProjectDialog";
-import { ProjectDetailsDialog } from "./ProjectDetailsDialog";
+import { CreateProjectDialog, NewProject } from "./CreateProjectDialog";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import ProjectDetailsDialog, {
+  ProductDevelopment,
+} from "./ProjectDetailsDialog";
+
+type Generic = {
+  _id: string;
+  name: string;
+};
+
+export interface ProductDevelopmentResponseProps {
+  _id: string;
+  autoCode: string;
+  gender?: string;
+  company?: Generic;
+  brand?: Generic;
+  category?: Generic;
+  type?: Generic;
+  country?: Generic;
+  color?: string;
+  assignPerson?: Generic;
+  artName?: string;
+  status?: string;
+  createdAt?: string;
+  redSealTargetDate?: string;
+  priority?: "high" | "medium" | "low" | string;
+  productDesc?: string;
+  coverImage?: string; // relative path returned by backend
+  sampleImages?: string[]; // array of paths
+  startDate?: string; // optional
+  endDate?: string; // optional
+  clientApproval?: { status?: string } | null;
+}
 
 export function ProjectDevelopment() {
-  const {
-    rdProjects,
-
-    colors,
-    selectRDProject,
-    addRDProject,
-    setRDProjects,
-  } = useERPStore();
+  // loading
   const [loading, setLoading] = useState(false);
 
-  const [companies, setCompanies] = useState<CompanyVM[]>([]);
-  const [brands, setBrands] = useState<BrandVM[]>([]);
-  const [categories, setCategories] = useState<CategoryVM[]>([]);
-  const [types, setTypes] = useState<TypeVM[]>([]);
-  const [countries, setCountries] = useState<CountryVM[]>([]);
-  const [assignPersons, setAssignPersons] = useState<[]>([]);
+  // data lists (masters)
+  const [companies, setCompanies] = useState<Generic[]>([]);
+  const [brands, setBrands] = useState<Generic[]>([]);
+  const [categories, setCategories] = useState<Generic[]>([]);
+  const [types, setTypes] = useState<Generic[]>([]);
+  const [countries, setCountries] = useState<Generic[]>([]);
+  const [assignPersons, setAssignPersons] = useState<Generic[]>([]);
 
-  const [loadingMasters, setLoadingMasters] = useState(false);
-  const [projects, setProjects] = useState<RDProject[]>([]);
-  const reloadProjects = () => {
-    api
-      .get("/projects")
-      .then((res) => {
-        setLoading(false);
-        const mapped = res.data.data.map((p: any) => ({
-          id: p._id,
-          autoCode: p.autoCode,
-          gender: p.gender || "",
+  // projects
+  const [projects, setProjects] = useState<ProductDevelopment[]>([]);
 
-          companyId: p.company?._id || "",
-          brandId: p.brand?._id || "",
-          categoryId: p.category?._id || "",
-          typeId: p.type?._id || "",
-          countryId: p.country?._id || "",
-          color: p?.color,
-          assignPerson: p?.assignPerson || "",
-
-          artName: p?.artName || "",
-
-          status: "Prototype",
-          tentativeCost: 0,
-          targetCost: 0,
-          finalCost: 0,
-          difference: 0,
-
-          companyName: p.company?.name || "",
-          brandName: p.brand?.name || "",
-          categoryName: p.category?.name || "",
-          typeName: p.type?.name || "",
-          countryName: p.country?.name || "",
-
-          startDate: p.createdAt,
-          endDate: p.redSealTargetDate,
-          duration: 0,
-          poTarget: "",
-          poReceived: "",
-          poDelay: 0,
-
-          priority: p.priority?.toUpperCase() || "LOW",
-
-          taskInc: "",
-          remarks: p.productDesc || "",
-          nextUpdateDate: "",
-          clientFeedback: "Pending",
-
-          updateNotes: "",
-          createdDate: p.createdAt,
-          updatedDate: p.updatedAt,
-
-          coverPhoto: p.coverImage,
-          additionalImages: p.sampleImages,
-          dynamicImages: [],
-        }));
-        setProjects(mapped);
-        useERPStore.getState().setRDProjects(mapped);
-      })
-      .catch((err: any) => console.log("projects load error", err))
-      .finally(() => setLoading(false));
-  };
-  useEffect(() => {
-    reloadProjects();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        setLoadingMasters(true);
-
-        // 1) load all masters in parallel
-        const [cRes, tRes, coRes, bRes, aRes] = await Promise.all([
-          api.get("/companies"),
-          api.get("/types"),
-          api.get("/countries"),
-          // api.get("/categories"),
-          api.get("/brands"),
-          api.get("/assign-persons"),
-        ]);
-
-        console.log(cRes, tRes, coRes, bRes, aRes);
-        const comp = (cRes.data?.data || []).map(mapCompany);
-        const typ = (tRes.data?.items || []).map(mapType);
-        const cnt = (coRes.data?.items || []).map(mapCountry);
-        // const cgr = (cgrRes.data?.items || []).map(mapCategory);
-        const brd = (bRes.data?.items || []).map(mapBrand);
-        const aps = (aRes.data?.items || []).map((d: any) => ({
-          id: d._id,
-          name: d.name,
-        }));
-
-        setCompanies(comp);
-        setTypes(typ);
-        setCountries(cnt);
-        // setCategories(cgr);
-        setBrands(brd);
-        setAssignPersons(aps);
-      } catch (e: any) {
-        toast.error("Failed loading masters & sequence");
-      } finally {
-        setLoadingMasters(false);
-      }
-    })();
-  }, []);
-
-  console.log(companies, categories, types, brands, countries);
-  // Footwear product data from reference
-  const footwearProducts = [
-    {
-      name: "Chunky Mickey",
-      company: "SportTech International",
-      brand: "UA Sports",
-    },
-    {
-      name: "Hydro Dipping Film",
-      company: "AquaTech Industries Pvt Ltd",
-      brand: "AquaTech Pro",
-    },
-    {
-      name: "Red zip pocket",
-      company: "ZipStyle Footwear Co.",
-      brand: "ZipStyle Elite",
-    },
-    {
-      name: "Black Buckles",
-      company: "BuckleMax Corporation",
-      brand: "BuckleMax Premium",
-    },
-    {
-      name: "Cross Rope",
-      company: "RopeFlex Manufacturers",
-      brand: "RopeFlex Active",
-    },
-    {
-      name: "UA China EVA slide",
-      company: "China EVA Exports Ltd",
-      brand: "UA China",
-    },
-    {
-      name: "Lime strip",
-      company: "ColorStrip Designs India",
-      brand: "ColorStrip Fashion",
-    },
-    {
-      name: "Cavity V Camo",
-      company: "CamoTech Solutions",
-      brand: "CamoTech Outdoor",
-    },
-    {
-      name: "Black Cross tape",
-      company: "TapeCross Industries",
-      brand: "TapeCross Sport",
-    },
-    { name: 'UA "V"', company: "Victory Footwear Ltd", brand: "UA Victory" },
-    {
-      name: "Halo",
-      company: "HaloSport Enterprises",
-      brand: "HaloSport Premium",
-    },
-    {
-      name: "UA Porous",
-      company: "Porous Tech India Pvt Ltd",
-      brand: "UA Porous",
-    },
-    {
-      name: "Brown slide",
-      company: "EarthTone Manufacturers",
-      brand: "EarthTone Natural",
-    },
-    {
-      name: "Silver Mesh",
-      company: "MeshTech Innovations",
-      brand: "MeshTech Advanced",
-    },
-    {
-      name: "Black Pocket",
-      company: "PocketStyle Fashion House",
-      brand: "PocketStyle Urban",
-    },
-    {
-      name: "Cross Tape white",
-      company: "TapeCross Industries",
-      brand: "TapeCross Classic",
-    },
-    {
-      name: "Removable sticker",
-      company: "StickerTech Solutions Ltd",
-      brand: "StickerTech Flex",
-    },
-    {
-      name: "Chunky Frozen",
-      company: "FrozenStyle Footwear Inc",
-      brand: "FrozenStyle Winter",
-    },
-  ];
-
-  const getProductData = (index: number) => {
-    const productIndex = index % footwearProducts.length;
-    return footwearProducts[productIndex];
-  };
-
+  // pagination & UI state
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<RDProject | null>(
-    null
-  );
+  const [selectedProject, setSelectedProject] =
+    useState<ProductDevelopmentResponseProps | null>(null);
 
-  const getStageColor = (stage: string) => {
+  // --- helper: backend base url for images (if you use VITE_BACKEND_URL) ---
+  const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "";
+
+  // ---- load masters (companies, brands, categories, types, countries, assign persons)
+  useEffect(() => {
+    let cancelled = false;
+    async function loadMasters() {
+      try {
+        const [cRes, bRes, tRes, coRes, apRes] = await Promise.all([
+          api.get("/companies"),
+          api.get("/brands"),
+          api.get("/types"),
+          api.get("/countries"),
+          api.get("/assign-persons"),
+        ]);
+
+        if (cancelled) return;
+
+        const pickArr = (r: any) =>
+          Array.isArray(r?.data?.data)
+            ? r.data.data
+            : Array.isArray(r?.data?.items)
+            ? r.data.items
+            : Array.isArray(r?.data)
+            ? r.data
+            : [];
+
+        setCompanies(pickArr(cRes));
+        setBrands(pickArr(bRes));
+        setTypes(pickArr(tRes));
+        setCountries(pickArr(coRes));
+        setAssignPersons(pickArr(apRes));
+
+        // ❗ IMPORTANT:
+        // categories depend on company + brand, so keep empty here
+        setCategories([]);
+      } catch (err) {
+        console.error("Failed to load masters", err);
+      }
+    }
+
+    loadMasters();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ---- load projects
+  const reloadProjects = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/projects");
+      // try multiple shapes
+      const data =
+        res.data?.data ??
+        res.data?.items ??
+        (Array.isArray(res.data) ? res.data : []);
+      setProjects(data);
+    } catch (err: any) {
+      console.error("Projects load error", err);
+      toast.error("Failed to load projects");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    reloadProjects();
+  }, []);
+
+  // ---- filtering & pagination
+  const filteredProjects = useMemo(() => {
+    if (!searchTerm) return projects;
+    const q = searchTerm.toLowerCase();
+    return projects.filter((p) => {
+      const code = p.autoCode?.toLowerCase() ?? "";
+      const art = p.artName?.toLowerCase() ?? "";
+      const company = p.company?.name?.toLowerCase() ?? "";
+      const brand = p.brand?.name?.toLowerCase() ?? "";
+      const cat = p.category?.name?.toLowerCase() ?? "";
+      return (
+        code.includes(q) ||
+        art.includes(q) ||
+        company.includes(q) ||
+        brand.includes(q) ||
+        cat.includes(q)
+      );
+    });
+  }, [projects, searchTerm]);
+
+  const getPaginatedProjects = (list: ProductDevelopment[]) => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return list.slice(startIndex, startIndex + itemsPerPage);
+  };
+
+  const getTotalPages = (totalItems: number) =>
+    Math.max(1, Math.ceil(totalItems / itemsPerPage));
+
+  // ---- helpers
+  const calculateDuration = (start?: string, target?: string) => {
+    if (!start || !target) return "TBD";
+    const s = new Date(start);
+    const t = new Date(target);
+    if (isNaN(s.getTime()) || isNaN(t.getTime())) return "TBD";
+    const diffTime = t.getTime() - s.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
+    if (diffDays === 0) return "Due today";
+    return `${diffDays} days`;
+  };
+
+  const getStageColor = (stage?: string) => {
     const colors: Record<string, string> = {
       "Idea Submitted": "bg-blue-100 text-blue-800",
       "Costing Pending": "bg-yellow-100 text-yellow-800",
@@ -273,85 +197,46 @@ export function ProjectDevelopment() {
       "Final Approved": "bg-emerald-100 text-emerald-800",
       "PO Issued": "bg-gray-100 text-gray-800",
     };
-    return colors[stage] || "bg-gray-100 text-gray-800";
+    return colors[stage ?? ""] || "bg-gray-100 text-gray-800";
   };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityColor = (priority?: string) => {
     const colors: Record<string, string> = {
       High: "bg-red-500 text-white",
+      high: "bg-red-500 text-white",
       Medium: "bg-purple-500 text-white",
+      medium: "bg-purple-500 text-white",
       Low: "bg-green-600 text-white",
+      low: "bg-green-600 text-white",
     };
-    return colors[priority] || "bg-gray-100 text-gray-800";
+    return colors[priority ?? ""] || "bg-gray-100 text-gray-800";
   };
 
-  const getProgressValue = (stage: string) => {
-    const stages = [
-      "Idea Submitted",
-      "Costing Pending",
-      "Costing Received",
-      "Prototype",
-      "Red Seal",
-      "Green Seal",
-      "Final Approved",
-      "PO Issued",
-    ];
-    return ((stages.indexOf(stage) + 1) / stages.length) * 100;
-  };
-
-  const getDevelopmentProjects = () => {
-    const searchFiltered = rdProjects.filter((project) => {
-      const matchesSearch =
-        (project.autoCode?.toLowerCase() || "").includes(
-          searchTerm.toLowerCase()
-        ) ||
-        (project.remarks?.toLowerCase() || "").includes(
-          searchTerm.toLowerCase()
-        );
-      return matchesSearch;
-    });
-
-    // return searchFiltered.filter(
-    //   (p) => p.status === "Prototype" || p.status === "Costing Received"
-    // );
-    return searchFiltered;
-  };
-
-  const getPaginatedProjects = (projects: any[]) => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return projects.slice(startIndex, startIndex + itemsPerPage);
-  };
-
-  const getTotalPages = (totalItems: number) => {
-    return Math.ceil(totalItems / itemsPerPage);
-  };
-
-  const handleProjectClick = (project: RDProject) => {
+  // ---- actions
+  const handleProjectClick = (project: ProductDevelopmentResponseProps) => {
     setSelectedProject(project);
     setProjectDetailsOpen(true);
   };
 
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toLocaleString("en-IN")}`;
+  const handleDeleteProject = async (
+    project: ProductDevelopmentResponseProps
+  ) => {
+    if (!project || !project._id) return;
+    try {
+      await api.delete(`/projects/${project._id}`);
+      setProjects((prev) => prev.filter((p) => p._id !== project._id));
+      toast.success("Project removed");
+    } catch (err: any) {
+      console.error("Project remove failed", err);
+      toast.error(err?.response?.data?.message || "Project remove failed");
+    }
   };
 
-  // Calculate duration between start date and PO target date
-  const calculateDuration = (startDate: string, poTargetDate?: string) => {
-    if (!poTargetDate) return "TBD";
+  // ---- render
+  const developmentProjects = filteredProjects.filter(
+    (project) => project.status === "prototype"
+  );
 
-    const start = new Date(startDate);
-    const target = new Date(poTargetDate);
-
-    // Calculate difference in days
-    const diffTime = target.getTime() - start.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
-    if (diffDays === 0) return "Due today";
-    return `${diffDays} days`;
-  };
-
-  const developmentProjects = getDevelopmentProjects();
   return (
     <div className="space-y-6">
       {/* Header Section */}
@@ -415,323 +300,243 @@ export function ProjectDevelopment() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Product Code
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Image & Profile
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Company & Brand
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Category, Type & Gender
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Art & Colour
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Country
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Timeline, Dates & Duration
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Priority
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Task-INC
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Remarks
                   </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {getPaginatedProjects(projects).map((project, index) => {
-                  const brand = brands.find((b) => b.id === project.brandId);
-                  const category = categories.find(
-                    (c) => c.id === project.categoryId
-                  );
-                  const type = types.find((t) => t.id === project.typeId);
-                  const color = colors.find((cl) => cl.id === project.colorId);
-                  const country = countries.find(
-                    (co) => co.id === project.countryId
-                  );
-                  const productData = getProductData(index);
+                {getPaginatedProjects(developmentProjects).map(
+                  (project: any, index) => {
+                    return (
+                      <tr
+                        key={project._id}
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => handleProjectClick(project)}
+                      >
+                        {/* Product Code */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-3">
+                              {String(index + 1).padStart(2, "0")}
+                            </div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {project.autoCode}
+                            </div>
+                          </div>
+                        </td>
 
-                  return (
-                    <tr
-                      key={project.id}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => handleProjectClick(project)}
-                    >
-                      {/* Product Code */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-3">
-                            {String(index + 1).padStart(2, "0")}
-                          </div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {project.autoCode}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Image & Profile */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center justify-center">
-                          <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 shadow-sm flex items-center justify-center">
-                            {/* <Package className="w-6 h-6 text-gray-400" /> */}
-                            {project.coverPhoto ? (
-                              <img
-                                src={`${import.meta.env.VITE_BACKEND_URL}/${
-                                  project.coverPhoto
-                                }`}
-                                alt="Cover"
-                                className="w-full h-full object-cover rounded-lg"
-                              />
-                            ) : (
-                              <ImageIcon className="w-6 h-6 text-gray-400" />
-                            )}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Company & Brand */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {/* {productData.company} */}
-                            {project?.companyName || ""}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {project.brandName || ""}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Category, Type & Gender */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {project?.categoryName}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {project?.typeName}
-                          </div>
-                          <div className="text-xs text-gray-400">
-                            {project?.gender}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Art & Colour */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {project.artName || "N/A"}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {project?.color || "N/A"}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Country */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {project?.countryName}
-                        </div>
-                      </td>
-
-                      {/* Timeline, Dates & Duration */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div>
-                          <div className="flex items-center gap-1 mb-1">
-                            <Clock className="w-3 h-3" />
-                            <span>
-                              Start:{" "}
-                              {new Date(project.startDate).toLocaleDateString(
-                                "en-GB"
+                        {/* Image & Profile */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center justify-center">
+                            <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 shadow-sm flex items-center justify-center">
+                              {project.coverImage ? (
+                                // show image using backend url (if present)
+                                <img
+                                  src={
+                                    project.coverImage.startsWith("http")
+                                      ? project.coverImage
+                                      : `${BACKEND_URL}/${project.coverImage}`
+                                  }
+                                  alt="Cover"
+                                  className="w-full h-full object-cover rounded-lg"
+                                />
+                              ) : (
+                                <ImageIcon className="w-6 h-6 text-gray-400" />
                               )}
-                            </span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 mb-1">
-                            <Target className="w-3 h-3" />
-                            <span>
-                              Target:{" "}
-                              {project.poTarget
-                                ? new Date(project.poTarget).toLocaleDateString(
-                                    "en-GB"
-                                  )
-                                : "TBD"}
-                            </span>
+                        </td>
+
+                        {/* Company & Brand */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {project?.company?.name || ""}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {project?.brand?.name || ""}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            <span
-                              className={`font-medium ${
-                                project.poTarget &&
-                                calculateDuration(
-                                  project.startDate,
-                                  project.poTarget
-                                ).includes("overdue")
-                                  ? "text-red-600"
-                                  : project.poTarget &&
-                                    calculateDuration(
-                                      project.startDate,
-                                      project.poTarget
-                                    ).includes("Due today")
-                                  ? "text-orange-600"
-                                  : "text-gray-700"
-                              }`}
-                            >
-                              Duration:{" "}
-                              {calculateDuration(
-                                project.startDate,
-                                project.poTarget
-                              )}
-                            </span>
+                        </td>
+
+                        {/* Category, Type & Gender */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {project?.category?.name || ""}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {project?.type?.name || ""}
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              {project?.gender || ""}
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Status */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex px-2 text-xs leading-5 font-semibold rounded-full ${getStageColor(
-                            project.status
-                          )}`}
-                        >
-                          {project.status}
-                        </span>
-                      </td>
+                        {/* Art & Colour */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {project.artName || "N/A"}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {project?.color || "N/A"}
+                            </div>
+                          </div>
+                        </td>
 
-                      {/* Priority */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs leading-4 font-semibold rounded ${getPriorityColor(
-                            project.priority || "Low"
-                          )}`}
-                        >
-                          {project.priority || "Low"}
-                        </span>
-                      </td>
-
-                      {/* Task-INC */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {project.assignPerson.name || "Priyanka"}
-                        </div>
-                      </td>
-
-                      {/* Remarks */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
+                        {/* Country */}
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            Next:{" "}
-                            {new Date(
-                              Date.now() + 7 * 24 * 60 * 60 * 1000
-                            ).toLocaleDateString("en-GB")}
+                            {project?.country?.name || ""}
                           </div>
-                          <div className="text-sm text-gray-500">
-                            {project.clientFeedback}
+                        </td>
+
+                        {/* Timeline, Dates & Duration */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <div>
+                            <div className="flex items-center gap-1 mb-1">
+                              <Clock className="w-3 h-3" />
+                              <span>
+                                Start:{" "}
+                                {project.createdAt
+                                  ? new Date(
+                                      project.createdAt
+                                    ).toLocaleDateString("en-GB")
+                                  : "TBD"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 mb-1">
+                              <Target className="w-3 h-3" />
+                              <span>
+                                Target:{" "}
+                                {project.redSealTargetDate
+                                  ? new Date(
+                                      project.redSealTargetDate
+                                    ).toLocaleDateString("en-GB")
+                                  : "TBD"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              <span className="font-medium text-gray-700">
+                                Duration:{" "}
+                                {calculateDuration(
+                                  project.createdAt,
+                                  project.redSealTargetDate
+                                )}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Actions */}
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center gap-2 justify-end">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700"
-                            onMouseDown={(e: any) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                            }}
-                            onClick={async (e: any) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-
-                              try {
-                                await api.delete(`/projects/${project.id}`);
-
-                                // 1) local UI
-                                setProjects((prev) =>
-                                  prev.filter((x) => x.id !== project.id)
-                                );
-
-                                // 2) global store
-                                const prevList =
-                                  useERPStore.getState().rdProjects;
-                                const newList = prevList.filter(
-                                  (x) => x.id !== project.id
-                                );
-                                useERPStore.getState().setRDProjects(newList);
-
-                                toast.success("Project removed");
-                              } catch (err: any) {
-                                toast.error("Project remove failed");
-                              }
-                            }}
+                        {/* Status */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex px-2 text-xs leading-5 font-semibold rounded-full ${getStageColor(
+                              project.status
+                            )}`}
                           >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                            {project.status || "N/A"}
+                          </span>
+                        </td>
+
+                        {/* Priority */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs leading-4 font-semibold rounded ${getPriorityColor(
+                              project.priority
+                            )}`}
+                          >
+                            {project.priority || "Low"}
+                          </span>
+                        </td>
+
+                        {/* Task-INC */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {project.assignPerson?.name || "N/A"}
+                          </div>
+                        </td>
+
+                        {/* Remarks */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm text-gray-900">
+                              Next: {"N/A"}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {project.clientApproval?.status || "N/A"}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex items-center gap-2 justify-end">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                              onMouseDown={(e: any) => {
+                                // prevent row click
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onClick={async (e: any) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                await handleDeleteProject(project);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                )}
               </tbody>
             </table>
           </div>
 
-          {developmentProjects.length === 0 && (
+          {developmentProjects.length === 0 && !loading && (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Package className="w-8 h-8 text-gray-400" />
@@ -752,13 +557,45 @@ export function ProjectDevelopment() {
               {developmentProjects.length} results
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
                 Previous
               </Button>
-              <Button size="sm" className="bg-blue-500 hover:bg-blue-600">
-                1
-              </Button>
-              <Button variant="outline" size="sm" disabled>
+
+              {Array.from(
+                { length: getTotalPages(developmentProjects.length) },
+                (_, i) => (
+                  <Button
+                    key={i}
+                    size="sm"
+                    className={
+                      i + 1 === currentPage
+                        ? "bg-blue-500 hover:bg-blue-600"
+                        : ""
+                    }
+                    onClick={() => setCurrentPage(i + 1)}
+                  >
+                    {i + 1}
+                  </Button>
+                )
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  currentPage >= getTotalPages(developmentProjects.length)
+                }
+                onClick={() =>
+                  setCurrentPage((p) =>
+                    Math.min(getTotalPages(developmentProjects.length), p + 1)
+                  )
+                }
+              >
                 Next
               </Button>
             </div>
@@ -770,17 +607,28 @@ export function ProjectDevelopment() {
       <CreateProjectDialog
         open={newProjectOpen}
         onClose={() => setNewProjectOpen(false)}
-        onCreated={() => reloadProjects()} // <--- add this
+        onCreated={() => reloadProjects()}
       />
+
       <ProjectDetailsDialog
         open={projectDetailsOpen}
-        onOpenChange={setProjectDetailsOpen}
+        onOpenChange={async (v) => {
+          if (!v) await reloadProjects(); // 🟩 FIX: refresh when dialog closes
+          setProjectDetailsOpen(v);
+        }}
+        reloadProjects={reloadProjects} // 🔥 pass it to dialog
         project={selectedProject}
+        companies={companies}
+        setCompanies={setCompanies}
         brands={brands}
+        setBrands={setBrands}
         categories={categories}
-        types={types}
-        colors={colors}
+        setCategories={setCategories}
         countries={countries}
+        setCountries={setCountries}
+        types={types}
+        setTypes={setTypes}
+        assignPersons={assignPersons}
       />
     </div>
   );

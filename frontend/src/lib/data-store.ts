@@ -86,10 +86,11 @@ export interface RDProject {
 
   designerId: string;
   status:
+    | "ready_for_red_seal"
     | "Idea Submitted"
     | "Costing Pending"
     | "Costing Received"
-    | "Prototype"
+    | "prototype"
     | "Red Seal"
     | "Green Seal"
     | "Final Approved"
@@ -109,7 +110,7 @@ export interface RDProject {
   nextUpdateDate: string;
   remarks: string;
   clientFeedback: "OK" | "Update Required" | "Pending";
-  priority: "High" | "Medium" | "Low";
+  priority: "HIGH" | "MEDIUM" | "LOW";
   taskInc: string; // Task-INC field
   updateNotes: string; // Notes for next update meeting
   createdDate: string;
@@ -419,8 +420,7 @@ export interface DeliveryItem {
 
 // Store State Interface
 interface ERPStore {
-  assignPersons: { id: string; name: string }[];
-
+  assignPersons: { _id: string; name: string }[];
   currentModule: string;
   companies: CompanyMaster[];
   brands: BrandMaster[];
@@ -451,8 +451,7 @@ interface ERPStore {
 
   // Actions
 
-  setAssignPersons: (list: { id: string; name: string }[]) => void;
-
+  setAssignPersons: (list: { _id: string; name: string }[]) => void;
   setCurrentModule: (module: string) => void;
   addBrand: (
     brand: Omit<BrandMaster, "id" | "brandCode" | "createdDate">
@@ -542,7 +541,9 @@ interface ERPStore {
     status: "Pending" | "Parcel Delivered" | "Delivered"
   ) => DeliveryItem[];
 
-  setRDProjects: (projects: RDProject[]) => void;
+  setRDProjects: (
+    projects: RDProject[] | ((prev: RDProject[]) => RDProject[])
+  ) => void;
 }
 
 // Helper functions
@@ -622,10 +623,12 @@ export const useERPStore = create<ERPStore>((set, get) => ({
   types: [],
   countries: [],
   assignPersons: [],
-  setAssignPersons: (a: any) => set({ assignPersons: a }),
 
   colors: [],
   // countries: sampleCountries,
+  setAssignPersons: (list: { _id: string; name: string }[]) =>
+    set({ assignPersons: list }),
+
   rdProjects: [],
   prototypeFiles: [],
   selectedRDProject: null,
@@ -649,7 +652,13 @@ export const useERPStore = create<ERPStore>((set, get) => ({
 
   // Actions
   setCurrentModule: (module) => set({ currentModule: module }),
-  setRDProjects: (projects: RDProject[]) => set({ rdProjects: projects }),
+  setRDProjects: (
+    projects: RDProject[] | ((prev: RDProject[]) => RDProject[])
+  ) =>
+    set((state) => ({
+      rdProjects:
+        typeof projects === "function" ? projects(state.rdProjects) : projects,
+    })),
 
   addBrand: (brand) => {
     const newBrand: BrandMaster = {

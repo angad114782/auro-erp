@@ -1,287 +1,242 @@
-import React, { useState } from 'react';
-import { Plus, Search, Eye, Edit, Trash2, Lightbulb, ImageIcon, Workflow, Calculator, Clock, User, IndianRupee, Calendar, FileText, Target, LayoutDashboard, X, Building, Users, AlertCircle, CheckCircle, Activity, Pause, ShoppingCart, CircleCheckBig, CircleX, Package, ChevronLeft, ChevronRight, Upload, Download, Filter, FileSpreadsheet, FileX, FileUp } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Badge } from './ui/badge';
-import { Progress } from './ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { useERPStore } from '../lib/data-store';
-import { CreateProjectDialog } from './CreateProjectDialog';
-import { ProjectDetailsDialog } from './ProjectDetailsDialog';
-import { RedSealProjectDetailsDialog } from './RedSealProjectDetailsDialog';
-import { ImportTemplateGenerator } from './ImportTemplateGenerator';
-import { toast } from 'sonner@2.0.3';
-import type { RDProject } from '../lib/data-store';
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Calendar,
+  Clock,
+  Filter,
+  ImageIcon,
+  Package,
+  Search,
+  Target,
+  Trash2,
+} from "lucide-react";
+import { toast } from "sonner";
+import api from "../lib/api";
+
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Input } from "./ui/input";
+
+import { CreateProjectDialog } from "./CreateProjectDialog";
+import ProjectDetailsDialog from "./ProjectDetailsDialog";
+import { RedSealProjectDetailsDialog } from "./RedSealProjectDetailsDialog";
+
+export interface Generic {
+  _id: string;
+  name: string;
+}
+
+export interface ProductDevelopmentResponseProps {
+  _id: string;
+  autoCode: string;
+  gender?: string;
+  company?: Generic;
+  brand?: Generic;
+  category?: Generic;
+  type?: Generic;
+  country?: Generic;
+  color?: string;
+  assignPerson?: Generic;
+  artName?: string;
+  status?: string;
+  createdAt?: string;
+  redSealTargetDate?: string;
+  priority?: string;
+  productDesc?: string;
+  coverImage?: string;
+  sampleImages?: string[];
+  startDate?: string;
+  endDate?: string;
+  clientApproval?: { status?: string } | null;
+}
 
 export function RedSeal() {
-  const { 
-    rdProjects, 
-    brands, 
-    categories, 
-    types, 
-    colors, 
-    countries, 
-    selectRDProject,
-    addRDProject 
-  } = useERPStore();
+  const [loading, setLoading] = useState(false);
 
-  // Footwear product data from reference
-  const footwearProducts = [
-    { name: 'Chunky Mickey', company: 'SportTech International', brand: 'UA Sports' },
-    { name: 'Hydro Dipping Film', company: 'AquaTech Industries Pvt Ltd', brand: 'AquaTech Pro' },
-    { name: 'Red zip pocket', company: 'ZipStyle Footwear Co.', brand: 'ZipStyle Elite' },
-    { name: 'Black Buckles', company: 'BuckleMax Corporation', brand: 'BuckleMax Premium' },
-    { name: 'Cross Rope', company: 'RopeFlex Manufacturers', brand: 'RopeFlex Active' },
-    { name: 'UA China EVA slide', company: 'China EVA Exports Ltd', brand: 'UA China' },
-    { name: 'Lime strip', company: 'ColorStrip Designs India', brand: 'ColorStrip Fashion' },
-    { name: 'Cavity V Camo', company: 'CamoTech Solutions', brand: 'CamoTech Outdoor' },
-    { name: 'Black Cross tape', company: 'TapeCross Industries', brand: 'TapeCross Sport' },
-    { name: 'UA "V"', company: 'Victory Footwear Ltd', brand: 'UA Victory' },
-    { name: 'Halo', company: 'HaloSport Enterprises', brand: 'HaloSport Premium' },
-    { name: 'UA Porous', company: 'Porous Tech India Pvt Ltd', brand: 'UA Porous' },
-    { name: 'Brown slide', company: 'EarthTone Manufacturers', brand: 'EarthTone Natural' },
-    { name: 'Silver Mesh', company: 'MeshTech Innovations', brand: 'MeshTech Advanced' },
-    { name: 'Black Pocket', company: 'PocketStyle Fashion House', brand: 'PocketStyle Urban' },
-    { name: 'Cross Tape white', company: 'TapeCross Industries', brand: 'TapeCross Classic' },
-    { name: 'Removable sticker', company: 'StickerTech Solutions Ltd', brand: 'StickerTech Flex' },
-    { name: 'Chunky Frozen', company: 'FrozenStyle Footwear Inc', brand: 'FrozenStyle Winter' }
-  ];
+  const [companies, setCompanies] = useState<Generic[]>([]);
+  const [brands, setBrands] = useState<Generic[]>([]);
+  const [categories, setCategories] = useState<Generic[]>([]);
+  const [types, setTypes] = useState<Generic[]>([]);
+  const [countries, setCountries] = useState<Generic[]>([]);
+  const [assignPersons, setAssignPersons] = useState<Generic[]>([]);
 
-  const getProductData = (index: number) => {
-    const productIndex = index % footwearProducts.length;
-    return footwearProducts[productIndex];
-  };
+  const [projects, setProjects] = useState<ProductDevelopmentResponseProps[]>(
+    []
+  );
 
-  const [searchTerm, setSearchTerm] = useState('');
+  // UI state
+  const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
-  const [redSealDetailsOpen, setRedSealDetailsOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<RDProject | null>(null);
 
-  const getStageColor = (stage: string) => {
-    const colors: Record<string, string> = {
-      'Idea Submitted': 'bg-blue-100 text-blue-800',
-      'Costing Pending': 'bg-yellow-100 text-yellow-800',
-      'Costing Received': 'bg-orange-100 text-orange-800',
-      'Prototype': 'bg-purple-100 text-purple-800',
-      'Red Seal': 'bg-red-100 text-red-800',
-      'Green Seal': 'bg-green-100 text-green-800',
-      'Final Approved': 'bg-emerald-100 text-emerald-800',
-      'PO Issued': 'bg-gray-100 text-gray-800'
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedProject, setSelectedProject] =
+    useState<ProductDevelopmentResponseProps | null>(null);
+
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+  // Load master data
+  useEffect(() => {
+    let cancel = false;
+
+    async function loadMasters() {
+      try {
+        const [cRes, bRes, tRes, coRes, apRes] = await Promise.all([
+          api.get("/companies"),
+          api.get("/brands"),
+          api.get("/types"),
+          api.get("/countries"),
+          api.get("/assign-persons"),
+        ]);
+
+        if (cancel) return;
+
+        const pick = (r: any) =>
+          r?.data?.data ??
+          r?.data?.items ??
+          (Array.isArray(r?.data) ? r.data : []);
+
+        setCompanies(pick(cRes));
+        setBrands(pick(bRes));
+        setTypes(pick(tRes));
+        setCountries(pick(coRes));
+        setAssignPersons(pick(apRes));
+
+        setCategories([]);
+      } catch (e) {
+        console.error("Masters load error", e);
+      }
+    }
+
+    loadMasters();
+    return () => {
+      cancel = true;
     };
-    return colors[stage] || 'bg-gray-100 text-gray-800';
-  };
+  }, []);
 
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      'High': 'bg-red-500 text-white',
-      'Medium': 'bg-purple-500 text-white',
-      'Low': 'bg-green-600 text-white'
-    };
-    return colors[priority] || 'bg-gray-100 text-gray-800';
-  };
-
-  const getProgressValue = (stage: string) => {
-    const stages = ['Idea Submitted', 'Costing Pending', 'Costing Received', 'Prototype', 'Red Seal', 'Green Seal', 'Final Approved', 'PO Issued'];
-    return ((stages.indexOf(stage) + 1) / stages.length) * 100;
-  };
-
-  const getRedSealProjects = () => {
-    const searchFiltered = rdProjects.filter(project => {
-      const matchesSearch = (project.autoCode?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
-                           (project.remarks?.toLowerCase() || '').includes(searchTerm.toLowerCase());
-      return matchesSearch;
-    });
-
-    return searchFiltered.filter(p => p.status === 'Red Seal');
-  };
-
-  const getPaginatedProjects = (projects: any[]) => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return projects.slice(startIndex, startIndex + itemsPerPage);
-  };
-
-  const getTotalPages = (totalItems: number) => {
-    return Math.ceil(totalItems / itemsPerPage);
-  };
-
-  const handleProjectClick = (project: RDProject) => {
-    setSelectedProject(project);
-    setRedSealDetailsOpen(true);
-  };
-
-  // Cost overview calculation functions
-  const getCostOverviewData = (project: RDProject) => {
-    const tentativeCost = project.tentativeCost || 0;
-    const btc = project.targetCost || 0; // BTC = Brand Targeting Cost
-    const difference = tentativeCost - btc;
-    
-    return {
-      tentativeCost,
-      btc,
-      difference
-    };
-  };
-
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toLocaleString('en-IN')}`;
-  };
-
-  const getDifferenceColor = (difference: number) => {
-    if (difference > 0) return 'text-red-600'; // Higher cost is bad
-    if (difference < 0) return 'text-green-600'; // Lower cost is good
-    return 'text-gray-600'; // Equal
-  };
-
-  // Calculate duration between start date and PO target date
-  const calculateDuration = (startDate: string, poTargetDate?: string) => {
-    if (!poTargetDate) return 'TBD';
-    
-    const start = new Date(startDate);
-    const target = new Date(poTargetDate);
-    
-    // Calculate difference in days
-    const diffTime = target.getTime() - start.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
-    if (diffDays === 0) return 'Due today';
-    return `${diffDays} days`;
-  };
-
-  // Export functionality
-  const exportToExcel = async (data: RDProject[], tabName: string) => {
+  // Load projects
+  const reloadProjects = async () => {
+    setLoading(true);
     try {
-      // Import xlsx dynamically
-      const XLSX = await import('xlsx');
-      
-      // Prepare data for export
-      const exportData = data.map((project, index) => {
-        const brand = brands.find(b => b.id === project.brandId);
-        const category = categories.find(c => c.id === project.categoryId);
-        const type = types.find(t => t.id === project.typeId);
-        const color = colors.find(cl => cl.id === project.colorId);
-        const country = countries.find(co => co.id === project.countryId);
-        
-        return {
-          'S.No': index + 1,
-          'Project Code': project.autoCode,
-          'Brand': brand?.brandName || 'Unknown',
-          'Brand Code': brand?.brandCode || 'N/A',
-          'Category': category?.categoryName || 'Unknown',
-          'Type': type?.typeName || 'Unknown',
-          'Color': color?.colorName || 'Unknown',
-          'Country': country?.countryName || 'Unknown',
-          'Status': project.status,
-          'Priority': project.priority || 'Low',
-          'Task-INC': project.taskInc || 'Not Assigned',
-          'Progress': `${Math.round(getProgressValue(project.status))}%`,
-          'Target Cost (₹)': project.targetCost.toLocaleString('en-IN'),
-          'Final Cost (₹)': project.finalCost > 0 ? project.finalCost.toLocaleString('en-IN') : 'Not Set',
-          'Variance (₹)': project.finalCost > 0 ? (project.finalCost - project.targetCost).toLocaleString('en-IN') : 'N/A',
-          'Start Date': new Date(project.startDate).toLocaleDateString('en-GB'),
-          'PO Target Date': project.poTarget ? new Date(project.poTarget).toLocaleDateString('en-GB') : 'Not Set',
-          'Duration to PO Target': calculateDuration(project.startDate, project.poTarget),
-          'Client Feedback': project.clientFeedback,
-          'PO Target': project.poTarget ? new Date(project.poTarget).toLocaleDateString('en-GB') : 'Not Set',
-          'PO Received': project.poReceived || 'Not Received',
-          'Remarks': project.remarks,
-          'Created Date': new Date(project.createdDate).toLocaleDateString('en-GB'),
-          'Last Updated': new Date(project.updatedDate).toLocaleDateString('en-GB')
-        };
-      });
-
-      // Create workbook and worksheet
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      
-      // Auto-fit columns
-      const colWidths = Object.keys(exportData[0] || {}).map(key => ({
-        wch: Math.max(key.length, ...exportData.map(row => String(row[key as keyof typeof row]).length)) + 2
-      }));
-      ws['!cols'] = colWidths;
-
-      // Add worksheet to workbook
-      XLSX.utils.book_append_sheet(wb, ws, tabName);
-      
-      // Generate filename with timestamp
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
-      const filename = `RedSeal_Export_${tabName}_${timestamp}.xlsx`;
-      
-      // Save file
-      XLSX.writeFile(wb, filename);
-      
-      toast.success(`Excel file exported successfully! (${data.length} records)`);
-    } catch (error) {
-      console.error('Export error:', error);
-      toast.error('Failed to export Excel file');
+      const r = await api.get("/projects");
+      const data = r.data?.data ?? r.data?.items ?? r.data ?? [];
+      setProjects(data);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load projects");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleExport = (format: 'excel' | 'xml') => {
-    const data = getRedSealProjects();
-    
-    if (data.length === 0) {
-      toast.error('No data available to export');
-      return;
-    }
+  useEffect(() => {
+    reloadProjects();
+  }, []);
 
-    if (format === 'excel') {
-      exportToExcel(data, 'Red_Seal_Approval');
-    }
+  // Search filter
+  const filteredProjects = useMemo(() => {
+    if (!searchTerm) return projects;
+
+    const q = searchTerm.toLowerCase();
+    return projects.filter((p) => {
+      return (
+        p.autoCode?.toLowerCase()?.includes(q) ||
+        p.artName?.toLowerCase()?.includes(q) ||
+        p.company?.name?.toLowerCase()?.includes(q) ||
+        p.brand?.name?.toLowerCase()?.includes(q) ||
+        p.category?.name?.toLowerCase()?.includes(q)
+      );
+    });
+  }, [projects, searchTerm]);
+
+  // Only Red Seal
+  const redSealProjects = filteredProjects.filter(
+    (p) => p.status === "red_seal"
+  );
+
+  // Pagination
+  const paginated = (list: any[]) => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return list.slice(start, start + itemsPerPage);
   };
 
-  const redSealProjects = getRedSealProjects();
+  const totalPages = Math.max(
+    1,
+    Math.ceil(redSealProjects.length / itemsPerPage)
+  );
+
+  // Helpers
+  const calculateDuration = (start?: string, target?: string) => {
+    if (!start || !target) return "TBD";
+
+    const s = new Date(start);
+    const t = new Date(target);
+    const diff = t.getTime() - s.getTime();
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+
+    if (days < 0) return `${Math.abs(days)} days overdue`;
+    if (days === 0) return "Due today";
+    return `${days} days`;
+  };
+
+  const getStageColor = (stage?: string) => {
+    const map: Record<string, string> = {
+      red_seal: "bg-red-100 text-red-800",
+    };
+    return map[stage ?? ""] || "bg-gray-100 text-gray-800";
+  };
+
+  const getPriorityColor = (priority?: string) => {
+    const map: Record<string, string> = {
+      high: "bg-red-500 text-white",
+      medium: "bg-purple-500 text-white",
+      low: "bg-green-600 text-white",
+    };
+    return map[priority ?? ""] || "bg-gray-100 text-gray-800";
+  };
+
+  // Handlers
+  const handleProjectClick = (p: any) => {
+    setSelectedProject(p);
+    setDetailsOpen(true);
+  };
+
+  const handleDelete = async (p: any) => {
+    try {
+      await api.delete(`/projects/${p._id}`);
+      setProjects((prev) => prev.filter((x) => x._id !== p._id));
+      toast.success("Project removed");
+    } catch (e) {
+      toast.error("Delete failed");
+    }
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header Section */}
       <Card className="border-0 shadow-lg bg-white">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center text-white">
-                <CheckCircle className="w-5 h-5" />
+                <Target className="w-5 h-5" />
               </div>
               <div>
-                <CardTitle className="text-xl">Red Seal Approval</CardTitle>
+                <CardTitle className="text-xl">Red Seal Projects</CardTitle>
                 <p className="text-sm text-gray-600 mt-1">
-                  Review and approve prototype designs for Red Seal certification
+                  View all projects currently in Red Seal stage
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Download className="w-4 h-4 mr-2" />
-                    Export
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem 
-                    onClick={() => handleExport('excel')}
-                    className="cursor-pointer"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />
-                    Export to Excel
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <ImportTemplateGenerator moduleType="RedSeal" />
-            </div>
           </div>
         </CardHeader>
-        
+
         <CardContent className="p-6">
-          {/* Search and Filters */}
+          {/* Search */}
           <div className="flex items-center gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Search red seal approval projects..."
+                placeholder="Search red seal projects..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -296,217 +251,286 @@ export function RedSeal() {
             </Button>
           </div>
 
-          {/* Red Seal Approval Table */}
+          {/* Table */}
           <div className="overflow-x-auto border border-gray-200 rounded-lg">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product Code</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image & Profile</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company & Brand</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category, Type & Gender</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Art & Colour</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Country</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timeline, Dates & Duration</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task-INC</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost Overview</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remarks</th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  {[
+                    "Product Code",
+                    "Image & Profile",
+                    "Company & Brand",
+                    "Category, Type & Gender",
+                    "Art & Colour",
+                    "Country",
+                    "Timeline, Dates & Duration",
+                    "Status",
+                    "Priority",
+                    "Task-INC",
+                    "Cost Overview",
+                    "Remarks",
+                    "Actions",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
+
               <tbody className="bg-white divide-y divide-gray-200">
-                {getPaginatedProjects(redSealProjects).map((project, index) => {
-                  const brand = brands.find(b => b.id === project.brandId);
-                  const category = categories.find(c => c.id === project.categoryId);
-                  const type = types.find(t => t.id === project.typeId);
-                  const color = colors.find(cl => cl.id === project.colorId);
-                  const country = countries.find(co => co.id === project.countryId);
-                  const productData = getProductData(index);
-
-                  return (
-                    <tr 
-                      key={project.id}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => handleProjectClick(project)}
-                    >
-                      {/* Product Code */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 mr-3">
-                            {String(index + 1).padStart(2, '0')}
-                          </div>
-                          <div className="text-sm font-medium text-gray-900">{project.autoCode}</div>
+                {paginated(redSealProjects).map((p, index) => (
+                  <tr
+                    key={p._id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => handleProjectClick(p)}
+                  >
+                    {/* Product Code */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 mr-3">
+                          {String(index + 1).padStart(2, "0")}
                         </div>
-                      </td>
-
-                      {/* Image & Profile */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center justify-center">
-                          <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 shadow-sm flex items-center justify-center">
-                            <Package className="w-6 h-6 text-gray-400" />
-                          </div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {p.autoCode}
                         </div>
-                      </td>
+                      </div>
+                    </td>
 
-                      {/* Company & Brand */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{productData.company}</div>
-                          <div className="text-sm text-gray-500">{productData.brand}</div>
-                        </div>
-                      </td>
-
-                      {/* Category, Type & Gender */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{category?.categoryName}</div>
-                          <div className="text-sm text-gray-500">{type?.typeName}</div>
-                          <div className="text-xs text-gray-400">Men</div>
-                        </div>
-                      </td>
-
-                      {/* Art & Colour */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{productData.name}</div>
-                          <div className="text-sm text-gray-500">{color?.colorName}</div>
-                        </div>
-                      </td>
-
-                      {/* Country */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{country?.countryName}</div>
-                      </td>
-
-                      {/* Timeline, Dates & Duration */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div>
-                          <div className="flex items-center gap-1 mb-1">
-                            <Clock className="w-3 h-3" />
-                            <span>Start: {new Date(project.startDate).toLocaleDateString('en-GB')}</span>
-                          </div>
-                          <div className="flex items-center gap-1 mb-1">
-                            <Target className="w-3 h-3" />
-                            <span>Target: {project.poTarget ? new Date(project.poTarget).toLocaleDateString('en-GB') : 'TBD'}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            <span className={`font-medium ${
-                              project.poTarget && calculateDuration(project.startDate, project.poTarget).includes('overdue') 
-                                ? 'text-red-600' 
-                                : project.poTarget && calculateDuration(project.startDate, project.poTarget).includes('Due today')
-                                ? 'text-orange-600'
-                                : 'text-gray-700'
-                            }`}>
-                              Duration: {calculateDuration(project.startDate, project.poTarget)}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 text-xs leading-5 font-semibold rounded-full ${getStageColor(project.status)}`}>
-                          {project.status}
-                        </span>
-                      </td>
-
-                      {/* Priority */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs leading-4 font-semibold rounded ${getPriorityColor(project.priority || 'Low')}`}>
-                          {project.priority || 'Low'}
-                        </span>
-                      </td>
-
-                      {/* Task-INC */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{project.taskInc || 'Priyanka'}</div>
-                      </td>
-
-                      {/* Cost Overview */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="flex items-center space-x-1 text-sm font-semibold text-gray-900">
-                            <IndianRupee className="w-3 h-3" />
-                            <span>{(project.tentativeCost || 0).toLocaleString('en-IN')}</span>
-                          </div>
-                          <div className="text-xs text-gray-500">Tentative Cost</div>
-                          {project.targetCost > 0 && (
-                            <div className={`text-xs font-medium mt-1 ${
-                              (project.tentativeCost || 0) - project.targetCost < 0 
-                                ? 'text-green-600' 
-                                : (project.tentativeCost || 0) - project.targetCost > 0 
-                                ? 'text-red-600' 
-                                : 'text-gray-600'
-                            }`}>
-                              vs Target: {(project.tentativeCost || 0) - project.targetCost > 0 ? '+' : ''}₹{Math.abs((project.tentativeCost || 0) - project.targetCost).toLocaleString('en-IN')}
-                            </div>
+                    {/* Image */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-lg bg-gray-100 border shadow-sm flex items-center justify-center">
+                          {p.coverImage ? (
+                            <img
+                              src={
+                                p.coverImage.startsWith("http")
+                                  ? p.coverImage
+                                  : `${BACKEND_URL}/${p.coverImage}`
+                              }
+                              className="w-full h-full object-cover rounded-lg"
+                            />
+                          ) : (
+                            <ImageIcon className="w-6 h-6 text-gray-400" />
                           )}
                         </div>
-                      </td>
+                      </div>
+                    </td>
 
-                      {/* Remarks */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm text-gray-900">Next: {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB')}</div>
-                          <div className="text-sm text-gray-500">{project.clientFeedback}</div>
-                        </div>
-                      </td>
+                    {/* Company & Brand */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium">
+                        {p.company?.name}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {p.brand?.name}
+                      </div>
+                    </td>
 
-                      {/* Actions */}
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center gap-2 justify-end">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="text-red-600 hover:text-red-700"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toast.error('Delete functionality not implemented yet');
-                            }}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                    {/* Category, Type, Gender */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium">
+                        {p.category?.name}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {p.type?.name}
+                      </div>
+                      <div className="text-xs text-gray-400">{p.gender}</div>
+                    </td>
+
+                    {/* Art & Colour */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium">{p.artName}</div>
+                      <div className="text-sm text-gray-500">{p.color}</div>
+                    </td>
+
+                    {/* Country */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {p.country?.name}
+                    </td>
+
+                    {/* Timeline */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex items-center gap-1 mb-1">
+                        <Clock className="w-3 h-3" />
+                        <span>
+                          Start:{" "}
+                          {p.createdAt
+                            ? new Date(p.createdAt).toLocaleDateString("en-GB")
+                            : "TBD"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 mb-1">
+                        <Target className="w-3 h-3" />
+                        <span>
+                          Target:{" "}
+                          {p.redSealTargetDate
+                            ? new Date(p.redSealTargetDate).toLocaleDateString(
+                                "en-GB"
+                              )
+                            : "TBD"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        <span className="font-medium text-gray-700">
+                          Duration:{" "}
+                          {calculateDuration(p.createdAt, p.redSealTargetDate)}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex px-2 text-xs font-semibold rounded-full ${getStageColor(
+                          p.status
+                        )}`}
+                      >
+                        {p.status}
+                      </span>
+                    </td>
+
+                    {/* Priority */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getPriorityColor(
+                          p.priority
+                        )}`}
+                      >
+                        {p.priority || "Low"}
+                      </span>
+                    </td>
+
+                    {/* Task INC */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {p.assignPerson?.name || "N/A"}
+                    </td>
+
+                    {/* Cost Overview */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium">
+                        {p.tentativeCost || "₹ 1,80,000"}
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        {"Tentative cost"}
+                      </p>
+                      <div className="text-xs text-red-500">
+                        {"vs Target: +5000"}
+                      </div>
+                    </td>
+
+                    {/* Remarks */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">Next: N/A</div>
+                      <div className="text-sm text-gray-500">
+                        {p.clientApproval?.status || "N/A"}
+                      </div>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(p);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
-          {redSealProjects.length === 0 && (
+          {/* Empty state */}
+          {redSealProjects.length === 0 && !loading && (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-8 h-8 text-gray-400" />
+                <Package className="w-8 h-8 text-gray-400" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No projects pending red seal approval</h3>
-              <p className="text-gray-600">Projects will appear here when they're ready for red seal approval.</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                No Red Seal projects found
+              </h3>
+              <p className="text-gray-600">
+                Projects will appear here when they reach the Red Seal stage.
+              </p>
             </div>
           )}
 
           {/* Pagination */}
           <div className="flex items-center justify-between mt-6">
             <div className="text-sm text-gray-600">
-              Showing {getPaginatedProjects(redSealProjects).length} of {redSealProjects.length} results
+              Showing {paginated(redSealProjects).length} of{" "}
+              {redSealProjects.length} results
             </div>
+
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled>Previous</Button>
-              <Button size="sm" className="bg-blue-500 hover:bg-blue-600">1</Button>
-              <Button variant="outline" size="sm" disabled>Next</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+
+              {Array.from({ length: totalPages }, (_, i) => (
+                <Button
+                  key={i}
+                  size="sm"
+                  className={i + 1 === currentPage ? "bg-blue-500" : ""}
+                  onClick={() => setCurrentPage(i + 1)}
+                >
+                  {i + 1}
+                </Button>
+              ))}
+
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+              >
+                Next
+              </Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Dialogs */}
+      {/* Dialog */}
       <RedSealProjectDetailsDialog
-        open={redSealDetailsOpen}
-        onOpenChange={setRedSealDetailsOpen}
+        open={detailsOpen}
+        onOpenChange={async (v) => {
+          if (!v) await reloadProjects();
+          setDetailsOpen(v);
+        }}
+        reloadProjects={reloadProjects}
         project={selectedProject}
+        companies={companies}
+        setCompanies={setCompanies}
+        brands={brands}
+        setBrands={setBrands}
+        categories={categories}
+        setCategories={setCategories}
+        countries={countries}
+        setCountries={setCountries}
+        types={types}
+        setTypes={setTypes}
+        assignPersons={assignPersons}
       />
     </div>
   );
