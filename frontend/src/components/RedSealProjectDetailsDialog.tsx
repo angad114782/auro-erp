@@ -831,7 +831,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
       if (editedProject.redSealTargetDate)
         fd.append("redSealTargetDate", editedProject.redSealTargetDate);
       if (editedProject.clientApproval)
-        fd.append("clientApproval", editedProject.clientApproval);
+        fd.append("clientApproval", String(editedProject.clientApproval));
 
       if (editedProject.nextUpdateDate)
         fd.append(
