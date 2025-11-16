@@ -1,131 +1,200 @@
-import React, { useState } from "react";
 import {
-  Plus,
-  Search,
-  Eye,
-  Edit,
-  Trash2,
-  Lightbulb,
-  ImageIcon,
-  Workflow,
-  Calculator,
-  Clock,
-  User,
-  IndianRupee,
   Calendar,
-  FileText,
-  Target,
-  LayoutDashboard,
-  X,
-  Building,
-  Users,
-  AlertCircle,
   CheckCircle,
-  Activity,
-  ShoppingCart,
-  Package,
-  ChevronLeft,
-  ChevronRight,
-  Upload,
+  Clock,
   Download,
-  Filter,
   FileSpreadsheet,
-  FileX,
-  FileUp,
+  Filter,
+  Image as ImageIcon,
+  IndianRupee,
+  Package,
+  Search,
+  Target,
+  Trash2,
 } from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Badge } from "./ui/badge";
-import { Progress } from "./ui/progress";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import api from "../lib/api";
 
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { useERPStore } from "../lib/data-store";
-import { CreateProjectDialog } from "./CreateProjectDialog";
-import ProjectDetailsDialog from "./ProjectDetailsDialog";
+import { Input } from "./ui/input";
+
 import { GreenSealProjectDetailsDialog } from "./GreenSealProjectDetailsDialog";
 import { ImportTemplateGenerator } from "./ImportTemplateGenerator";
-import { toast } from "sonner@2.0.3";
-import type { RDProject } from "../lib/data-store";
+import { MasterItem, ProductDevelopment } from "./ProjectDetailsDialog";
 
 export function GreenSeal() {
-  const {
-    rdProjects,
-    brands,
-    categories,
-    types,
-    colors,
-    countries,
-    selectRDProject,
-    addRDProject,
-  } = useERPStore();
+  const [loading, setLoading] = useState(false);
 
+  const [companies, setCompanies] = useState<MasterItem[]>([]);
+  const [brands, setBrands] = useState<MasterItem[]>([]);
+  const [categories, setCategories] = useState<MasterItem[]>([]);
+  const [types, setTypes] = useState<MasterItem[]>([]);
+  // const [colors, setColors] = useState<MasterItem[]>([]);
+  const [countries, setCountries] = useState<MasterItem[]>([]);
+  const [assignPersons, setAssignPersons] = useState<MasterItem[]>([]);
+
+  const [projects, setProjects] = useState<ProductDevelopment[]>([]);
+
+  // UI state
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
-  const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
-  const [greenSealDetailsOpen, setGreenSealDetailsOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<RDProject | null>(
-    null
-  );
-  const getGreenSealProjects = () => {
-    const searchFiltered = rdProjects.filter((project) => {
-      const matchesSearch =
-        (project.autoCode?.toLowerCase() || "").includes(
-          searchTerm.toLowerCase()
-        ) ||
-        (project.remarks?.toLowerCase() || "").includes(
-          searchTerm.toLowerCase()
-        );
-      return matchesSearch;
-    });
 
-    return searchFiltered.filter((p) => p.status === "Green Seal");
-  };
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedProject, setSelectedProject] =
+    useState<ProductDevelopment | null>(null);
 
-  const getPaginatedProjects = (projects: any[]) => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return projects.slice(startIndex, startIndex + itemsPerPage);
-  };
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-  const getTotalPages = (totalItems: number) => {
-    return Math.ceil(totalItems / itemsPerPage);
-  };
+  // Load master data
+  useEffect(() => {
+    let cancel = false;
 
-  const handleProjectClick = (project: RDProject) => {
-    setSelectedProject(project);
-    if (project.status === "Green Seal") {
-      setGreenSealDetailsOpen(true);
-    } else {
-      setProjectDetailsOpen(true);
+    async function loadMasters() {
+      try {
+        const [cRes, tRes, coRes, apRes] = await Promise.all([
+          api.get("/companies"),
+          // api.get("/brands"),
+          // api.get("/categories"),
+          api.get("/types"),
+          // api.get("/colors"),
+          api.get("/countries"),
+          api.get("/assign-persons"),
+        ]);
+
+        if (cancel) return;
+
+        const pick = (r: any) =>
+          r?.data?.data ??
+          r?.data?.items ??
+          (Array.isArray(r?.data) ? r.data : []);
+
+        setCompanies(pick(cRes));
+        // setBrands(pick(bRes));
+        // setCategories(pick(catRes));
+        setTypes(pick(tRes));
+        // setColors(pick(colRes));
+        setCountries(pick(coRes));
+        setAssignPersons(pick(apRes));
+      } catch (e) {
+        console.error("Masters load error", e);
+      }
+    }
+
+    loadMasters();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  // Load projects
+  const reloadProjects = async () => {
+    setLoading(true);
+    try {
+      const r = await api.get("/projects");
+      const data = r?.data?.data ?? r?.data?.items ?? r?.data ?? [];
+      setProjects(data);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load projects");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Calculate duration between start date and PO target date
-  const calculateDuration = (startDate: string, poTargetDate?: string) => {
-    if (!poTargetDate) return "TBD";
+  useEffect(() => {
+    reloadProjects();
+  }, []);
 
-    const start = new Date(startDate);
-    const target = new Date(poTargetDate);
+  // Search filter
+  const filteredProjects = useMemo(() => {
+    if (!searchTerm) return projects;
 
-    // Calculate difference in days
-    const diffTime = target.getTime() - start.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const q = searchTerm.toLowerCase();
+    return projects.filter((p) => {
+      return (
+        p.autoCode?.toLowerCase()?.includes(q) ||
+        p.artName?.toLowerCase()?.includes(q) ||
+        p.company?.name?.toLowerCase()?.includes(q) ||
+        p.brand?.name?.toLowerCase()?.includes(q) ||
+        p.category?.name?.toLowerCase()?.includes(q)
+      );
+    });
+  }, [projects, searchTerm]);
 
-    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
-    if (diffDays === 0) return "Due today";
-    return `${diffDays} days`;
+  // Only Green Seal
+  const greenSealProjects = filteredProjects.filter(
+    (p) => p.status === "green_seal"
+  );
+
+  // Pagination
+  const paginated = (list: any[]) => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return list.slice(start, start + itemsPerPage);
+  };
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(greenSealProjects.length / itemsPerPage)
+  );
+
+  // Helpers
+  const calculateDuration = (start?: string, target?: string) => {
+    if (!start || !target) return "TBD";
+
+    const s = new Date(start);
+    const t = new Date(target);
+    const diff = t.getTime() - s.getTime();
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+
+    if (days < 0) return `${Math.abs(days)} days overdue`;
+    if (days === 0) return "Due today";
+    return `${days} days`;
+  };
+
+  const getStageColor = (stage?: string) => {
+    const map: Record<string, string> = {
+      green_seal: "bg-green-100 text-green-800",
+    };
+    return map[stage ?? ""] || "bg-gray-100 text-gray-800";
+  };
+
+  const getPriorityColor = (priority?: string) => {
+    const map: Record<string, string> = {
+      high: "bg-red-500 text-white",
+      medium: "bg-purple-500 text-white",
+      low: "bg-green-600 text-white",
+    };
+    return map[priority ?? ""] || "bg-gray-100 text-gray-800";
+  };
+
+  // Handlers
+  const handleProjectClick = (p: any) => {
+    setSelectedProject(p);
+    setDetailsOpen(true);
+  };
+
+  const handleDelete = async (p: any) => {
+    try {
+      await api.delete(`/projects/${p._id}`);
+      setProjects((prev) => prev.filter((x) => x._id !== p._id));
+      toast.success("Project removed");
+    } catch (e) {
+      toast.error("Delete failed");
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Main Content Card */}
-      <Card className="shadow-lg border-0">
+      <Card className="border-0 shadow-lg bg-white">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -160,10 +229,10 @@ export function GreenSeal() {
         </CardHeader>
 
         <CardContent className="p-6">
-          {/* Search and Filters */}
+          {/* Search */}
           <div className="flex items-center gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
                 placeholder="Search green seal projects..."
                 value={searchTerm}
@@ -180,444 +249,264 @@ export function GreenSeal() {
             </Button>
           </div>
 
-          {/* Green Seal Projects Table */}
+          {/* Table */}
           <div className="overflow-x-auto border border-gray-200 rounded-lg">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Product Code
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Image & Profile
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Company & Brand
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Category, Type & Gender
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Art & Colour
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Country
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Timeline, Dates & Duration
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Status
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Priority
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Task-INC
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Cost Overview
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Remarks
-                  </th>
+                  {[
+                    "Product Code",
+                    "Image & Profile",
+                    "Company & Brand",
+                    "Category, Type & Gender",
+                    "Art & Colour",
+                    "Country",
+                    "Timeline, Dates & Duration",
+                    "Status",
+                    "Priority",
+                    "Task-INC",
+                    "Cost Overview",
+                    "Remarks",
+                    "Actions",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
+
               <tbody className="bg-white divide-y divide-gray-200">
-                {getPaginatedProjects(getGreenSealProjects()).map(
-                  (project, index) => {
-                    const brand = brands.find((b) => b.id === project.brandId);
-                    const category = categories.find(
-                      (c) => c.id === project.categoryId
-                    );
-                    const type = types.find((t) => t.id === project.typeId);
-                    const color = colors.find(
-                      (cl) => cl.id === project.colorId
-                    );
-                    const country = countries.find(
-                      (co) => co.id === project.countryId
-                    );
+                {paginated(greenSealProjects).map((p, index) => (
+                  <tr
+                    key={p._id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => handleProjectClick(p)}
+                  >
+                    {/* Product Code */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-600 mr-3">
+                          {String(index + 1).padStart(2, "0")}
+                        </div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {p.autoCode}
+                        </div>
+                      </div>
+                    </td>
 
-                    // Combined sample data from both previous tabs
-                    const sampleData = [
-                      {
-                        code: "RND/24-25/01/102",
-                        company: "SportTech International",
-                        brand: "UA Sports",
-                        category: "Formal",
-                        type: "Leather",
-                        gender: "Men",
-                        product: "Chunky Mickey",
-                        productColor: "Brown",
-                        country: "China",
-                        priority: "High",
-                        taskInc: "Priyanka",
-                        status: "Update Req",
-                        nextDate: "08/09/2025",
-                        iconColor: "green",
-                      },
-                      {
-                        code: "RND/24-25/01/107",
-                        company: "AquaTech Industries Pvt Ltd",
-                        brand: "AquaTech Pro",
-                        category: "Casual",
-                        type: "CKD",
-                        gender: "Men",
-                        product: "Hydro Dipping Film",
-                        productColor: "White",
-                        country: "India",
-                        priority: "Low",
-                        taskInc: "Priyanka",
-                        status: "OK",
-                        nextDate: "12/09/2025",
-                        iconColor: "green",
-                      },
-                      {
-                        code: "RND/24-25/01/110",
-                        company: "ZipStyle Footwear Co.",
-                        brand: "ZipStyle Elite",
-                        category: "Formal",
-                        type: "Leather",
-                        gender: "Men",
-                        product: "Red zip pocket",
-                        productColor: "Navy Blue",
-                        country: "India",
-                        priority: "Low",
-                        taskInc: "Priyanka",
-                        status: "Pending",
-                        nextDate: "15/09/2025",
-                        iconColor: "green",
-                      },
-                      {
-                        code: "RND/24-25/01/105",
-                        company: "FlexiWalk Sports Ltd",
-                        brand: "FlexiWalk Pro",
-                        category: "Sports",
-                        type: "Running",
-                        gender: "Unisex",
-                        product: "Mesh Breathable",
-                        productColor: "Black & Neon",
-                        country: "Vietnam",
-                        priority: "High",
-                        taskInc: "Rajesh",
-                        status: "Update Req",
-                        nextDate: "10/09/2025",
-                        iconColor: "orange",
-                      },
-                      {
-                        code: "RND/24-25/01/108",
-                        company: "UrbanStep Fashion House",
-                        brand: "UrbanStep Casual",
-                        category: "Casual",
-                        type: "Sneakers",
-                        gender: "Women",
-                        product: "Metallic Finish",
-                        productColor: "Rose Gold",
-                        country: "Bangladesh",
-                        priority: "Medium",
-                        taskInc: "Sneha",
-                        status: "Pending",
-                        nextDate: "18/09/2025",
-                        iconColor: "orange",
-                      },
-                      {
-                        code: "RND/24-25/01/111",
-                        company: "TechGrip Solutions",
-                        brand: "TechGrip Premium",
-                        category: "Formal",
-                        type: "Oxford",
-                        gender: "Men",
-                        product: "Classic Patent",
-                        productColor: "Mahogany Brown",
-                        country: "India",
-                        priority: "Low",
-                        taskInc: "Amit",
-                        status: "Review Req",
-                        nextDate: "22/09/2025",
-                        iconColor: "orange",
-                      },
-                    ];
+                    {/* Image */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-lg bg-gray-100 border shadow-sm flex items-center justify-center">
+                          {p.coverImage ? (
+                            <img
+                              src={
+                                p.coverImage.startsWith("http")
+                                  ? p.coverImage
+                                  : `${BACKEND_URL}/${p.coverImage}`
+                              }
+                              className="w-full h-full object-cover rounded-lg"
+                              alt="Product"
+                            />
+                          ) : (
+                            <ImageIcon className="w-6 h-6 text-gray-400" />
+                          )}
+                        </div>
+                      </div>
+                    </td>
 
-                    const data = sampleData[index % sampleData.length];
+                    {/* Company & Brand */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium">
+                        {p.company?.name}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {p.brand?.name}
+                      </div>
+                    </td>
 
-                    return (
-                      <tr
-                        key={project.id}
-                        className="hover:bg-gray-50 cursor-pointer"
-                        onClick={() => handleProjectClick(project)}
+                    {/* Category, Type, Gender */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium">
+                        {p.category?.name}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {p.type?.name}
+                      </div>
+                      <div className="text-xs text-gray-400">{p.gender}</div>
+                    </td>
+
+                    {/* Art & Colour */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium">{p.artName}</div>
+                      <div className="text-sm text-gray-500">{p.color}</div>
+                    </td>
+
+                    {/* Country */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {p.country?.name}
+                    </td>
+
+                    {/* Timeline */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex items-center gap-1 mb-1">
+                        <Clock className="w-3 h-3" />
+                        <span>
+                          Start:{" "}
+                          {p.createdAt
+                            ? new Date(p.createdAt).toLocaleDateString("en-GB")
+                            : "TBD"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 mb-1">
+                        <Target className="w-3 h-3" />
+                        <span>
+                          Target:{" "}
+                          {p.greenSealTargetDate
+                            ? new Date(
+                                p.greenSealTargetDate
+                              ).toLocaleDateString("en-GB")
+                            : "TBD"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        <span
+                          className={`font-medium ${
+                            calculateDuration(
+                              p.createdAt,
+                              p.greenSealTargetDate
+                            ).includes("overdue")
+                              ? "text-red-600"
+                              : calculateDuration(
+                                  p.createdAt,
+                                  p.greenSealTargetDate
+                                ).includes("Due today")
+                              ? "text-orange-600"
+                              : "text-gray-700"
+                          }`}
+                        >
+                          Duration:{" "}
+                          {calculateDuration(
+                            p.createdAt,
+                            p.greenSealTargetDate
+                          )}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex px-2 text-xs font-semibold rounded-full ${getStageColor(
+                          p.status
+                        )}`}
                       >
-                        {/* Product Code */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div
-                              className={`w-8 h-8 ${
-                                data.iconColor === "green"
-                                  ? "bg-green-100 text-green-600"
-                                  : "bg-orange-100 text-orange-600"
-                              } rounded-full flex items-center justify-center mr-3`}
-                            >
-                              {String(index + 1).padStart(2, "0")}
-                            </div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {project.autoCode}
-                            </div>
-                          </div>
-                        </td>
+                        Green Seal
+                      </span>
+                    </td>
 
-                        {/* Image & Profile */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center justify-center">
-                            {project.coverPhoto ? (
-                              <img
-                                src={project.coverPhoto}
-                                alt="Product"
-                                className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
-                              />
-                            ) : (
-                              <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-                                <ImageIcon className="w-6 h-6 text-gray-400" />
-                              </div>
-                            )}
-                          </div>
-                        </td>
+                    {/* Priority */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getPriorityColor(
+                          p.priority
+                        )}`}
+                      >
+                        {p.priority || "Low"}
+                      </span>
+                    </td>
 
-                        {/* Company & Brand */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {project.companyName}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {project.brandName}
-                            </div>
-                          </div>
-                        </td>
+                    {/* Task INC */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {p.assignPerson?.name || "N/A"}
+                    </td>
 
-                        {/* Category, Type & Gender */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {project.categoryName}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {project.typeName}
-                            </div>
-                            <div className="text-xs text-gray-400">
-                              {project.gender}
-                            </div>
-                          </div>
-                        </td>
+                    {/* Cost Overview */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center space-x-1 text-sm font-semibold text-gray-900">
+                        <IndianRupee className="w-3 h-3" />
+                        <span>
+                          {p.finalCost
+                            ? p.finalCost.toLocaleString("en-IN")
+                            : p.targetCost
+                            ? p.targetCost.toLocaleString("en-IN")
+                            : "0"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {p.finalCost ? "Final Cost" : "Target Cost"}
+                      </div>
+                      {p.finalCost && p.targetCost && (
+                        <div
+                          className={`text-xs font-medium mt-1 ${
+                            p.finalCost - p.targetCost < 0
+                              ? "text-green-600"
+                              : p.finalCost - p.targetCost > 0
+                              ? "text-red-600"
+                              : "text-gray-600"
+                          }`}
+                        >
+                          Variance: {p.finalCost - p.targetCost > 0 ? "+" : ""}₹
+                          {Math.abs(p.finalCost - p.targetCost).toLocaleString(
+                            "en-IN"
+                          )}
+                        </div>
+                      )}
+                    </td>
 
-                        {/* Art & Colour */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {project.artName}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {project.color}
-                            </div>
-                          </div>
-                        </td>
+                    {/* Remarks */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        Next:{" "}
+                        {p?.nextUpdate?.date
+                          ? new Date(p?.nextUpdate?.date).toLocaleDateString(
+                              "en-GB"
+                            )
+                          : "TBD"}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {p.nextUpdate?.note || "N/A"}
+                      </div>
+                    </td>
 
-                        {/* Country */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {project.countryName}
-                          </div>
-                        </td>
-
-                        {/* Timeline, Dates & Duration */}
-                        <td className="px-6 py-4 text-sm text-gray-500 min-w-[180px]">
-                          <div>
-                            <div className="flex items-center gap-1 mb-1">
-                              <Clock className="w-3 h-3" />
-                              <span>
-                                Start:{" "}
-                                {new Date(project.startDate).toLocaleDateString(
-                                  "en-GB"
-                                )}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 mb-1">
-                              <Target className="w-3 h-3" />
-                              <span>
-                                Target:{" "}
-                                {project.poTarget
-                                  ? new Date(
-                                      project.poTarget
-                                    ).toLocaleDateString("en-GB")
-                                  : "TBD"}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              <span
-                                className={`font-medium ${
-                                  project.poTarget &&
-                                  calculateDuration(
-                                    project.startDate,
-                                    project.poTarget
-                                  ).includes("overdue")
-                                    ? "text-red-600"
-                                    : project.poTarget &&
-                                      calculateDuration(
-                                        project.startDate,
-                                        project.poTarget
-                                      ).includes("Due today")
-                                    ? "text-orange-600"
-                                    : "text-gray-700"
-                                }`}
-                              >
-                                Duration:{" "}
-                                {calculateDuration(
-                                  project.startDate,
-                                  project.poTarget
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex px-2 text-xs leading-5 font-semibold rounded-full ${
-                              data.iconColor === "green"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-orange-100 text-orange-800"
-                            }`}
-                          >
-                            Green Seal
-                          </span>
-                        </td>
-
-                        {/* Priority */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex px-2 py-1 text-xs leading-4 font-semibold rounded ${
-                              data.priority === "High"
-                                ? "bg-red-500 text-white"
-                                : data.priority === "Medium"
-                                ? "bg-purple-500 text-white"
-                                : "bg-green-600 text-white"
-                            }`}
-                          >
-                            {data.priority}
-                          </span>
-                        </td>
-
-                        {/* Task-INC */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {project.assignPerson.name}
-                          </div>
-                        </td>
-
-                        {/* Cost Overview */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="flex items-center space-x-1 text-sm font-semibold text-gray-900">
-                              <IndianRupee className="w-3 h-3" />
-                              <span>
-                                {project.finalCost > 0
-                                  ? project.finalCost.toLocaleString("en-IN")
-                                  : project.targetCost.toLocaleString("en-IN")}
-                              </span>
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {project.finalCost > 0
-                                ? "Final Cost"
-                                : "Target Cost"}
-                            </div>
-                            {project.finalCost > 0 && project.targetCost && (
-                              <div
-                                className={`text-xs font-medium mt-1 ${
-                                  project.finalCost - project.targetCost < 0
-                                    ? "text-green-600"
-                                    : project.finalCost - project.targetCost > 0
-                                    ? "text-red-600"
-                                    : "text-gray-600"
-                                }`}
-                              >
-                                Variance:{" "}
-                                {project.finalCost - project.targetCost > 0
-                                  ? "+"
-                                  : ""}
-                                ₹
-                                {Math.abs(
-                                  project.finalCost - project.targetCost
-                                ).toLocaleString("en-IN")}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Remarks */}
-                        <td className="px-6 py-4 min-w-[120px]">
-                          <div>
-                            <div className="text-sm text-gray-900">
-                              Next: {data.nextDate}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {data.status}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
-                )}
+                    {/* Actions */}
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(p);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
-          {getGreenSealProjects().length === 0 && (
+          {/* Empty state */}
+          {greenSealProjects.length === 0 && !loading && (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Package className="w-8 h-8 text-gray-400" />
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No green seal projects found
+                No Green Seal projects found
               </h3>
               <p className="text-gray-600">
-                Projects with green seal status will appear here.
+                Projects will appear here when they reach the Green Seal stage.
               </p>
             </div>
           )}
@@ -625,17 +514,40 @@ export function GreenSeal() {
           {/* Pagination */}
           <div className="flex items-center justify-between mt-6">
             <div className="text-sm text-gray-600">
-              Showing {getPaginatedProjects(getGreenSealProjects()).length} of{" "}
-              {getGreenSealProjects().length} results
+              Showing {paginated(greenSealProjects).length} of{" "}
+              {greenSealProjects.length} results
             </div>
+
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
                 Previous
               </Button>
-              <Button size="sm" className="bg-blue-500 hover:bg-blue-600">
-                1
-              </Button>
-              <Button variant="outline" size="sm" disabled>
+
+              {Array.from({ length: totalPages }, (_, i) => (
+                <Button
+                  key={i}
+                  size="sm"
+                  variant={i + 1 === currentPage ? "default" : "outline"}
+                  className={i + 1 === currentPage ? "bg-blue-500" : ""}
+                  onClick={() => setCurrentPage(i + 1)}
+                >
+                  {i + 1}
+                </Button>
+              ))}
+
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+              >
                 Next
               </Button>
             </div>
@@ -643,22 +555,26 @@ export function GreenSeal() {
         </CardContent>
       </Card>
 
-      {/* Dialogs */}
-      <ProjectDetailsDialog
-        open={projectDetailsOpen}
-        onOpenChange={setProjectDetailsOpen}
-        project={selectedProject}
-      />
-
+      {/* Dialog */}
       <GreenSealProjectDetailsDialog
-        open={greenSealDetailsOpen}
-        onOpenChange={setGreenSealDetailsOpen}
+        open={detailsOpen}
+        onOpenChange={async (v) => {
+          if (!v) await reloadProjects();
+          setDetailsOpen(v);
+        }}
+        reloadProjects={reloadProjects}
         project={selectedProject}
+        companies={companies}
+        setCompanies={setCompanies}
         brands={brands}
+        setBrands={setBrands}
         categories={categories}
-        types={types}
-        colors={colors}
+        setCategories={setCategories}
         countries={countries}
+        setCountries={setCountries}
+        types={types}
+        setTypes={setTypes}
+        assignPersons={assignPersons}
       />
     </div>
   );

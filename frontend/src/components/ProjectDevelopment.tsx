@@ -48,7 +48,7 @@ export interface ProductDevelopmentResponseProps {
   sampleImages?: string[]; // array of paths
   startDate?: string; // optional
   endDate?: string; // optional
-  clientApproval?: { status?: string } | null;
+  clientApproval?: string | null;
 }
 
 export function ProjectDevelopment() {

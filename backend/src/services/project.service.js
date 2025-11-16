@@ -130,8 +130,18 @@ export const updateProjectById = async (id, payload) => {
     color: payload.color,
   };
 
-  if (payload.coverImage) set.coverImage = payload.coverImage;
-  if (payload.sampleImages) set.sampleImages = payload.sampleImages;
+  // ✅ FIXED: Only update coverImage if explicitly provided
+  if (payload.coverImage !== undefined) {
+    if (payload.keepExistingCover !== true) {
+      set.coverImage = payload.coverImage;
+    }
+    // If keepExistingCover is true, don't modify the field at all
+  }
+
+  // ✅ FIXED: Only update sampleImages if provided
+  if (payload.sampleImages !== undefined) {
+    set.sampleImages = payload.sampleImages;
+  }
 
   if (payload.status) {
     const norm = requireValidProjectStatus(payload.status);

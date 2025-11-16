@@ -1,33 +1,52 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Save, 
-  Plus, 
-  Calculator, 
+import React, { useState, useEffect } from "react";
+import {
+  X,
+  Save,
+  Plus,
+  Calculator,
   Palette,
   Edit2,
   Trash2,
-  CheckCircle
-} from 'lucide-react';
+  CheckCircle,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from './ui/dialog';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
-import { useERPStore } from '../lib/data-store';
-import type { RDProject } from '../lib/data-store';
+} from "./ui/dialog";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Badge } from "./ui/badge";
+import { toast } from "sonner";
+import api from "../lib/api";
+
+interface Material {
+  name: string;
+  desc: string;
+  consumption: string;
+}
+
+interface Component {
+  name: string;
+  desc: string;
+  consumption: string;
+}
+
+interface ColorVariantData {
+  materials: Material[];
+  components: Component[];
+  images: string[];
+  updatedBy?: string | null;
+  updatedAt?: Date;
+}
 
 interface ColorMaterialsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  project: RDProject | null;
+  project: any;
   colors?: any[];
   onSave?: (savedColorIds: string[]) => void;
 }
@@ -39,88 +58,120 @@ export function ColorMaterialsDialog({
   colors,
   onSave,
 }: ColorMaterialsDialogProps) {
-  const { updateRDProject } = useERPStore();
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [activeColorTab, setActiveColorTab] = useState<string>('');
-  const [newColorName, setNewColorName] = useState('');
-  const [newColorHex, setNewColorHex] = useState('#000000');
+  const [activeColorTab, setActiveColorTab] = useState<string>("");
+  const [newColorName, setNewColorName] = useState("");
+  const [newColorHex, setNewColorHex] = useState("#000000");
   const [isAddingColor, setIsAddingColor] = useState(false);
-  const [customColors, setCustomColors] = useState<{ [key: string]: { name: string; hex: string } }>({});
+  const [customColors, setCustomColors] = useState<{
+    [key: string]: { name: string; hex: string };
+  }>({});
   const [colorVariantsData, setColorVariantsData] = useState<{
     [colorId: string]: {
       materials: Array<{ name: string; desc: string; consumption: string }>;
       components: Array<{ name: string; desc: string; consumption: string }>;
     };
   }>({});
-  
+
   // Current editing state for active color tab
-  const [currentComponents, setCurrentComponents] = useState<Array<{ name: string; desc: string; consumption: string }>>([]);
-  const [currentMaterials, setCurrentMaterials] = useState<Array<{ name: string; desc: string; consumption: string }>>([]);
+  const [currentComponents, setCurrentComponents] = useState<
+    Array<{ name: string; desc: string; consumption: string }>
+  >([]);
+  const [currentMaterials, setCurrentMaterials] = useState<
+    Array<{ name: string; desc: string; consumption: string }>
+  >([]);
 
   // Dialog states for adding new items
   const [addComponentDialogOpen, setAddComponentDialogOpen] = useState(false);
   const [addMaterialDialogOpen, setAddMaterialDialogOpen] = useState(false);
-  
+
   // Form fields for new component
-  const [newComponentName, setNewComponentName] = useState('');
-  const [newComponentDesc, setNewComponentDesc] = useState('');
-  const [newComponentConsumption, setNewComponentConsumption] = useState('');
-  
+  const [newComponentName, setNewComponentName] = useState("");
+  const [newComponentDesc, setNewComponentDesc] = useState("");
+  const [newComponentConsumption, setNewComponentConsumption] = useState("");
+
   // Form fields for new material
-  const [newMaterialName, setNewMaterialName] = useState('');
-  const [newMaterialDesc, setNewMaterialDesc] = useState('');
-  const [newMaterialConsumption, setNewMaterialConsumption] = useState('');
+  const [newMaterialName, setNewMaterialName] = useState("");
+  const [newMaterialDesc, setNewMaterialDesc] = useState("");
+  const [newMaterialConsumption, setNewMaterialConsumption] = useState("");
 
   // Default data for new color variants
-  const getDefaultComponents = () => [
-    { name: 'Foam', desc: '-', consumption: '7.5grm' },
-    { name: 'Velcro', desc: '75mm', consumption: '1.25 pair' },
-    { name: 'Elastic Roop', desc: '-', consumption: '-' },
-    { name: 'Thread', desc: '-', consumption: '-' },
-    { name: 'Tafta Label', desc: 'MRP', consumption: '-' },
-    { name: 'Buckle', desc: '-', consumption: '2pcs' },
-    { name: 'Heat Transfer', desc: '-', consumption: '-' },
-    { name: 'Trim', desc: 'sticker', consumption: '10 pcs' },
-    { name: 'Welding', desc: '-', consumption: '-' },
+  const getDefaultComponents = (): Component[] => [
+    { name: "Foam", desc: "-", consumption: "7.5grm" },
+    { name: "Velcro", desc: "75mm", consumption: "1.25 pair" },
+    { name: "Elastic Roop", desc: "-", consumption: "-" },
+    { name: "Thread", desc: "-", consumption: "-" },
+    { name: "Tafta Label", desc: "MRP", consumption: "-" },
+    { name: "Buckle", desc: "-", consumption: "2pcs" },
+    { name: "Heat Transfer", desc: "-", consumption: "-" },
+    { name: "Trim", desc: "sticker", consumption: "10 pcs" },
+    { name: "Welding", desc: "-", consumption: "-" },
   ];
 
-  const getDefaultMaterials = () => [
-    { name: 'Upper', desc: 'Rexine', consumption: '26 pairs/mtr' },
-    { name: 'Lining', desc: 'Skinfit', consumption: '25 pair @ 155/-' },
-    { name: 'Lining', desc: 'EVA', consumption: '33/70 - 1.5mm 35pair' },
-    { name: 'Footbed', desc: '-', consumption: '-' },
-    { name: 'Mid Sole 1', desc: '-', consumption: '-' },
-    { name: 'Mid Sole 2', desc: '-', consumption: '-' },
-    { name: 'Out Sole', desc: '-', consumption: '-' },
-    { name: 'PU Adhesive', desc: '-', consumption: '-' },
-    { name: 'Print', desc: '-', consumption: '-' },
+  const getDefaultMaterials = (): Material[] => [
+    { name: "Upper", desc: "Rexine", consumption: "26 pairs/mtr" },
+    { name: "Lining", desc: "Skinfit", consumption: "25 pair @ 155/-" },
+    { name: "Lining", desc: "EVA", consumption: "33/70 - 1.5mm 35pair" },
+    { name: "Footbed", desc: "-", consumption: "-" },
+    { name: "Mid Sole 1", desc: "-", consumption: "-" },
+    { name: "Mid Sole 2", desc: "-", consumption: "-" },
+    { name: "Out Sole", desc: "-", consumption: "-" },
+    { name: "PU Adhesive", desc: "-", consumption: "-" },
+    { name: "Print", desc: "-", consumption: "-" },
   ];
+
+  // Load color variants from backend
+  const loadColorVariants = async () => {
+    if (!project?._id) return;
+
+    try {
+      // Convert project color variants Map to object
+      const variants: { [key: string]: ColorVariantData } = {};
+
+      if (project.colorVariants instanceof Map) {
+        for (const [colorId, data] of project.colorVariants.entries()) {
+          variants[colorId] = {
+            materials: data.materials || [],
+            components: data.components || [],
+            images: data.images || [],
+            updatedBy: data.updatedBy,
+            updatedAt: data.updatedAt,
+          };
+        }
+      } else if (typeof project.colorVariants === "object") {
+        Object.assign(variants, project.colorVariants);
+      }
+
+      setColorVariantsData(variants);
+
+      const colorIds = Object.keys(variants);
+      if (colorIds.length > 0) {
+        setSelectedColors(colorIds);
+        setActiveColorTab(colorIds[0]);
+      } else if (project.color) {
+        // Create default variant from project color
+        const defaultColorId = project.color;
+        setSelectedColors([defaultColorId]);
+        setActiveColorTab(defaultColorId);
+        setColorVariantsData({
+          [defaultColorId]: {
+            materials: getDefaultMaterials(),
+            components: getDefaultComponents(),
+            images: [],
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Error loading color variants:", error);
+      toast.error("Failed to load color variants");
+    }
+  };
 
   useEffect(() => {
-    if (project && colors) {
-      // Initialize with project's color as default
-      if (project.colorId) {
-        setSelectedColors([project.colorId]);
-        setActiveColorTab(project.colorId);
-      }
-      
-      // Load saved color variants data if exists
-      if (project.colorVariants) {
-        const loadedData: typeof colorVariantsData = {};
-        Object.keys(project.colorVariants).forEach((colorId) => {
-          const variant = project.colorVariants![colorId];
-          loadedData[colorId] = {
-            materials: variant.materials,
-            components: variant.components,
-          };
-        });
-        setColorVariantsData(loadedData);
-        
-        // Load selected colors from saved variants
-        setSelectedColors(Object.keys(project.colorVariants));
-      }
+    if (project && open) {
+      loadColorVariants();
     }
-  }, [project, colors]);
+  }, [project, open]);
 
   // Load current components/materials when active tab changes
   useEffect(() => {
@@ -145,8 +196,8 @@ export function ColorMaterialsDialog({
       return customColors[colorId].name;
     }
     // Then check master data colors
-    const color = colors?.find(c => c.id === colorId);
-    return color?.colorName || 'Unknown Color';
+    const color = colors?.find((c) => c.id === colorId);
+    return color?.colorName || colorId || "Unknown Color";
   };
 
   const getColorHex = (colorId: string) => {
@@ -155,138 +206,116 @@ export function ColorMaterialsDialog({
       return customColors[colorId].hex;
     }
     // Then check master data colors
-    const color = colors?.find(c => c.id === colorId);
-    return color?.hexCode || '#cccccc';
+    const color = colors?.find((c) => c.id === colorId);
+    return color?.hexCode || "#cccccc";
   };
 
-  const handleRemoveColor = (colorId: string) => {
-    const newColors = selectedColors.filter(id => id !== colorId);
-    setSelectedColors(newColors);
-    // Switch to first color if we're removing the active tab
-    if (activeColorTab === colorId && newColors.length > 0) {
-      setActiveColorTab(newColors[0]);
+  const handleRemoveColor = async (colorId: string) => {
+    if (!project?._id) return;
+
+    try {
+      await api.delete(`/projects/${project._id}/color-variants/${colorId}`);
+
+      const newColors = selectedColors.filter((id) => id !== colorId);
+      setSelectedColors(newColors);
+
+      // Remove from local state
+      const newVariants = { ...colorVariantsData };
+      delete newVariants[colorId];
+      setColorVariantsData(newVariants);
+
+      // Switch to first color if we're removing the active tab
+      if (activeColorTab === colorId && newColors.length > 0) {
+        setActiveColorTab(newColors[0]);
+      }
+
+      toast.success("Color variant removed");
+    } catch (error) {
+      console.error("Error removing color variant:", error);
+      toast.error("Failed to remove color variant");
     }
-    toast.success('Color variant removed');
   };
 
-  const handleAddNewColor = () => {
-    if (newColorName.trim()) {
-      // In a real implementation, this would add to the color master data
-      // For demo, we'll create a temp ID and store the color info
-      const newColorId = `temp-${Date.now()}`;
+  const handleAddNewColor = async () => {
+    if (!newColorName.trim() || !project?._id) return;
+
+    try {
+      const newColorId = newColorName.toLowerCase().replace(/\s+/g, "_");
+
+      // Create new color variant with backend API
+      const variantData = {
+        materials: getDefaultMaterials(),
+        components: getDefaultComponents(),
+        images: [],
+      };
+
+      await api.put(
+        `/projects/${project._id}/color-variants/${newColorId}`,
+        variantData
+      );
+
+      // Update local state
       const newColors = [...selectedColors, newColorId];
-      
-      // Store the custom color info
-      setCustomColors({
-        ...customColors,
+      setSelectedColors(newColors);
+      setColorVariantsData((prev) => ({
+        ...prev,
+        [newColorId]: variantData,
+      }));
+      setActiveColorTab(newColorId);
+
+      // Store custom color info
+      setCustomColors((prev) => ({
+        ...prev,
         [newColorId]: {
           name: newColorName,
-          hex: newColorHex
-        }
-      });
-      
-      setSelectedColors(newColors);
-      setActiveColorTab(newColorId);
+          hex: newColorHex,
+        },
+      }));
+
       toast.success(`New color variant "${newColorName}" created`);
-      setNewColorName('');
-      setNewColorHex('#000000');
+      setNewColorName("");
+      setNewColorHex("#000000");
       setIsAddingColor(false);
+    } catch (error) {
+      console.error("Error creating color variant:", error);
+      toast.error("Failed to create color variant");
     }
   };
 
-  const getColorNameFromHex = (hex: string): string => {
-    // Convert hex to RGB
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
+  const handleCloneDefaultColors = async (colorIds: string[]) => {
+    if (!project?._id) return;
 
-    // Standard color name detection
-    const colors: { [key: string]: [number, number, number] } = {
-      'Black': [0, 0, 0],
-      'White': [255, 255, 255],
-      'Red': [255, 0, 0],
-      'Green': [0, 128, 0],
-      'Blue': [0, 0, 255],
-      'Yellow': [255, 255, 0],
-      'Cyan': [0, 255, 255],
-      'Magenta': [255, 0, 255],
-      'Silver': [192, 192, 192],
-      'Gray': [128, 128, 128],
-      'Maroon': [128, 0, 0],
-      'Olive': [128, 128, 0],
-      'Lime': [0, 255, 0],
-      'Aqua': [0, 255, 255],
-      'Teal': [0, 128, 128],
-      'Navy': [0, 0, 128],
-      'Purple': [128, 0, 128],
-      'Orange': [255, 165, 0],
-      'Pink': [255, 192, 203],
-      'Brown': [165, 42, 42],
-      'Beige': [245, 245, 220],
-      'Tan': [210, 180, 140],
-      'Peach': [255, 218, 185],
-      'Lavender': [230, 230, 250],
-      'Coral': [255, 127, 80],
-      'Gold': [255, 215, 0],
-      'Turquoise': [64, 224, 208],
-      'Indigo': [75, 0, 130],
-      'Violet': [238, 130, 238],
-      'Crimson': [220, 20, 60],
-    };
+    try {
+      await api.post(`/projects/${project._id}/color-variants/clone-default`, {
+        colors: colorIds,
+      });
 
-    // Find closest color
-    let minDistance = Infinity;
-    let closestColor = 'Custom Color';
-
-    for (const [colorName, [cr, cg, cb]] of Object.entries(colors)) {
-      const distance = Math.sqrt(
-        Math.pow(r - cr, 2) + Math.pow(g - cg, 2) + Math.pow(b - cb, 2)
-      );
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestColor = colorName;
-      }
-    }
-
-    // If very close to a standard color (within threshold), return it
-    return minDistance < 50 ? closestColor : 'Custom Color';
-  };
-
-  const handleColorHexChange = (hex: string) => {
-    // Auto-format hex code
-    let formattedHex = hex;
-    if (!hex.startsWith('#')) {
-      formattedHex = '#' + hex;
-    }
-    setNewColorHex(formattedHex);
-    
-    // Auto-fetch color name if valid hex
-    if (/^#[0-9A-F]{6}$/i.test(formattedHex)) {
-      const detectedName = getColorNameFromHex(formattedHex);
-      if (detectedName !== 'Custom Color') {
-        setNewColorName(detectedName);
-      }
-    }
-  };
-
-  const handleColorPickerChange = (hex: string) => {
-    setNewColorHex(hex);
-    // Auto-fetch color name
-    const detectedName = getColorNameFromHex(hex);
-    if (detectedName !== 'Custom Color') {
-      setNewColorName(detectedName);
+      // Reload color variants after cloning
+      await loadColorVariants();
+      toast.success("Color variants cloned successfully");
+    } catch (error) {
+      console.error("Error cloning color variants:", error);
+      toast.error("Failed to clone color variants");
     }
   };
 
   // Update component field
-  const updateComponent = (index: number, field: 'name' | 'desc' | 'consumption', value: string) => {
+  const updateComponent = (
+    index: number,
+    field: "name" | "desc" | "consumption",
+    value: string
+  ) => {
     const updated = [...currentComponents];
     updated[index][field] = value;
     setCurrentComponents(updated);
   };
 
   // Update material field
-  const updateMaterial = (index: number, field: 'name' | 'desc' | 'consumption', value: string) => {
+  const updateMaterial = (
+    index: number,
+    field: "name" | "desc" | "consumption",
+    value: string
+  ) => {
     const updated = [...currentMaterials];
     updated[index][field] = value;
     setCurrentMaterials(updated);
@@ -296,14 +325,14 @@ export function ColorMaterialsDialog({
   const deleteComponent = (index: number) => {
     const updated = currentComponents.filter((_, i) => i !== index);
     setCurrentComponents(updated);
-    toast.success('Component removed');
+    toast.success("Component removed");
   };
 
   // Delete material
   const deleteMaterial = (index: number) => {
     const updated = currentMaterials.filter((_, i) => i !== index);
     setCurrentMaterials(updated);
-    toast.success('Material removed');
+    toast.success("Material removed");
   };
 
   // Open add component dialog
@@ -319,104 +348,86 @@ export function ColorMaterialsDialog({
   // Save new component
   const saveNewComponent = () => {
     if (!newComponentName.trim()) {
-      toast.error('Please enter component name');
+      toast.error("Please enter component name");
       return;
     }
-    
+
     setCurrentComponents([
-      ...currentComponents, 
-      { 
-        name: newComponentName, 
-        desc: newComponentDesc, 
-        consumption: newComponentConsumption 
-      }
+      ...currentComponents,
+      {
+        name: newComponentName,
+        desc: newComponentDesc,
+        consumption: newComponentConsumption,
+      },
     ]);
-    
+
     // Reset form and close dialog
-    setNewComponentName('');
-    setNewComponentDesc('');
-    setNewComponentConsumption('');
+    setNewComponentName("");
+    setNewComponentDesc("");
+    setNewComponentConsumption("");
     setAddComponentDialogOpen(false);
-    toast.success('Component added successfully');
+    toast.success("Component added successfully");
   };
 
   // Save new material
   const saveNewMaterial = () => {
     if (!newMaterialName.trim()) {
-      toast.error('Please enter material name');
+      toast.error("Please enter material name");
       return;
     }
-    
+
     setCurrentMaterials([
-      ...currentMaterials, 
-      { 
-        name: newMaterialName, 
-        desc: newMaterialDesc, 
-        consumption: newMaterialConsumption 
-      }
+      ...currentMaterials,
+      {
+        name: newMaterialName,
+        desc: newMaterialDesc,
+        consumption: newMaterialConsumption,
+      },
     ]);
-    
+
     // Reset form and close dialog
-    setNewMaterialName('');
-    setNewMaterialDesc('');
-    setNewMaterialConsumption('');
+    setNewMaterialName("");
+    setNewMaterialDesc("");
+    setNewMaterialConsumption("");
     setAddMaterialDialogOpen(false);
-    toast.success('Material added successfully');
+    toast.success("Material added successfully");
   };
 
-  const handleSave = () => {
-    if (!project) return;
+  const handleSave = async () => {
+    if (!project?._id || !activeColorTab) return;
 
-    // First, save the current tab's data before building the final object
-    if (activeColorTab) {
-      colorVariantsData[activeColorTab] = {
-        components: currentComponents,
+    try {
+      // Update the current variant data
+      const updatedVariantData = {
         materials: currentMaterials,
+        components: currentComponents,
+        images: colorVariantsData[activeColorTab]?.images || [],
       };
+
+      // Save to backend
+      await api.put(
+        `/projects/${project._id}/color-variants/${activeColorTab}`,
+        updatedVariantData
+      );
+
+      // Update local state
+      setColorVariantsData((prev) => ({
+        ...prev,
+        [activeColorTab]: updatedVariantData,
+      }));
+
+      toast.success("Color variants saved successfully!");
+
+      // Call onSave callback with the saved color IDs
+      if (onSave) {
+        onSave(selectedColors);
+      }
+
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error saving color variants:", error);
+      toast.error("Failed to save color variants");
     }
-
-    // Build color variants object with materials and components
-    const colorVariants: {
-      [colorId: string]: {
-        colorName: string;
-        colorHex: string;
-        materials: Array<{ name: string; desc: string; consumption: string }>;
-        components: Array<{ name: string; desc: string; consumption: string }>;
-      };
-    } = {};
-
-    selectedColors.forEach((colorId) => {
-      const colorName = getColorName(colorId);
-      const colorHex = getColorHex(colorId);
-      
-      // Get data for this color - if it's the active tab, use current edited data
-      const variantData = colorId === activeColorTab 
-        ? { components: currentComponents, materials: currentMaterials }
-        : (colorVariantsData[colorId] || {
-            materials: getDefaultMaterials(),
-            components: getDefaultComponents(),
-          });
-
-      colorVariants[colorId] = {
-        colorName,
-        colorHex,
-        ...variantData,
-      };
-    });
-
-    // Update project with color variants
-    updateRDProject(project.id, {
-      colorVariants,
-    });
-
-    toast.success('Color variants saved successfully!');
-    
-    // Call onSave callback with the saved color IDs
-    if (onSave) {
-      onSave(selectedColors);
-    }
-    
-    onOpenChange(false);
   };
 
   return (
@@ -465,7 +476,6 @@ export function ColorMaterialsDialog({
         {/* Scrollable Main Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-8 py-4 space-y-5">
-            
             {/* Color Variant Tabs Section */}
             <div className="space-y-3">
               {/* Tab Navigation */}
@@ -476,8 +486,8 @@ export function ColorMaterialsDialog({
                     onClick={() => setActiveColorTab(colorId)}
                     className={`flex items-center gap-2 px-4 py-2.5 border-b-2 transition-colors ${
                       activeColorTab === colorId
-                        ? 'border-green-600 text-gray-900'
-                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                        ? "border-green-600 text-gray-900"
+                        : "border-transparent text-gray-600 hover:text-gray-900"
                     }`}
                   >
                     <div
@@ -486,11 +496,13 @@ export function ColorMaterialsDialog({
                     ></div>
                     <span>
                       {getColorName(colorId)}
-                      {colorId === project.colorId && (
-                        <span className="ml-1.5 text-xs text-gray-500">(Default)</span>
+                      {colorId === project.color && (
+                        <span className="ml-1.5 text-xs text-gray-500">
+                          (Default)
+                        </span>
                       )}
                     </span>
-                    {selectedColors.length > 1 && colorId !== project.colorId && (
+                    {selectedColors.length > 1 && colorId !== project.color && (
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
@@ -505,14 +517,14 @@ export function ColorMaterialsDialog({
                     )}
                   </button>
                 ))}
-                
+
                 {/* Add Color Variant Button */}
                 <button
                   onClick={() => setIsAddingColor(!isAddingColor)}
                   className={`flex items-center gap-1.5 px-3 py-2 ml-auto text-sm border rounded transition-colors ${
                     isAddingColor
-                      ? 'bg-purple-500 text-white border-purple-500'
-                      : 'border-gray-300 text-gray-700 hover:border-purple-400 hover:text-purple-600'
+                      ? "bg-purple-500 text-white border-purple-500"
+                      : "border-gray-300 text-gray-700 hover:border-purple-400 hover:text-purple-600"
                   }`}
                 >
                   <Plus className="w-4 h-4" />
@@ -523,10 +535,14 @@ export function ColorMaterialsDialog({
               {/* Add New Color Form */}
               {isAddingColor && (
                 <div className="p-5 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
-                  <h4 className="font-semibold text-gray-900 mb-4">Create New Color Variant</h4>
+                  <h4 className="font-semibold text-gray-900 mb-4">
+                    Create New Color Variant
+                  </h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-sm text-gray-700 mb-2">Color Name</Label>
+                      <Label className="text-sm text-gray-700 mb-2">
+                        Color Name
+                      </Label>
                       <Input
                         value={newColorName}
                         onChange={(e) => setNewColorName(e.target.value)}
@@ -546,8 +562,8 @@ export function ColorMaterialsDialog({
                       <Button
                         onClick={() => {
                           setIsAddingColor(false);
-                          setNewColorName('');
-                          setNewColorHex('#000000');
+                          setNewColorName("");
+                          setNewColorHex("#000000");
                         }}
                         variant="outline"
                       >
@@ -566,11 +582,15 @@ export function ColorMaterialsDialog({
                   {/* Components Analysis */}
                   <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
                     <div className="flex items-center gap-3 mb-4">
-                      <h4 className="text-lg font-semibold text-purple-900">Components Used</h4>
+                      <h4 className="text-lg font-semibold text-purple-900">
+                        Components Used
+                      </h4>
                       <div className="flex items-center gap-2 px-2 py-1 bg-purple-50 rounded">
                         <div
                           className="w-4 h-4 rounded-full border border-purple-300"
-                          style={{ backgroundColor: getColorHex(activeColorTab) }}
+                          style={{
+                            backgroundColor: getColorHex(activeColorTab),
+                          }}
                         ></div>
                         <span className="text-xs font-medium text-purple-700">
                           {getColorName(activeColorTab)}
@@ -585,15 +605,20 @@ export function ColorMaterialsDialog({
                         <div className="col-span-4">CONSUMPTION</div>
                         <div className="col-span-1 text-center">ACTION</div>
                       </div>
-                      
+
                       {/* Scrollable Content */}
                       <div className="max-h-64 overflow-y-auto scrollbar-hide space-y-2">
                         {currentComponents.map((item, index) => (
-                          <div key={index} className="grid grid-cols-12 gap-2 items-center text-sm py-2 border-b border-gray-200 group hover:bg-purple-50 transition-colors px-2 -mx-2 rounded">
+                          <div
+                            key={index}
+                            className="grid grid-cols-12 gap-2 items-center text-sm py-2 border-b border-gray-200 group hover:bg-purple-50 transition-colors px-2 -mx-2 rounded"
+                          >
                             <div className="col-span-3">
                               <Input
                                 value={item.name}
-                                onChange={(e) => updateComponent(index, 'name', e.target.value)}
+                                onChange={(e) =>
+                                  updateComponent(index, "name", e.target.value)
+                                }
                                 className="h-8 text-sm"
                                 placeholder="Component"
                               />
@@ -601,7 +626,9 @@ export function ColorMaterialsDialog({
                             <div className="col-span-4">
                               <Input
                                 value={item.desc}
-                                onChange={(e) => updateComponent(index, 'desc', e.target.value)}
+                                onChange={(e) =>
+                                  updateComponent(index, "desc", e.target.value)
+                                }
                                 className="h-8 text-sm"
                                 placeholder="Description"
                               />
@@ -609,7 +636,13 @@ export function ColorMaterialsDialog({
                             <div className="col-span-4">
                               <Input
                                 value={item.consumption}
-                                onChange={(e) => updateComponent(index, 'consumption', e.target.value)}
+                                onChange={(e) =>
+                                  updateComponent(
+                                    index,
+                                    "consumption",
+                                    e.target.value
+                                  )
+                                }
                                 className="h-8 text-sm"
                                 placeholder="Consumption"
                               />
@@ -629,9 +662,9 @@ export function ColorMaterialsDialog({
                       </div>
 
                       {/* Add New Button */}
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
+                      <Button
+                        variant="outline"
+                        size="sm"
                         className="w-full text-purple-600 border-purple-200 hover:bg-purple-50"
                         onClick={openAddComponentDialog}
                       >
@@ -642,7 +675,9 @@ export function ColorMaterialsDialog({
                       {/* Total Count */}
                       <div className="bg-purple-50 p-3 rounded-lg mt-3">
                         <div className="text-sm text-purple-800">
-                          <strong>Total Components:</strong> {currentComponents.length} different components used in production
+                          <strong>Total Components:</strong>{" "}
+                          {currentComponents.length} different components used
+                          in production
                         </div>
                       </div>
                     </div>
@@ -651,11 +686,15 @@ export function ColorMaterialsDialog({
                   {/* Materials Analysis */}
                   <div className="bg-white border-2 border-teal-200 rounded-xl p-6">
                     <div className="flex items-center gap-3 mb-4">
-                      <h4 className="text-lg font-semibold text-teal-900">Materials Used</h4>
+                      <h4 className="text-lg font-semibold text-teal-900">
+                        Materials Used
+                      </h4>
                       <div className="flex items-center gap-2 px-2 py-1 bg-teal-50 rounded">
                         <div
                           className="w-4 h-4 rounded-full border border-teal-300"
-                          style={{ backgroundColor: getColorHex(activeColorTab) }}
+                          style={{
+                            backgroundColor: getColorHex(activeColorTab),
+                          }}
                         ></div>
                         <span className="text-xs font-medium text-teal-700">
                           {getColorName(activeColorTab)}
@@ -670,15 +709,20 @@ export function ColorMaterialsDialog({
                         <div className="col-span-4">CONSUMPTION</div>
                         <div className="col-span-1 text-center">ACTION</div>
                       </div>
-                      
+
                       {/* Scrollable Content */}
                       <div className="max-h-64 overflow-y-auto scrollbar-hide space-y-2">
                         {currentMaterials.map((item, index) => (
-                          <div key={index} className="grid grid-cols-12 gap-2 items-center text-sm py-2 border-b border-gray-200 group hover:bg-teal-50 transition-colors px-2 -mx-2 rounded">
+                          <div
+                            key={index}
+                            className="grid grid-cols-12 gap-2 items-center text-sm py-2 border-b border-gray-200 group hover:bg-teal-50 transition-colors px-2 -mx-2 rounded"
+                          >
                             <div className="col-span-3">
                               <Input
                                 value={item.name}
-                                onChange={(e) => updateMaterial(index, 'name', e.target.value)}
+                                onChange={(e) =>
+                                  updateMaterial(index, "name", e.target.value)
+                                }
                                 className="h-8 text-sm"
                                 placeholder="Material"
                               />
@@ -686,7 +730,9 @@ export function ColorMaterialsDialog({
                             <div className="col-span-4">
                               <Input
                                 value={item.desc}
-                                onChange={(e) => updateMaterial(index, 'desc', e.target.value)}
+                                onChange={(e) =>
+                                  updateMaterial(index, "desc", e.target.value)
+                                }
                                 className="h-8 text-sm"
                                 placeholder="Description"
                               />
@@ -694,7 +740,13 @@ export function ColorMaterialsDialog({
                             <div className="col-span-4">
                               <Input
                                 value={item.consumption}
-                                onChange={(e) => updateMaterial(index, 'consumption', e.target.value)}
+                                onChange={(e) =>
+                                  updateMaterial(
+                                    index,
+                                    "consumption",
+                                    e.target.value
+                                  )
+                                }
                                 className="h-8 text-sm"
                                 placeholder="Consumption"
                               />
@@ -714,9 +766,9 @@ export function ColorMaterialsDialog({
                       </div>
 
                       {/* Add New Button */}
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
+                      <Button
+                        variant="outline"
+                        size="sm"
                         className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
                         onClick={openAddMaterialDialog}
                       >
@@ -727,7 +779,9 @@ export function ColorMaterialsDialog({
                       {/* Total Count */}
                       <div className="bg-teal-50 p-3 rounded-lg mt-3">
                         <div className="text-sm text-teal-800">
-                          <strong>Total Materials:</strong> {currentMaterials.length} different materials used in production
+                          <strong>Total Materials:</strong>{" "}
+                          {currentMaterials.length} different materials used in
+                          production
                         </div>
                       </div>
                     </div>
@@ -735,13 +789,15 @@ export function ColorMaterialsDialog({
                 </div>
               </div>
             )}
-
           </div>
         </div>
       </DialogContent>
 
       {/* Add New Component Dialog */}
-      <Dialog open={addComponentDialogOpen} onOpenChange={setAddComponentDialogOpen}>
+      <Dialog
+        open={addComponentDialogOpen}
+        onOpenChange={setAddComponentDialogOpen}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl flex items-center gap-2">
@@ -752,7 +808,7 @@ export function ColorMaterialsDialog({
               Enter the details for the new component item
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="componentName">Component Name *</Label>
@@ -793,9 +849,9 @@ export function ColorMaterialsDialog({
               variant="outline"
               onClick={() => {
                 setAddComponentDialogOpen(false);
-                setNewComponentName('');
-                setNewComponentDesc('');
-                setNewComponentConsumption('');
+                setNewComponentName("");
+                setNewComponentDesc("");
+                setNewComponentConsumption("");
               }}
             >
               Cancel
@@ -812,7 +868,10 @@ export function ColorMaterialsDialog({
       </Dialog>
 
       {/* Add New Material Dialog */}
-      <Dialog open={addMaterialDialogOpen} onOpenChange={setAddMaterialDialogOpen}>
+      <Dialog
+        open={addMaterialDialogOpen}
+        onOpenChange={setAddMaterialDialogOpen}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl flex items-center gap-2">
@@ -823,7 +882,7 @@ export function ColorMaterialsDialog({
               Enter the details for the new material item
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="materialName">Material Name *</Label>
@@ -864,9 +923,9 @@ export function ColorMaterialsDialog({
               variant="outline"
               onClick={() => {
                 setAddMaterialDialogOpen(false);
-                setNewMaterialName('');
-                setNewMaterialDesc('');
-                setNewMaterialConsumption('');
+                setNewMaterialName("");
+                setNewMaterialDesc("");
+                setNewMaterialConsumption("");
               }}
             >
               Cancel

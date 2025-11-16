@@ -49,6 +49,14 @@ import { TentativeCostDialog } from "./TentativeCostDialog";
 export interface MasterItem {
   _id: string;
   name: string;
+  company?: {
+    _id: string;
+    name: string;
+  };
+  brand?: {
+    _id: string;
+    name: string;
+  };
 }
 
 export interface ProductDevelopment {
@@ -70,19 +78,14 @@ export interface ProductDevelopment {
   redSealTargetDate?: string;
   coverImage?: string | null;
   sampleImages?: string[];
-  clientRemarks?: string;
   updateNotes?: string;
   nextUpdateDate?: string;
-  clientApproval?: {
-    status?: string;
-    by?: string | null;
-    at?: string | null;
-  };
+  clientApproval?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
-interface Props {
+export interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   project: ProductDevelopment | null;
@@ -139,10 +142,10 @@ const workflowStages = [
 ];
 
 // ------------------------- Helpers -------------------------
-const getStage = (id?: string) =>
+export const getStage = (id?: string) =>
   workflowStages.find((s) => s.id === id) || workflowStages[0];
 
-const dataUrlToFile = (dataUrl: string, filename: string) => {
+export const dataUrlToFile = (dataUrl: string, filename: string) => {
   const arr = dataUrl.split(",");
   const mimeMatch = arr[0].match(/:(.*?);/);
   const mime = mimeMatch ? mimeMatch[1] : "image/png";
@@ -153,13 +156,13 @@ const dataUrlToFile = (dataUrl: string, filename: string) => {
   return new File([u8], filename, { type: mime });
 };
 
-const getFullImageUrl = (img?: string | null) => {
+export const getFullImageUrl = (img?: string | null) => {
   if (!img) return "";
   if (img.startsWith("http") || img.startsWith("data:")) return img;
   return `${import.meta.env.VITE_BACKEND_URL}/${img}`;
 };
 
-const formatDateDisplay = (d?: string | null) => {
+export const formatDateDisplay = (d?: string | null) => {
   if (!d) return "TBD";
   try {
     return new Date(d).toLocaleDateString("en-GB");
@@ -387,9 +390,11 @@ export default function ProjectDetailsDialog(props: Props) {
       if (edited.productDesc) fd.append("productDesc", edited.productDesc);
       if (edited.redSealTargetDate)
         fd.append("redSealTargetDate", edited.redSealTargetDate);
-      if (edited.clientRemarks)
-        fd.append("clientRemarks", edited.clientRemarks);
-      if (edited.updateNotes) fd.append("updateNotes", edited.updateNotes);
+      if (edited.clientApproval)
+        fd.append("clientApproval", edited.clientApproval);
+
+      // if (edited.updateNotes) fd.append("updateNotes", edited.updateNotes);
+
       if (edited.nextUpdateDate)
         fd.append(
           "nextUpdate",
@@ -421,6 +426,7 @@ export default function ProjectDetailsDialog(props: Props) {
       });
 
       const url = `/companies/${edited.company._id}/brands/${edited.brand._id}/categories/${edited.category._id}/projects/${edited._id}`;
+      // const url = `/projects/${edited._id}`;
 
       await api.put(url, fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -1019,23 +1025,6 @@ export default function ProjectDetailsDialog(props: Props) {
                       </div>
                     )}
                   </div>
-
-                  <div className="col-span-6">
-                    <Label>Description</Label>
-                    {isEditing ? (
-                      <Textarea
-                        value={edited.productDesc || ""}
-                        onChange={(e) =>
-                          setEdited({ ...edited, productDesc: e.target.value })
-                        }
-                        className="min-h-[80px]"
-                      />
-                    ) : (
-                      <div className="mt-1 bg-gray-50 border rounded-lg p-3 text-sm">
-                        {project.productDesc || "No description"}
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
@@ -1060,22 +1049,22 @@ export default function ProjectDetailsDialog(props: Props) {
 
                   <div className="mb-6">
                     <Label className="text-sm font-medium text-gray-600 mb-2 block">
-                      Client Remarks
+                      Description
                     </Label>
                     {isEditing ? (
                       <Textarea
-                        value={edited.clientRemarks || ""}
+                        value={edited.productDesc || ""}
                         onChange={(e) =>
                           setEdited({
                             ...edited,
-                            clientRemarks: e.target.value,
+                            productDesc: e.target.value,
                           })
                         }
                         className="min-h-[100px]"
                       />
                     ) : (
                       <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[100px]">
-                        {project.clientRemarks || "No remarks yet"}
+                        {project.productDesc || "No Description"}
                       </div>
                     )}
                   </div>
@@ -1084,21 +1073,57 @@ export default function ProjectDetailsDialog(props: Props) {
                     <Label className="text-sm font-medium text-gray-600 mb-2 block">
                       Approval Status
                     </Label>
-                    <Badge
-                      className={
-                        project.clientApproval?.status === "approved"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : project.clientApproval?.status === "pending"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-orange-100 text-orange-700"
-                      }
-                    >
-                      {project.clientApproval?.status === "approved"
-                        ? "✓ Approved"
-                        : project.clientApproval?.status === "pending"
-                        ? "⏳ Pending"
-                        : "⚠ Revision Needed"}
-                    </Badge>
+                    {isEditing ? (
+                      <Select
+                        value={edited.clientApproval || "pending"}
+                        onValueChange={(value) =>
+                          setEdited({
+                            ...edited,
+                            clientApproval: value,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Select Approval Status" />
+                        </SelectTrigger>
+
+                        <SelectContent>
+                          <SelectItem value="ok">Approved</SelectItem>
+                          <SelectItem value="update_req">
+                            Update Required
+                          </SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="review_req">
+                            Review Required
+                          </SelectItem>
+                          <SelectItem value="rejected">Rejected</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge
+                        className={
+                          edited.clientApproval === "ok"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : edited.clientApproval === "pending"
+                            ? "bg-blue-100 text-blue-700"
+                            : edited.clientApproval === "update_req"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : edited.clientApproval === "review_req"
+                            ? "bg-purple-100 text-purple-700"
+                            : "bg-red-100 text-red-700" // rejected
+                        }
+                      >
+                        {
+                          {
+                            ok: "✓ Approved",
+                            pending: "⏳ Pending",
+                            update_req: "🔄 Update Required",
+                            review_req: "📝 Review Required",
+                            rejected: "❌ Rejected",
+                          }[edited.clientApproval || "pending"]
+                        }
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -1127,8 +1152,8 @@ export default function ProjectDetailsDialog(props: Props) {
                       <div className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
                         <Calendar className="w-4 h-4 text-gray-500" />
                         <span className="text-gray-900">
-                          {project.nextUpdateDate
-                            ? formatDateDisplay(project.nextUpdateDate)
+                          {project?.nextUpdate?.date
+                            ? formatDateDisplay(project?.nextUpdate?.date)
                             : "Not scheduled"}
                         </span>
                       </div>
@@ -1149,15 +1174,14 @@ export default function ProjectDetailsDialog(props: Props) {
                       />
                     ) : (
                       <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px]">
-                        {project.updateNotes || "No update notes"}
+                        {project?.nextUpdate?.note || "No update notes"}
                       </div>
                     )}
                   </div>
 
                   <div>
                     {(() => {
-                      const next =
-                        edited.nextUpdateDate || project.nextUpdateDate;
+                      const next = edited.nextUpdateDate;
                       if (!next) {
                         return (
                           <div className="p-4 border rounded-lg bg-gray-50 text-center text-gray-600">

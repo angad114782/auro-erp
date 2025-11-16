@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Eye,
   Edit2,
@@ -47,29 +47,73 @@ import {
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
-import { toast } from "sonner@2.0.3";
-import { useERPStore } from "../lib/data-store";
-import type { RDProject } from "../lib/data-store";
+import { toast } from "sonner";
+import {
+  getStage,
+  ProductDevelopment,
+  Props,
+  dataUrlToFile,
+  getFullImageUrl,
+  formatDateDisplay,
+} from "./ProjectDetailsDialog";
+import api from "../lib/api";
 
-interface RedSealProjectDetailsDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  project: RDProject | null;
+// Cost item interface matching backend
+interface CostItem {
+  _id: string;
+  item: string;
+  description: string;
+  consumption: string;
+  cost: number;
+  department?: string;
+}
+
+// Labour cost interface
+interface LabourCost {
+  directTotal: number;
+  items: Array<{
+    _id: string;
+    name: string;
+    cost: number;
+  }>;
+}
+
+// Cost summary interface
+interface CostSummary {
+  additionalCosts: number;
+  profitMargin: number;
+  remarks: string;
+  upperTotal: number;
+  componentTotal: number;
+  materialTotal: number;
+  packagingTotal: number;
+  miscTotal: number;
+  labourTotal: number;
+  totalAllCosts: number;
+  profitAmount: number;
+  tentativeCost: number;
+  brandFinalCost: number;
+  status: "draft" | "ready_for_red_seal";
 }
 
 // Add New Item Dialog Component
-const AddNewItemDialog = ({ 
-  category, 
-  isOpen, 
-  onClose, 
-  formData, 
-  onFormChange, 
-  onAddItem 
-}: { 
+const AddNewItemDialog = ({
+  category,
+  isOpen,
+  onClose,
+  formData,
+  onFormChange,
+  onAddItem,
+}: {
   category: string;
   isOpen: boolean;
   onClose: () => void;
-  formData: { item: string; description: string; consumption: string; cost: number };
+  formData: {
+    item: string;
+    description: string;
+    consumption: string;
+    cost: number;
+  };
   onFormChange: (field: string, value: string | number) => void;
   onAddItem: () => void;
 }) => (
@@ -90,7 +134,7 @@ const AddNewItemDialog = ({
           <Input
             id={`item-${category}`}
             value={formData.item}
-            onChange={(e) => onFormChange('item', e.target.value)}
+            onChange={(e) => onFormChange("item", e.target.value)}
             placeholder="Enter item name"
             className="mt-1"
           />
@@ -100,7 +144,7 @@ const AddNewItemDialog = ({
           <Input
             id={`description-${category}`}
             value={formData.description}
-            onChange={(e) => onFormChange('description', e.target.value)}
+            onChange={(e) => onFormChange("description", e.target.value)}
             placeholder="Enter description (optional)"
             className="mt-1"
           />
@@ -110,7 +154,7 @@ const AddNewItemDialog = ({
           <Input
             id={`consumption-${category}`}
             value={formData.consumption}
-            onChange={(e) => onFormChange('consumption', e.target.value)}
+            onChange={(e) => onFormChange("consumption", e.target.value)}
             placeholder="Enter consumption details (optional)"
             className="mt-1"
           />
@@ -122,8 +166,10 @@ const AddNewItemDialog = ({
             <Input
               id={`cost-${category}`}
               type="number"
-              value={formData.cost || ''}
-              onChange={(e) => onFormChange('cost', Number(e.target.value) || 0)}
+              value={formData.cost || ""}
+              onChange={(e) =>
+                onFormChange("cost", Number(e.target.value) || 0)
+              }
               placeholder="0.00"
               className="pl-10"
               min="0"
@@ -135,9 +181,7 @@ const AddNewItemDialog = ({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={onAddItem}>
-            Add Item
-          </Button>
+          <Button onClick={onAddItem}>Add Item</Button>
         </div>
       </div>
     </DialogContent>
@@ -146,617 +190,713 @@ const AddNewItemDialog = ({
 
 const workflowStages = [
   {
-    id: "Idea Submitted",
+    id: "idea",
     name: "Idea Submitted",
+    progress: 12,
     color: "bg-blue-100 text-blue-800",
-    progress: 17,
   },
   {
-    id: "Prototype",
+    id: "prototype",
     name: "Prototype",
+    progress: 30,
     color: "bg-purple-100 text-purple-800",
-    progress: 33,
   },
   {
-    id: "Red Seal",
+    id: "red_seal",
     name: "Red Seal",
-    color: "bg-red-100 text-red-800",
     progress: 50,
+    color: "bg-red-100 text-red-800",
   },
   {
-    id: "Green Seal",
+    id: "green_seal",
     name: "Green Seal",
+    progress: 70,
     color: "bg-green-100 text-green-800",
-    progress: 67,
   },
   {
-    id: "PO Pending",
+    id: "po_pending",
     name: "PO Pending",
+    progress: 86,
     color: "bg-orange-100 text-orange-800",
-    progress: 83,
   },
   {
-    id: "PO Approved",
+    id: "po_approved",
     name: "PO Approved",
-    color: "bg-emerald-100 text-emerald-800",
     progress: 100,
+    color: "bg-emerald-100 text-emerald-800",
   },
 ];
 
-export function RedSealProjectDetailsDialog({
-  open,
-  onOpenChange,
-  project,
-}: RedSealProjectDetailsDialogProps) {
+export function RedSealProjectDetailsDialog(props: Props) {
   const {
+    open,
+    onOpenChange,
+    project,
+    companies,
     brands,
     categories,
     types,
-    colors,
     countries,
-    updateRDProject,
-  } = useERPStore();
+    assignPersons,
+    setBrands,
+    setCategories,
+    reloadProjects,
+    setSelectedSubModule,
+  } = props;
 
   const [isEditing, setIsEditing] = useState(false);
-  const [editedProject, setEditedProject] = useState<
-    Partial<RDProject>
-  >({});
+  const [editedProject, setEditedProject] = useState<ProductDevelopment | null>(
+    null
+  );
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Cost editing states
-  const [targetCost, setTargetCost] = useState<string>('12500');
-  const [profitMargin, setProfitMargin] = useState<string>('25.0');
-  const [brandFinalCost, setBrandFinalCost] = useState<string>('18500');
+  // Image states
+  const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
+  const [samples, setSamples] = useState<string[]>([]);
+  const coverRef = React.useRef<HTMLInputElement | null>(null);
+  const sampleRefs = React.useRef<(HTMLInputElement | null)[]>([]);
 
-  // Detailed cost breakdown states - Default items with full details
-  type DefaultItem = { item: string; description: string; consumption: string; cost: number };
-  
-  const [defaultUpperItems, setDefaultUpperItems] = useState<{[key: string]: DefaultItem}>({
-    upper: { item: 'Upper', description: 'Rexine', consumption: '26 pairs/mtr @/-', cost: 0 },
-    lining1: { item: 'Lining', description: 'Skinfit', consumption: '25 pair @ 155/-', cost: 6.20 },
-    lining2: { item: 'Lining', description: 'EVA', consumption: '33/70 - 1.5mm 35pair', cost: 0 }
-  });
-
-  // Legacy cost states (for custom items)
-  const [upperCosts, setUpperCosts] = useState<{[key: string]: number}>({});
-
-  const [defaultComponentItems, setDefaultComponentItems] = useState<{[key: string]: DefaultItem}>({
-    thread: { item: 'Thread', description: '-', consumption: '-', cost: 1.00 },
-    taftaLabel: { item: 'Tafta Label', description: 'MRP', consumption: '-', cost: 1.00 },
-    heatTransfer: { item: 'Heat Transfer', description: '-', consumption: '-', cost: 1.00 },
-    welding: { item: 'Welding', description: '-', consumption: '-', cost: 1.00 }
-  });
-
-  const [defaultMaterialItems, setDefaultMaterialItems] = useState<{[key: string]: DefaultItem}>({
-    outSole: { item: 'Out Sole', description: '-', consumption: '-', cost: 98.00 },
-    puAdhesive: { item: 'PU Adhesive', description: '-', consumption: '-', cost: 7.00 },
-    print: { item: 'Print', description: '-', consumption: '-', cost: 4.00 }
-  });
-
-  const [defaultPackagingItems, setDefaultPackagingItems] = useState<{[key: string]: DefaultItem}>({
-    inner: { item: 'Inner', description: '-', consumption: '-', cost: 22.00 }
-  });
-
-  const [defaultMiscellaneousItems, setDefaultMiscellaneousItems] = useState<{[key: string]: DefaultItem}>({
-    seconds: { item: 'Seconds (4.064%)', description: '-', consumption: '-', cost: 4.064 },
-    freight: { item: 'Freight', description: '-', consumption: '-', cost: 2.00 }
-  });
-
-  // Legacy cost states (for custom items)
-  const [componentCosts, setComponentCosts] = useState<{[key: string]: number}>({});
-  const [materialCosts, setMaterialCosts] = useState<{[key: string]: number}>({});
-  const [packagingCosts, setPackagingCosts] = useState<{[key: string]: number}>({});
-  const [miscellaneousCosts, setMiscellaneousCosts] = useState<{[key: string]: number}>({});
-
-  const [labourCosts, setLabourCosts] = useState<{[key: string]: number}>({
-    totalLabour: 62.00
-  });
-
-  // Custom items state
-  const [customItems, setCustomItems] = useState<{[key: string]: Array<{id: string, item: string, description: string, consumption: string, cost: number}>}>({
+  // Cost states
+  const [costRows, setCostRows] = useState<{
+    upper: CostItem[];
+    component: CostItem[];
+    material: CostItem[];
+    packaging: CostItem[];
+    miscellaneous: CostItem[];
+  }>({
     upper: [],
     component: [],
     material: [],
     packaging: [],
-    miscellaneous: []
+    miscellaneous: [],
   });
 
-  // Dialog states for adding new items
+  const [labourCost, setLabourCost] = useState<LabourCost>({
+    directTotal: 0,
+    items: [],
+  });
+
+  const [costSummary, setCostSummary] = useState<CostSummary>({
+    additionalCosts: 0,
+    profitMargin: 25,
+    remarks: "",
+    upperTotal: 0,
+    componentTotal: 0,
+    materialTotal: 0,
+    packagingTotal: 0,
+    miscTotal: 0,
+    labourTotal: 0,
+    totalAllCosts: 0,
+    profitAmount: 0,
+    tentativeCost: 0,
+    brandFinalCost: 0,
+    status: "draft",
+  });
+
+  // Dialog states for adding items
   const [addItemDialogs, setAddItemDialogs] = useState({
     upper: false,
     component: false,
     material: false,
     packaging: false,
-    miscellaneous: false
+    miscellaneous: false,
   });
 
-  // Form data for add item dialogs
   const [dialogForms, setDialogForms] = useState({
-    upper: { item: '', description: '', consumption: '', cost: 0 },
-    component: { item: '', description: '', consumption: '', cost: 0 },
-    material: { item: '', description: '', consumption: '', cost: 0 },
-    packaging: { item: '', description: '', consumption: '', cost: 0 },
-    miscellaneous: { item: '', description: '', consumption: '', cost: 0 }
+    upper: { item: "", description: "", consumption: "", cost: 0 },
+    component: { item: "", description: "", consumption: "", cost: 0 },
+    material: { item: "", description: "", consumption: "", cost: 0 },
+    packaging: { item: "", description: "", consumption: "", cost: 0 },
+    miscellaneous: { item: "", description: "", consumption: "", cost: 0 },
   });
 
-  // Image editing states
-  const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
-  const [additionalImages, setAdditionalImages] = useState<string[]>([]);
-  const [dynamicImages, setDynamicImages] = useState<string[]>([]);
-  const coverInputRef = React.useRef<HTMLInputElement>(null);
-  const additionalInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
-  const dynamicInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
+  // Memoized values
+  const currentStage = useMemo(
+    () => getStage(editedProject?.status),
+    [editedProject?.status]
+  );
 
+  const currentIndex = useMemo(
+    () => workflowStages.findIndex((s) => s.id === editedProject?.status),
+    [editedProject?.status]
+  );
+
+  const nextStage = useMemo(
+    () =>
+      currentIndex >= 0 && currentIndex < workflowStages.length - 1
+        ? workflowStages[currentIndex + 1]
+        : null,
+    [currentIndex]
+  );
+
+  const coverImageUrl = useMemo(
+    () => getFullImageUrl(coverPhoto),
+    [coverPhoto]
+  );
+
+  const sampleImageUrls = useMemo(
+    () => samples.map(getFullImageUrl),
+    [samples]
+  );
+
+  // Initialize state when dialog opens
   useEffect(() => {
-    if (project) {
-      setEditedProject(project);
-      // Load existing images
-      setCoverPhoto(project.coverPhoto || null);
-      setAdditionalImages(project.additionalImages || []);
-      setDynamicImages(project.dynamicImages || []);
-    }
-  }, [project]);
+    if (!project || !open) return;
 
-  if (!project) return null;
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-GB");
-  };
-
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toLocaleString("en-IN")}`;
-  };
-
-  const getCurrentStage = () => {
-    return (
-      workflowStages.find(
-        (stage) =>
-          stage.id ===
-          project.status.toLowerCase().replace(" ", "-"),
-      ) || workflowStages[4]
-    ); // Default to Red Seal
-  };
-
-  const currentStage = getCurrentStage();
-
-  const getBrandName = (brandId: string) => {
-    return (
-      brands?.find((b) => b.id === brandId)?.brandName ||
-      "Toucan"
-    );
-  };
-
-  const getBrandCode = (brandId: string) => {
-    return (
-      brands?.find((b) => b.id === brandId)?.brandCode || "TC04"
-    );
-  };
-
-  const getCategoryName = (categoryId: string) => {
-    return (
-      categories?.find((c) => c.id === categoryId)
-        ?.categoryName || "Boots"
-    );
-  };
-
-  const getTypeName = (typeId: string) => {
-    return (
-      types?.find((t) => t.id === typeId)?.typeName || "Leather"
-    );
-  };
-
-  const getColorName = (colorId: string) => {
-    return (
-      colors?.find((c) => c.id === colorId)?.colorName ||
-      "Black"
-    );
-  };
-
-  const getColorDisplay = () => {
-    return "bg-gray-900";
-  };
-
-  const getCountryName = (countryId: string) => {
-    return (
-      countries?.find((c) => c.id === countryId)?.countryName ||
-      "Vietnam"
-    );
-  };
-
-  const getDesignerName = (designerId: string) => {
-    const designerNames: { [key: string]: string } = {
-      '1': 'Rahul Sharma',
-      '2': 'Priyanka Patel',
-      '3': 'Amit Kumar',
-      '4': 'Sneha Reddy',
-      '5': 'Vikram Singh'
-    };
-    return designerNames[designerId] || 'Designer ' + designerId;
-  };
-
-  // Image upload handlers
-  const handleCoverPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCoverPhoto(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleAdditionalImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newImages = [...additionalImages];
-        newImages[index] = reader.result as string;
-        setAdditionalImages(newImages);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleDynamicImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newImages = [...dynamicImages];
-        newImages[index] = reader.result as string;
-        setDynamicImages(newImages);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const removeCoverPhoto = () => {
-    setCoverPhoto(null);
-  };
-
-  const removeAdditionalImage = (index: number) => {
-    const newImages = [...additionalImages];
-    newImages[index] = '';
-    setAdditionalImages(newImages);
-  };
-
-  const removeDynamicImage = (index: number) => {
-    const newImages = dynamicImages.filter((_, i) => i !== index);
-    setDynamicImages(newImages);
-  };
-
-  const handleAddImageSlot = () => {
-    setDynamicImages([...dynamicImages, '']);
-  };
-
-  const handleSaveImages = () => {
-    if (editedProject) {
-      const updatedProject = {
-        ...editedProject,
-        coverPhoto,
-        additionalImages,
-        dynamicImages
-      };
-      updateRDProject(project.id, updatedProject as RDProject);
-      toast.success('Images saved successfully!');
-    }
-  };
-
-  const handleSave = () => {
-    if (editedProject.id) {
-      updateRDProject(editedProject.id, editedProject);
-      toast.success("Red Seal project updated successfully");
-      setIsEditing(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setEditedProject(project);
+    setEditedProject({ ...project });
+    setCoverPhoto(project.coverImage || null);
+    setSamples(project.sampleImages ? [...project.sampleImages] : []);
     setIsEditing(false);
-  };
 
-  const handleAdvanceToGreenSeal = () => {
-    // Update project status to Green Seal
-    if (project && project.id) {
-      updateRDProject(project.id, {
-        ...project,
-        status: "Green Seal"
-      });
-      toast.success("Project successfully advanced to Green Seal stage!");
-      onOpenChange(false); // Close the dialog
-    }
-  };
+    // Load cost data
+    loadAllCostData();
+  }, [project, open]);
 
-  // Cost update handlers
-  const updateDefaultUpperItem = (key: string, field: 'item' | 'description' | 'consumption' | 'cost', value: string | number) => {
-    setDefaultUpperItems(prev => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        [field]: field === 'cost' ? (Number(value) || 0) : value
-      }
-    }));
-  };
-
-  const deleteDefaultUpperItem = (key: string) => {
-    setDefaultUpperItems(prev => {
-      const newItems = { ...prev };
-      delete newItems[key];
-      return newItems;
-    });
-    toast.success('Item deleted successfully');
-  };
-
-  const updateUpperCost = (key: string, value: number) => {
-    setUpperCosts(prev => ({ ...prev, [key]: value || 0 }));
-  };
-
-  const updateDefaultComponentItem = (key: string, field: 'item' | 'description' | 'consumption' | 'cost', value: string | number) => {
-    setDefaultComponentItems(prev => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        [field]: field === 'cost' ? (Number(value) || 0) : value
-      }
-    }));
-  };
-
-  const deleteDefaultComponentItem = (key: string) => {
-    setDefaultComponentItems(prev => {
-      const newItems = { ...prev };
-      delete newItems[key];
-      return newItems;
-    });
-    toast.success('Component deleted successfully');
-  };
-
-  const updateDefaultMaterialItem = (key: string, field: 'item' | 'description' | 'consumption' | 'cost', value: string | number) => {
-    setDefaultMaterialItems(prev => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        [field]: field === 'cost' ? (Number(value) || 0) : value
-      }
-    }));
-  };
-
-  const deleteDefaultMaterialItem = (key: string) => {
-    setDefaultMaterialItems(prev => {
-      const newItems = { ...prev };
-      delete newItems[key];
-      return newItems;
-    });
-    toast.success('Material deleted successfully');
-  };
-
-  const updateDefaultPackagingItem = (key: string, field: 'item' | 'description' | 'consumption' | 'cost', value: string | number) => {
-    setDefaultPackagingItems(prev => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        [field]: field === 'cost' ? (Number(value) || 0) : value
-      }
-    }));
-  };
-
-  const deleteDefaultPackagingItem = (key: string) => {
-    setDefaultPackagingItems(prev => {
-      const newItems = { ...prev };
-      delete newItems[key];
-      return newItems;
-    });
-    toast.success('Packaging item deleted successfully');
-  };
-
-  const updateDefaultMiscellaneousItem = (key: string, field: 'item' | 'description' | 'consumption' | 'cost', value: string | number) => {
-    setDefaultMiscellaneousItems(prev => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        [field]: field === 'cost' ? (Number(value) || 0) : value
-      }
-    }));
-  };
-
-  const deleteDefaultMiscellaneousItem = (key: string) => {
-    setDefaultMiscellaneousItems(prev => {
-      const newItems = { ...prev };
-      delete newItems[key];
-      return newItems;
-    });
-    toast.success('Miscellaneous item deleted successfully');
-  };
-
-  const updateComponentCost = (key: string, value: number) => {
-    setComponentCosts(prev => ({ ...prev, [key]: value || 0 }));
-  };
-
-  const updateMaterialCost = (key: string, value: number) => {
-    setMaterialCosts(prev => ({ ...prev, [key]: value || 0 }));
-  };
-
-  const updatePackagingCost = (key: string, value: number) => {
-    setPackagingCosts(prev => ({ ...prev, [key]: value || 0 }));
-  };
-
-  const updateLabourCost = (key: string, value: number) => {
-    setLabourCosts(prev => ({ ...prev, [key]: value || 0 }));
-  };
-
-  const updateMiscellaneousCost = (key: string, value: number) => {
-    setMiscellaneousCosts(prev => ({ ...prev, [key]: value || 0 }));
-  };
-
-  const updateCustomItemCost = (category: string, itemId: string, value: number) => {
-    const categoryMap: {[key: string]: any} = {
-      upper: upperCosts,
-      component: componentCosts,
-      material: materialCosts,
-      packaging: packagingCosts,
-      miscellaneous: miscellaneousCosts
-    };
-    
-    const setterMap: {[key: string]: any} = {
-      upper: setUpperCosts,
-      component: setComponentCosts,
-      material: setMaterialCosts,
-      packaging: setPackagingCosts,
-      miscellaneous: setMiscellaneousCosts
-    };
-
-    const currentCosts = categoryMap[category];
-    const setter = setterMap[category];
-    
-    if (currentCosts && setter) {
-      setter({ ...currentCosts, [itemId]: value || 0 });
-    }
-  };
-
-  // Add item dialog handlers
-  const openAddItemDialog = (category: string) => {
-    setAddItemDialogs(prev => ({ ...prev, [category]: true }));
-  };
-
-  const closeAddItemDialog = (category: string) => {
-    setAddItemDialogs(prev => ({ ...prev, [category]: false }));
-    // Reset form
-    setDialogForms(prev => ({
-      ...prev,
-      [category]: { item: '', description: '', consumption: '', cost: 0 }
-    }));
-  };
-
-  const handleDialogFormChange = (category: string, field: string, value: string | number) => {
-    setDialogForms(prev => ({
-      ...prev,
-      [category]: {
-        ...prev[category as keyof typeof prev],
-        [field]: value
-      }
-    }));
-  };
-
-  const handleAddItem = (category: string) => {
-    const form = dialogForms[category as keyof typeof dialogForms];
-    
-    if (!form.item || form.cost === 0) {
-      toast.error('Please fill in item name and cost');
+  // Fetch brands when company changes
+  useEffect(() => {
+    if (!isEditing || !editedProject?.company?._id) {
+      if (isEditing) setBrands([]);
       return;
     }
 
-    const newItem = {
-      id: `custom-${Date.now()}`,
-      item: form.item,
-      description: form.description,
-      consumption: form.consumption,
-      cost: form.cost
+    const companyId = editedProject.company._id;
+    let cancelled = false;
+
+    api
+      .get("/brands", { params: { company: companyId } })
+      .then((res) => {
+        if (cancelled) return;
+        const arr = res.data?.items || res.data?.data || res.data || [];
+        setBrands(arr);
+      })
+      .catch(() => !cancelled && setBrands([]));
+
+    return () => {
+      cancelled = true;
     };
+  }, [editedProject?.company?._id, isEditing, setBrands]);
 
-    setCustomItems(prev => ({
-      ...prev,
-      [category]: [...prev[category], newItem]
-    }));
-
-    // Add to appropriate cost state
-    const categoryMap: {[key: string]: any} = {
-      upper: setUpperCosts,
-      component: setComponentCosts,
-      material: setMaterialCosts,
-      packaging: setPackagingCosts,
-      miscellaneous: setMiscellaneousCosts
-    };
-
-    const setter = categoryMap[category];
-    if (setter) {
-      setter((prev: any) => ({ ...prev, [newItem.id]: newItem.cost }));
+  // Fetch categories when brand changes
+  useEffect(() => {
+    if (
+      !isEditing ||
+      !editedProject?.company?._id ||
+      !editedProject?.brand?._id
+    ) {
+      if (isEditing) setCategories([]);
+      return;
     }
 
-    toast.success(`${form.item} added successfully`);
-    closeAddItemDialog(category);
+    const c = editedProject.company._id;
+    const b = editedProject.brand._id;
+    let cancelled = false;
+
+    api
+      .get(`/companies/${c}/brands/${b}/categories`)
+      .then((res) => {
+        if (cancelled) return;
+        const arr = res.data?.items || res.data?.data || res.data || [];
+        setCategories(arr);
+      })
+      .catch(() => !cancelled && setCategories([]));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    editedProject?.company?._id,
+    editedProject?.brand?._id,
+    isEditing,
+    setCategories,
+  ]);
+
+  // Load all cost data from backend
+  const loadAllCostData = async () => {
+    if (!project) return;
+
+    setIsLoading(true);
+    try {
+      // Load cost summary
+      const summaryResponse = await api.get(`/projects/${project._id}/costs`);
+      const summaryData = summaryResponse.data.summary || summaryResponse.data;
+
+      if (summaryData) {
+        setCostSummary({
+          additionalCosts: Number(summaryData.additionalCosts) || 0,
+          profitMargin: Number(summaryData.profitMargin) || 25,
+          remarks: summaryData.remarks || "",
+          upperTotal: Number(summaryData.upperTotal) || 0,
+          componentTotal: Number(summaryData.componentTotal) || 0,
+          materialTotal: Number(summaryData.materialTotal) || 0,
+          packagingTotal: Number(summaryData.packagingTotal) || 0,
+          miscTotal: Number(summaryData.miscTotal) || 0,
+          labourTotal: Number(summaryData.labourTotal) || 0,
+          totalAllCosts: Number(summaryData.totalAllCosts) || 0,
+          profitAmount: Number(summaryData.profitAmount) || 0,
+          tentativeCost: Number(summaryData.tentativeCost) || 0,
+          brandFinalCost: Number(summaryData.brandFinalCost) || 0,
+          status: summaryData.status || "draft",
+        });
+      }
+
+      // Load cost rows
+      const sections = [
+        "upper",
+        "component",
+        "material",
+        "packaging",
+        "miscellaneous",
+      ];
+      const rowPromises = sections.map((section) =>
+        api.get(`/projects/${project._id}/costs/${section}`)
+      );
+      const rowResponses = await Promise.all(rowPromises);
+
+      const newCostRows = {
+        upper: Array.isArray(rowResponses[0]?.data?.rows)
+          ? rowResponses[0].data.rows.map((item: any) => ({
+              _id: item._id,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+              department: item.department || "",
+            }))
+          : [],
+        component: Array.isArray(rowResponses[1]?.data?.rows)
+          ? rowResponses[1].data.rows.map((item: any) => ({
+              _id: item._id,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+              department: item.department || "",
+            }))
+          : [],
+        material: Array.isArray(rowResponses[2]?.data?.rows)
+          ? rowResponses[2].data.rows.map((item: any) => ({
+              _id: item._id,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+            }))
+          : [],
+        packaging: Array.isArray(rowResponses[3]?.data?.rows)
+          ? rowResponses[3].data.rows.map((item: any) => ({
+              _id: item._id,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+            }))
+          : [],
+        miscellaneous: Array.isArray(rowResponses[4]?.data?.rows)
+          ? rowResponses[4].data.rows.map((item: any) => ({
+              _id: item._id,
+              item: item.item || "",
+              description: item.description || "",
+              consumption: item.consumption || "",
+              cost: Number(item.cost) || 0,
+            }))
+          : [],
+      };
+
+      setCostRows(newCostRows);
+
+      // Load labour cost
+      const labourResponse = await api.get(
+        `/projects/${project._id}/costs/labour`
+      );
+      const labourData = labourResponse.data.labour || labourResponse.data;
+
+      if (labourData) {
+        setLabourCost({
+          directTotal: Number(labourData.directTotal) || 0,
+          items: Array.isArray(labourData.items)
+            ? labourData.items.map((item: any) => ({
+                _id: item._id,
+                name: item.name || "",
+                cost: Number(item.cost) || 0,
+              }))
+            : [],
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load cost data:", error);
+      toast.error("Failed to load cost data");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const deleteCustomItem = (category: string, itemId: string) => {
-    setCustomItems(prev => ({
-      ...prev,
-      [category]: prev[category].filter(item => item.id !== itemId)
-    }));
+  // Image upload handlers
+  const handleCoverUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Image must be < 5MB");
+        return;
+      }
+      const r = new FileReader();
+      r.onloadend = () => setCoverPhoto(r.result as string);
+      r.readAsDataURL(file);
+    },
+    []
+  );
 
-    // Remove from cost state
-    const categoryMap: {[key: string]: any} = {
-      upper: setUpperCosts,
-      component: setComponentCosts,
-      material: setMaterialCosts,
-      packaging: setPackagingCosts,
-      miscellaneous: setMiscellaneousCosts
-    };
+  const handleSampleUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>, i: number) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Image must be < 5MB");
+        return;
+      }
+      const r = new FileReader();
+      r.onloadend = () => {
+        setSamples((prev) => {
+          const arr = [...prev];
+          arr[i] = r.result as string;
+          return arr;
+        });
+      };
+      r.readAsDataURL(file);
+    },
+    []
+  );
 
-    const setter = categoryMap[category];
-    if (setter) {
-      setter((prev: any) => {
-        const newCosts = { ...prev };
-        delete newCosts[itemId];
-        return newCosts;
+  const removeSample = useCallback((i: number) => {
+    setSamples((s) => s.filter((_, idx) => idx !== i));
+  }, []);
+
+  const addSampleSlot = useCallback(() => setSamples((s) => [...s, ""]), []);
+
+  // Cost item management
+  const updateItemCost = async (itemId: string, cost: number) => {
+    if (!project) return;
+
+    try {
+      let section: string | null = null;
+      for (const [sec, items] of Object.entries(costRows)) {
+        if (items.find((item) => item._id === itemId)) {
+          section = sec;
+          break;
+        }
+      }
+
+      if (!section) return;
+
+      await api.patch(`/projects/${project._id}/costs/${section}/${itemId}`, {
+        cost: Number(cost) || 0,
       });
+
+      setCostRows((prev) => ({
+        ...prev,
+        [section as string]: prev[section as keyof typeof prev].map((item) =>
+          item._id === itemId ? { ...item, cost: Number(cost) || 0 } : item
+        ),
+      }));
+
+      await loadAllCostData();
+    } catch (error) {
+      console.error("Failed to update item cost:", error);
+      toast.error("Failed to update item cost");
+    }
+  };
+
+  const deleteItem = async (itemId: string) => {
+    if (!project) return;
+
+    try {
+      let section: string | null = null;
+      for (const [sec, items] of Object.entries(costRows)) {
+        if (items.find((item) => item._id === itemId)) {
+          section = sec;
+          break;
+        }
+      }
+
+      if (!section) return;
+
+      await api.delete(`/projects/${project._id}/costs/${section}/${itemId}`);
+
+      setCostRows((prev) => ({
+        ...prev,
+        [section as string]: prev[section as keyof typeof prev].filter(
+          (item) => item._id !== itemId
+        ),
+      }));
+
+      await loadAllCostData();
+      toast.success("Item deleted successfully");
+    } catch (error) {
+      console.error("Failed to delete item:", error);
+      toast.error("Failed to delete item");
+    }
+  };
+
+  const updateDefaultItem = (
+    section: string,
+    key: string,
+    field: "item" | "description" | "consumption" | "cost",
+    value: string | number
+  ) => {
+    setCostRows((prev) => ({
+      ...prev,
+      [section]: prev[section as keyof typeof prev].map((item) =>
+        item._id === key
+          ? { ...item, [field]: field === "cost" ? Number(value) || 0 : value }
+          : item
+      ),
+    }));
+  };
+
+  // Dialog management
+  const openAddItemDialog = (category: string) => {
+    setAddItemDialogs((prev) => ({ ...prev, [category]: true }));
+  };
+
+  const closeAddItemDialog = (category: string) => {
+    setAddItemDialogs((prev) => ({ ...prev, [category]: false }));
+    setDialogForms((prev) => ({
+      ...prev,
+      [category]: { item: "", description: "", consumption: "", cost: 0 },
+    }));
+  };
+
+  const handleDialogFormChange = (
+    category: string,
+    field: string,
+    value: string | number
+  ) => {
+    setDialogForms((prev) => ({
+      ...prev,
+      [category]: {
+        ...prev[category as keyof typeof prev],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleAddItem = async (category: string) => {
+    if (!project) return;
+
+    const form = dialogForms[category as keyof typeof dialogForms];
+    if (!form.item.trim()) {
+      toast.error("Please enter an item name");
+      return;
     }
 
-    toast.success('Item deleted successfully');
+    try {
+      const payload = {
+        item: form.item.trim(),
+        description: form.description || "",
+        consumption: form.consumption || "",
+        cost: Number(form.cost) || 0,
+      };
+
+      const response = await api.post(
+        `/projects/${project._id}/costs/${category}`,
+        payload
+      );
+
+      if (response.data.row) {
+        setCostRows((prev) => ({
+          ...prev,
+          [category]: [
+            ...prev[category as keyof typeof prev],
+            {
+              _id: response.data.row._id,
+              item: response.data.row.item || "",
+              description: response.data.row.description || "",
+              consumption: response.data.row.consumption || "",
+              cost: Number(response.data.row.cost) || 0,
+              department: response.data.row.department || "",
+            },
+          ],
+        }));
+      }
+
+      await loadAllCostData();
+      closeAddItemDialog(category);
+      toast.success(`New ${category} item added successfully!`);
+    } catch (error) {
+      console.error("Failed to add item:", error);
+      toast.error("Failed to add item");
+    }
   };
 
-  // Calculate totals
-  const calculateUpperTotal = () => {
-    const defaultTotal = Object.values(defaultUpperItems).reduce((sum, item) => sum + (item.cost || 0), 0);
-    const customTotal = customItems.upper.reduce((sum, item) => sum + (upperCosts[item.id] || 0), 0);
-    return defaultTotal + customTotal;
+  const updateLabourCost = async (value: number) => {
+    if (!project) return;
+
+    try {
+      await api.patch(`/projects/${project._id}/costs/labour`, {
+        directTotal: Number(value) || 0,
+      });
+
+      setLabourCost((prev) => ({ ...prev, directTotal: Number(value) || 0 }));
+      await loadAllCostData();
+    } catch (error) {
+      console.error("Failed to update labour cost:", error);
+      toast.error("Failed to update labour cost");
+    }
   };
 
-  const calculateComponentTotal = () => {
-    const defaultTotal = Object.values(defaultComponentItems).reduce((sum, item) => sum + (item.cost || 0), 0);
-    const customTotal = customItems.component.reduce((sum, item) => sum + (componentCosts[item.id] || 0), 0);
-    return defaultTotal + customTotal;
+  const updateBrandFinalCost = async (value: number) => {
+    if (!project) return;
+
+    try {
+      await api.patch(`/projects/${project._id}/costs`, {
+        brandFinalCost: Number(value) || 0,
+      });
+
+      setCostSummary((prev) => ({
+        ...prev,
+        brandFinalCost: Number(value) || 0,
+      }));
+    } catch (error) {
+      console.error("Failed to update brand final cost:", error);
+      toast.error("Failed to update brand final cost");
+    }
   };
 
-  const calculateMaterialTotal = () => {
-    const defaultTotal = Object.values(defaultMaterialItems).reduce((sum, item) => sum + (item.cost || 0), 0);
-    const customTotal = customItems.material.reduce((sum, item) => sum + (materialCosts[item.id] || 0), 0);
-    return defaultTotal + customTotal;
+  const updateStatus = useCallback(
+    async (newStatus: string) => {
+      if (!editedProject) return;
+      const companyId = editedProject.company?._id;
+      const brandId = editedProject.brand?._id;
+      const categoryId = editedProject.category?._id;
+      const projectId = editedProject._id;
+
+      await api.patch(
+        `/companies/${companyId}/brands/${brandId}/categories/${categoryId}/projects/${projectId}/status`,
+        { status: newStatus }
+      );
+    },
+    [editedProject]
+  );
+
+  const handleAdvanceToGreenSeal = useCallback(async () => {
+    try {
+      await updateStatus(nextStage?.id!);
+      toast.success(`Moved to ${nextStage?.name}`);
+      await reloadProjects();
+      setSelectedSubModule?.("green-seal");
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to update project stage");
+    }
+  }, [
+    nextStage,
+    updateStatus,
+    onOpenChange,
+    reloadProjects,
+    setSelectedSubModule,
+  ]);
+
+  const handleSave = useCallback(async () => {
+    if (!editedProject) return;
+
+    if (
+      !editedProject.company?._id ||
+      !editedProject.brand?._id ||
+      !editedProject.category?._id
+    ) {
+      toast.error("Company, Brand and Category are required");
+      return;
+    }
+
+    try {
+      const fd = new FormData();
+
+      fd.append("company", editedProject.company._id);
+      fd.append("brand", editedProject.brand._id);
+      fd.append("category", editedProject.category._id);
+
+      if (editedProject.type) fd.append("type", String(editedProject.type._id));
+      if (editedProject.country)
+        fd.append("country", String(editedProject.country._id));
+      if (editedProject.assignPerson)
+        fd.append("assignPerson", String(editedProject.assignPerson._id));
+      if (editedProject.artName) fd.append("artName", editedProject.artName);
+      if (editedProject.color) fd.append("color", editedProject.color);
+      if (editedProject.size) fd.append("size", editedProject.size);
+      if (editedProject.gender) fd.append("gender", editedProject.gender);
+      if (editedProject.priority) fd.append("priority", editedProject.priority);
+      if (editedProject.productDesc)
+        fd.append("productDesc", editedProject.productDesc);
+      if (editedProject.redSealTargetDate)
+        fd.append("redSealTargetDate", editedProject.redSealTargetDate);
+      if (editedProject.clientApproval)
+        fd.append("clientApproval", editedProject.clientApproval);
+
+      if (editedProject.nextUpdateDate)
+        fd.append(
+          "nextUpdate",
+          JSON.stringify({
+            date: editedProject.nextUpdateDate,
+            note: editedProject.updateNotes || "",
+          })
+        );
+
+      if (coverPhoto) {
+        if (coverPhoto.startsWith("data:")) {
+          const file = dataUrlToFile(coverPhoto, "cover.png");
+          fd.append("coverImage", file);
+        } else {
+          fd.append("keepExistingCover", "true");
+        }
+      }
+
+      const existingSamples = samples.filter(
+        (s) => s && !s.startsWith("data:")
+      );
+      const newSamplesData = samples.filter((s) => s && s.startsWith("data:"));
+
+      if (existingSamples.length > 0)
+        fd.append("keepExistingSamples", JSON.stringify(existingSamples));
+      newSamplesData.forEach((d, idx) => {
+        const file = dataUrlToFile(d, `sample-${Date.now()}-${idx}.png`);
+        fd.append("sampleImages", file);
+      });
+
+      const url = `/projects/${editedProject._id}`;
+
+      await api.put(url, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      toast.success("Project updated");
+      await reloadProjects();
+      setIsEditing(false);
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error("Update failed", err);
+      toast.error(err?.response?.data?.message || "Update failed");
+    }
+  }, [editedProject, coverPhoto, samples, onOpenChange, reloadProjects]);
+
+  const handleCancelEdit = useCallback(() => {
+    if (!project) return;
+    setIsEditing(false);
+    setEditedProject({ ...project });
+    setCoverPhoto(project.coverImage || null);
+    setSamples(project.sampleImages || []);
+  }, [project]);
+
+  const calculateTotal = (section: keyof typeof costRows) => {
+    return costRows[section].reduce((sum, item) => sum + (item.cost || 0), 0);
   };
 
-  const calculatePackagingTotal = () => {
-    const defaultTotal = Object.values(defaultPackagingItems).reduce((sum, item) => sum + (item.cost || 0), 0);
-    const customTotal = customItems.packaging.reduce((sum, item) => sum + (packagingCosts[item.id] || 0), 0);
-    return defaultTotal + customTotal;
-  };
-
-  const calculateLabourTotal = () => {
-    return Object.values(labourCosts).reduce((sum, cost) => sum + (cost || 0), 0);
-  };
-
-  const calculateMiscellaneousTotal = () => {
-    const defaultTotal = Object.values(defaultMiscellaneousItems).reduce((sum, item) => sum + (item.cost || 0), 0);
-    const customTotal = customItems.miscellaneous.reduce((sum, item) => sum + (miscellaneousCosts[item.id] || 0), 0);
-    return defaultTotal + customTotal;
-  };
-
-  // Calculate total costs
-  const totalAllCosts = 6.20 + 4.00 + 109.00 + 22.00 + 62.00 + 6.06; // 209.26
-  const profitPercentage = parseFloat(profitMargin) || 0;
-  const profitAmount = Math.round((totalAllCosts * profitPercentage) / 100);
-  const tentativeCost = totalAllCosts + profitAmount;
-
-  const projectData = {
-    productCode: project.autoCode,
-    artColour: "Boots - Black",
-    targetDate: formatDate(project.endDate),
-    nextDate: formatDate(project.nextUpdateDate),
-    remarks: project.remarks,
-    gender: "Men",
-  };
+  if (!project || !editedProject) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
-        {/* Sticky Header Section - Exact same as ProjectDetailsDialog */}
+      <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 flex flex-col">
+        {/* Header */}
         <div className="sticky top-0 z-50 px-8 py-6 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-b border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
@@ -768,8 +908,7 @@ export function RedSealProjectDetailsDialog({
                   Red Seal Approval Details
                 </DialogTitle>
                 <DialogDescription className="sr-only">
-                  View and manage Red Seal Approval project
-                  details and information
+                  View and manage Red Seal Approval project details
                 </DialogDescription>
                 <div className="flex items-center gap-4">
                   <span className="text-lg text-gray-600">
@@ -781,6 +920,7 @@ export function RedSealProjectDetailsDialog({
                 </div>
               </div>
             </div>
+
             <div className="flex items-center gap-3">
               {!isEditing ? (
                 <>
@@ -800,7 +940,7 @@ export function RedSealProjectDetailsDialog({
                   </Button>
                 </>
               ) : (
-                <div className="flex gap-2">
+                <>
                   <Button
                     onClick={handleSave}
                     className="bg-green-500 hover:bg-green-600"
@@ -808,29 +948,28 @@ export function RedSealProjectDetailsDialog({
                     <Save className="w-4 h-4 mr-2" />
                     Save Changes
                   </Button>
-                  <Button
-                    onClick={handleCancel}
-                    variant="outline"
-                  >
-                    Cancel
+                  <Button variant="outline" onClick={handleCancelEdit}>
+                    Cancel Edit
                   </Button>
-                </div>
+                </>
               )}
-              <button
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-10 w-10 p-0 rounded-full"
                 onClick={() => onOpenChange(false)}
-                type="button"
-                className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
               >
-                <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
-              </button>
+                <X className="w-5 h-5 text-gray-500" />
+              </Button>
             </div>
           </div>
         </div>
 
-        {/* Scrollable Main Content - Exact same structure as ProjectDetailsDialog */}
+        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-8 py-8 space-y-10">
-            {/* Approval Progress - matching ProjectDetailsDialog structure */}
+            {/* Approval Progress */}
             <div className="space-y-5">
               <div className="flex items-center gap-5">
                 <div className="w-10 h-10 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
@@ -851,19 +990,13 @@ export function RedSealProjectDetailsDialog({
                       {currentStage.progress}%
                     </span>
                   </div>
-                  <Progress
-                    value={currentStage.progress}
-                    className="h-2"
-                  />
+                  <Progress value={currentStage.progress} className="h-2" />
                 </div>
 
                 <div className="grid grid-cols-6 gap-2">
                   {workflowStages.map((stage, index) => {
-                    const isCompleted =
-                      workflowStages.findIndex(
-                        (s) => s.id === "Red Seal",
-                      ) >= index;
-                    const isCurrent = stage.id === "Red Seal";
+                    const isCompleted = currentIndex >= index;
+                    const isCurrent = stage.id === editedProject.status;
 
                     return (
                       <div
@@ -872,8 +1005,8 @@ export function RedSealProjectDetailsDialog({
                           isCurrent
                             ? "bg-blue-100 border-2 border-blue-400 shadow-md"
                             : isCompleted
-                              ? "bg-green-50 border border-green-200"
-                              : "bg-gray-50 border border-gray-200"
+                            ? "bg-green-50 border border-green-200"
+                            : "bg-gray-50 border border-gray-200"
                         }`}
                       >
                         <div
@@ -881,8 +1014,8 @@ export function RedSealProjectDetailsDialog({
                             isCurrent
                               ? "bg-blue-500 text-white"
                               : isCompleted
-                                ? "bg-green-500 text-white"
-                                : "bg-gray-300 text-gray-600"
+                              ? "bg-green-500 text-white"
+                              : "bg-gray-300 text-gray-600"
                           }`}
                         >
                           {isCompleted ? (
@@ -901,394 +1034,392 @@ export function RedSealProjectDetailsDialog({
               </div>
             </div>
 
-            {/* Approval Information - Same structure as ProjectDetailsDialog */}
+            {/* Product Details */}
             <div className="space-y-6">
               <div className="flex items-center gap-5">
                 <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
                   <Target className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900">
-                  Approval Information
+                  Product Details
                 </h3>
               </div>
 
-              {/* Unified Product Details Section */}
               <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-                <div className="flex items-center justify-between mb-5">
-                  <h4 className="text-lg font-semibold text-gray-900">Product & Brand Details</h4>
-                  <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
-                    {currentStage.name}
-                  </Badge>
-                </div>
-                  
-                {/* Horizontal Layout: Preview + Images */}
-                <div className="flex gap-4 mb-5">
-                  {/* Product Preview - Compact */}
-                  <div className="flex-shrink-0 w-44">
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 h-full">
-                      <Label className="text-xs font-medium text-gray-600 mb-2 block">Preview</Label>
-                      <div className="w-20 h-20 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm mx-auto mb-2">
-                        <img 
-                          src={coverPhoto || "https://images.unsplash.com/photo-1549298916-b41d501d3772?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmb3JtYWwlMjBzaG9lJTIwcHJvZHVjdHxlbnwxfHx8fDE3NTY3MzU5MzB8MA&ixlib=rb-4.1.0&q=80&w=1080"}
-                          alt={project.autoCode}
+                {/* Images Section */}
+                <div className="flex gap-4 mb-6">
+                  <div className="w-44">
+                    <div className="bg-gray-50 border rounded-lg p-3 text-center">
+                      <div className="w-20 h-20 rounded-lg overflow-hidden mx-auto mb-2 border shadow-sm">
+                        <img
+                          src={coverImageUrl}
+                          alt="cover"
                           className="w-full h-full object-cover"
                         />
                       </div>
-                      <div className="text-xs font-medium text-gray-900 text-center">{project.autoCode}</div>
-                      <div className="text-xs text-gray-500 text-center mt-0.5">Sample</div>
+                      <div className="font-medium text-xs">
+                        {project.autoCode}
+                      </div>
+                      <div className="text-gray-400 text-xs">Sample</div>
                     </div>
                   </div>
 
-                  {/* Product Images Gallery - Horizontal Scroll */}
-                  <div className="flex-1 min-w-0">
-                    <div className="p-3 bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
-                            <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
-                          </div>
-                          <Label className="text-xs font-semibold text-gray-800">Images</Label>
-                        </div>
-                        {(coverPhoto || additionalImages.filter(img => img).length > 0 || dynamicImages.length > 0) && (
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs h-5">
-                            {[coverPhoto, ...additionalImages.filter(img => img), ...dynamicImages].length}
-                          </Badge>
-                        )}
+                  <div className="flex-1 p-3 bg-gray-50/50 border rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <ImageIcon className="w-4 h-4 text-blue-600" />
+                        <span className="text-xs font-semibold text-gray-800">
+                          Images
+                        </span>
                       </div>
-                      
-                      {!isEditing ? (
-                        // View Mode
-                        <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                          {coverPhoto && (
-                            <div className="group relative flex-shrink-0">
-                              <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
-                                <img src={coverPhoto} alt="Cover" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                  <div className="absolute bottom-1 left-1 right-1">
-                                    <span className="text-xs font-semibold text-white">Cover</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          {additionalImages.filter(img => img).map((image, i) => (
-                            <div key={i} className="group relative flex-shrink-0">
-                              <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
-                                <img src={image} alt={`Image ${i + 1}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                  <div className="absolute bottom-1 left-1">
-                                    <Eye className="w-3 h-3 text-white" />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          {dynamicImages.map((image, i) => (
-                            <div key={`dynamic-${i}`} className="group relative flex-shrink-0">
-                              <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
-                                <img src={image} alt={`Image ${i + 1}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                  <div className="absolute bottom-1 left-1">
-                                    <Eye className="w-3 h-3 text-white" />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          {(!coverPhoto && additionalImages.filter(img => img).length === 0 && dynamicImages.length === 0) && (
+                      <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                        {samples.filter(Boolean).length + (coverPhoto ? 1 : 0)}
+                      </Badge>
+                    </div>
+
+                    {!isEditing ? (
+                      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                        {coverPhoto && (
+                          <div className="w-20 h-20 border rounded-md overflow-hidden flex-shrink-0">
+                            <img
+                              src={coverImageUrl}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                        {samples.map((s, i) => (
+                          <div
+                            key={i}
+                            className="w-20 h-20 border rounded-md overflow-hidden flex-shrink-0"
+                          >
+                            <img
+                              src={sampleImageUrls[i]}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ))}
+                        {!coverPhoto &&
+                          samples.filter(Boolean).length === 0 && (
                             <div className="w-full text-center py-4">
                               <ImageIcon className="w-8 h-8 mx-auto mb-1 text-gray-400" />
                               <p className="text-xs text-gray-500">No images</p>
                             </div>
                           )}
-                        </div>
-                      ) : (
-                        // Edit Mode
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                            <div className="flex-shrink-0">
-                              <input
-                                ref={coverInputRef}
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={handleCoverPhotoUpload}
+                      </div>
+                    ) : (
+                      <div className="flex gap-3 overflow-x-auto pb-2">
+                        <div className="flex-shrink-0">
+                          <input
+                            ref={coverRef}
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            onChange={handleCoverUpload}
+                          />
+                          <div
+                            className="w-20 h-20 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer"
+                            onClick={() => coverRef.current?.click()}
+                          >
+                            {coverPhoto ? (
+                              <img
+                                src={coverImageUrl}
+                                className="w-full h-full object-cover"
                               />
-                              {coverPhoto ? (
-                                <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md group">
-                                  <img src={coverPhoto} alt="Cover" className="w-full h-full object-cover" />
-                                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                    <Button type="button" variant="destructive" size="sm" onClick={removeCoverPhoto} className="h-6 w-6 p-0 shadow-lg">
-                                      <Trash2 className="w-3 h-3" />
-                                    </Button>
-                                  </div>
-                                </div>
+                            ) : (
+                              <Upload className="w-5 h-5 text-gray-400" />
+                            )}
+                          </div>
+                        </div>
+
+                        {samples.map((s, idx) => (
+                          <div key={idx} className="flex-shrink-0 relative">
+                            <input
+                              ref={(el) => (sampleRefs.current[idx] = el)}
+                              type="file"
+                              accept="image/*"
+                              hidden
+                              onChange={(e) => handleSampleUpload(e, idx)}
+                            />
+                            <div
+                              className="w-20 h-20 border rounded-lg overflow-hidden cursor-pointer"
+                              onClick={() => sampleRefs.current[idx]?.click()}
+                            >
+                              {s ? (
+                                <img
+                                  src={sampleImageUrls[idx]}
+                                  className="w-full h-full object-cover"
+                                />
                               ) : (
-                                <div onClick={() => coverInputRef.current?.click()} className="w-20 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md">
-                                  <ImageIcon className="w-5 h-5 text-blue-600" />
-                                  <span className="text-xs text-blue-700 mt-0.5">Cover</span>
-                                </div>
+                                <Upload className="w-5 h-5 text-gray-400 mx-auto mt-6" />
                               )}
                             </div>
-
-                            {[0, 1, 2, 3, 4].map((i) => (
-                              <div key={i} className="flex-shrink-0">
-                                <input
-                                  ref={(el) => { if (additionalInputRefs.current) { additionalInputRefs.current[i] = el; }}}
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => handleAdditionalImageUpload(e, i)}
-                                />
-                                {additionalImages[i] ? (
-                                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
-                                    <img src={additionalImages[i]} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                      <Button type="button" variant="destructive" size="sm" onClick={() => removeAdditionalImage(i)} className="h-6 w-6 p-0 shadow-lg">
-                                        <Trash2 className="w-3 h-3" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div onClick={() => additionalInputRefs.current[i]?.click()} className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md">
-                                    <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-
-                            {dynamicImages.map((image, i) => (
-                              <div key={`dynamic-${i}`} className="flex-shrink-0">
-                                <input
-                                  ref={(el) => { if (dynamicInputRefs.current) { dynamicInputRefs.current[i] = el; }}}
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => handleDynamicImageUpload(e, i)}
-                                />
-                                {image ? (
-                                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
-                                    <img src={image} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                      <Button type="button" variant="destructive" size="sm" onClick={() => removeDynamicImage(i)} className="h-6 w-6 p-0 shadow-lg">
-                                        <Trash2 className="w-3 h-3" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div onClick={() => dynamicInputRefs.current[i]?.click()} className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md">
-                                    <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-
-                            <div onClick={handleAddImageSlot} className="w-20 h-20 flex-shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md">
-                              <Plus className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-all duration-200" />
-                            </div>
+                            {s && (
+                              <Button
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-1/2 right-1/2 h-6 w-6"
+                                onClick={() => removeSample(idx)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
+                        ))}
 
-                          <div className="flex justify-end pt-2 border-t border-gray-200">
-                            <Button onClick={handleSaveImages} className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-7 text-xs" size="sm">
-                              <Save className="w-3 h-3 mr-1.5" />
-                              Save
-                            </Button>
-                          </div>
+                        <div
+                          className="w-20 h-20 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer"
+                          onClick={addSampleSlot}
+                        >
+                          <Plus className="w-5 h-5 text-blue-600" />
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* All Fields in Horizontal Grid - 6 columns */}
-                <div className="grid grid-cols-6 gap-x-3 gap-y-3">
-                  {/* Row 1 */}
+                {/* Fields Grid */}
+                <div className="grid grid-cols-6 gap-4">
                   <div>
                     <Label>Product Code</Label>
-                    <div className="mt-1 font-mono font-bold text-gray-900">{project.autoCode}</div>
+                    <div className="mt-1 font-mono font-bold text-gray-900">
+                      {project.autoCode}
+                    </div>
                   </div>
-                  
+
                   <div>
                     <Label>Company</Label>
                     {isEditing ? (
-                      <Select 
-                        value={editedProject.companyId} 
-                        onValueChange={(value) => setEditedProject({...editedProject, companyId: value})}
+                      <Select
+                        value={editedProject.company?._id}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject,
+                            company: companies.find((c) => c._id === v) || null,
+                            brand: null,
+                            category: null,
+                          })
+                        }
                       >
                         <SelectTrigger className="mt-1">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1">Phoenix Footwear</SelectItem>
-                          <SelectItem value="2">Urban Sole</SelectItem>
+                          {companies.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     ) : (
-                      <div className="mt-1 text-gray-900">Phoenix Footwear</div>
+                      <div className="mt-1">{project.company?.name}</div>
                     )}
                   </div>
 
                   <div>
                     <Label>Brand</Label>
                     {isEditing ? (
-                      <Select 
-                        value={editedProject.brandId} 
-                        onValueChange={(value) => setEditedProject({...editedProject, brandId: value})}
+                      <Select
+                        value={editedProject.brand?._id}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject,
+                            brand: brands.find((b) => b._id === v) || null,
+                            category: null,
+                          })
+                        }
                       >
                         <SelectTrigger className="mt-1">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(brands || []).map(brand => (
-                            <SelectItem key={brand.id} value={brand.id}>{brand.brandName}</SelectItem>
+                          {brands.map((b) => (
+                            <SelectItem key={b._id} value={b._id}>
+                              {b.name}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     ) : (
-                      <div className="mt-1 text-gray-900">{getBrandName(project.brandId)}</div>
+                      <div className="mt-1">{project.brand?.name}</div>
                     )}
                   </div>
 
                   <div>
                     <Label>Category</Label>
                     {isEditing ? (
-                      <Select 
-                        value={editedProject.categoryId} 
-                        onValueChange={(value) => setEditedProject({...editedProject, categoryId: value})}
+                      <Select
+                        value={editedProject.category?._id}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject,
+                            category:
+                              categories.find((c) => c._id === v) || null,
+                          })
+                        }
                       >
                         <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Category" />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(categories || []).map(category => (
-                            <SelectItem key={category.id} value={category.id}>{category.categoryName}</SelectItem>
+                          {categories.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     ) : (
-                      <div className="mt-1 text-gray-900">{getCategoryName(project.categoryId)}</div>
+                      <div className="mt-1">{project.category?.name}</div>
                     )}
                   </div>
 
                   <div>
                     <Label>Type</Label>
                     {isEditing ? (
-                      <Select 
-                        value={editedProject.typeId} 
-                        onValueChange={(value) => setEditedProject({...editedProject, typeId: value})}
+                      <Select
+                        value={editedProject.type?._id}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject,
+                            type: types.find((t) => t._id === v) || null,
+                          })
+                        }
                       >
                         <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Type" />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(types || []).map(type => (
-                            <SelectItem key={type.id} value={type.id}>{type.typeName}</SelectItem>
+                          {types.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.name}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     ) : (
-                      <div className="mt-1 text-gray-900">{getTypeName(project.typeId)}</div>
+                      <div className="mt-1">{project.type?.name}</div>
                     )}
                   </div>
 
                   <div>
                     <Label>Gender</Label>
                     {isEditing ? (
-                      <Select defaultValue="unisex">
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
-                          <SelectItem value="unisex">Unisex</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <div className="mt-1 text-gray-900">Unisex</div>
-                    )}
-                  </div>
-
-                  {/* Row 2 */}
-                  <div>
-                    <Label>Art</Label>
-                    {isEditing ? (
-                      <Input type="text" defaultValue="Modern Design" className="mt-1" />
-                    ) : (
-                      <div className="mt-1 text-gray-900">Modern Design</div>
-                    )}
-                  </div>
-
-                  <div>
-                    <Label>Colour</Label>
-                    {isEditing ? (
-                      <Select 
-                        value={editedProject.colorId} 
-                        onValueChange={(value) => setEditedProject({...editedProject, colorId: value})}
+                      <Select
+                        value={editedProject.gender || ""}
+                        onValueChange={(v) =>
+                          setEditedProject({ ...editedProject, gender: v })
+                        }
                       >
                         <SelectTrigger className="mt-1">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(colors || []).map(color => (
-                            <SelectItem key={color.id} value={color.id}>
-                              <div className="flex items-center gap-2">
-                                <div className="w-4 h-4 rounded-full" style={{ backgroundColor: color.hexCode }}></div>
-                                {color.colorName}
-                              </div>
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="Unisex">Unisex</SelectItem>
+                          <SelectItem value="Men">Men</SelectItem>
+                          <SelectItem value="Women">Women</SelectItem>
+                          <SelectItem value="Kids">Kids</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (
-                      <div className="mt-1 flex items-center gap-2">
-                        <div className={`w-4 h-4 rounded-full ${getColorDisplay()}`}></div>
-                        <span className="text-gray-900">{getColorName(project.colorId)}</span>
-                      </div>
+                      <div className="mt-1">{project.gender || "N/A"}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Art</Label>
+                    {isEditing ? (
+                      <Input
+                        value={editedProject.artName || ""}
+                        onChange={(e) =>
+                          setEditedProject({
+                            ...editedProject,
+                            artName: e.target.value,
+                          })
+                        }
+                        className="mt-1"
+                      />
+                    ) : (
+                      <div className="mt-1">{project.artName || "N/A"}</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Color</Label>
+                    {isEditing ? (
+                      <Input
+                        value={editedProject.color || ""}
+                        onChange={(e) =>
+                          setEditedProject({
+                            ...editedProject,
+                            color: e.target.value,
+                          })
+                        }
+                        className="mt-1"
+                      />
+                    ) : (
+                      <div className="mt-1">{project.color || "N/A"}</div>
                     )}
                   </div>
 
                   <div>
                     <Label>Country</Label>
                     {isEditing ? (
-                      <Select 
-                        value={editedProject.countryId} 
-                        onValueChange={(value) => setEditedProject({...editedProject, countryId: value})}
+                      <Select
+                        value={editedProject.country?._id}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject,
+                            country: countries.find((c) => c._id === v) || null,
+                          })
+                        }
                       >
                         <SelectTrigger className="mt-1">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(countries || []).map(country => (
-                            <SelectItem key={country.id} value={country.id}>{country.countryName}</SelectItem>
+                          {countries.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     ) : (
-                      <div className="mt-1 text-gray-900">{getCountryName(project.countryId)}</div>
+                      <div className="mt-1">{project.country?.name}</div>
                     )}
                   </div>
 
                   <div>
-                    <Label>Status</Label>
-                    <div className="mt-1">
-                      <Badge className={currentStage.color}>
-                        {currentStage.name}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label>Start Date</Label>
+                    <Label>Priority</Label>
                     {isEditing ? (
-                      <Input
-                        type="date"
-                        value={editedProject.startDate}
-                        onChange={(e) => setEditedProject({...editedProject, startDate: e.target.value})}
-                        className="mt-1"
-                      />
+                      <Select
+                        value={editedProject.priority || ""}
+                        onValueChange={(v) =>
+                          setEditedProject({ ...editedProject, priority: v })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectContent>
+                      </Select>
                     ) : (
-                      <div className="mt-1 text-gray-900">{formatDate(project.startDate)}</div>
+                      <Badge
+                        className={
+                          project.priority === "high"
+                            ? "bg-red-500 text-white"
+                            : project.priority === "medium"
+                            ? "bg-purple-500 text-white"
+                            : "bg-green-600 text-white"
+                        }
+                      >
+                        {project.priority || "N/A"}
+                      </Badge>
                     )}
                   </div>
 
@@ -1297,64 +1428,60 @@ export function RedSealProjectDetailsDialog({
                     {isEditing ? (
                       <Input
                         type="date"
-                        value={editedProject.endDate}
-                        onChange={(e) => setEditedProject({...editedProject, endDate: e.target.value})}
-                        className="mt-1"
+                        value={
+                          editedProject.redSealTargetDate
+                            ? editedProject.redSealTargetDate.split("T")[0]
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setEditedProject({
+                            ...editedProject,
+                            redSealTargetDate: e.target.value,
+                          })
+                        }
                       />
                     ) : (
-                      <div className="mt-1 text-gray-900">{formatDate(project.endDate)}</div>
-                    )}
-                  </div>
-
-                  {/* Row 3 */}
-                  <div>
-                    <Label>Priority</Label>
-                    {isEditing ? (
-                      <Select 
-                        value={editedProject.priority || 'Low'} 
-                        onValueChange={(value) => setEditedProject({...editedProject, priority: value})}
-                      >
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Low">Low</SelectItem>
-                          <SelectItem value="Medium">Medium</SelectItem>
-                          <SelectItem value="High">High</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
                       <div className="mt-1">
-                        <Badge className={
-                          project.priority === 'High' ? 'bg-red-500 text-white' :
-                          project.priority === 'Medium' ? 'bg-amber-500 text-white' :
-                          'bg-green-500 text-white'
-                        }>
-                          {project.priority}
-                        </Badge>
+                        {formatDateDisplay(project.redSealTargetDate)}
                       </div>
                     )}
                   </div>
 
                   <div>
-                    <Label>Assigned To</Label>
+                    <Label>Assigned Person</Label>
                     {isEditing ? (
-                      <Input
-                        type="text"
-                        value={editedProject.taskInc}
-                        onChange={(e) => setEditedProject({...editedProject, taskInc: e.target.value})}
-                        className="mt-1"
-                        placeholder="Person name"
-                      />
+                      <Select
+                        value={editedProject.assignPerson?._id}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject,
+                            assignPerson:
+                              assignPersons.find((p) => p._id === v) || null,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assignPersons.map((p) => (
+                            <SelectItem key={p._id} value={p._id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     ) : (
-                      <div className="mt-1 text-gray-900">{project.taskInc}</div>
+                      <div className="mt-1">
+                        {project.assignPerson?.name || "N/A"}
+                      </div>
                     )}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Client Feedback & Updates Section */}
+            {/* Client Feedback & Updates */}
             <div className="space-y-6">
               <div className="flex items-center gap-5">
                 <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
@@ -1366,7 +1493,7 @@ export function RedSealProjectDetailsDialog({
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Client Feedback Card */}
+                {/* Client Feedback */}
                 <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">
                     Client Feedback
@@ -1375,81 +1502,85 @@ export function RedSealProjectDetailsDialog({
                   <div className="space-y-4">
                     <div>
                       <Label className="text-sm font-medium text-gray-600 mb-2 block">
-                        Client Remarks
+                        Description
                       </Label>
                       {isEditing ? (
                         <Textarea
-                          value={editedProject.remarks || ""}
+                          value={editedProject.productDesc || ""}
                           onChange={(e) =>
                             setEditedProject({
                               ...editedProject,
-                              remarks: e.target.value,
+                              productDesc: e.target.value,
                             })
                           }
-                          placeholder="Enter client feedback and remarks..."
-                          className="min-h-[100px] resize-none text-sm"
+                          className="min-h-[100px]"
                         />
                       ) : (
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[100px] border border-gray-200">
-                          {editedProject.remarks ||
-                            "Red Seal sample shows good quality but the sole thickness needs adjustment. Client requested modification in heel height by 2mm for better comfort. Material selection approved but color consistency needs improvement."}
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[100px]">
+                          {project.productDesc || "No Description"}
                         </div>
                       )}
                     </div>
 
                     <div>
                       <Label className="text-sm font-medium text-gray-600 mb-2 block">
-                        Client Approval Status
+                        Approval Status
                       </Label>
-                      <div className="flex items-center gap-2">
-                        {isEditing ? (
-                          <Select
-                            value={
-                              editedProject.clientFeedback ||
-                              "Update Required"
-                            }
-                            onValueChange={(value) =>
-                              setEditedProject({
-                                ...editedProject,
-                                clientFeedback: value as
-                                  | "OK"
-                                  | "Update Required"
-                                  | "Pending",
-                              })
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="OK">
-                                Approved
-                              </SelectItem>
-                              <SelectItem value="Update Required">
-                                Update Required
-                              </SelectItem>
-                              <SelectItem value="Pending">
-                                Pending Review
-                              </SelectItem>
-                              <SelectItem value="Rejected">
-                                Rejected
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Badge
-                            variant="secondary"
-                            className="bg-orange-100 text-orange-700"
-                          >
-                            ⚠ Update Required
-                          </Badge>
-                        )}
-                      </div>
+                      {isEditing ? (
+                        <Select
+                          value={editedProject.clientApproval || "pending"}
+                          onValueChange={(value) =>
+                            setEditedProject({
+                              ...editedProject,
+                              clientApproval: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select Approval Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ok">Approved</SelectItem>
+                            <SelectItem value="update_req">
+                              Update Required
+                            </SelectItem>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="review_req">
+                              Review Required
+                            </SelectItem>
+                            <SelectItem value="rejected">Rejected</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge
+                          className={
+                            editedProject.clientApproval === "ok"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : editedProject.clientApproval === "pending"
+                              ? "bg-blue-100 text-blue-700"
+                              : editedProject.clientApproval === "update_req"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : editedProject.clientApproval === "review_req"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-red-100 text-red-700"
+                          }
+                        >
+                          {
+                            {
+                              ok: "✓ Approved",
+                              pending: "⏳ Pending",
+                              update_req: "🔄 Update Required",
+                              review_req: "📝 Review Required",
+                              rejected: "❌ Rejected",
+                            }[editedProject.clientApproval || "pending"]
+                          }
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Next Update Schedule Card */}
+                {/* Next Update */}
                 <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">
                     Next Update Schedule
@@ -1463,27 +1594,21 @@ export function RedSealProjectDetailsDialog({
                       {isEditing ? (
                         <Input
                           type="date"
-                          value={
-                            editedProject.nextUpdateDate ||
-                            "2024-09-15"
-                          }
+                          value={editedProject.nextUpdateDate || ""}
                           onChange={(e) =>
                             setEditedProject({
                               ...editedProject,
                               nextUpdateDate: e.target.value,
                             })
                           }
-                          className="w-full"
                         />
                       ) : (
-                        <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg text-sm border border-gray-200">
+                        <div className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
                           <Calendar className="w-4 h-4 text-gray-500" />
                           <span className="text-gray-900">
-                            {editedProject.nextUpdateDate
-                              ? formatDate(
-                                  editedProject.nextUpdateDate,
-                                )
-                              : "15/09/2024"}
+                            {project?.nextUpdate?.date
+                              ? formatDateDisplay(project.nextUpdate?.date)
+                              : "Not scheduled"}
                           </span>
                         </div>
                       )}
@@ -1495,64 +1620,67 @@ export function RedSealProjectDetailsDialog({
                       </Label>
                       {isEditing ? (
                         <Textarea
-                          value={
-                            editedProject.updateNotes || ""
-                          }
+                          value={editedProject.updateNotes || ""}
                           onChange={(e) =>
                             setEditedProject({
                               ...editedProject,
                               updateNotes: e.target.value,
                             })
                           }
-                          placeholder="Enter notes for next update meeting..."
-                          className="min-h-[80px] resize-none text-sm"
+                          className="min-h-[80px]"
                         />
                       ) : (
-                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px] border border-gray-200">
-                          {editedProject.updateNotes ||
-                            "Schedule follow-up meeting with client to review updated Red Seal sample. Prepare revised prototype with adjusted sole thickness and improved color consistency for approval."}
+                        <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px]">
+                          {project.nextUpdate?.note || "No update notes"}
                         </div>
                       )}
                     </div>
 
-                    {/* Days Until Next Update */}
-                    {(() => {
-                      const nextDate =
-                        editedProject.nextUpdateDate ||
-                        "2024-09-15";
-                      const today = new Date();
-                      const updateDate = new Date(nextDate);
-                      const diffTime =
-                        updateDate.getTime() -
-                        today.getTime();
-                      const diffDays = Math.ceil(
-                        diffTime / (1000 * 60 * 60 * 24),
-                      );
-                      const isOverdue = diffDays <= 0;
-                      
-                      return (
-                        <div className={`${isOverdue ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'} rounded-lg p-4`}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Clock className={`w-4 h-4 ${isOverdue ? 'text-red-600' : 'text-blue-600'}`} />
-                            <span className={`text-sm ${isOverdue ? 'text-red-700' : 'text-blue-700'}`}>
-                              Days Until Next Update
+                    <div>
+                      {(() => {
+                        const next =
+                          editedProject.nextUpdateDate ||
+                          project.nextUpdateDate;
+                        if (!next) {
+                          return (
+                            <div className="p-4 border rounded-lg bg-gray-50 text-center text-gray-600">
+                              <Clock className="w-4 h-4 mx-auto mb-1" />
+                              Not Scheduled
+                            </div>
+                          );
+                        }
+                        const diff = Math.ceil(
+                          (new Date(next).getTime() - new Date().getTime()) /
+                            (1000 * 60 * 60 * 24)
+                        );
+                        const overdue = diff < 0;
+                        return (
+                          <div
+                            className={`p-4 border rounded-lg text-center ${
+                              overdue
+                                ? "bg-red-50 border-red-200 text-red-700"
+                                : "bg-blue-50 border-blue-200 text-blue-700"
+                            }`}
+                          >
+                            <Clock className="w-4 h-4 mx-auto mb-1" />
+                            <span className="text-lg font-bold">
+                              {diff === 0
+                                ? "Due Today"
+                                : overdue
+                                ? "Overdue"
+                                : `${diff} days remaining`}
                             </span>
                           </div>
-                          <div className={`text-xl font-bold ${isOverdue ? 'text-red-600' : 'text-blue-600'}`}>
-                            {diffDays > 0
-                              ? `${diffDays} days`
-                              : "Overdue"}
-                          </div>
-                        </div>
-                      );
-                    })()}
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Quick Actions for Client Feedback */}
+              {/* Quick Actions */}
               {isEditing && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div className="bg-gray-50 border rounded-lg p-4">
                   <Label className="text-sm font-medium text-gray-700 mb-3 block">
                     Quick Update Actions
                   </Label>
@@ -1561,114 +1689,70 @@ export function RedSealProjectDetailsDialog({
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        const nextWeek = new Date();
-                        nextWeek.setDate(
-                          nextWeek.getDate() + 7,
-                        );
+                        const d = new Date();
+                        d.setDate(d.getDate() + 7);
+                        const iso = d.toISOString().split("T")[0];
                         setEditedProject({
                           ...editedProject,
-                          nextUpdateDate: nextWeek
-                            .toISOString()
-                            .split("T")[0],
-                          updateNotes:
-                            "Schedule follow-up meeting for next week to review updated Red Seal sample",
+                          nextUpdateDate: iso,
+                          updateNotes: "Follow-up scheduled for next week.",
                         });
                       }}
                     >
-                      <Calendar className="w-4 h-4 mr-1" />
-                      Schedule Next Week
+                      <Calendar className="w-4 h-4 mr-1" /> Schedule Next Week
                     </Button>
+
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        const twoWeeks = new Date();
-                        twoWeeks.setDate(
-                          twoWeeks.getDate() + 14,
-                        );
+                      onClick={() =>
                         setEditedProject({
                           ...editedProject,
-                          nextUpdateDate: twoWeeks
-                            .toISOString()
-                            .split("T")[0],
-                          updateNotes:
-                            "Allow 2 weeks for Red Seal modifications and client review",
-                        });
-                      }}
+                          updateNotes: "Client requested revision.",
+                        })
+                      }
                     >
-                      <Calendar className="w-4 h-4 mr-1" />
-                      Schedule 2 Weeks
+                      <AlertTriangle className="w-4 h-4 mr-1" /> Revision
+                      Required
                     </Button>
+
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
+                      onClick={() =>
                         setEditedProject({
                           ...editedProject,
-                          clientFeedback: "Update Required",
-                          updateNotes:
-                            "Client requested modifications - awaiting revised Red Seal sample",
-                        });
-                      }}
+                          updateNotes: "Client approved the update.",
+                        })
+                      }
                     >
-                      <AlertTriangle className="w-4 h-4 mr-1" />
-                      Mark Update Required
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditedProject({
-                          ...editedProject,
-                          clientFeedback: "OK",
-                          updateNotes:
-                            "Red Seal approved by client - ready to proceed to Green Seal stage",
-                        });
-                      }}
-                    >
-                      <CheckCircle className="w-4 h-4 mr-1" />
-                      Mark Approved
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditedProject({
-                          ...editedProject,
-                          status: "Green Seal",
-                          updateNotes:
-                            "Moving to Green Seal stage after Red Seal approval",
-                        });
-                      }}
-                    >
-                      <ArrowRight className="w-4 h-4 mr-1" />
-                      Move to Green Seal
+                      <CheckCircle className="w-4 h-4 mr-1" /> Mark Approved
                     </Button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Red Seal Development - Tentative Cost Information */}
+            {/* Cost Breakdown */}
             <div className="space-y-6">
               <div className="flex items-center gap-5">
                 <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
                   <Calculator className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900">
-                  Cost Breakdown & Final Tentaive Cost
+                  Cost Breakdown & Final Tentative Cost
                 </h3>
               </div>
 
-              {/* Cost Analysis & Summary */}
+              {/* Cost Analysis */}
               <div className="bg-white border-2 border-green-200 rounded-xl p-6">
                 <h4 className="text-lg font-semibold text-gray-900 mb-4">
                   Cost Analysis & Final Calculations
                 </h4>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  {/* Tentative Cost - Read Only */}
-                  <div className="text-center p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 shadow-sm hover:shadow-md transition-all">
+                  {/* Tentative Cost */}
+                  <div className="text-center p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 shadow-sm">
                     <div className="flex items-center justify-center gap-2 mb-3">
                       <Calculator className="w-5 h-5 text-green-600" />
                       <div className="text-sm text-green-700 font-semibold tracking-wide uppercase">
@@ -1676,12 +1760,12 @@ export function RedSealProjectDetailsDialog({
                       </div>
                     </div>
                     <div className="text-3xl font-bold text-green-800 tracking-tight">
-                      ₹15,247
+                      ₹{costSummary.tentativeCost.toLocaleString()}
                     </div>
                   </div>
 
-                  {/* Brand Final Cost - Editable when isEditing */}
-                  <div className="text-center p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 shadow-sm hover:shadow-md transition-all">
+                  {/* Brand Final Cost */}
+                  <div className="text-center p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 shadow-sm">
                     <div className="flex items-center justify-center gap-2 mb-3">
                       <Award className="w-5 h-5 text-blue-600" />
                       <div className="text-sm text-blue-700 font-semibold tracking-wide uppercase">
@@ -1690,18 +1774,22 @@ export function RedSealProjectDetailsDialog({
                     </div>
                     {isEditing ? (
                       <div className="relative flex items-center justify-center gap-1">
-                        <span className="text-3xl font-bold text-blue-800">₹</span>
+                        <span className="text-3xl font-bold text-blue-800">
+                          ₹
+                        </span>
                         <Input
                           type="number"
-                          value={brandFinalCost}
-                          onChange={(e) => setBrandFinalCost(e.target.value)}
-                          className="text-center text-3xl font-bold text-blue-800 bg-white/50 border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg h-auto w-48 px-2 py-1 shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          value={costSummary.brandFinalCost || ""}
+                          onChange={(e) =>
+                            updateBrandFinalCost(Number(e.target.value))
+                          }
+                          className="text-center text-3xl font-bold text-blue-800 bg-white/50 border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg h-auto w-48 px-2 py-1 shadow-inner"
                           placeholder="0"
                         />
                       </div>
                     ) : (
                       <div className="text-3xl font-bold text-blue-800 tracking-tight">
-                        ₹{parseInt(brandFinalCost || '0').toLocaleString()}
+                        ₹{costSummary.brandFinalCost.toLocaleString()}
                       </div>
                     )}
                   </div>
@@ -1714,94 +1802,71 @@ export function RedSealProjectDetailsDialog({
                   </h5>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">
-                        Upper Cost:
-                      </span>
-                      <span className="font-medium">₹6.20</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">
-                        Component Cost:
-                      </span>
-                      <span className="font-medium">₹4.00</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">
-                        Material Cost:
-                      </span>
+                      <span className="text-gray-600">Upper Cost:</span>
                       <span className="font-medium">
-                        ₹109.00
+                        ₹{costSummary.upperTotal.toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">
-                        Packaging Cost:
-                      </span>
+                      <span className="text-gray-600">Component Cost:</span>
                       <span className="font-medium">
-                        ₹22.00
+                        ₹{costSummary.componentTotal.toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">
-                        Labour + OH:
-                      </span>
+                      <span className="text-gray-600">Material Cost:</span>
                       <span className="font-medium">
-                        ₹62.00
+                        ₹{costSummary.materialTotal.toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">
-                        Miscellaneous:
+                      <span className="text-gray-600">Packaging Cost:</span>
+                      <span className="font-medium">
+                        ₹{costSummary.packagingTotal.toFixed(2)}
                       </span>
-                      <span className="font-medium">₹6.06</span>
                     </div>
-                  </div>
-                  
-                  <Separator className="my-3" />
-                  
-                  <div className="flex justify-between font-semibold mb-3">
-                    <span>Total All Costs:</span>
-                    <span>₹{totalAllCosts.toFixed(2)}</span>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Labour + OH:</span>
+                      <span className="font-medium">
+                        ₹{costSummary.labourTotal.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Miscellaneous:</span>
+                      <span className="font-medium">
+                        ₹{costSummary.miscTotal.toFixed(2)}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Profit Margin Input */}
-                  <div className="mb-3">
-                    <Label className="text-sm font-medium text-gray-600">Profit Margin (%)</Label>
-                    <div className="relative mt-1">
-                      <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        type="number"
-                        value={profitMargin}
-                        onChange={(e) => setProfitMargin(e.target.value)}
-                        className="pl-10"
-                        placeholder="Enter profit margin %"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                      />
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Profit percentage on total costs
-                    </div>
+                  <Separator className="my-3" />
+
+                  <div className="flex justify-between font-semibold mb-3">
+                    <span>Total All Costs:</span>
+                    <span>₹{costSummary.totalAllCosts.toFixed(2)}</span>
                   </div>
 
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-600">Profit ({profitPercentage}%):</span>
-                    <span className="font-medium">+₹{profitAmount.toFixed(2)}</span>
+                    <span className="text-gray-600">
+                      Profit ({costSummary.profitMargin}%):
+                    </span>
+                    <span className="font-medium">
+                      +₹{costSummary.profitAmount.toFixed(2)}
+                    </span>
                   </div>
 
                   <Separator className="my-3" />
-                  
+
                   <div className="flex justify-between font-semibold">
                     <span>Total Tentative Cost:</span>
-                    <span>₹{tentativeCost.toFixed(2)}</span>
+                    <span>₹{costSummary.tentativeCost.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
 
               {/* Detailed Cost Breakdown Cards */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Upper Cost Details */}
+                {/* Upper Cost Card */}
                 <div className="bg-white border-2 border-orange-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-orange-900 mb-4">
                     Upper Cost Breakdown
@@ -1811,104 +1876,84 @@ export function RedSealProjectDetailsDialog({
                       <div>ITEM</div>
                       <div>DESCRIPTION</div>
                       <div>CONSUMPTION</div>
-                      <div>COST{isEditing && <span className="ml-1">/  ACTION</span>}</div>
+                      <div>
+                        COST
+                        {isEditing && <span className="ml-1">/ ACTION</span>}
+                      </div>
                     </div>
 
-                    {/* Default Upper Items - Dynamic Rendering */}
-                    {Object.entries(defaultUpperItems).map(([key, item]) => (
-                      <div key={key} className="grid grid-cols-4 gap-2 text-sm py-2 border-b border-gray-200 items-center">
-                        {isEditing ? (
-                          <>
-                            <Input
-                              value={item.item}
-                              onChange={(e) => updateDefaultUpperItem(key, 'item', e.target.value)}
-                              className="text-sm h-8"
-                              placeholder="Item"
-                            />
-                            <Input
-                              value={item.description}
-                              onChange={(e) => updateDefaultUpperItem(key, 'description', e.target.value)}
-                              className="text-sm h-8"
-                              placeholder="Description"
-                            />
-                            <Input
-                              value={item.consumption}
-                              onChange={(e) => updateDefaultUpperItem(key, 'consumption', e.target.value)}
-                              className="text-sm h-8"
-                              placeholder="Consumption"
-                            />
-                            <div className="flex items-center gap-1">
-                              <div className="relative flex-1">
-                                <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                                <Input
-                                  type="number"
-                                  value={item.cost || ''}
-                                  onChange={(e) => updateDefaultUpperItem(key, 'cost', e.target.value)}
-                                  className="pl-6 text-sm h-8"
-                                  placeholder="0.00"
-                                />
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => deleteDefaultUpperItem(key)}
-                                className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="font-medium">{item.item}</div>
-                            <div className="text-gray-600">{item.description || '-'}</div>
-                            <div className="text-gray-600">{item.consumption || '-'}</div>
-                            <div className="font-medium">₹{item.cost.toFixed(2)}</div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Custom Upper Items */}
-                    {customItems.upper.map((item) => (
-                      <div key={item.id} className="grid grid-cols-4 gap-2 text-sm py-2 border-b border-gray-200 items-center">
-                        <div className="font-medium">{item.item}</div>
-                        <div className="text-gray-600">{item.description || '-'}</div>
-                        <div className="text-gray-600">{item.consumption || '-'}</div>
-                        {isEditing ? (
-                          <div className="flex items-center gap-1">
-                            <div className="relative flex-1">
-                              <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                    <div className="max-h-64 overflow-y-auto space-y-2">
+                      {costRows.upper.map((item) => (
+                        <div
+                          key={item._id}
+                          className="grid grid-cols-4 gap-2 text-sm py-2 border-b items-center"
+                        >
+                          {isEditing ? (
+                            <>
                               <Input
-                                type="number"
-                                value={upperCosts[item.id] || ''}
-                                onChange={(e) => updateCustomItemCost('upper', item.id, Number(e.target.value))}
-                                className="pl-6 text-sm h-8"
-                                placeholder="0.00"
+                                value={item.item}
+                                readOnly
+                                className="text-sm h-8 bg-gray-50"
                               />
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteCustomItem('upper', item.id)}
-                              className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="font-medium">₹{(upperCosts[item.id] || 0).toFixed(2)}</div>
-                        )}
-                      </div>
-                    ))}
+                              <Input
+                                value={item.description}
+                                readOnly
+                                className="text-sm h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.consumption}
+                                readOnly
+                                className="text-sm h-8 bg-gray-50"
+                              />
+                              <div className="flex items-center gap-1">
+                                <div className="relative flex-1">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                                  <Input
+                                    type="number"
+                                    value={item.cost}
+                                    onChange={(e) =>
+                                      updateItemCost(
+                                        item._id,
+                                        Number(e.target.value)
+                                      )
+                                    }
+                                    className="pl-6 text-sm h-8"
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteItem(item._id)}
+                                  className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-medium">{item.item}</div>
+                              <div className="text-gray-600">
+                                {item.description || "-"}
+                              </div>
+                              <div className="text-gray-600">
+                                {item.consumption || "-"}
+                              </div>
+                              <div className="font-medium">
+                                ₹{item.cost.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
 
-                    {/* Add New Item Button */}
                     {isEditing && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="w-full text-orange-600 border-orange-200 hover:bg-orange-50 mt-2"
-                        onClick={() => openAddItemDialog('upper')}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-orange-600 border-orange-200 hover:bg-orange-50"
+                        onClick={() => openAddItemDialog("upper")}
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         Add New Item
@@ -1918,13 +1963,13 @@ export function RedSealProjectDetailsDialog({
                     <div className="bg-orange-50 p-3 rounded-lg mt-3">
                       <div className="flex justify-between font-semibold text-orange-900">
                         <span>Total Upper Cost:</span>
-                        <span>₹{calculateUpperTotal().toFixed(2)}</span>
+                        <span>₹{calculateTotal("upper").toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Component Cost Details */}
+                {/* Component Cost Card */}
                 <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-purple-900 mb-4">
                     Component Cost Breakdown
@@ -1934,104 +1979,84 @@ export function RedSealProjectDetailsDialog({
                       <div>COMPONENT</div>
                       <div>DESCRIPTION</div>
                       <div>CONSUMPTION</div>
-                      <div>COST{isEditing && <span className="ml-1">/ ACTION</span>}</div>
+                      <div>
+                        COST
+                        {isEditing && <span className="ml-1">/ ACTION</span>}
+                      </div>
                     </div>
 
-                    {/* Default Component Items - Dynamic Rendering */}
-                    {Object.entries(defaultComponentItems).map(([key, item]) => (
-                      <div key={key} className="grid grid-cols-4 gap-2 text-sm py-2 border-b border-gray-200 items-center">
-                        {isEditing ? (
-                          <>
-                            <Input
-                              value={item.item}
-                              onChange={(e) => updateDefaultComponentItem(key, 'item', e.target.value)}
-                              className="text-sm h-8"
-                              placeholder="Component"
-                            />
-                            <Input
-                              value={item.description}
-                              onChange={(e) => updateDefaultComponentItem(key, 'description', e.target.value)}
-                              className="text-sm h-8"
-                              placeholder="Description"
-                            />
-                            <Input
-                              value={item.consumption}
-                              onChange={(e) => updateDefaultComponentItem(key, 'consumption', e.target.value)}
-                              className="text-sm h-8"
-                              placeholder="Consumption"
-                            />
-                            <div className="flex items-center gap-1">
-                              <div className="relative flex-1">
-                                <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                                <Input
-                                  type="number"
-                                  value={item.cost || ''}
-                                  onChange={(e) => updateDefaultComponentItem(key, 'cost', e.target.value)}
-                                  className="pl-6 text-sm h-8"
-                                  placeholder="0.00"
-                                />
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => deleteDefaultComponentItem(key)}
-                                className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="font-medium">{item.item}</div>
-                            <div className="text-gray-600">{item.description || '-'}</div>
-                            <div className="text-gray-600">{item.consumption || '-'}</div>
-                            <div className="font-medium">₹{item.cost.toFixed(2)}</div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Custom Component Items */}
-                    {customItems.component.map((item) => (
-                      <div key={item.id} className="grid grid-cols-4 gap-2 text-sm py-2 border-b border-gray-200 items-center">
-                        <div className="font-medium">{item.item}</div>
-                        <div className="text-gray-600">{item.description || '-'}</div>
-                        <div className="text-gray-600">{item.consumption || '-'}</div>
-                        {isEditing ? (
-                          <div className="flex items-center gap-1">
-                            <div className="relative flex-1">
-                              <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                    <div className="max-h-64 overflow-y-auto space-y-2">
+                      {costRows.component.map((item) => (
+                        <div
+                          key={item._id}
+                          className="grid grid-cols-4 gap-2 text-sm py-2 border-b items-center"
+                        >
+                          {isEditing ? (
+                            <>
                               <Input
-                                type="number"
-                                value={componentCosts[item.id] || ''}
-                                onChange={(e) => updateCustomItemCost('component', item.id, Number(e.target.value))}
-                                className="pl-6 text-sm h-8"
-                                placeholder="0.00"
+                                value={item.item}
+                                readOnly
+                                className="text-sm h-8 bg-gray-50"
                               />
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteCustomItem('component', item.id)}
-                              className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="font-medium">₹{(componentCosts[item.id] || 0).toFixed(2)}</div>
-                        )}
-                      </div>
-                    ))}
+                              <Input
+                                value={item.description}
+                                readOnly
+                                className="text-sm h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.consumption}
+                                readOnly
+                                className="text-sm h-8 bg-gray-50"
+                              />
+                              <div className="flex items-center gap-1">
+                                <div className="relative flex-1">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                                  <Input
+                                    type="number"
+                                    value={item.cost}
+                                    onChange={(e) =>
+                                      updateItemCost(
+                                        item._id,
+                                        Number(e.target.value)
+                                      )
+                                    }
+                                    className="pl-6 text-sm h-8"
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteItem(item._id)}
+                                  className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-medium">{item.item}</div>
+                              <div className="text-gray-600">
+                                {item.description || "-"}
+                              </div>
+                              <div className="text-gray-600">
+                                {item.consumption || "-"}
+                              </div>
+                              <div className="font-medium">
+                                ₹{item.cost.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
 
-                    {/* Add New Item Button */}
                     {isEditing && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="w-full text-purple-600 border-purple-200 hover:bg-purple-50 mt-2"
-                        onClick={() => openAddItemDialog('component')}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-purple-600 border-purple-200 hover:bg-purple-50"
+                        onClick={() => openAddItemDialog("component")}
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         Add New Component
@@ -2041,13 +2066,13 @@ export function RedSealProjectDetailsDialog({
                     <div className="bg-purple-50 p-3 rounded-lg mt-3">
                       <div className="flex justify-between font-semibold text-purple-900">
                         <span>Total Component Cost:</span>
-                        <span>₹{calculateComponentTotal().toFixed(2)}</span>
+                        <span>₹{calculateTotal("component").toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Material Cost Details */}
+                {/* Material Cost Card */}
                 <div className="bg-white border-2 border-teal-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-teal-900 mb-4">
                     Material Cost Breakdown
@@ -2057,104 +2082,84 @@ export function RedSealProjectDetailsDialog({
                       <div>MATERIAL</div>
                       <div>DESCRIPTION</div>
                       <div>CONSUMPTION</div>
-                      <div>COST{isEditing && <span className="ml-1">/ ACTION</span>}</div>
+                      <div>
+                        COST
+                        {isEditing && <span className="ml-1">/ ACTION</span>}
+                      </div>
                     </div>
 
-                    {/* Default Material Items - Dynamic Rendering */}
-                    {Object.entries(defaultMaterialItems).map(([key, item]) => (
-                      <div key={key} className="grid grid-cols-4 gap-2 text-sm py-2 border-b border-gray-200 items-center">
-                        {isEditing ? (
-                          <>
-                            <Input
-                              value={item.item}
-                              onChange={(e) => updateDefaultMaterialItem(key, 'item', e.target.value)}
-                              className="text-sm h-8"
-                              placeholder="Material"
-                            />
-                            <Input
-                              value={item.description}
-                              onChange={(e) => updateDefaultMaterialItem(key, 'description', e.target.value)}
-                              className="text-sm h-8"
-                              placeholder="Description"
-                            />
-                            <Input
-                              value={item.consumption}
-                              onChange={(e) => updateDefaultMaterialItem(key, 'consumption', e.target.value)}
-                              className="text-sm h-8"
-                              placeholder="Consumption"
-                            />
-                            <div className="flex items-center gap-1">
-                              <div className="relative flex-1">
-                                <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                                <Input
-                                  type="number"
-                                  value={item.cost || ''}
-                                  onChange={(e) => updateDefaultMaterialItem(key, 'cost', e.target.value)}
-                                  className="pl-6 text-sm h-8"
-                                  placeholder="0.00"
-                                />
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => deleteDefaultMaterialItem(key)}
-                                className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="font-medium">{item.item}</div>
-                            <div className="text-gray-600">{item.description || '-'}</div>
-                            <div className="text-gray-600">{item.consumption || '-'}</div>
-                            <div className="font-medium">₹{item.cost.toFixed(2)}</div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Custom Material Items */}
-                    {customItems.material.map((item) => (
-                      <div key={item.id} className="grid grid-cols-4 gap-2 text-sm py-2 border-b border-gray-200 items-center">
-                        <div className="font-medium">{item.item}</div>
-                        <div className="text-gray-600">{item.description || '-'}</div>
-                        <div className="text-gray-600">{item.consumption || '-'}</div>
-                        {isEditing ? (
-                          <div className="flex items-center gap-1">
-                            <div className="relative flex-1">
-                              <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                    <div className="max-h-64 overflow-y-auto space-y-2">
+                      {costRows.material.map((item) => (
+                        <div
+                          key={item._id}
+                          className="grid grid-cols-4 gap-2 text-sm py-2 border-b items-center"
+                        >
+                          {isEditing ? (
+                            <>
                               <Input
-                                type="number"
-                                value={materialCosts[item.id] || ''}
-                                onChange={(e) => updateCustomItemCost('material', item.id, Number(e.target.value))}
-                                className="pl-6 text-sm h-8"
-                                placeholder="0.00"
+                                value={item.item}
+                                readOnly
+                                className="text-sm h-8 bg-gray-50"
                               />
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteCustomItem('material', item.id)}
-                              className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="font-medium">₹{(materialCosts[item.id] || 0).toFixed(2)}</div>
-                        )}
-                      </div>
-                    ))}
+                              <Input
+                                value={item.description}
+                                readOnly
+                                className="text-sm h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.consumption}
+                                readOnly
+                                className="text-sm h-8 bg-gray-50"
+                              />
+                              <div className="flex items-center gap-1">
+                                <div className="relative flex-1">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                                  <Input
+                                    type="number"
+                                    value={item.cost}
+                                    onChange={(e) =>
+                                      updateItemCost(
+                                        item._id,
+                                        Number(e.target.value)
+                                      )
+                                    }
+                                    className="pl-6 text-sm h-8"
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteItem(item._id)}
+                                  className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-medium">{item.item}</div>
+                              <div className="text-gray-600">
+                                {item.description || "-"}
+                              </div>
+                              <div className="text-gray-600">
+                                {item.consumption || "-"}
+                              </div>
+                              <div className="font-medium">
+                                ₹{item.cost.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
 
-                    {/* Add New Item Button */}
                     {isEditing && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="w-full text-teal-600 border-teal-200 hover:bg-teal-50 mt-2"
-                        onClick={() => openAddItemDialog('material')}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
+                        onClick={() => openAddItemDialog("material")}
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         Add New Material
@@ -2164,50 +2169,55 @@ export function RedSealProjectDetailsDialog({
                     <div className="bg-teal-50 p-3 rounded-lg mt-3">
                       <div className="flex justify-between font-semibold text-teal-900">
                         <span>Total Material Cost:</span>
-                        <span>₹{calculateMaterialTotal().toFixed(2)}</span>
+                        <span>₹{calculateTotal("material").toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Packaging & Labour Cost Details */}
+                {/* Packaging & Labour Card */}
                 <div className="bg-white border-2 border-indigo-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-indigo-900 mb-4">
                     Packaging & Labour Costs
                   </h4>
                   <div className="space-y-4">
-                    {/* Packaging Cost */}
+                    {/* Packaging Section */}
                     <div>
                       <h5 className="font-medium text-gray-900 mb-2">
                         Packaging Cost
                       </h5>
-                      <div className="space-y-2">
-                        {/* Default Packaging Items - Dynamic Rendering */}
-                        {Object.entries(defaultPackagingItems).map(([key, item]) => (
-                          <div key={key} className="flex justify-between text-sm items-center">
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {costRows.packaging.map((item) => (
+                          <div
+                            key={item._id}
+                            className="flex justify-between text-sm items-center"
+                          >
                             {isEditing ? (
                               <>
                                 <Input
                                   value={item.item}
-                                  onChange={(e) => updateDefaultPackagingItem(key, 'item', e.target.value)}
-                                  className="text-sm h-8 flex-1 mr-2"
-                                  placeholder="Item"
+                                  readOnly
+                                  className="text-sm h-8 flex-1 mr-2 bg-gray-50"
                                 />
                                 <div className="flex items-center gap-1">
                                   <div className="relative w-24">
                                     <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                                     <Input
                                       type="number"
-                                      value={item.cost || ''}
-                                      onChange={(e) => updateDefaultPackagingItem(key, 'cost', e.target.value)}
+                                      value={item.cost}
+                                      onChange={(e) =>
+                                        updateItemCost(
+                                          item._id,
+                                          Number(e.target.value)
+                                        )
+                                      }
                                       className="pl-6 text-sm h-8"
-                                      placeholder="0.00"
                                     />
                                   </div>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => deleteDefaultPackagingItem(key)}
+                                    onClick={() => deleteItem(item._id)}
                                     className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -2216,62 +2226,34 @@ export function RedSealProjectDetailsDialog({
                               </>
                             ) : (
                               <>
-                                <span className="text-gray-600">{item.item}:</span>
-                                <span className="font-medium">₹{item.cost.toFixed(2)}</span>
+                                <span className="text-gray-600">
+                                  {item.item}:
+                                </span>
+                                <span className="font-medium">
+                                  ₹{item.cost.toFixed(2)}
+                                </span>
                               </>
-                            )}
-                          </div>
-                        ))}
-
-                        {/* Custom Packaging Items */}
-                        {customItems.packaging.map((item) => (
-                          <div key={item.id} className="flex justify-between text-sm items-center">
-                            <span className="text-gray-600">{item.item}:</span>
-                            {isEditing ? (
-                              <div className="flex items-center gap-1">
-                                <div className="relative w-24">
-                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                                  <Input
-                                    type="number"
-                                    value={packagingCosts[item.id] || ''}
-                                    onChange={(e) => updateCustomItemCost('packaging', item.id, Number(e.target.value))}
-                                    className="pl-6 text-sm h-8"
-                                    placeholder="0.00"
-                                  />
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => deleteCustomItem('packaging', item.id)}
-                                  className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="font-medium">₹{(packagingCosts[item.id] || 0).toFixed(2)}</span>
                             )}
                           </div>
                         ))}
                       </div>
 
-                      {/* Add New Packaging Item Button */}
                       {isEditing && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 mt-2"
-                          onClick={() => openAddItemDialog('packaging')}
+                          onClick={() => openAddItemDialog("packaging")}
                         >
                           <Plus className="w-4 h-4 mr-2" />
-                          Add New Packaging Item
+                          Add Packaging Item
                         </Button>
                       )}
 
                       <div className="bg-indigo-50 p-2 rounded mt-2">
                         <div className="flex justify-between text-sm font-medium">
                           <span>Packaging Subtotal:</span>
-                          <span>₹{calculatePackagingTotal().toFixed(2)}</span>
+                          <span>₹{calculateTotal("packaging").toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
@@ -2291,14 +2273,15 @@ export function RedSealProjectDetailsDialog({
                               <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                               <Input
                                 type="number"
-                                value={labourCosts.totalLabour || ''}
-                                onChange={(e) => updateLabourCost('totalLabour', Number(e.target.value))}
+                                value={labourCost.directTotal}
+                                onChange={(e) =>
+                                  updateLabourCost(Number(e.target.value))
+                                }
                                 className="pl-6 text-sm h-8"
-                                placeholder="0.00"
                               />
                             </div>
                           ) : (
-                            <span>₹{labourCosts.totalLabour.toFixed(2)}</span>
+                            <span>₹{labourCost.directTotal.toFixed(2)}</span>
                           )}
                         </div>
                       </div>
@@ -2311,33 +2294,38 @@ export function RedSealProjectDetailsDialog({
                       <h5 className="font-medium text-gray-900 mb-2">
                         Miscellaneous Cost
                       </h5>
-                      <div className="space-y-2">
-                        {/* Default Miscellaneous Items - Dynamic Rendering */}
-                        {Object.entries(defaultMiscellaneousItems).map(([key, item]) => (
-                          <div key={key} className="flex justify-between text-sm items-center">
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {costRows.miscellaneous.map((item) => (
+                          <div
+                            key={item._id}
+                            className="flex justify-between text-sm items-center"
+                          >
                             {isEditing ? (
                               <>
                                 <Input
                                   value={item.item}
-                                  onChange={(e) => updateDefaultMiscellaneousItem(key, 'item', e.target.value)}
-                                  className="text-sm h-8 flex-1 mr-2"
-                                  placeholder="Item"
+                                  readOnly
+                                  className="text-sm h-8 flex-1 mr-2 bg-gray-50"
                                 />
                                 <div className="flex items-center gap-1">
                                   <div className="relative w-24">
                                     <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                                     <Input
                                       type="number"
-                                      value={item.cost || ''}
-                                      onChange={(e) => updateDefaultMiscellaneousItem(key, 'cost', e.target.value)}
+                                      value={item.cost}
+                                      onChange={(e) =>
+                                        updateItemCost(
+                                          item._id,
+                                          Number(e.target.value)
+                                        )
+                                      }
                                       className="pl-6 text-sm h-8"
-                                      placeholder="0.00"
                                     />
                                   </div>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => deleteDefaultMiscellaneousItem(key)}
+                                    onClick={() => deleteItem(item._id)}
                                     className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -2346,62 +2334,36 @@ export function RedSealProjectDetailsDialog({
                               </>
                             ) : (
                               <>
-                                <span className="text-gray-600">{item.item}:</span>
-                                <span className="font-medium">₹{item.cost.toFixed(2)}</span>
+                                <span className="text-gray-600">
+                                  {item.item}:
+                                </span>
+                                <span className="font-medium">
+                                  ₹{item.cost.toFixed(2)}
+                                </span>
                               </>
-                            )}
-                          </div>
-                        ))}
-
-                        {/* Custom Miscellaneous Items */}
-                        {customItems.miscellaneous.map((item) => (
-                          <div key={item.id} className="flex justify-between text-sm items-center">
-                            <span className="text-gray-600">{item.item}:</span>
-                            {isEditing ? (
-                              <div className="flex items-center gap-1">
-                                <div className="relative w-24">
-                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                                  <Input
-                                    type="number"
-                                    value={miscellaneousCosts[item.id] || ''}
-                                    onChange={(e) => updateCustomItemCost('miscellaneous', item.id, Number(e.target.value))}
-                                    className="pl-6 text-sm h-8"
-                                    placeholder="0.00"
-                                  />
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => deleteCustomItem('miscellaneous', item.id)}
-                                  className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="font-medium">₹{(miscellaneousCosts[item.id] || 0).toFixed(2)}</span>
                             )}
                           </div>
                         ))}
                       </div>
 
-                      {/* Add New Miscellaneous Item Button */}
                       {isEditing && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 mt-2"
-                          onClick={() => openAddItemDialog('miscellaneous')}
+                          onClick={() => openAddItemDialog("miscellaneous")}
                         >
                           <Plus className="w-4 h-4 mr-2" />
-                          Add New Miscellaneous Item
+                          Add Miscellaneous Item
                         </Button>
                       )}
 
                       <div className="bg-indigo-50 p-2 rounded mt-2">
                         <div className="flex justify-between text-sm font-medium">
                           <span>Miscellaneous Subtotal:</span>
-                          <span>₹{calculateMiscellaneousTotal().toFixed(2)}</span>
+                          <span>
+                            ₹{calculateTotal("miscellaneous").toFixed(2)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -2421,32 +2383,30 @@ export function RedSealProjectDetailsDialog({
                       Total Production Cost:
                     </span>
                     <span className="font-medium">
-                      ₹{totalAllCosts.toFixed(2)}
+                      ₹{costSummary.totalAllCosts.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Additional Costs:</span>
+                    <span className="font-medium">
+                      ₹{costSummary.additionalCosts.toFixed(2)}
                     </span>
                   </div>
 
                   <div className="flex justify-between">
                     <span className="text-gray-600">
-                      Additional Costs:
+                      Profit Margin ({costSummary.profitMargin}%):
                     </span>
                     <span className="font-medium">
-                      ₹0.00
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">
-                      Profit Margin ({profitPercentage}%):
-                    </span>
-                    <span className="font-medium">
-                      +₹{profitAmount.toFixed(2)}
+                      +₹{costSummary.profitAmount.toFixed(2)}
                     </span>
                   </div>
 
                   <Separator />
                   <div className="flex justify-between font-bold text-lg text-green-700">
                     <span>Final Tentative Cost:</span>
-                    <span>₹{tentativeCost.toFixed(2)}</span>
+                    <span>₹{costSummary.tentativeCost.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -2460,27 +2420,20 @@ export function RedSealProjectDetailsDialog({
                   <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <div className="text-sm text-gray-700">
                       <strong>Cost Calculation Summary:</strong>{" "}
-                      Tentative cost calculated: ₹261.57. Total
-                      Cost: ₹209.26, Profit: ₹52.31 (25.0%).
-                      Cost breakdown includes upper materials
-                      (₹6.20), components (₹4.00), materials
-                      (₹109.00), packaging (₹22.00), labour
-                      costs (₹62.00), and miscellaneous expenses
-                      (₹6.06).
+                      {costSummary.remarks || "No remarks added."}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <CheckCircle className="w-4 h-4 text-green-600" />
                     <span className="text-green-700 font-medium">
-                      Tentative cost approved and ready for Red
-                      Seal development stage
+                      Tentative cost approved and ready for Red Seal development
+                      stage
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Calendar className="w-4 h-4 text-blue-600" />
                     <span className="text-gray-600">
-                      Approved on:{" "}
-                      {new Date().toLocaleDateString("en-GB")}
+                      Approved on: {new Date().toLocaleDateString("en-GB")}
                     </span>
                   </div>
                 </div>
@@ -2491,46 +2444,19 @@ export function RedSealProjectDetailsDialog({
       </DialogContent>
 
       {/* Add New Item Dialogs */}
-      <AddNewItemDialog
-        category="upper"
-        isOpen={addItemDialogs.upper}
-        onClose={() => closeAddItemDialog('upper')}
-        formData={dialogForms.upper}
-        onFormChange={(field, value) => handleDialogFormChange('upper', field, value)}
-        onAddItem={() => handleAddItem('upper')}
-      />
-      <AddNewItemDialog
-        category="component"
-        isOpen={addItemDialogs.component}
-        onClose={() => closeAddItemDialog('component')}
-        formData={dialogForms.component}
-        onFormChange={(field, value) => handleDialogFormChange('component', field, value)}
-        onAddItem={() => handleAddItem('component')}
-      />
-      <AddNewItemDialog
-        category="material"
-        isOpen={addItemDialogs.material}
-        onClose={() => closeAddItemDialog('material')}
-        formData={dialogForms.material}
-        onFormChange={(field, value) => handleDialogFormChange('material', field, value)}
-        onAddItem={() => handleAddItem('material')}
-      />
-      <AddNewItemDialog
-        category="packaging"
-        isOpen={addItemDialogs.packaging}
-        onClose={() => closeAddItemDialog('packaging')}
-        formData={dialogForms.packaging}
-        onFormChange={(field, value) => handleDialogFormChange('packaging', field, value)}
-        onAddItem={() => handleAddItem('packaging')}
-      />
-      <AddNewItemDialog
-        category="miscellaneous"
-        isOpen={addItemDialogs.miscellaneous}
-        onClose={() => closeAddItemDialog('miscellaneous')}
-        formData={dialogForms.miscellaneous}
-        onFormChange={(field, value) => handleDialogFormChange('miscellaneous', field, value)}
-        onAddItem={() => handleAddItem('miscellaneous')}
-      />
+      {Object.keys(addItemDialogs).map((category) => (
+        <AddNewItemDialog
+          key={`dialog-${category}`}
+          category={category}
+          isOpen={addItemDialogs[category as keyof typeof addItemDialogs]}
+          onClose={() => closeAddItemDialog(category)}
+          formData={dialogForms[category as keyof typeof dialogForms]}
+          onFormChange={(field, value) =>
+            handleDialogFormChange(category, field, value)
+          }
+          onAddItem={() => handleAddItem(category)}
+        />
+      ))}
     </Dialog>
   );
 }

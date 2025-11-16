@@ -148,6 +148,8 @@ export const update = async (req, res, next) => {
       clientFinalCost,
       nextUpdate,
       clientApproval,
+      keepExistingCover, // ✅ NEW: flag to keep existing cover
+      keepExistingSamples, // ✅ NEW: existing sample URLs to keep
     } = req.body;
 
     const payload = {
@@ -165,26 +167,72 @@ export const update = async (req, res, next) => {
       country,
       assignPerson,
       status,
-      clientFinalCost,
-      nextUpdate,
       clientApproval,
+      clientFinalCost,
     };
-    console.log(payload);
-    console.log(req.params.id);
 
-    if (req.files?.coverImage?.[0])
+    // Handle nextUpdate
+    let nextUpdateRaw = nextUpdate;
+    if (Array.isArray(nextUpdateRaw)) {
+      nextUpdateRaw = nextUpdateRaw[0];
+    }
+    if (typeof nextUpdateRaw === "string" && nextUpdateRaw.trim()) {
+      try {
+        payload.nextUpdate = JSON.parse(nextUpdateRaw);
+      } catch (err) {
+        console.error("nextUpdate parse error:", err);
+      }
+    }
+
+    // ✅ FIXED: Handle cover image properly
+    if (req.files?.coverImage?.[0]) {
+      // New cover image uploaded
       payload.coverImage = req.files.coverImage[0].path;
-    if (req.files?.sampleImages?.length)
-      payload.sampleImages = req.files.sampleImages.map((f) => f.path);
+      payload.keepExistingCover = false;
+    } else if (keepExistingCover === "true") {
+      // Keep existing cover image (don't change it)
+      payload.keepExistingCover = true;
+    } else {
+      // No cover image (remove it)
+      payload.coverImage = null;
+      payload.keepExistingCover = false;
+    }
 
+    // ✅ FIXED: Handle sample images properly
+    const existingSamplesToKeep = [];
+    if (keepExistingSamples) {
+      try {
+        const parsed =
+          typeof keepExistingSamples === "string"
+            ? JSON.parse(keepExistingSamples)
+            : keepExistingSamples;
+        existingSamplesToKeep.push(...(Array.isArray(parsed) ? parsed : []));
+      } catch (err) {
+        console.error("keepExistingSamples parse error:", err);
+      }
+    }
+
+    const newSamplePaths =
+      req.files?.sampleImages?.map((file) => file.path) || [];
+
+    // Combine existing samples with new ones
+    payload.sampleImages = [...existingSamplesToKeep, ...newSamplePaths];
+
+    // Update project
     const project = await updateProjectById(req.params.id, payload);
-    if (!project) return res.status(404).json({ message: "project not found" });
+    if (!project) {
+      return res.status(404).json({ message: "project not found" });
+    }
 
-    return res.json({ message: "project updated", data: project });
+    return res.json({
+      message: "project updated",
+      data: project,
+    });
   } catch (err) {
     next(err);
   }
 };
+
 // ✅ ALTERNATIVE: Dedicated image update endpoint
 export const updateImages = async (req, res, next) => {
   try {

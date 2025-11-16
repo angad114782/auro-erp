@@ -33,14 +33,13 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Badge } from "./ui/badge";
-import { toast } from "sonner@2.0.3";
-import { useERPStore } from "../lib/data-store";
-import type { RDProject } from "../lib/data-store";
+import { toast } from "sonner";
+import api from "../lib/api";
 
 interface POTargetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  project: RDProject | null;
+  project: any;
   onConfirm: () => void;
 }
 
@@ -50,33 +49,25 @@ export function POTargetDialog({
   project,
   onConfirm,
 }: POTargetDialogProps) {
-  const { updateRDProject } = useERPStore();
-
   const [orderQuantity, setOrderQuantity] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [poNumber, setPONumber] = useState("");
   const [clientFeedback, setClientFeedback] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
-  const [specialInstructions, setSpecialInstructions] =
-    useState("");
+  const [specialInstructions, setSpecialInstructions] = useState("");
   const [urgencyLevel, setUrgencyLevel] = useState("Normal");
-  const [qualityRequirements, setQualityRequirements] =
-    useState("");
+  const [qualityRequirements, setQualityRequirements] = useState("");
 
   if (!project) return null;
 
   const calculateTotalAmount = () => {
     const qty = parseInt(orderQuantity) || 0;
-    const price =
-      parseFloat(unitPrice) ||
-      project.finalCost ||
-      project.targetCost ||
-      0;
+    const price = parseFloat(unitPrice) || project.clientFinalCost || 0;
     return qty * price;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Validation
     if (!orderQuantity || parseInt(orderQuantity) <= 0) {
       toast.error("Please enter a valid order quantity");
@@ -93,65 +84,49 @@ export function POTargetDialog({
       return;
     }
 
-    // Determine status based on PO number
-    const hasPoNumber = poNumber.trim().length > 0;
-    const newStatus = hasPoNumber ? "PO Issued" : "PO Target";
-    const poStatus = hasPoNumber ? "Approved" : "Pending";
+    try {
+      const poData = {
+        orderQuantity: parseInt(orderQuantity),
+        unitPrice: parseFloat(unitPrice) || project.clientFinalCost || 0,
+        poNumber: poNumber.trim() || undefined,
+        deliveryDate: deliveryDate,
+        paymentTerms: paymentTerms,
+        urgencyLevel: urgencyLevel,
+        qualityRequirements: qualityRequirements,
+        clientFeedback: clientFeedback,
+        specialInstructions: specialInstructions,
+      };
 
-    // Update project with PO Target information
-    const updatedProject = {
-      ...project,
-      status: newStatus,
-      orderQuantity: parseInt(orderQuantity),
-      unitPrice:
-        parseFloat(unitPrice) ||
-        project.finalCost ||
-        project.targetCost ||
-        0,
-      totalAmount: calculateTotalAmount(),
-      poNumber: poNumber,
-      poStatus: poStatus,
-      clientFeedback: clientFeedback,
-      deliveryDate: deliveryDate,
-      paymentTerms: paymentTerms,
-      specialInstructions: specialInstructions,
-      urgencyLevel: urgencyLevel,
-      qualityRequirements: qualityRequirements,
-      poTargetAdvancedDate: new Date()
-        .toISOString()
-        .split("T")[0],
-      poIssuedDate: hasPoNumber
-        ? new Date().toISOString().split("T")[0]
-        : null,
-      workflowStage: newStatus,
-      previousStage: "Green Seal",
-    };
+      // Update PO details via backend API
+      await api.patch(`/projects/${project._id}/po`, poData);
 
-    updateRDProject(project.id, updatedProject);
+      if (poNumber.trim()) {
+        toast.success(
+          "PO Target advanced successfully! PO Number approved and project moved to PO Approved stage."
+        );
+      } else {
+        toast.success(
+          "PO Target advanced successfully! Status is pending - awaiting PO Number from client."
+        );
+      }
 
-    if (hasPoNumber) {
-      toast.success(
-        "PO Target advanced successfully! PO Number approved and project moved to PO Issued stage.",
-      );
-    } else {
-      toast.success(
-        "PO Target advanced successfully! Status is pending - awaiting PO Number from client.",
-      );
+      onConfirm();
+      onOpenChange(false);
+
+      // Reset form
+      setOrderQuantity("");
+      setUnitPrice("");
+      setPONumber("");
+      setClientFeedback("");
+      setDeliveryDate("");
+      setPaymentTerms("");
+      setSpecialInstructions("");
+      setUrgencyLevel("Normal");
+      setQualityRequirements("");
+    } catch (error) {
+      console.error("Error updating PO:", error);
+      toast.error("Failed to update PO details");
     }
-
-    onConfirm();
-    onOpenChange(false);
-
-    // Reset form
-    setOrderQuantity("");
-    setUnitPrice("");
-    setPONumber("");
-    setClientFeedback("");
-    setDeliveryDate("");
-    setPaymentTerms("");
-    setSpecialInstructions("");
-    setUrgencyLevel("Normal");
-    setQualityRequirements("");
   };
 
   const formatDate = (dateString: string) => {
@@ -178,8 +153,7 @@ export function POTargetDialog({
                   PO Target & Order Confirmation
                 </DialogTitle>
                 <DialogDescription className="sr-only">
-                  Collect client feedback and order quantity for
-                  PO generation
+                  Collect client feedback and order quantity for PO generation
                 </DialogDescription>
                 <div className="flex items-center gap-4">
                   <span className="text-lg text-gray-600">
@@ -197,9 +171,7 @@ export function POTargetDialog({
                 className="bg-emerald-500 hover:bg-emerald-600"
               >
                 <Save className="w-4 h-4 mr-2" />
-                {poNumber.trim()
-                  ? "Approve & Issue PO"
-                  : "Advance PO Target"}
+                {poNumber.trim() ? "Approve & Issue PO" : "Advance PO Target"}
               </Button>
               <Button
                 onClick={() => onOpenChange(false)}
@@ -244,11 +216,7 @@ export function POTargetDialog({
                     <div className="mt-1 flex items-center space-x-1 text-base font-semibold text-green-700">
                       <IndianRupee className="w-4 h-4" />
                       <span>
-                        {(
-                          project.finalCost ||
-                          project.targetCost ||
-                          0
-                        ).toLocaleString("en-IN")}
+                        {(project.clientFinalCost || 0).toLocaleString("en-IN")}
                       </span>
                     </div>
                   </div>
@@ -259,12 +227,7 @@ export function POTargetDialog({
                     <div className="mt-1 flex items-center space-x-1 text-base font-semibold text-blue-700">
                       <IndianRupee className="w-4 h-4" />
                       <span>
-                        {(
-                          project.brandFinalCost ||
-                          project.finalCost ||
-                          project.targetCost ||
-                          0
-                        ).toLocaleString("en-IN")}
+                        {(project.clientFinalCost || 0).toLocaleString("en-IN")}
                       </span>
                     </div>
                   </div>
@@ -291,16 +254,13 @@ export function POTargetDialog({
                       htmlFor="orderQuantity"
                       className="text-sm font-medium text-gray-700 mb-2 block"
                     >
-                      Order Quantity{" "}
-                      <span className="text-red-500">*</span>
+                      Order Quantity <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="orderQuantity"
                       type="number"
                       value={orderQuantity}
-                      onChange={(e) =>
-                        setOrderQuantity(e.target.value)
-                      }
+                      onChange={(e) => setOrderQuantity(e.target.value)}
                       placeholder="Enter quantity (e.g. 1000)"
                       className="w-full"
                       min="1"
@@ -319,9 +279,7 @@ export function POTargetDialog({
                       id="poNumber"
                       type="text"
                       value={poNumber}
-                      onChange={(e) =>
-                        setPONumber(e.target.value)
-                      }
+                      onChange={(e) => setPONumber(e.target.value)}
                       placeholder="Enter client PO number (e.g. PO-2024-001)"
                       className="w-full"
                     />
@@ -329,16 +287,13 @@ export function POTargetDialog({
                       {poNumber.trim() ? (
                         <div className="flex items-center gap-1 text-xs text-green-600">
                           <CheckCircle className="w-3 h-3" />
-                          <span>
-                            PO Number will be marked as Approved
-                          </span>
+                          <span>PO Number will be marked as Approved</span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1 text-xs text-orange-600">
                           <AlertTriangle className="w-3 h-3" />
                           <span>
-                            Status will be Pending until PO
-                            number is provided
+                            Status will be Pending until PO number is provided
                           </span>
                         </div>
                       )}
@@ -357,21 +312,16 @@ export function POTargetDialog({
                       id="unitPrice"
                       type="number"
                       value={unitPrice}
-                      onChange={(e) =>
-                        setUnitPrice(e.target.value)
-                      }
-                      placeholder={`Default: ₹${(project.brandFinalCost || project.finalCost || project.targetCost || 0).toLocaleString("en-IN")}`}
+                      onChange={(e) => setUnitPrice(e.target.value)}
+                      placeholder={`Default: ₹${(
+                        project.clientFinalCost || 0
+                      ).toLocaleString("en-IN")}`}
                       className="w-full"
                       step="0.01"
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       Leave empty to use brand final cost: ₹
-                      {(
-                        project.brandFinalCost ||
-                        project.finalCost ||
-                        project.targetCost ||
-                        0
-                      ).toLocaleString("en-IN")}
+                      {(project.clientFinalCost || 0).toLocaleString("en-IN")}
                     </p>
                   </div>
 
@@ -388,9 +338,7 @@ export function POTargetDialog({
                       id="deliveryDate"
                       type="date"
                       value={deliveryDate}
-                      onChange={(e) =>
-                        setDeliveryDate(e.target.value)
-                      }
+                      onChange={(e) => setDeliveryDate(e.target.value)}
                       className="w-full"
                     />
                   </div>
@@ -411,24 +359,14 @@ export function POTargetDialog({
                         <SelectValue placeholder="Select payment terms" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="30-days">
-                          30 Days Net
-                        </SelectItem>
-                        <SelectItem value="45-days">
-                          45 Days Net
-                        </SelectItem>
-                        <SelectItem value="60-days">
-                          60 Days Net
-                        </SelectItem>
-                        <SelectItem value="advance-50">
-                          50% Advance
-                        </SelectItem>
+                        <SelectItem value="30-days">30 Days Net</SelectItem>
+                        <SelectItem value="45-days">45 Days Net</SelectItem>
+                        <SelectItem value="60-days">60 Days Net</SelectItem>
+                        <SelectItem value="advance-50">50% Advance</SelectItem>
                         <SelectItem value="advance-100">
                           100% Advance
                         </SelectItem>
-                        <SelectItem value="cod">
-                          Cash on Delivery
-                        </SelectItem>
+                        <SelectItem value="cod">Cash on Delivery</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -446,18 +384,10 @@ export function POTargetDialog({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Low">
-                          Low Priority
-                        </SelectItem>
-                        <SelectItem value="Normal">
-                          Normal Priority
-                        </SelectItem>
-                        <SelectItem value="High">
-                          High Priority
-                        </SelectItem>
-                        <SelectItem value="Urgent">
-                          Urgent
-                        </SelectItem>
+                        <SelectItem value="Low">Low Priority</SelectItem>
+                        <SelectItem value="Normal">Normal Priority</SelectItem>
+                        <SelectItem value="High">High Priority</SelectItem>
+                        <SelectItem value="Urgent">Urgent</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -473,9 +403,7 @@ export function POTargetDialog({
                       <div className="flex items-center space-x-1 text-2xl font-bold text-emerald-600">
                         <IndianRupee className="w-5 h-5" />
                         <span>
-                          {calculateTotalAmount().toLocaleString(
-                            "en-IN",
-                          )}
+                          {calculateTotalAmount().toLocaleString("en-IN")}
                         </span>
                       </div>
                     </div>
@@ -483,8 +411,7 @@ export function POTargetDialog({
                       {orderQuantity} units × ₹
                       {(
                         parseFloat(unitPrice) ||
-                        project.finalCost ||
-                        project.targetCost ||
+                        project.clientFinalCost ||
                         0
                       ).toLocaleString("en-IN")}{" "}
                       per unit
@@ -519,9 +446,7 @@ export function POTargetDialog({
                     <Textarea
                       id="clientFeedback"
                       value={clientFeedback}
-                      onChange={(e) =>
-                        setClientFeedback(e.target.value)
-                      }
+                      onChange={(e) => setClientFeedback(e.target.value)}
                       placeholder="Enter detailed client feedback on Green Seal approval and order confirmation..."
                       className="min-h-[120px] resize-none"
                     />
@@ -538,9 +463,7 @@ export function POTargetDialog({
                     <Textarea
                       id="qualityRequirements"
                       value={qualityRequirements}
-                      onChange={(e) =>
-                        setQualityRequirements(e.target.value)
-                      }
+                      onChange={(e) => setQualityRequirements(e.target.value)}
                       placeholder="Any specific quality standards, certifications, or inspection requirements..."
                       className="min-h-[100px] resize-none"
                     />
@@ -557,9 +480,7 @@ export function POTargetDialog({
                     <Textarea
                       id="specialInstructions"
                       value={specialInstructions}
-                      onChange={(e) =>
-                        setSpecialInstructions(e.target.value)
-                      }
+                      onChange={(e) => setSpecialInstructions(e.target.value)}
                       placeholder="Any special instructions for production, packaging, or delivery..."
                       className="min-h-[100px] resize-none"
                     />
@@ -567,8 +488,6 @@ export function POTargetDialog({
                 </div>
               </div>
             </div>
-
-
           </div>
         </div>
       </DialogContent>

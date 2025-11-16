@@ -17,51 +17,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 
 import { CreateProjectDialog } from "./CreateProjectDialog";
-import ProjectDetailsDialog from "./ProjectDetailsDialog";
+import ProjectDetailsDialog, {
+  MasterItem,
+  ProductDevelopment,
+} from "./ProjectDetailsDialog";
 import { RedSealProjectDetailsDialog } from "./RedSealProjectDetailsDialog";
-
-export interface Generic {
-  _id: string;
-  name: string;
-}
-
-export interface ProductDevelopmentResponseProps {
-  _id: string;
-  autoCode: string;
-  gender?: string;
-  company?: Generic;
-  brand?: Generic;
-  category?: Generic;
-  type?: Generic;
-  country?: Generic;
-  color?: string;
-  assignPerson?: Generic;
-  artName?: string;
-  status?: string;
-  createdAt?: string;
-  redSealTargetDate?: string;
-  priority?: string;
-  productDesc?: string;
-  coverImage?: string;
-  sampleImages?: string[];
-  startDate?: string;
-  endDate?: string;
-  clientApproval?: { status?: string } | null;
-}
 
 export function RedSeal() {
   const [loading, setLoading] = useState(false);
 
-  const [companies, setCompanies] = useState<Generic[]>([]);
-  const [brands, setBrands] = useState<Generic[]>([]);
-  const [categories, setCategories] = useState<Generic[]>([]);
-  const [types, setTypes] = useState<Generic[]>([]);
-  const [countries, setCountries] = useState<Generic[]>([]);
-  const [assignPersons, setAssignPersons] = useState<Generic[]>([]);
+  const [companies, setCompanies] = useState<MasterItem[]>([]);
+  const [brands, setBrands] = useState<MasterItem[]>([]);
+  const [categories, setCategories] = useState<MasterItem[]>([]);
+  const [types, setTypes] = useState<MasterItem[]>([]);
+  const [countries, setCountries] = useState<MasterItem[]>([]);
+  const [assignPersons, setAssignPersons] = useState<MasterItem[]>([]);
 
-  const [projects, setProjects] = useState<ProductDevelopmentResponseProps[]>(
-    []
-  );
+  const [projects, setProjects] = useState<ProductDevelopment[]>([]);
 
   // UI state
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,7 +43,7 @@ export function RedSeal() {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] =
-    useState<ProductDevelopmentResponseProps | null>(null);
+    useState<ProductDevelopment | null>(null);
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
@@ -427,9 +399,16 @@ export function RedSeal() {
 
                     {/* Remarks */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">Next: N/A</div>
+                      <div className="text-sm text-gray-900">
+                        Next:{" "}
+                        {p?.nextUpdate?.date
+                          ? new Date(p?.nextUpdate?.date).toLocaleDateString(
+                              "en-GB"
+                            )
+                          : "TBD"}
+                      </div>
                       <div className="text-sm text-gray-500">
-                        {p.clientApproval?.status || "N/A"}
+                        {p.nextUpdate.note || "N/A"}
                       </div>
                     </td>
 
