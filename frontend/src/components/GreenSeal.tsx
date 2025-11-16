@@ -465,14 +465,17 @@ export function GreenSeal() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
                         Next:{" "}
-                        {p?.nextUpdate?.date
-                          ? new Date(p?.nextUpdate?.date).toLocaleDateString(
+                        {p?.nextUpdate && p?.nextUpdate?.date
+                          ? new Date(p.nextUpdate.date).toLocaleDateString(
                               "en-GB"
                             )
                           : "TBD"}
                       </div>
+
                       <div className="text-sm text-gray-500">
-                        {p.nextUpdate?.note || "N/A"}
+                        {p?.nextUpdate && p?.nextUpdate?.note
+                          ? p.nextUpdate.note
+                          : "N/A"}
                       </div>
                     </td>
 

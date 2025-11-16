@@ -402,13 +402,14 @@ export function RedSeal() {
                       <div className="text-sm text-gray-900">
                         Next:{" "}
                         {p?.nextUpdate?.date
-                          ? new Date(p?.nextUpdate?.date).toLocaleDateString(
+                          ? new Date(p.nextUpdate.date).toLocaleDateString(
                               "en-GB"
                             )
                           : "TBD"}
                       </div>
+
                       <div className="text-sm text-gray-500">
-                        {p?.nextUpdate?.note || "N/A"}
+                        {p?.nextUpdate?.note ?? "N/A"}
                       </div>
                     </td>
 

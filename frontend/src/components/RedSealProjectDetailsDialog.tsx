@@ -1587,10 +1587,12 @@ export function RedSealProjectDetailsDialog(props: Props) {
                   </h4>
 
                   <div className="space-y-4">
+                    {/* DATE */}
                     <div>
                       <Label className="text-sm font-medium text-gray-600 mb-2 block">
                         Next Update Date
                       </Label>
+
                       {isEditing ? (
                         <Input
                           type="date"
@@ -1606,7 +1608,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                         <div className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
                           <Calendar className="w-4 h-4 text-gray-500" />
                           <span className="text-gray-900">
-                            {project?.nextUpdate?.date
+                            {project?.nextUpdate && project?.nextUpdate?.date
                               ? formatDateDisplay(project?.nextUpdate?.date)
                               : "Not scheduled"}
                           </span>
@@ -1614,10 +1616,12 @@ export function RedSealProjectDetailsDialog(props: Props) {
                       )}
                     </div>
 
+                    {/* NOTES */}
                     <div>
                       <Label className="text-sm font-medium text-gray-600 mb-2 block">
                         Update Notes
                       </Label>
+
                       {isEditing ? (
                         <Textarea
                           value={editedProject?.updateNotes || ""}
@@ -1631,16 +1635,20 @@ export function RedSealProjectDetailsDialog(props: Props) {
                         />
                       ) : (
                         <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px]">
-                          {project?.nextUpdate?.note || "No update notes"}
+                          {project?.nextUpdate && project?.nextUpdate?.note
+                            ? project?.nextUpdate?.note
+                            : "No update notes"}
                         </div>
                       )}
                     </div>
 
+                    {/* REMAINING / OVERDUE */}
                     <div>
                       {(() => {
                         const next =
                           editedProject?.nextUpdateDate ||
-                          project?.nextUpdateDate;
+                          project?.nextUpdate?.date;
+
                         if (!next) {
                           return (
                             <div className="p-4 border rounded-lg bg-gray-50 text-center text-gray-600">
@@ -1649,11 +1657,13 @@ export function RedSealProjectDetailsDialog(props: Props) {
                             </div>
                           );
                         }
+
                         const diff = Math.ceil(
                           (new Date(next).getTime() - new Date().getTime()) /
                             (1000 * 60 * 60 * 24)
                         );
                         const overdue = diff < 0;
+
                         return (
                           <div
                             className={`p-4 border rounded-lg text-center ${

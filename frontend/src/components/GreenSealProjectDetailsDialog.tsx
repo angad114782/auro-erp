@@ -510,14 +510,15 @@ export function GreenSealProjectDetailsDialog(props: Props) {
         fd.append("colorVariants", JSON.stringify(colorVariantsObj));
       }
 
-      if (editedProject.nextUpdateDate)
+      if (editedProject?.nextUpdateDate) {
         fd.append(
           "nextUpdate",
           JSON.stringify({
             date: editedProject.nextUpdateDate,
-            note: editedProject.updateNotes || "",
+            note: editedProject?.updateNotes || "",
           })
         );
+      }
 
       if (coverPhoto) {
         if (coverPhoto.startsWith("data:")) {
@@ -1616,8 +1617,8 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                           <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg text-sm border border-gray-200">
                             <Calendar className="w-4 h-4 text-gray-500" />
                             <span className="text-gray-900">
-                              {project.nextUpdate?.date
-                                ? formatDateDisplay(project.nextUpdate?.date)
+                              {project?.nextUpdate && project?.nextUpdate?.date
+                                ? formatDateDisplay(project?.nextUpdate?.date)
                                 : "Not scheduled"}
                             </span>
                           </div>
@@ -1642,7 +1643,9 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                           />
                         ) : (
                           <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px] border border-gray-200">
-                            {project.nextUpdate?.note || "No update notes"}
+                            {project?.nextUpdate && project?.nextUpdate?.note
+                              ? project.nextUpdate.note
+                              : "No update notes"}
                           </div>
                         )}
                       </div>
@@ -1650,8 +1653,9 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                       {/* Days Until Next Update */}
                       {(() => {
                         const nextDate =
-                          editedProject.nextUpdateDate ||
-                          project.nextUpdate?.date;
+                          editedProject?.nextUpdateDate ||
+                          project?.nextUpdate?.date;
+
                         if (!nextDate) {
                           return (
                             <div className="p-4 border rounded-lg bg-gray-50 text-center text-gray-600">
@@ -1660,11 +1664,12 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                             </div>
                           );
                         }
+
                         const today = new Date();
                         const updateDate = new Date(nextDate);
-                        const diffTime = updateDate.getTime() - today.getTime();
                         const diffDays = Math.ceil(
-                          diffTime / (1000 * 60 * 60 * 24)
+                          (updateDate.getTime() - today.getTime()) /
+                            (1000 * 60 * 60 * 24)
                         );
                         const isOverdue = diffDays < 0;
 
