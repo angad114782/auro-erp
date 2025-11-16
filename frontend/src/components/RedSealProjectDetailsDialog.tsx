@@ -1429,8 +1429,8 @@ export function RedSealProjectDetailsDialog(props: Props) {
                       <Input
                         type="date"
                         value={
-                          editedProject.redSealTargetDate
-                            ? editedProject.redSealTargetDate.split("T")[0]
+                          editedProject?.redSealTargetDate
+                            ? editedProject?.redSealTargetDate.split("T")[0]
                             : ""
                         }
                         onChange={(e) =>
@@ -1442,7 +1442,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                       />
                     ) : (
                       <div className="mt-1">
-                        {formatDateDisplay(project.redSealTargetDate)}
+                        {formatDateDisplay(project?.redSealTargetDate)}
                       </div>
                     )}
                   </div>
@@ -1451,7 +1451,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                     <Label>Assigned Person</Label>
                     {isEditing ? (
                       <Select
-                        value={editedProject.assignPerson?._id}
+                        value={editedProject?.assignPerson?._id}
                         onValueChange={(v) =>
                           setEditedProject({
                             ...editedProject,
@@ -1464,7 +1464,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {assignPersons.map((p) => (
+                          {assignPersons?.map((p) => (
                             <SelectItem key={p._id} value={p._id}>
                               {p.name}
                             </SelectItem>
@@ -1473,7 +1473,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                       </Select>
                     ) : (
                       <div className="mt-1">
-                        {project.assignPerson?.name || "N/A"}
+                        {project?.assignPerson?.name || "N/A"}
                       </div>
                     )}
                   </div>
@@ -1506,7 +1506,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                       </Label>
                       {isEditing ? (
                         <Textarea
-                          value={editedProject.productDesc || ""}
+                          value={editedProject?.productDesc || ""}
                           onChange={(e) =>
                             setEditedProject({
                               ...editedProject,
@@ -1517,7 +1517,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                         />
                       ) : (
                         <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[100px]">
-                          {project.productDesc || "No Description"}
+                          {project?.productDesc || "No Description"}
                         </div>
                       )}
                     </div>
@@ -1528,7 +1528,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                       </Label>
                       {isEditing ? (
                         <Select
-                          value={editedProject.clientApproval || "pending"}
+                          value={editedProject?.clientApproval || "pending"}
                           onValueChange={(value) =>
                             setEditedProject({
                               ...editedProject,
@@ -1594,7 +1594,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                       {isEditing ? (
                         <Input
                           type="date"
-                          value={editedProject.nextUpdateDate || ""}
+                          value={editedProject?.nextUpdateDate || ""}
                           onChange={(e) =>
                             setEditedProject({
                               ...editedProject,
@@ -1607,7 +1607,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                           <Calendar className="w-4 h-4 text-gray-500" />
                           <span className="text-gray-900">
                             {project?.nextUpdate?.date
-                              ? formatDateDisplay(project.nextUpdate?.date)
+                              ? formatDateDisplay(project?.nextUpdate?.date)
                               : "Not scheduled"}
                           </span>
                         </div>
@@ -1620,7 +1620,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                       </Label>
                       {isEditing ? (
                         <Textarea
-                          value={editedProject.updateNotes || ""}
+                          value={editedProject?.updateNotes || ""}
                           onChange={(e) =>
                             setEditedProject({
                               ...editedProject,
@@ -1631,7 +1631,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
                         />
                       ) : (
                         <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px]">
-                          {project.nextUpdate?.note || "No update notes"}
+                          {project?.nextUpdate?.note || "No update notes"}
                         </div>
                       )}
                     </div>
@@ -1639,8 +1639,8 @@ export function RedSealProjectDetailsDialog(props: Props) {
                     <div>
                       {(() => {
                         const next =
-                          editedProject.nextUpdateDate ||
-                          project.nextUpdateDate;
+                          editedProject?.nextUpdateDate ||
+                          project?.nextUpdateDate;
                         if (!next) {
                           return (
                             <div className="p-4 border rounded-lg bg-gray-50 text-center text-gray-600">

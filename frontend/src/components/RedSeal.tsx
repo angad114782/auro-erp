@@ -408,7 +408,7 @@ export function RedSeal() {
                           : "TBD"}
                       </div>
                       <div className="text-sm text-gray-500">
-                        {p.nextUpdate.note || "N/A"}
+                        {p?.nextUpdate?.note || "N/A"}
                       </div>
                     </td>
 
