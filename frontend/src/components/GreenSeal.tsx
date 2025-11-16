@@ -265,7 +265,7 @@ export function GreenSeal() {
                     "Status",
                     "Priority",
                     "Task-INC",
-                    "Cost Overview",
+                    // "Cost Overview",
                     "Remarks",
                     "Actions",
                   ].map((h) => (
@@ -429,7 +429,7 @@ export function GreenSeal() {
                     </td>
 
                     {/* Cost Overview */}
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    {/* <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-1 text-sm font-semibold text-gray-900">
                         <IndianRupee className="w-3 h-3" />
                         <span>
@@ -459,7 +459,7 @@ export function GreenSeal() {
                           )}
                         </div>
                       )}
-                    </td>
+                    </td> */}
 
                     {/* Remarks */}
                     <td className="px-6 py-4 whitespace-nowrap">

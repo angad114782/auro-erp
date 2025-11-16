@@ -68,7 +68,8 @@ interface LabourCost {
 // Cost summary interface matching backend
 interface CostSummary {
   additionalCosts: number;
-  profitMargin: number;
+  profitMargin: number | "";
+
   remarks: string;
   upperTotal: number;
   componentTotal: number;
@@ -774,11 +775,21 @@ export function TentativeCostDialog({
     }));
   };
 
-  const handleProfitMarginChange = (value: number) => {
-    const newProfitMargin = Number(value) || 25;
+  const handleProfitMarginChange = (raw: string) => {
+    // Allow empty input
+    if (raw === "") {
+      setCostSummary((prev) => ({ ...prev, profitMargin: "" as any }));
+      setRealTimeSummary(null);
+      return;
+    }
+
+    const value = Number(raw);
+    if (isNaN(value)) return; // ignore invalid
+
+    const newProfitMargin = value;
+
     const newAdditionalCosts = costSummary.additionalCosts || 0;
 
-    // Calculate real-time totals based on current backend data
     const totalAllCosts =
       (costSummary.upperTotal || 0) +
       (costSummary.componentTotal || 0) +
@@ -795,14 +806,13 @@ export function TentativeCostDialog({
 
     setRealTimeSummary({
       ...costSummary,
-      additionalCosts: newAdditionalCosts,
       profitMargin: newProfitMargin,
+      additionalCosts: newAdditionalCosts,
       totalAllCosts,
       profitAmount,
       tentativeCost,
     });
 
-    // Also update the main state for saving
     setCostSummary((prev) => ({
       ...prev,
       profitMargin: newProfitMargin,
@@ -1449,10 +1459,12 @@ export function TentativeCostDialog({
                     <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <Input
                       type="number"
-                      value={displaySummary.profitMargin || 25}
-                      onChange={(e) =>
-                        handleProfitMarginChange(Number(e.target.value))
+                      value={
+                        displaySummary.profitMargin === ""
+                          ? ""
+                          : displaySummary.profitMargin
                       }
+                      onChange={(e) => handleProfitMarginChange(e.target.value)}
                       className="pl-10"
                       placeholder="Enter profit margin %"
                       min="0"

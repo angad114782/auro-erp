@@ -340,10 +340,23 @@ export function RedSealProjectDetailsDialog(props: Props) {
   );
 
   // Initialize state when dialog opens
+  // Initialize state when dialog opens
   useEffect(() => {
     if (!project || !open) return;
 
-    setEditedProject({ ...project });
+    // Properly map nextUpdate data to individual fields
+    const nextUpdateDate =
+      project?.nextUpdate?.date || project?.nextUpdateDate || "";
+    const updateNotes = project?.nextUpdate?.note || project?.updateNotes || "";
+
+    setEditedProject({
+      ...project,
+      clientFinalCost:
+        project.clientFinalCost || costSummary.brandFinalCost || 0,
+      nextUpdateDate: nextUpdateDate,
+      updateNotes: updateNotes,
+    });
+
     setCoverPhoto(project.coverImage || null);
     setSamples(project.sampleImages ? [...project.sampleImages] : []);
     setIsEditing(false);
@@ -748,20 +761,32 @@ export function RedSealProjectDetailsDialog(props: Props) {
     if (!project) return;
 
     try {
-      await api.patch(`/projects/${project._id}/costs`, {
-        brandFinalCost: Number(value) || 0,
-      });
-
+      // Update local state immediately for better UX
       setCostSummary((prev) => ({
         ...prev,
         brandFinalCost: Number(value) || 0,
       }));
+
+      // Also update the editedProject state to sync it
+      setEditedProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              clientFinalCost: String(value) || "0", // Convert to string
+            }
+          : null
+      );
     } catch (error) {
       console.error("Failed to update brand final cost:", error);
       toast.error("Failed to update brand final cost");
+
+      // Revert local state on error
+      setCostSummary((prev) => ({
+        ...prev,
+        brandFinalCost: prev.brandFinalCost,
+      }));
     }
   };
-
   const updateStatus = useCallback(
     async (newStatus: string) => {
       if (!editedProject) return;
@@ -833,15 +858,26 @@ export function RedSealProjectDetailsDialog(props: Props) {
       if (editedProject.clientApproval)
         fd.append("clientApproval", String(editedProject.clientApproval));
 
-      if (editedProject.nextUpdateDate)
+      // Add clientFinalCost from costSummary to the main project update
+      if (costSummary.brandFinalCost) {
+        fd.append("clientFinalCost", String(costSummary.brandFinalCost));
+      }
+
+      // Always preserve nextUpdate data - check editedProject first, then fall back to original project
+      const nextUpdateDate =
+        editedProject.nextUpdateDate || project?.nextUpdate?.date;
+      const updateNotes =
+        editedProject.updateNotes || project?.nextUpdate?.note;
+
+      if (nextUpdateDate) {
         fd.append(
           "nextUpdate",
           JSON.stringify({
-            date: editedProject.nextUpdateDate,
-            note: editedProject.updateNotes || "",
+            date: nextUpdateDate,
+            note: updateNotes || "",
           })
         );
-
+      }
       if (coverPhoto) {
         if (coverPhoto.startsWith("data:")) {
           const file = dataUrlToFile(coverPhoto, "cover.png");
@@ -869,7 +905,7 @@ export function RedSealProjectDetailsDialog(props: Props) {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      toast.success("Project updated");
+      toast.success("Project updated successfully");
       await reloadProjects();
       setIsEditing(false);
       onOpenChange(false);
@@ -877,15 +913,26 @@ export function RedSealProjectDetailsDialog(props: Props) {
       console.error("Update failed", err);
       toast.error(err?.response?.data?.message || "Update failed");
     }
-  }, [editedProject, coverPhoto, samples, onOpenChange, reloadProjects]);
+  }, [
+    editedProject,
+    coverPhoto,
+    samples,
+    costSummary.brandFinalCost,
+    onOpenChange,
+    reloadProjects,
+  ]);
 
   const handleCancelEdit = useCallback(() => {
     if (!project) return;
     setIsEditing(false);
-    setEditedProject({ ...project });
+    setEditedProject({
+      ...project,
+      clientFinalCost:
+        project.clientFinalCost || costSummary.brandFinalCost || 0,
+    });
     setCoverPhoto(project.coverImage || null);
     setSamples(project.sampleImages || []);
-  }, [project]);
+  }, [project, costSummary.brandFinalCost]);
 
   const calculateTotal = (section: keyof typeof costRows) => {
     return costRows[section].reduce((sum, item) => sum + (item.cost || 0), 0);

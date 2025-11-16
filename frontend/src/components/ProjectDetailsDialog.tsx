@@ -81,6 +81,7 @@ export interface ProductDevelopment {
   updateNotes?: string;
   nextUpdateDate?: string;
   clientApproval?: string;
+  clientFinalCost?: string;
   createdAt?: string;
   updatedAt?: string;
 }

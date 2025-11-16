@@ -182,6 +182,36 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     [samples]
   );
 
+  // Color handling functions
+  const getColorName = (colorId: string): string => {
+    return colorId || "Default Color";
+  };
+
+  const getColorHex = (colorId: string): string => {
+    const colorName = getColorName(colorId).toLowerCase();
+
+    // Color mapping fallback
+    const colorMap: Record<string, string> = {
+      black: "#000000",
+      white: "#ffffff",
+      brown: "#a52a2a",
+      "navy blue": "#000080",
+      red: "#ff0000",
+      blue: "#0000ff",
+      green: "#008000",
+      yellow: "#ffff00",
+      orange: "#ffa500",
+      purple: "#800080",
+      pink: "#ffc0cb",
+      gray: "#808080",
+      "rose gold": "#b76e79",
+      "mahogany brown": "#c04000",
+      default: "#6b7280",
+    };
+
+    return colorMap[colorName] || colorMap["default"];
+  };
+
   // Convert MongoDB Map to JavaScript Map
   const convertColorVariants = useCallback(
     (projectData: any): Map<string, ColorVariantData> => {
@@ -357,14 +387,16 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     return getDefaultComponents();
   };
 
-  const getColorName = (colorId: string): string => {
-    return colorId || "Default Color";
-  };
-
   // Get color variant tabs as array
   const colorVariantTabs = useMemo(() => {
-    return Array.from(colorVariants.keys());
-  }, [colorVariants]);
+    if (colorVariants.size > 0) {
+      return Array.from(colorVariants.keys());
+    }
+    if (project?.color) {
+      return [project.color];
+    }
+    return ["default"];
+  }, [colorVariants, project?.color]);
 
   // Image upload handlers
   const handleCoverUpload = useCallback(
@@ -1301,7 +1333,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                   </div>
                 </div>
 
-                {/* Color Variant Tabs */}
+                {/* Color Variant Tabs - FIXED SECTION */}
                 {colorVariantTabs.length > 0 && (
                   <div className="flex items-center justify-between gap-2 border-b border-gray-200">
                     <div className="flex items-center gap-2">
@@ -1315,10 +1347,13 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                               : "border-transparent text-gray-600 hover:text-gray-900"
                           }`}
                         >
-                          <div className="w-4 h-4 rounded-full border border-gray-300 bg-gray-200"></div>
+                          <div
+                            className="w-4 h-4 rounded-full border border-gray-300"
+                            style={{ backgroundColor: getColorHex(colorId) }}
+                          ></div>
                           <span>
                             {getColorName(colorId)}
-                            {colorId === project.color && (
+                            {project?.color && colorId === project.color && (
                               <span className="ml-1.5 text-xs text-gray-500">
                                 (Default)
                               </span>
