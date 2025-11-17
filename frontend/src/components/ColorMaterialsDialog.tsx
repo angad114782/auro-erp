@@ -1,27 +1,17 @@
-import React, { useState, useEffect } from "react";
-import {
-  X,
-  Save,
-  Plus,
-  Calculator,
-  Palette,
-  Edit2,
-  Trash2,
-  CheckCircle,
-} from "lucide-react";
+import { CheckCircle, Palette, Plus, Save, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import api from "../lib/api";
+import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "./ui/dialog";
-import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Badge } from "./ui/badge";
-import { toast } from "sonner";
-import api from "../lib/api";
 
 interface Material {
   name: string;
@@ -47,7 +37,7 @@ interface ColorMaterialsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   project: any;
-  colors?: any[];
+  colors?: any[]; // master colors array: { id, colorName, hexCode } etc.
   onSave?: (savedColorIds: string[]) => void;
 }
 
@@ -70,6 +60,9 @@ export function ColorMaterialsDialog({
     [colorId: string]: {
       materials: Array<{ name: string; desc: string; consumption: string }>;
       components: Array<{ name: string; desc: string; consumption: string }>;
+      images?: string[];
+      updatedBy?: string | null;
+      updatedAt?: Date;
     };
   }>({});
 
@@ -120,13 +113,35 @@ export function ColorMaterialsDialog({
     { name: "Print", desc: "-", consumption: "-" },
   ];
 
-  // Load color variants from backend
+  // ---------- color name -> hex fallback map (AUTO-DETECT by name) ----------
+  const nameToHexMap: Record<string, string> = {
+    black: "#000000",
+    white: "#ffffff",
+    brown: "#a52a2a",
+    "navy blue": "#000080",
+    navy_blue: "#000080",
+    red: "#ff0000",
+    blue: "#0000ff",
+    green: "#008000",
+    yellow: "#ffff00",
+    orange: "#ffa500",
+    purple: "#800080",
+    pink: "#ffc0cb",
+    gray: "#808080",
+    "rose gold": "#b76e79",
+    "mahogany brown": "#c04000",
+    default: "#6b7280",
+  };
+
+  // Load color variants from backend (safe conversion)
   const loadColorVariants = async () => {
     if (!project?._id) return;
 
     try {
-      // Convert project color variants Map to object
-      const variants: { [key: string]: ColorVariantData } = {};
+      // Convert whatever project.colorVariants shape into a plain object
+      const variants: {
+        [key: string]: ColorVariantData;
+      } = {};
 
       if (project.colorVariants instanceof Map) {
         for (const [colorId, data] of project.colorVariants.entries()) {
@@ -142,24 +157,27 @@ export function ColorMaterialsDialog({
         Object.assign(variants, project.colorVariants);
       }
 
+      // If backend returned nothing but project.color exists, seed with defaults
+      if (Object.keys(variants).length === 0 && project.color) {
+        variants[project.color] = {
+          materials: getDefaultMaterials(),
+          components: getDefaultComponents(),
+          images: [],
+        };
+      }
+
       setColorVariantsData(variants);
 
       const colorIds = Object.keys(variants);
       if (colorIds.length > 0) {
         setSelectedColors(colorIds);
-        setActiveColorTab(colorIds[0]);
-      } else if (project.color) {
-        // Create default variant from project color
-        const defaultColorId = project.color;
-        setSelectedColors([defaultColorId]);
-        setActiveColorTab(defaultColorId);
-        setColorVariantsData({
-          [defaultColorId]: {
-            materials: getDefaultMaterials(),
-            components: getDefaultComponents(),
-            images: [],
-          },
-        });
+        // Keep previously active tab if present else set to first
+        setActiveColorTab((prev) =>
+          prev && colorIds.includes(prev) ? prev : colorIds[0]
+        );
+      } else {
+        setSelectedColors([]);
+        setActiveColorTab("");
       }
     } catch (error) {
       console.error("Error loading color variants:", error);
@@ -167,9 +185,15 @@ export function ColorMaterialsDialog({
     }
   };
 
+  // 🔥 FIXED: Enhanced useEffect to properly reload when dialog opens
   useEffect(() => {
     if (project && open) {
       loadColorVariants();
+
+      // Also reset the adding state when dialog opens
+      setIsAddingColor(false);
+      setNewColorName("");
+      setNewColorHex("#000000");
     }
   }, [project, open]);
 
@@ -178,36 +202,56 @@ export function ColorMaterialsDialog({
     if (activeColorTab) {
       const variantData = colorVariantsData[activeColorTab];
       if (variantData) {
-        setCurrentComponents(variantData.components);
-        setCurrentMaterials(variantData.materials);
+        setCurrentComponents(variantData.components || []);
+        setCurrentMaterials(variantData.materials || []);
       } else {
-        // Use defaults for new color variants
         setCurrentComponents(getDefaultComponents());
         setCurrentMaterials(getDefaultMaterials());
       }
+    } else {
+      setCurrentComponents([]);
+      setCurrentMaterials([]);
     }
   }, [activeColorTab, colorVariantsData]);
 
   if (!project) return null;
 
   const getColorName = (colorId: string) => {
-    // Check custom colors first
+    // Check custom colors first (user-created)
     if (customColors[colorId]) {
       return customColors[colorId].name;
     }
-    // Then check master data colors
-    const color = colors?.find((c) => c.id === colorId);
+    // Then check master data colors array passed via props
+    const color = colors?.find(
+      (c) => c.id === colorId || c.colorName === colorId
+    );
     return color?.colorName || colorId || "Unknown Color";
   };
 
-  const getColorHex = (colorId: string) => {
-    // Check custom colors first
-    if (customColors[colorId]) {
-      return customColors[colorId].hex;
+  // Auto-detect hex using (1) customColors, (2) master colors array, (3) fallback map by name
+  const getColorHex = (colorIdOrName: string) => {
+    // customColors store actual hex when created via dialog
+    if (customColors[colorIdOrName]) {
+      return customColors[colorIdOrName].hex;
     }
-    // Then check master data colors
-    const color = colors?.find((c) => c.id === colorId);
-    return color?.hexCode || "#cccccc";
+
+    // find in master colors prop by id or colorName
+    const found = colors?.find(
+      (c) =>
+        c.id === colorIdOrName ||
+        (c.colorName &&
+          c.colorName.toLowerCase() === String(colorIdOrName).toLowerCase())
+    );
+    if (found && (found.hexCode || found.hex)) {
+      return found.hexCode || found.hex;
+    }
+
+    // Try to interpret colorIdOrName as a name and lookup map
+    const normalized = String(colorIdOrName)
+      .toLowerCase()
+      .replace(/[_\s]+/g, " ")
+      .trim();
+    return nameToHexMap[normalized] || nameToHexMap["default"];
   };
 
   const handleRemoveColor = async (colorId: string) => {
@@ -227,6 +271,8 @@ export function ColorMaterialsDialog({
       // Switch to first color if we're removing the active tab
       if (activeColorTab === colorId && newColors.length > 0) {
         setActiveColorTab(newColors[0]);
+      } else if (newColors.length === 0) {
+        setActiveColorTab("");
       }
 
       toast.success("Color variant removed");
@@ -242,7 +288,7 @@ export function ColorMaterialsDialog({
     try {
       const newColorId = newColorName.toLowerCase().replace(/\s+/g, "_");
 
-      // Create new color variant with backend API
+      // Create new color variant with backend API using defaults
       const variantData = {
         materials: getDefaultMaterials(),
         components: getDefaultComponents(),
@@ -254,21 +300,24 @@ export function ColorMaterialsDialog({
         variantData
       );
 
-      // Update local state
-      const newColors = [...selectedColors, newColorId];
-      setSelectedColors(newColors);
-      setColorVariantsData((prev) => ({
-        ...prev,
+      // 🔥 FIXED: Immediately update local state instead of waiting for reload
+      const newVariantsData = {
+        ...colorVariantsData,
         [newColorId]: variantData,
-      }));
+      };
+
+      setColorVariantsData(newVariantsData);
+
+      // Update selected colors and active tab immediately
+      setSelectedColors((prev) => [...prev, newColorId]);
       setActiveColorTab(newColorId);
 
-      // Store custom color info
+      // Also update custom colors for display
       setCustomColors((prev) => ({
         ...prev,
         [newColorId]: {
           name: newColorName,
-          hex: newColorHex,
+          hex: getColorHex(newColorName),
         },
       }));
 
@@ -306,7 +355,7 @@ export function ColorMaterialsDialog({
     value: string
   ) => {
     const updated = [...currentComponents];
-    updated[index][field] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setCurrentComponents(updated);
   };
 
@@ -317,7 +366,7 @@ export function ColorMaterialsDialog({
     value: string
   ) => {
     const updated = [...currentMaterials];
-    updated[index][field] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setCurrentMaterials(updated);
   };
 
@@ -418,7 +467,7 @@ export function ColorMaterialsDialog({
 
       toast.success("Color variants saved successfully!");
 
-      // Call onSave callback with the saved color IDs
+      // 🔥 FIXED: Call onSave with ALL selected colors, not just active one
       if (onSave) {
         onSave(selectedColors);
       }
@@ -492,7 +541,9 @@ export function ColorMaterialsDialog({
                   >
                     <div
                       className="w-4 h-4 rounded-full border border-gray-300"
-                      style={{ backgroundColor: getColorHex(colorId) }}
+                      style={{
+                        backgroundColor: getColorHex(getColorName(colorId)),
+                      }}
                     ></div>
                     <span>
                       {getColorName(colorId)}
@@ -589,7 +640,9 @@ export function ColorMaterialsDialog({
                         <div
                           className="w-4 h-4 rounded-full border border-purple-300"
                           style={{
-                            backgroundColor: getColorHex(activeColorTab),
+                            backgroundColor: getColorHex(
+                              getColorName(activeColorTab)
+                            ),
                           }}
                         ></div>
                         <span className="text-xs font-medium text-purple-700">
@@ -693,7 +746,9 @@ export function ColorMaterialsDialog({
                         <div
                           className="w-4 h-4 rounded-full border border-teal-300"
                           style={{
-                            backgroundColor: getColorHex(activeColorTab),
+                            backgroundColor: getColorHex(
+                              getColorName(activeColorTab)
+                            ),
                           }}
                         ></div>
                         <span className="text-xs font-medium text-teal-700">

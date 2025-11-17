@@ -143,12 +143,15 @@ export function GreenSealProjectDetailsDialog(props: Props) {
   const [poTargetDialogOpen, setPOTargetDialogOpen] = useState(false);
   const [colorMaterialsDialogOpen, setColorMaterialsDialogOpen] =
     useState(false);
+  // activeColorTab state remains - this will hold the currently selected color tab
   const [activeColorTab, setActiveColorTab] = useState<string>("");
+
+  // This state holds color variants map (converted to JS Map)
   const [colorVariants, setColorVariants] = useState<
     Map<string, ColorVariantData>
   >(new Map());
 
-  // Image editing states
+  // cover & samples
   const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
   const [samples, setSamples] = useState<string[]>([]);
   const coverRef = React.useRef<HTMLInputElement | null>(null);
@@ -212,7 +215,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     return colorMap[colorName] || colorMap["default"];
   };
 
-  // Convert MongoDB Map to JavaScript Map
+  // Convert MongoDB Map/object to JS Map (keeps the same as before)
   const convertColorVariants = useCallback(
     (projectData: any): Map<string, ColorVariantData> => {
       const variantsMap = new Map<string, ColorVariantData>();
@@ -269,16 +272,23 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     setSamples(project.sampleImages ? [...project.sampleImages] : []);
     setIsEditing(false);
 
-    // Load color variants from project data
+    // Load color variants from project data (convert to JS Map)
     const variantsMap = convertColorVariants(project);
     setColorVariants(variantsMap);
 
-    // Set active tab
-    if (variantsMap.size > 0) {
-      const firstColor = Array.from(variantsMap.keys())[0];
-      setActiveColorTab(firstColor);
-    } else if (project.color) {
-      setActiveColorTab(project.color);
+    // Preserve previously active tab if it exists; otherwise prefer project.color (default)
+    if (project.color) {
+      // If default exists, set default as initial tab if previous isn't set
+      setActiveColorTab((prev) => {
+        if (prev && variantsMap.has(prev)) return prev;
+        // prefer default if available in UI
+        return project.color;
+      });
+    } else {
+      // If no default, pick first variant if any
+      const first =
+        variantsMap.size > 0 ? Array.from(variantsMap.keys())[0] : "";
+      setActiveColorTab(first);
     }
   }, [project, open, convertColorVariants]);
 
@@ -340,7 +350,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     setCategories,
   ]);
 
-  // Default materials and components
+  // Default materials and components (unchanged)
   const getDefaultMaterials = (): Material[] => [
     { name: "Upper", desc: "Rexine", consumption: "26 pairs/mtr" },
     { name: "Lining", desc: "Skinfit", consumption: "25 pair @ 155/-" },
@@ -365,9 +375,12 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     { name: "Welding", desc: "-", consumption: "-" },
   ];
 
-  // Safe variant data getters
+  // Safe variant data getters (updated to always prefer activeColorTab and fall back)
   const getActiveColorVariant = (): ColorVariantData | null => {
-    if (!colorVariants.size || !activeColorTab) return null;
+    if (!colorVariants || colorVariants.size === 0) {
+      return null;
+    }
+    if (!activeColorTab) return null;
     return colorVariants.get(activeColorTab) || null;
   };
 
@@ -375,6 +388,10 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     const variant = getActiveColorVariant();
     if (variant && Array.isArray(variant.materials)) {
       return variant.materials;
+    }
+    // if no variant found, but default exists — fallback to default list
+    if (project?.color && activeColorTab === project.color) {
+      return getDefaultMaterials();
     }
     return getDefaultMaterials();
   };
@@ -384,21 +401,24 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     if (variant && Array.isArray(variant.components)) {
       return variant.components;
     }
+    if (project?.color && activeColorTab === project.color) {
+      return getDefaultComponents();
+    }
     return getDefaultComponents();
   };
 
-  // Get color variant tabs as array
+  // Compute color tabs as union: default color (project.color) + variants keys (without duplicates)
   const colorVariantTabs = useMemo(() => {
-    if (colorVariants.size > 0) {
-      return Array.from(colorVariants.keys());
-    }
+    const keys: string[] = Array.from(colorVariants.keys());
     if (project?.color) {
-      return [project.color];
+      // ensure default appears first
+      const filtered = keys.filter((k) => k !== project.color);
+      return [project.color, ...filtered];
     }
-    return ["default"];
+    return keys.length > 0 ? keys : ["default"];
   }, [colorVariants, project?.color]);
 
-  // Image upload handlers
+  // Image upload handlers (unchanged)
   const handleCoverUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -471,32 +491,46 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     onOpenChange(false);
   }, [onOpenChange]);
 
+  // When color variants saved in ColorMaterialsDialog, reload project and set active tab sensibly
   const handleColorVariantsSave = useCallback(
     async (savedColorIds: string[]) => {
       try {
-        // Fetch updated project data to get the latest color variants
         if (project?._id) {
+          // 🔥 CRITICAL FIX: Force reload the project from backend
           const response = await api.get(`/projects/${project._id}`);
           const updatedProject = response.data?.data;
 
           if (updatedProject) {
+            // Update ALL local states with fresh data
+            setEditedProject(updatedProject);
+
+            // Update color variants map with fresh data
             const variantsMap = convertColorVariants(updatedProject);
             setColorVariants(variantsMap);
 
-            if (savedColorIds.length > 0) {
+            // 🔥 Ensure the parent component has the latest project data
+            // This will be passed to ColorMaterialsDialog when it reopens
+            if (props.reloadProjects) {
+              await props.reloadProjects();
+            }
+
+            // Update active tab
+            if (savedColorIds && savedColorIds.length > 0) {
               setActiveColorTab(savedColorIds[0]);
+            } else if (updatedProject.color) {
+              setActiveColorTab(updatedProject.color);
             }
           }
         }
+
         toast.success("Color variants saved successfully!");
       } catch (error) {
         console.error("Failed to fetch updated color variants:", error);
         toast.error("Failed to load updated color variants");
       }
     },
-    [project, convertColorVariants]
+    [project, convertColorVariants, props]
   );
-
   const handleSave = useCallback(async () => {
     if (!editedProject) return;
 
@@ -605,6 +639,13 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     // Reset color variants to original state
     const variantsMap = convertColorVariants(project);
     setColorVariants(variantsMap);
+    // reset active tab to default or first
+    if (project.color) setActiveColorTab(project.color);
+    else {
+      const first =
+        variantsMap.size > 0 ? Array.from(variantsMap.keys())[0] : "";
+      setActiveColorTab(first);
+    }
   }, [project, convertColorVariants]);
 
   if (!project || !editedProject) return null;
@@ -1332,7 +1373,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     </h3>
                   </div>
                 </div>
-
                 {/* Color Variant Tabs - FIXED SECTION */}
                 {colorVariantTabs.length > 0 && (
                   <div className="flex items-center justify-between gap-2 border-b border-gray-200">
@@ -1363,7 +1403,48 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                       ))}
                     </div>
                     <Button
-                      onClick={() => setColorMaterialsDialogOpen(true)}
+                      onClick={async () => {
+                        // 🔥 CRITICAL FIX: Force reload the project data before opening the dialog
+                        try {
+                          if (project?._id) {
+                            const response = await api.get(
+                              `/projects/${project._id}`
+                            );
+                            const updatedProject = response.data?.data;
+
+                            if (updatedProject) {
+                              // Update the local project state with fresh data
+                              setEditedProject(updatedProject);
+
+                              // Update color variants with fresh data
+                              const variantsMap =
+                                convertColorVariants(updatedProject);
+                              setColorVariants(variantsMap);
+
+                              // Update active tab
+                              if (
+                                updatedProject.color &&
+                                variantsMap.has(updatedProject.color)
+                              ) {
+                                setActiveColorTab(updatedProject.color);
+                              } else {
+                                const first =
+                                  Array.from(variantsMap.keys())[0] || "";
+                                setActiveColorTab(first);
+                              }
+                            }
+                          }
+                        } catch (error) {
+                          console.error(
+                            "Failed to refresh project data:",
+                            error
+                          );
+                          toast.error("Failed to load updated project data");
+                        }
+
+                        // Now open the dialog with fresh data
+                        setColorMaterialsDialogOpen(true);
+                      }}
                       className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 mr-2 mb-2"
                       size="sm"
                     >
@@ -1372,7 +1453,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     </Button>
                   </div>
                 )}
-
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Components Analysis */}
                   <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
@@ -1450,7 +1530,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     </div>
                   </div>
                 </div>
-
                 {/* Additional Analysis Summary */}
                 <div className="bg-gradient-to-r from-purple-50 to-teal-50 border-2 border-purple-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">
@@ -1841,10 +1920,11 @@ export function GreenSealProjectDetailsDialog(props: Props) {
       />
 
       {/* Color Materials Dialog */}
+      {/* Color Materials Dialog */}
       <ColorMaterialsDialog
         open={colorMaterialsDialogOpen}
         onOpenChange={setColorMaterialsDialogOpen}
-        project={project}
+        project={editedProject} // 🔥 Pass editedProject instead of project
         colors={[]} // You can pass actual colors array if available
         onSave={handleColorVariantsSave}
       />
