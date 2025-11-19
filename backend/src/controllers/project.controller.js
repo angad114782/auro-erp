@@ -388,15 +388,18 @@ export const updateClientApproval = async (req, res, next) => {
 export const updatePO = async (req, res, next) => {
   try {
     const by = req.user?._id || null;
-    const project = await setProjectPO(req.params.id, req.body, by);
-    if (!project) return res.status(404).json({ message: "project not found" });
+    const result = await setProjectPO(req.params.id, req.body, by);
+
+    if (!result) return res.status(404).json({ message: "Project not found" });
+
+    const { project, poDetails } = result;
 
     return res.json({
       message: "PO details saved",
       data: {
         _id: project._id,
         status: project.status, // "po_pending" | "po_approved"
-        po: project.po, // all PO fields
+        po: poDetails, // all PO fields from separate model
         statusHistory: project.statusHistory.slice(-5),
         updatedAt: project.updatedAt,
       },

@@ -1,186 +1,177 @@
-import React, { useState } from "react";
 import {
-  Plus,
-  Search,
-  Eye,
-  Edit,
-  Trash2,
-  Lightbulb,
-  ImageIcon,
-  Workflow,
-  Calculator,
-  Clock,
-  User,
-  IndianRupee,
   Calendar,
-  FileText,
-  Target,
-  LayoutDashboard,
-  X,
-  Building,
-  Users,
-  AlertCircle,
   CheckCircle,
-  Activity,
-  Pause,
-  ShoppingCart,
-  CircleCheckBig,
-  CircleX,
-  Package,
-  ChevronLeft,
-  ChevronRight,
-  Upload,
+  Clock,
   Download,
   Filter,
+  ImageIcon,
+  Lightbulb,
+  Package,
+  Search,
+  ShoppingCart,
+  Target,
+  Trash2,
+  Upload,
 } from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Badge } from "./ui/badge";
-import { Progress } from "./ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { useERPStore } from "../lib/data-store";
-import { CreateProjectDialog } from "./CreateProjectDialog";
-import ProjectDetailsDialog from "./ProjectDetailsDialog";
-import { POPendingProjectDetailsDialog } from "./POTargetProjectDetailsDialog";
+import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import api from "../lib/api";
 import { POApprovedProjectDetailsDialog } from "./POApprovedProjectDetailsDialog";
-import { toast } from "sonner@2.0.3";
-import type { RDProject } from "../lib/data-store";
+import { POPendingProjectDetailsDialog } from "./POTargetProjectDetailsDialog";
+import ProjectDetailsDialog from "./ProjectDetailsDialog";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Input } from "./ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 export function POTargetDate() {
-  const {
-    rdProjects,
-    brands,
-    companies,
-    categories,
-    types,
-    colors,
-    countries,
-    selectRDProject,
-  } = useERPStore();
+  // Master data
+  const [brands, setBrands] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [types, setTypes] = useState<any[]>([]);
+  const [colors, setColors] = useState<any[]>([]);
+  const [countries, setCountries] = useState<any[]>([]);
+  const [assignPersons, setAssignPersons] = useState<any[]>([]);
+
+  // Projects
+  const [projects, setProjects] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // UI state
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
+
+  // Dialogs & selection
   const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
   const [poPendingDetailsOpen, setPOPendingDetailsOpen] = useState(false);
   const [poApprovedDetailsOpen, setPOApprovedDetailsOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<RDProject | null>(
-    null
-  );
+  const [selectedProject, setSelectedProject] = useState<any | null>(null);
 
-  const getStageColor = (stage: string) => {
-    const colors: Record<string, string> = {
-      "Idea Submitted": "bg-blue-100 text-blue-800",
-      "Costing Pending": "bg-yellow-100 text-yellow-800",
-      "Costing Received": "bg-orange-100 text-orange-800",
-      Prototype: "bg-purple-100 text-purple-800",
-      "Red Seal": "bg-red-100 text-red-800",
-      "Green Seal": "bg-green-100 text-green-800",
-      "Final Approved": "bg-emerald-100 text-emerald-800",
-      "PO Target": "bg-indigo-100 text-indigo-800",
-      "PO Issued": "bg-gray-100 text-gray-800",
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+  // Load master data (same endpoints as RedSeal)
+  useEffect(() => {
+    let cancel = false;
+
+    async function loadMasters() {
+      try {
+        const [cRes, bRes, tRes, coRes, apRes] = await Promise.all([
+          api.get("/companies"),
+          api.get("/brands"),
+          api.get("/types"),
+          api.get("/countries"),
+          api.get("/assign-persons"),
+        ]);
+
+        if (cancel) return;
+
+        const pick = (r: any) =>
+          r?.data?.data ??
+          r?.data?.items ??
+          (Array.isArray(r?.data) ? r.data : []);
+
+        setCompanies(pick(cRes));
+        setBrands(pick(bRes));
+        setTypes(pick(tRes));
+        setCountries(pick(coRes));
+        setAssignPersons(pick(apRes));
+
+        setCategories([]);
+      } catch (e) {
+        console.error("Masters load error", e);
+      }
+    }
+
+    loadMasters();
+    return () => {
+      cancel = true;
     };
-    return colors[stage] || "bg-gray-100 text-gray-800";
-  };
+  }, []);
 
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      High: "bg-red-500 text-white",
-      Medium: "bg-purple-500 text-white",
-      Low: "bg-green-600 text-white",
-    };
-    return colors[priority] || "bg-gray-100 text-gray-800";
-  };
-
-  const getProgressValue = (stage: string) => {
-    const stages = [
-      "Idea Submitted",
-      "Costing Pending",
-      "Costing Received",
-      "Prototype",
-      "Red Seal",
-      "Green Seal",
-      "Final Approved",
-      "PO Target",
-      "PO Issued",
-    ];
-    return ((stages.indexOf(stage) + 1) / stages.length) * 100;
-  };
-
-  const getProjectsByTab = (tabValue: string) => {
-    const searchFiltered = rdProjects.filter((project) => {
-      const matchesSearch =
-        (project.autoCode?.toLowerCase() || "").includes(
-          searchTerm.toLowerCase()
-        ) ||
-        (project.remarks?.toLowerCase() || "").includes(
-          searchTerm.toLowerCase()
-        );
-      return matchesSearch;
-    });
-
-    switch (tabValue) {
-      case "po-approved":
-        return searchFiltered.filter(
-          (p) =>
-            (p.status === "Final Approved" && p.poReceived) ||
-            p.status === "PO Issued" ||
-            (p.status === "PO Target" && p.poStatus === "Approved")
-        );
-      case "po-pending":
-        return searchFiltered.filter(
-          (p) =>
-            (p.status === "Final Approved" && !p.poReceived) ||
-            (p.status === "PO Target" && p.poStatus === "Pending")
-        );
-      default:
-        return searchFiltered;
+  // Load projects from backend
+  const reloadProjects = async () => {
+    setLoading(true);
+    try {
+      const r = await api.get("/projects");
+      const data = r.data?.data ?? r.data?.items ?? r.data ?? [];
+      setProjects(data);
+    } catch (err) {
+      console.error("Failed to load projects", err);
+      toast.error("Failed to load projects");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getPaginatedProjects = (projects: any[]) => {
+  useEffect(() => {
+    reloadProjects();
+  }, []);
+
+  // Search filter (applied before tab filtering)
+  const filteredProjects = useMemo(() => {
+    if (!searchTerm) return projects;
+    const q = searchTerm.toLowerCase();
+    return projects.filter((p) => {
+      return (
+        (p.autoCode?.toLowerCase() ?? "").includes(q) ||
+        (p.remarks?.toLowerCase() ?? "").includes(q) ||
+        (p.company?.name?.toLowerCase() ?? "").includes(q) ||
+        (p.brand?.name?.toLowerCase() ?? "").includes(q) ||
+        (p.category?.name?.toLowerCase() ?? "").includes(q)
+      );
+    });
+  }, [projects, searchTerm]);
+
+  // Tabs filter: status keys as you confirmed
+  const getProjectsByTab = (tabValue: string) => {
+    switch (tabValue) {
+      case "po-pending":
+        return filteredProjects.filter((p) => p.status === "po_pending");
+      case "po-approved":
+        return filteredProjects.filter((p) => p.status === "po_approved");
+      default:
+        return filteredProjects;
+    }
+  };
+
+  // Pagination helpers
+  const getPaginatedProjects = (list: any[]) => {
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return projects.slice(startIndex, startIndex + itemsPerPage);
+    return list.slice(startIndex, startIndex + itemsPerPage);
   };
 
-  const getTotalPages = (totalItems: number) => {
-    return Math.ceil(totalItems / itemsPerPage);
+  const getTotalPages = (totalItems: number) =>
+    Math.max(1, Math.ceil(totalItems / itemsPerPage));
+
+  // Duration calculator reused from RedSeal style
+  const calculateDuration = (startDate?: string, targetDate?: string) => {
+    if (!startDate || !targetDate) return "TBD";
+    const s = new Date(startDate);
+    const t = new Date(targetDate);
+    const diff = t.getTime() - s.getTime();
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    if (days < 0) return `${Math.abs(days)} days overdue`;
+    if (days === 0) return "Due today";
+    return `${days} days`;
   };
 
-  const handleProjectClick = (project: RDProject) => {
+  // Click handler - opens correct dialog depending on status
+  const handleProjectClick = (project: any) => {
     setSelectedProject(project);
-    // Open correct dialog based on project status
-    const isPending =
-      (project.status === "Final Approved" && !project.poReceived) ||
-      (project.status === "PO Target" && project.poStatus === "Pending");
-    const isApproved =
-      (project.status === "Final Approved" && project.poReceived) ||
-      project.status === "PO Issued" ||
-      (project.status === "PO Target" && project.poStatus === "Approved");
 
-    if (isApproved) {
+    // Determine which dialog to open
+    if (project.status === "po_approved") {
       setPOApprovedDetailsOpen(true);
     } else {
+      // defaults to pending dialog for po_pending (and anything else)
       setPOPendingDetailsOpen(true);
     }
   };
 
-  // Calculate duration between start date and PO target date
-  const calculateDuration = (startDate: string, poTargetDate?: string) => {
-    if (!poTargetDate) return "TBD";
-
-    const start = new Date(startDate);
-    const target = new Date(poTargetDate);
-
-    // Calculate difference in days
-    const diffTime = target.getTime() - start.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
-    if (diffDays === 0) return "Due today";
-    return `${diffDays} days`;
-  };
-
+  // Render pagination UI (keeps same look & feel)
   const renderPagination = (allProjects: any[]) => {
     const totalPages = getTotalPages(allProjects.length);
     const paginatedProjects = getPaginatedProjects(allProjects);
@@ -234,6 +225,21 @@ export function POTargetDate() {
     );
   };
 
+  // Delete handler (keeps similar behavior to RedSeal if you want delete)
+  const handleDelete = async (project: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      await api.delete(`/projects/${project._id || project.id}`);
+      setProjects((prev) =>
+        prev.filter((p) => (p._id || p.id) !== (project._id || project.id))
+      );
+      toast.success("Project removed");
+    } catch (err) {
+      console.error("Delete failed", err);
+      toast.error("Delete failed");
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Main Content Card */}
@@ -277,7 +283,7 @@ export function POTargetDate() {
             <TabsList className="inline-flex h-9 items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground mb-6">
               <TabsTrigger
                 value="po-pending"
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow gap-1.5"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium gap-1.5"
               >
                 <Package className="w-3.5 h-3.5 text-orange-600" />
                 PO Pending
@@ -290,7 +296,7 @@ export function POTargetDate() {
               </TabsTrigger>
               <TabsTrigger
                 value="po-approved"
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow gap-1.5"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium gap-1.5"
               >
                 <ShoppingCart className="w-3.5 h-3.5 text-green-600" />
                 PO Approved
@@ -303,15 +309,15 @@ export function POTargetDate() {
               </TabsTrigger>
             </TabsList>
 
+            {/* PO Pending Tab Content */}
             <TabsContent value="po-pending">
-              {/* Search and Filters */}
               <div className="flex items-center gap-4 mb-6">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
                     placeholder="Search PO pending projects..."
                     value={searchTerm}
-                    onChange={(e) => {
+                    onChange={(e: any) => {
                       setSearchTerm(e.target.value);
                       setCurrentPage(1);
                     }}
@@ -324,64 +330,39 @@ export function POTargetDate() {
                 </Button>
               </div>
 
-              {/* PO Pending Projects Table */}
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Product Code
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Image & Profile
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Company & Brand
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Category, Type & Gender
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Art & Colour
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Country
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-44 min-w-[176px]"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-44 min-w-[176px]">
                         PO Number
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 min-w-[192px]"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 min-w-[192px]">
                         Timeline, Dates & Duration
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Remarks
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
                       </th>
                     </tr>
                   </thead>
@@ -391,31 +372,48 @@ export function POTargetDate() {
                       getPaginatedProjects(getProjectsByTab("po-pending")).map(
                         (project, index) => {
                           const brand = brands.find(
-                            (b) => b.id === project.brandId
+                            (b) =>
+                              b.id === project.brandId ||
+                              b._id === project.brandId ||
+                              b.id === project.brand?.id
                           );
                           const company = companies.find(
-                            (c) => c.id === brand?.companyId
+                            (c) =>
+                              c.id === project.companyId ||
+                              c._id === project.companyId ||
+                              c.id === project.company?.id
                           );
                           const category = categories.find(
-                            (c) => c.id === project.categoryId
+                            (c) =>
+                              c.id === project.categoryId ||
+                              c._id === project.categoryId ||
+                              c.id === project.category?.id
                           );
                           const type = types.find(
-                            (t) => t.id === project.typeId
+                            (t) =>
+                              t.id === project.typeId ||
+                              t._id === project.typeId ||
+                              t.id === project.type?.id
                           );
                           const color = colors.find(
-                            (cl) => cl.id === project.colorId
+                            (cl) =>
+                              cl.id === project.colorId ||
+                              cl._id === project.colorId ||
+                              cl.id === project.color?.id
                           );
                           const country = countries.find(
-                            (co) => co.id === project.countryId
+                            (co) =>
+                              co.id === project.countryId ||
+                              co._id === project.countryId ||
+                              co.id === project.country?.id
                           );
 
                           return (
                             <tr
-                              key={project.id}
+                              key={project._id || project.id}
                               className="hover:bg-gray-50 cursor-pointer"
                               onClick={() => handleProjectClick(project)}
                             >
-                              {/* Product Code */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
@@ -427,12 +425,22 @@ export function POTargetDate() {
                                 </div>
                               </td>
 
-                              {/* Image & Profile */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center justify-center">
-                                  {project.coverPhoto ? (
+                                  {project.coverImage || project.coverPhoto ? (
                                     <img
-                                      src={project.coverPhoto}
+                                      src={
+                                        (
+                                          project.coverImage ||
+                                          project.coverPhoto
+                                        ).startsWith?.("http")
+                                          ? project.coverImage ||
+                                            project.coverPhoto
+                                          : `${BACKEND_URL}/${
+                                              project.coverImage ||
+                                              project.coverPhoto
+                                            }`
+                                      }
                                       alt="Product"
                                       className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
                                     />
@@ -444,63 +452,72 @@ export function POTargetDate() {
                                 </div>
                               </td>
 
-                              {/* Company & Brand */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div>
                                   <div className="text-sm font-medium text-gray-900">
-                                    {company?.companyName || "Unknown Company"}
+                                    {company?.companyName ||
+                                      project.company?.name ||
+                                      "Unknown Company"}
                                   </div>
                                   <div className="text-sm text-gray-500">
-                                    {brand?.brandName || "Unknown Brand"}
+                                    {brand?.brandName ||
+                                      project.brand?.name ||
+                                      "Unknown Brand"}
                                   </div>
                                 </div>
                               </td>
 
-                              {/* Category, Type & Gender */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
-                                  {category?.categoryName || "Unknown"}
+                                  {category?.categoryName ||
+                                    project.category?.name ||
+                                    "Unknown"}
                                 </div>
                                 <div className="text-sm text-gray-500">
-                                  {type?.typeName || "Unknown"}
+                                  {type?.typeName ||
+                                    project.type?.name ||
+                                    "Unknown"}
                                 </div>
                                 <div className="text-sm text-gray-500">
                                   Unisex
                                 </div>
                               </td>
 
-                              {/* Art & Colour */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <div
                                     className="w-4 h-4 rounded border border-gray-300 mr-2"
                                     style={{
                                       backgroundColor:
-                                        color?.hexCode || "#cccccc",
+                                        color?.hexCode ||
+                                        project.color?.hexCode ||
+                                        "#cccccc",
                                     }}
-                                  ></div>
+                                  />
                                   <div>
                                     <div className="text-sm font-medium text-gray-900">
-                                      {project.remarks
-                                        ?.split(" ")
+                                      {(project.artName || "")
+                                        .split(" ")
                                         .slice(0, 2)
                                         .join(" ") || "Product Design"}
                                     </div>
                                     <div className="text-sm text-gray-500">
-                                      {color?.colorName || "Unknown"}
+                                      {color?.colorName ||
+                                        project.color ||
+                                        "Unknown"}
                                     </div>
                                   </div>
                                 </div>
                               </td>
 
-                              {/* Country */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
-                                  {country?.countryName || "Unknown"}
+                                  {country?.countryName ||
+                                    project.country?.name ||
+                                    "Unknown"}
                                 </div>
                               </td>
 
-                              {/* PO Number */}
                               <td className="px-6 py-4 whitespace-nowrap w-44 min-w-[176px]">
                                 <div className="text-sm font-medium text-gray-500">
                                   Pending Assignment
@@ -510,16 +527,21 @@ export function POTargetDate() {
                                 </div>
                               </td>
 
-                              {/* Timeline, Dates & Duration */}
                               <td className="px-6 py-4 whitespace-nowrap w-48 min-w-[192px]">
                                 <div>
                                   <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
                                     <Clock className="w-3 h-3 text-gray-500" />
                                     <span>
                                       Start:{" "}
-                                      {new Date(
-                                        project.startDate
-                                      ).toLocaleDateString("en-IN")}
+                                      {project.startDate
+                                        ? new Date(
+                                            project.startDate
+                                          ).toLocaleDateString("en-IN")
+                                        : project.createdAt
+                                        ? new Date(
+                                            project.createdAt
+                                          ).toLocaleDateString("en-IN")
+                                        : "TBD"}
                                     </span>
                                   </div>
                                   <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
@@ -539,13 +561,15 @@ export function POTargetDate() {
                                       className={`font-medium ${
                                         project.poTarget &&
                                         calculateDuration(
-                                          project.startDate,
+                                          project.startDate ||
+                                            project.createdAt,
                                           project.poTarget
                                         ).includes("overdue")
                                           ? "text-red-600"
                                           : project.poTarget &&
                                             calculateDuration(
-                                              project.startDate,
+                                              project.startDate ||
+                                                project.createdAt,
                                               project.poTarget
                                             ).includes("Due today")
                                           ? "text-orange-600"
@@ -554,27 +578,39 @@ export function POTargetDate() {
                                     >
                                       Duration:{" "}
                                       {calculateDuration(
-                                        project.startDate,
+                                        project.startDate || project.createdAt,
                                         project.poTarget
                                       )}
                                     </span>
                                   </div>
-                                  {project.nextUpdateDate && (
+                                  {project.nextUpdate?.date && (
                                     <div className="text-xs text-yellow-800 font-medium">
                                       Next Update:{" "}
                                       {new Date(
-                                        project.nextUpdateDate
+                                        project.nextUpdate.date
                                       ).toLocaleDateString("en-IN")}
                                     </div>
                                   )}
                                 </div>
                               </td>
 
-                              {/* Remarks */}
                               <td className="px-6 py-4">
                                 <div className="text-sm text-gray-900 max-w-xs truncate">
-                                  {project.remarks || "No remarks"}
+                                  {project.nextUpdate?.note ??
+                                    project.remarks ??
+                                    "No remarks"}
                                 </div>
+                              </td>
+
+                              <td className="px-6 py-4 whitespace-nowrap text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700"
+                                  onClick={(e) => handleDelete(project, e)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
                               </td>
                             </tr>
                           );
@@ -583,7 +619,7 @@ export function POTargetDate() {
                     ) : (
                       <tr>
                         <td
-                          colSpan={9}
+                          colSpan={10}
                           className="px-6 py-16 text-center text-gray-500"
                         >
                           <div className="flex flex-col items-center gap-4">
@@ -605,18 +641,19 @@ export function POTargetDate() {
                   </tbody>
                 </table>
               </div>
+
               {renderPagination(getProjectsByTab("po-pending"))}
             </TabsContent>
 
+            {/* PO Approved Tab Content */}
             <TabsContent value="po-approved">
-              {/* Search and Filters */}
               <div className="flex items-center gap-4 mb-6">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
                     placeholder="Search PO approved projects..."
                     value={searchTerm}
-                    onChange={(e) => {
+                    onChange={(e: any) => {
                       setSearchTerm(e.target.value);
                       setCurrentPage(1);
                     }}
@@ -629,64 +666,39 @@ export function POTargetDate() {
                 </Button>
               </div>
 
-              {/* PO Approved Projects Table */}
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Product Code
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Image & Profile
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Company & Brand
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Category, Type & Gender
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Art & Colour
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Country
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-44 min-w-[176px]"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-44 min-w-[176px]">
                         PO Number
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 min-w-[192px]"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 min-w-[192px]">
                         Timeline, Dates & Duration
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Remarks
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
                       </th>
                     </tr>
                   </thead>
@@ -696,31 +708,48 @@ export function POTargetDate() {
                       getPaginatedProjects(getProjectsByTab("po-approved")).map(
                         (project, index) => {
                           const brand = brands.find(
-                            (b) => b.id === project.brandId
+                            (b) =>
+                              b.id === project.brandId ||
+                              b._id === project.brandId ||
+                              b.id === project.brand?.id
                           );
                           const company = companies.find(
-                            (c) => c.id === brand?.companyId
+                            (c) =>
+                              c.id === project.companyId ||
+                              c._id === project.companyId ||
+                              c.id === project.company?.id
                           );
                           const category = categories.find(
-                            (c) => c.id === project.categoryId
+                            (c) =>
+                              c.id === project.categoryId ||
+                              c._id === project.categoryId ||
+                              c.id === project.category?.id
                           );
                           const type = types.find(
-                            (t) => t.id === project.typeId
+                            (t) =>
+                              t.id === project.typeId ||
+                              t._id === project.typeId ||
+                              t.id === project.type?.id
                           );
                           const color = colors.find(
-                            (cl) => cl.id === project.colorId
+                            (cl) =>
+                              cl.id === project.colorId ||
+                              cl._id === project.colorId ||
+                              cl.id === project.color?.id
                           );
                           const country = countries.find(
-                            (co) => co.id === project.countryId
+                            (co) =>
+                              co.id === project.countryId ||
+                              co._id === project.countryId ||
+                              co.id === project.country?.id
                           );
 
                           return (
                             <tr
-                              key={project.id}
+                              key={project._id || project.id}
                               className="hover:bg-gray-50 cursor-pointer"
                               onClick={() => handleProjectClick(project)}
                             >
-                              {/* Product Code */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
@@ -732,12 +761,22 @@ export function POTargetDate() {
                                 </div>
                               </td>
 
-                              {/* Image & Profile */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center justify-center">
-                                  {project.coverPhoto ? (
+                                  {project.coverImage || project.coverPhoto ? (
                                     <img
-                                      src={project.coverPhoto}
+                                      src={
+                                        (
+                                          project.coverImage ||
+                                          project.coverPhoto
+                                        ).startsWith?.("http")
+                                          ? project.coverImage ||
+                                            project.coverPhoto
+                                          : `${BACKEND_URL}/${
+                                              project.coverImage ||
+                                              project.coverPhoto
+                                            }`
+                                      }
                                       alt="Product"
                                       className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
                                     />
@@ -749,63 +788,72 @@ export function POTargetDate() {
                                 </div>
                               </td>
 
-                              {/* Company & Brand */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div>
                                   <div className="text-sm font-medium text-gray-900">
-                                    {company?.companyName || "Unknown Company"}
+                                    {company?.companyName ||
+                                      project.company?.name ||
+                                      "Unknown Company"}
                                   </div>
                                   <div className="text-sm text-gray-500">
-                                    {brand?.brandName || "Unknown Brand"}
+                                    {brand?.brandName ||
+                                      project.brand?.name ||
+                                      "Unknown Brand"}
                                   </div>
                                 </div>
                               </td>
 
-                              {/* Category, Type & Gender */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
-                                  {category?.categoryName || "Unknown"}
+                                  {category?.categoryName ||
+                                    project.category?.name ||
+                                    "Unknown"}
                                 </div>
                                 <div className="text-sm text-gray-500">
-                                  {type?.typeName || "Unknown"}
+                                  {type?.typeName ||
+                                    project.type?.name ||
+                                    "Unknown"}
                                 </div>
                                 <div className="text-sm text-gray-500">
                                   Unisex
                                 </div>
                               </td>
 
-                              {/* Art & Colour */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <div
                                     className="w-4 h-4 rounded border border-gray-300 mr-2"
                                     style={{
                                       backgroundColor:
-                                        color?.hexCode || "#cccccc",
+                                        color?.hexCode ||
+                                        project.color?.hexCode ||
+                                        "#cccccc",
                                     }}
-                                  ></div>
+                                  />
                                   <div>
                                     <div className="text-sm font-medium text-gray-900">
-                                      {project.remarks
-                                        ?.split(" ")
+                                      {(project.remarks || "")
+                                        .split(" ")
                                         .slice(0, 2)
                                         .join(" ") || "Product Design"}
                                     </div>
                                     <div className="text-sm text-gray-500">
-                                      {color?.colorName || "Unknown"}
+                                      {color?.colorName ||
+                                        project.color?.name ||
+                                        "Unknown"}
                                     </div>
                                   </div>
                                 </div>
                               </td>
 
-                              {/* Country */}
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
-                                  {country?.countryName || "Unknown"}
+                                  {country?.countryName ||
+                                    project.country?.name ||
+                                    "Unknown"}
                                 </div>
                               </td>
 
-                              {/* PO Number */}
                               <td className="px-6 py-4 whitespace-nowrap w-44 min-w-[176px]">
                                 {project.poNumber ? (
                                   <div>
@@ -831,16 +879,21 @@ export function POTargetDate() {
                                 )}
                               </td>
 
-                              {/* Timeline, Dates & Duration */}
                               <td className="px-6 py-4 whitespace-nowrap w-48 min-w-[192px]">
                                 <div>
                                   <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
                                     <Clock className="w-3 h-3 text-gray-500" />
                                     <span>
                                       Start:{" "}
-                                      {new Date(
-                                        project.startDate
-                                      ).toLocaleDateString("en-IN")}
+                                      {project.startDate
+                                        ? new Date(
+                                            project.startDate
+                                          ).toLocaleDateString("en-IN")
+                                        : project.createdAt
+                                        ? new Date(
+                                            project.createdAt
+                                          ).toLocaleDateString("en-IN")
+                                        : "TBD"}
                                     </span>
                                   </div>
                                   <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
@@ -860,13 +913,15 @@ export function POTargetDate() {
                                       className={`font-medium ${
                                         project.poTarget &&
                                         calculateDuration(
-                                          project.startDate,
+                                          project.startDate ||
+                                            project.createdAt,
                                           project.poTarget
                                         ).includes("overdue")
                                           ? "text-red-600"
                                           : project.poTarget &&
                                             calculateDuration(
-                                              project.startDate,
+                                              project.startDate ||
+                                                project.createdAt,
                                               project.poTarget
                                             ).includes("Due today")
                                           ? "text-orange-600"
@@ -875,19 +930,39 @@ export function POTargetDate() {
                                     >
                                       Duration:{" "}
                                       {calculateDuration(
-                                        project.startDate,
+                                        project.startDate || project.createdAt,
                                         project.poTarget
                                       )}
                                     </span>
                                   </div>
+                                  {project.nextUpdate?.date && (
+                                    <div className="text-xs text-yellow-800 font-medium">
+                                      Next Update:{" "}
+                                      {new Date(
+                                        project.nextUpdate.date
+                                      ).toLocaleDateString("en-IN")}
+                                    </div>
+                                  )}
                                 </div>
                               </td>
 
-                              {/* Remarks */}
                               <td className="px-6 py-4">
                                 <div className="text-sm text-gray-900 max-w-xs truncate">
-                                  {project.remarks || "No remarks"}
+                                  {project.nextUpdate?.note ??
+                                    project.remarks ??
+                                    "No remarks"}
                                 </div>
+                              </td>
+
+                              <td className="px-6 py-4 whitespace-nowrap text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700"
+                                  onClick={(e) => handleDelete(project, e)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
                               </td>
                             </tr>
                           );
@@ -896,7 +971,7 @@ export function POTargetDate() {
                     ) : (
                       <tr>
                         <td
-                          colSpan={9}
+                          colSpan={10}
                           className="px-6 py-16 text-center text-gray-500"
                         >
                           <div className="flex flex-col items-center gap-4">
@@ -919,6 +994,7 @@ export function POTargetDate() {
                   </tbody>
                 </table>
               </div>
+
               {renderPagination(getProjectsByTab("po-approved"))}
             </TabsContent>
           </Tabs>
@@ -930,12 +1006,24 @@ export function POTargetDate() {
         open={projectDetailsOpen}
         onOpenChange={setProjectDetailsOpen}
         project={selectedProject}
+        reloadProjects={reloadProjects}
+        categories={categories}
+        companies={companies}
+        brands={brands}
+        types={types}
+        countries={countries}
+        assignPersons={assignPersons}
+        setBrands={setBrands}
+        setCategories={setCategories}
+        // setSelectedSubModule={setse}
       />
 
-      {/* PO Pending Dialog */}
       <POPendingProjectDetailsDialog
         open={poPendingDetailsOpen}
-        onOpenChange={setPOPendingDetailsOpen}
+        onOpenChange={async (v: boolean) => {
+          if (!v) await reloadProjects();
+          setPOPendingDetailsOpen(v);
+        }}
         project={selectedProject}
         brands={brands}
         categories={categories}
@@ -944,10 +1032,12 @@ export function POTargetDate() {
         countries={countries}
       />
 
-      {/* PO Approved Dialog */}
       <POApprovedProjectDetailsDialog
         open={poApprovedDetailsOpen}
-        onOpenChange={setPOApprovedDetailsOpen}
+        onOpenChange={async (v: boolean) => {
+          if (!v) await reloadProjects();
+          setPOApprovedDetailsOpen(v);
+        }}
         project={selectedProject}
         brands={brands}
         categories={categories}

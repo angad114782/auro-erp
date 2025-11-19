@@ -143,11 +143,15 @@ export function GreenSealProjectDetailsDialog(props: Props) {
   const [poTargetDialogOpen, setPOTargetDialogOpen] = useState(false);
   const [colorMaterialsDialogOpen, setColorMaterialsDialogOpen] =
     useState(false);
-  // activeColorTab state remains - this will hold the currently selected color tab
   const [activeColorTab, setActiveColorTab] = useState<string>("");
 
   // This state holds color variants map (converted to JS Map)
   const [colorVariants, setColorVariants] = useState<
+    Map<string, ColorVariantData>
+  >(new Map());
+
+  // NEW: Local color variants for better management
+  const [localColorVariants, setLocalColorVariants] = useState<
     Map<string, ColorVariantData>
   >(new Map());
 
@@ -215,7 +219,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     return colorMap[colorName] || colorMap["default"];
   };
 
-  // Convert MongoDB Map/object to JS Map (keeps the same as before)
+  // Convert MongoDB Map/object to JS Map
   const convertColorVariants = useCallback(
     (projectData: any): Map<string, ColorVariantData> => {
       const variantsMap = new Map<string, ColorVariantData>();
@@ -272,20 +276,18 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     setSamples(project.sampleImages ? [...project.sampleImages] : []);
     setIsEditing(false);
 
-    // Load color variants from project data (convert to JS Map)
+    // Load color variants from project data
     const variantsMap = convertColorVariants(project);
     setColorVariants(variantsMap);
+    setLocalColorVariants(variantsMap); // Initialize local variants
 
-    // Preserve previously active tab if it exists; otherwise prefer project.color (default)
+    // Set active tab logic
     if (project.color) {
-      // If default exists, set default as initial tab if previous isn't set
       setActiveColorTab((prev) => {
         if (prev && variantsMap.has(prev)) return prev;
-        // prefer default if available in UI
         return project.color;
       });
     } else {
-      // If no default, pick first variant if any
       const first =
         variantsMap.size > 0 ? Array.from(variantsMap.keys())[0] : "";
       setActiveColorTab(first);
@@ -350,7 +352,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     setCategories,
   ]);
 
-  // Default materials and components (unchanged)
+  // Default materials and components
   const getDefaultMaterials = (): Material[] => [
     { name: "Upper", desc: "Rexine", consumption: "26 pairs/mtr" },
     { name: "Lining", desc: "Skinfit", consumption: "25 pair @ 155/-" },
@@ -375,13 +377,13 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     { name: "Welding", desc: "-", consumption: "-" },
   ];
 
-  // Safe variant data getters (updated to always prefer activeColorTab and fall back)
+  // Safe variant data getters (updated to use localColorVariants)
   const getActiveColorVariant = (): ColorVariantData | null => {
-    if (!colorVariants || colorVariants.size === 0) {
+    if (!localColorVariants || localColorVariants.size === 0) {
       return null;
     }
     if (!activeColorTab) return null;
-    return colorVariants.get(activeColorTab) || null;
+    return localColorVariants.get(activeColorTab) || null;
   };
 
   const getActiveColorMaterials = (): Material[] => {
@@ -393,7 +395,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     if (project?.color && activeColorTab === project.color) {
       return getDefaultMaterials();
     }
-    return getDefaultMaterials();
+    return [];
   };
 
   const getActiveColorComponents = (): Component[] => {
@@ -404,21 +406,30 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     if (project?.color && activeColorTab === project.color) {
       return getDefaultComponents();
     }
-    return getDefaultComponents();
+    return [];
+  };
+
+  // NEW: Helper to check if we should show default data
+  const shouldShowDefaultData = (): boolean => {
+    return (
+      localColorVariants.size === 0 &&
+      project?.color &&
+      activeColorTab === project.color
+    );
   };
 
   // Compute color tabs as union: default color (project.color) + variants keys (without duplicates)
   const colorVariantTabs = useMemo(() => {
-    const keys: string[] = Array.from(colorVariants.keys());
+    const keys: string[] = Array.from(localColorVariants.keys());
     if (project?.color) {
       // ensure default appears first
       const filtered = keys.filter((k) => k !== project.color);
       return [project.color, ...filtered];
     }
-    return keys.length > 0 ? keys : ["default"];
-  }, [colorVariants, project?.color]);
+    return keys.length > 0 ? keys : [];
+  }, [localColorVariants, project?.color]);
 
-  // Image upload handlers (unchanged)
+  // Image upload handlers
   const handleCoverUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -491,12 +502,12 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     onOpenChange(false);
   }, [onOpenChange]);
 
-  // When color variants saved in ColorMaterialsDialog, reload project and set active tab sensibly
+  // UPDATED: When color variants saved in ColorMaterialsDialog, reload project and set active tab
   const handleColorVariantsSave = useCallback(
     async (savedColorIds: string[]) => {
       try {
         if (project?._id) {
-          // 🔥 CRITICAL FIX: Force reload the project from backend
+          // Force reload the project from backend
           const response = await api.get(`/projects/${project._id}`);
           const updatedProject = response.data?.data;
 
@@ -507,12 +518,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
             // Update color variants map with fresh data
             const variantsMap = convertColorVariants(updatedProject);
             setColorVariants(variantsMap);
-
-            // 🔥 Ensure the parent component has the latest project data
-            // This will be passed to ColorMaterialsDialog when it reopens
-            if (props.reloadProjects) {
-              await props.reloadProjects();
-            }
+            setLocalColorVariants(variantsMap);
 
             // Update active tab
             if (savedColorIds && savedColorIds.length > 0) {
@@ -523,6 +529,11 @@ export function GreenSealProjectDetailsDialog(props: Props) {
           }
         }
 
+        // Trigger parent reload
+        if (props.reloadProjects) {
+          await props.reloadProjects();
+        }
+
         toast.success("Color variants saved successfully!");
       } catch (error) {
         console.error("Failed to fetch updated color variants:", error);
@@ -531,6 +542,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     },
     [project, convertColorVariants, props]
   );
+
   const handleSave = useCallback(async () => {
     if (!editedProject) return;
 
@@ -639,6 +651,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     // Reset color variants to original state
     const variantsMap = convertColorVariants(project);
     setColorVariants(variantsMap);
+    setLocalColorVariants(variantsMap);
     // reset active tab to default or first
     if (project.color) setActiveColorTab(project.color);
     else {
@@ -1373,76 +1386,44 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     </h3>
                   </div>
                 </div>
+
                 {/* Color Variant Tabs - FIXED SECTION */}
-                {colorVariantTabs.length > 0 && (
+                <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2 border-b border-gray-200">
                     <div className="flex items-center gap-2">
-                      {colorVariantTabs.map((colorId) => (
-                        <button
-                          key={colorId}
-                          onClick={() => setActiveColorTab(colorId)}
-                          className={`flex items-center gap-2 px-4 py-2.5 border-b-2 transition-colors ${
-                            activeColorTab === colorId
-                              ? "border-green-600 text-gray-900"
-                              : "border-transparent text-gray-600 hover:text-gray-900"
-                          }`}
-                        >
-                          <div
-                            className="w-4 h-4 rounded-full border border-gray-300"
-                            style={{ backgroundColor: getColorHex(colorId) }}
-                          ></div>
-                          <span>
-                            {getColorName(colorId)}
-                            {project?.color && colorId === project.color && (
-                              <span className="ml-1.5 text-xs text-gray-500">
-                                (Default)
-                              </span>
-                            )}
-                          </span>
-                        </button>
-                      ))}
+                      {colorVariantTabs.length > 0 ? (
+                        colorVariantTabs.map((colorId) => (
+                          <button
+                            key={colorId}
+                            onClick={() => setActiveColorTab(colorId)}
+                            className={`flex items-center gap-2 px-4 py-2.5 border-b-2 transition-colors ${
+                              activeColorTab === colorId
+                                ? "border-green-600 text-gray-900"
+                                : "border-transparent text-gray-600 hover:text-gray-900"
+                            }`}
+                          >
+                            <div
+                              className="w-4 h-4 rounded-full border border-gray-300"
+                              style={{ backgroundColor: getColorHex(colorId) }}
+                            ></div>
+                            <span>
+                              {getColorName(colorId)}
+                              {project?.color && colorId === project.color && (
+                                <span className="ml-1.5 text-xs text-gray-500">
+                                  (Default)
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-4 py-2.5 text-gray-500">
+                          No color variants configured
+                        </div>
+                      )}
                     </div>
                     <Button
-                      onClick={async () => {
-                        // 🔥 CRITICAL FIX: Force reload the project data before opening the dialog
-                        try {
-                          if (project?._id) {
-                            const response = await api.get(
-                              `/projects/${project._id}`
-                            );
-                            const updatedProject = response.data?.data;
-
-                            if (updatedProject) {
-                              // Update the local project state with fresh data
-                              setEditedProject(updatedProject);
-
-                              // Update color variants with fresh data
-                              const variantsMap =
-                                convertColorVariants(updatedProject);
-                              setColorVariants(variantsMap);
-
-                              // Update active tab
-                              if (
-                                updatedProject.color &&
-                                variantsMap.has(updatedProject.color)
-                              ) {
-                                setActiveColorTab(updatedProject.color);
-                              } else {
-                                const first =
-                                  Array.from(variantsMap.keys())[0] || "";
-                                setActiveColorTab(first);
-                              }
-                            }
-                          }
-                        } catch (error) {
-                          console.error(
-                            "Failed to refresh project data:",
-                            error
-                          );
-                          toast.error("Failed to load updated project data");
-                        }
-
-                        // Now open the dialog with fresh data
+                      onClick={() => {
                         setColorMaterialsDialogOpen(true);
                       }}
                       className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 mr-2 mb-2"
@@ -1452,145 +1433,119 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                       Color Variant
                     </Button>
                   </div>
+
+                  {/* Show message when no variants but default color exists */}
+                  {colorVariantTabs.length === 0 && project?.color && (
+                    <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg">
+                      <Palette className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                      <p>No color variants configured. Using default color.</p>
+                      <p className="text-sm mt-1">
+                        Click "Color Variant" to add new color options.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Materials & Components Display */}
+                {(colorVariantTabs.length > 0 || shouldShowDefaultData()) && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Components Analysis */}
+                    <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
+                      <h4 className="text-lg font-semibold text-purple-900 mb-4">
+                        Components Used
+                      </h4>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-3 gap-2 text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
+                          <div>COMPONENT</div>
+                          <div>DESCRIPTION</div>
+                          <div>CONSUMPTION</div>
+                        </div>
+
+                        <div className="space-y-2">
+                          {getActiveColorComponents().length > 0 ? (
+                            getActiveColorComponents().map(
+                              (component, index) => (
+                                <div
+                                  key={index}
+                                  className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200"
+                                >
+                                  <div className="font-medium">
+                                    {component.name}
+                                  </div>
+                                  <div className="text-gray-600">
+                                    {component.desc}
+                                  </div>
+                                  <div className="text-gray-600">
+                                    {component.consumption}
+                                  </div>
+                                </div>
+                              )
+                            )
+                          ) : (
+                            <div className="text-center py-4 text-gray-500">
+                              No components data available
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-purple-50 p-3 rounded-lg mt-3">
+                          <div className="text-sm text-purple-800">
+                            <strong>Total Components:</strong>{" "}
+                            {getActiveColorComponents().length} different
+                            components used in production
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Materials Analysis */}
+                    <div className="bg-white border-2 border-teal-200 rounded-xl p-6">
+                      <h4 className="text-lg font-semibold text-teal-900 mb-4">
+                        Materials Used
+                      </h4>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-3 gap-2 text-xs font-medium text-gray-600 bg-teal-50 p-2 rounded">
+                          <div>MATERIAL</div>
+                          <div>DESCRIPTION</div>
+                          <div>CONSUMPTION</div>
+                        </div>
+
+                        <div className="space-y-2">
+                          {getActiveColorMaterials().length > 0 ? (
+                            getActiveColorMaterials().map((material, index) => (
+                              <div
+                                key={index}
+                                className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200"
+                              >
+                                <div className="font-medium">
+                                  {material.name}
+                                </div>
+                                <div className="text-gray-600">
+                                  {material.desc}
+                                </div>
+                                <div className="text-gray-600">
+                                  {material.consumption}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center py-4 text-gray-500">
+                              No materials data available
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-teal-50 p-3 rounded-lg mt-3">
+                          <div className="text-sm text-teal-800">
+                            <strong>Total Materials:</strong>{" "}
+                            {getActiveColorMaterials().length} different
+                            materials used in production
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 )}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Components Analysis */}
-                  <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
-                    <h4 className="text-lg font-semibold text-purple-900 mb-4">
-                      Components Used
-                    </h4>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-3 gap-2 text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
-                        <div>COMPONENT</div>
-                        <div>DESCRIPTION</div>
-                        <div>CONSUMPTION</div>
-                      </div>
-
-                      <div className="space-y-2">
-                        {getActiveColorComponents().map((component, index) => (
-                          <div
-                            key={index}
-                            className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200"
-                          >
-                            <div className="font-medium">{component.name}</div>
-                            <div className="text-gray-600">
-                              {component.desc}
-                            </div>
-                            <div className="text-gray-600">
-                              {component.consumption}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="bg-purple-50 p-3 rounded-lg mt-3">
-                        <div className="text-sm text-purple-800">
-                          <strong>Total Components:</strong>{" "}
-                          {getActiveColorComponents().length} different
-                          components used in production
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Materials Analysis */}
-                  <div className="bg-white border-2 border-teal-200 rounded-xl p-6">
-                    <h4 className="text-lg font-semibold text-teal-900 mb-4">
-                      Materials Used
-                    </h4>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-3 gap-2 text-xs font-medium text-gray-600 bg-teal-50 p-2 rounded">
-                        <div>MATERIAL</div>
-                        <div>DESCRIPTION</div>
-                        <div>CONSUMPTION</div>
-                      </div>
-
-                      <div className="space-y-2">
-                        {getActiveColorMaterials().map((material, index) => (
-                          <div
-                            key={index}
-                            className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200"
-                          >
-                            <div className="font-medium">{material.name}</div>
-                            <div className="text-gray-600">{material.desc}</div>
-                            <div className="text-gray-600">
-                              {material.consumption}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="bg-teal-50 p-3 rounded-lg mt-3">
-                        <div className="text-sm text-teal-800">
-                          <strong>Total Materials:</strong>{" "}
-                          {getActiveColorMaterials().length} different materials
-                          used in production
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {/* Additional Analysis Summary */}
-                <div className="bg-gradient-to-r from-purple-50 to-teal-50 border-2 border-purple-200 rounded-xl p-6">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">
-                    Production Analysis Summary
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-white rounded-lg border border-purple-200">
-                      <div className="text-sm text-purple-600 font-medium">
-                        Total Components
-                      </div>
-                      <div className="text-2xl font-bold text-purple-800">
-                        {getActiveColorComponents().length}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Active components
-                      </div>
-                    </div>
-                    <div className="text-center p-4 bg-white rounded-lg border border-teal-200">
-                      <div className="text-sm text-teal-600 font-medium">
-                        Total Materials
-                      </div>
-                      <div className="text-2xl font-bold text-teal-800">
-                        {getActiveColorMaterials().length}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Raw materials
-                      </div>
-                    </div>
-                    <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
-                      <div className="text-sm text-gray-600 font-medium">
-                        Production Complexity
-                      </div>
-                      <div className="text-2xl font-bold text-gray-800">
-                        {getActiveColorComponents().length +
-                          getActiveColorMaterials().length <
-                        15
-                          ? "Low"
-                          : getActiveColorComponents().length +
-                              getActiveColorMaterials().length <
-                            20
-                          ? "Medium"
-                          : "High"}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {getActiveColorComponents().length +
-                          getActiveColorMaterials().length}{" "}
-                        total items
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4 p-3 bg-white border border-gray-200 rounded-lg">
-                    <div className="text-sm text-gray-700">
-                      <strong>Green Seal Analysis:</strong> Product uses
-                      standard footwear materials and components. Upper
-                      materials include Rexine and Skinfit lining with EVA
-                      padding. Components feature standard hardware like velcro,
-                      buckles, and heat transfer elements. Material consumption
-                      rates are optimized for efficient production.
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Client Feedback & Updates Section */}
@@ -1920,12 +1875,11 @@ export function GreenSealProjectDetailsDialog(props: Props) {
       />
 
       {/* Color Materials Dialog */}
-      {/* Color Materials Dialog */}
       <ColorMaterialsDialog
         open={colorMaterialsDialogOpen}
         onOpenChange={setColorMaterialsDialogOpen}
-        project={editedProject} // 🔥 Pass editedProject instead of project
-        colors={[]} // You can pass actual colors array if available
+        project={editedProject}
+        colors={[]}
         onSave={handleColorVariantsSave}
       />
     </>

@@ -257,8 +257,7 @@ export function POPendingProjectDetailsDialog({
   ];
 
   const [isEditing, setIsEditing] = useState(false);
-  const [editedProject, setEditedProject] =
-    useState<RDProject | null>(null);
+  const [editedProject, setEditedProject] = useState<RDProject | null>(null);
   const [poNumber, setPONumber] = useState("");
   const [isAddingPO, setIsAddingPO] = useState(false);
 
@@ -285,7 +284,7 @@ export function POPendingProjectDetailsDialog({
   // Get project data based on project code
   const getProjectData = () => {
     const projectData = poTargetDevelopmentData.find(
-      (p) => p.productCode === project.autoCode,
+      (p) => p.productCode === project.autoCode
     );
     return projectData || poTargetDevelopmentData[0]; // fallback to first item
   };
@@ -293,25 +292,20 @@ export function POPendingProjectDetailsDialog({
   const projectData = getProjectData();
 
   const getBrandName = (brandId: string) => {
-    if (!brands || brands.length === 0)
-      return projectData.brand;
+    if (!brands || brands.length === 0) return projectData.brand;
     const brand = brands.find((b) => b.id === brandId);
     return brand?.brandName || projectData.brand;
   };
 
   const getBrandCode = (brandId: string) => {
-    if (!brands || brands.length === 0)
-      return projectData.brandCode;
+    if (!brands || brands.length === 0) return projectData.brandCode;
     const brand = brands.find((b) => b.id === brandId);
     return brand?.brandCode || projectData.brandCode;
   };
 
   const getCategoryName = (categoryId: string) => {
-    if (!categories || categories.length === 0)
-      return projectData.category;
-    const category = categories.find(
-      (c) => c.id === categoryId,
-    );
+    if (!categories || categories.length === 0) return projectData.category;
+    const category = categories.find((c) => c.id === categoryId);
     return category?.categoryName || projectData.category;
   };
 
@@ -322,28 +316,26 @@ export function POPendingProjectDetailsDialog({
   };
 
   const getColorName = (colorId: string) => {
-    if (!colors || colors.length === 0)
-      return projectData.color;
+    if (!colors || colors.length === 0) return projectData.color;
     const color = colors.find((c) => c.id === colorId);
     return color?.colorName || projectData.color;
   };
 
   const getCountryName = (countryId: string) => {
-    if (!countries || countries.length === 0)
-      return projectData.country;
+    if (!countries || countries.length === 0) return projectData.country;
     const country = countries.find((c) => c.id === countryId);
     return country?.countryName || projectData.country;
   };
 
   const getDesignerName = (designerId: string) => {
     const designerNames: { [key: string]: string } = {
-      '1': 'Rahul Sharma',
-      '2': 'Priyanka Patel',
-      '3': 'Amit Kumar',
-      '4': 'Sneha Reddy',
-      '5': 'Vikram Singh'
+      "1": "Rahul Sharma",
+      "2": "Priyanka Patel",
+      "3": "Amit Kumar",
+      "4": "Sneha Reddy",
+      "5": "Vikram Singh",
     };
-    return designerNames[designerId] || 'Designer ' + designerId;
+    return designerNames[designerId] || "Designer " + designerId;
   };
 
   // Image upload handlers
@@ -358,7 +350,10 @@ export function POPendingProjectDetailsDialog({
     }
   };
 
-  const handleAdditionalImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+  const handleAdditionalImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number
+  ) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -371,7 +366,10 @@ export function POPendingProjectDetailsDialog({
     }
   };
 
-  const handleDynamicImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+  const handleDynamicImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number
+  ) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -390,7 +388,7 @@ export function POPendingProjectDetailsDialog({
 
   const removeAdditionalImage = (index: number) => {
     const newImages = [...additionalImages];
-    newImages[index] = '';
+    newImages[index] = "";
     setAdditionalImages(newImages);
   };
 
@@ -400,7 +398,7 @@ export function POPendingProjectDetailsDialog({
   };
 
   const handleAddImageSlot = () => {
-    setDynamicImages([...dynamicImages, '']);
+    setDynamicImages([...dynamicImages, ""]);
   };
 
   const handleSaveImages = () => {
@@ -409,19 +407,18 @@ export function POPendingProjectDetailsDialog({
         ...editedProject,
         coverPhoto,
         additionalImages,
-        dynamicImages
+        dynamicImages,
       };
       updateRDProject(project.id, updatedProject as RDProject);
-      toast.success('Images saved successfully!');
+      toast.success("Images saved successfully!");
     }
   };
 
   const getCurrentStage = () => {
     // For PO Pending dialog, we're at the PO Pending stage
     return (
-      workflowStages.find(
-        (stage) => stage.id === "PO Pending",
-      ) || workflowStages[4] // Default to "PO Pending" (5th stage)
+      workflowStages.find((stage) => stage.id === "PO Pending") ||
+      workflowStages[4] // Default to "PO Pending" (5th stage)
     );
   };
 
@@ -461,7 +458,7 @@ export function POPendingProjectDetailsDialog({
       // Don't clear poNumber - keep it to show in input
       setIsAddingPO(false);
       toast.success(
-        "PO Number added successfully! You can now advance the project.",
+        "PO Number added successfully! You can now advance the project."
       );
     } else {
       toast.error("Please enter a valid PO number.");
@@ -519,8 +516,7 @@ export function POPendingProjectDetailsDialog({
   // Check if project is pending (no PO or pending status)
   const isPOPending = () => {
     return (
-      !project.poNumber &&
-      (project.poStatus === "Pending" || !project.poStatus)
+      !project.poNumber && (project.poStatus === "Pending" || !project.poStatus)
     );
   };
 
@@ -543,27 +539,18 @@ export function POPendingProjectDetailsDialog({
       Red: "bg-red-600",
       "Rose Gold": "bg-pink-400",
       "Mahogany Brown": "bg-yellow-800",
-      "Black & Neon":
-        "bg-gradient-to-r from-gray-900 to-green-400",
+      "Black & Neon": "bg-gradient-to-r from-gray-900 to-green-400",
     };
-    return (
-      colorMap[colorName] ||
-      colorMap[projectData.color] ||
-      "bg-gray-400"
-    );
+    return colorMap[colorName] || colorMap[projectData.color] || "bg-gray-400";
   };
 
   // Calculate cost variance
   const getCostVariance = () => {
-    const variance =
-      projectData.finalCost - projectData.targetCost;
+    const variance = projectData.finalCost - projectData.targetCost;
     return {
       amount: Math.abs(variance),
       isOverBudget: variance > 0,
-      percentage: (
-        (variance / projectData.targetCost) *
-        100
-      ).toFixed(1),
+      percentage: ((variance / projectData.targetCost) * 100).toFixed(1),
     };
   };
 
@@ -585,8 +572,7 @@ export function POPendingProjectDetailsDialog({
                     PO Pending Details
                   </DialogTitle>
                   <DialogDescription className="sr-only">
-                    View and manage PO Pending project details
-                    and information
+                    View and manage PO Pending project details and information
                   </DialogDescription>
                   <div className="flex items-center gap-4">
                     <span className="text-lg text-gray-600">
@@ -598,7 +584,13 @@ export function POPendingProjectDetailsDialog({
                       {currentStage.name}
                     </Badge>
                     <Badge
-                      className={`${projectData.priority === "High" ? "bg-red-500 text-white" : projectData.priority === "Medium" ? "bg-purple-500 text-white" : "bg-green-600 text-white"} text-xs px-2 py-1`}
+                      className={`${
+                        projectData.priority === "High"
+                          ? "bg-red-500 text-white"
+                          : projectData.priority === "Medium"
+                          ? "bg-purple-500 text-white"
+                          : "bg-green-600 text-white"
+                      } text-xs px-2 py-1`}
                     >
                       {projectData.priority}
                     </Badge>
@@ -610,8 +602,16 @@ export function POPendingProjectDetailsDialog({
                 <Button
                   onClick={handleAdvanceToPOApproved}
                   disabled={!editedProject?.poNumber}
-                  className={`bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 ${!editedProject?.poNumber ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  title={!editedProject?.poNumber ? "PO Number required to advance to PO Approved" : "Advance to PO Approved"}
+                  className={`bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 ${
+                    !editedProject?.poNumber
+                      ? "opacity-50 cursor-not-allowed"
+                      : ""
+                  }`}
+                  title={
+                    !editedProject?.poNumber
+                      ? "PO Number required to advance to PO Approved"
+                      : "Advance to PO Approved"
+                  }
                 >
                   <ArrowRight className="w-4 h-4 mr-2" />
                   Advance to PO Approved
@@ -621,8 +621,16 @@ export function POPendingProjectDetailsDialog({
                 <Button
                   onClick={handleApproveAndAdvanceToProduction}
                   disabled={!editedProject?.poNumber}
-                  className={`bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 ${!editedProject?.poNumber ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  title={!editedProject?.poNumber ? "PO Number required to advance to Production" : "Advance directly to Production"}
+                  className={`bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 ${
+                    !editedProject?.poNumber
+                      ? "opacity-50 cursor-not-allowed"
+                      : ""
+                  }`}
+                  title={
+                    !editedProject?.poNumber
+                      ? "PO Number required to advance to Production"
+                      : "Advance directly to Production"
+                  }
                 >
                   <Factory className="w-4 h-4 mr-2" />
                   Approve & Advance to Production
@@ -691,20 +699,16 @@ export function POPendingProjectDetailsDialog({
                         {currentStage.progress}%
                       </span>
                     </div>
-                    <Progress
-                      value={currentStage.progress}
-                      className="h-2"
-                    />
+                    <Progress value={currentStage.progress} className="h-2" />
                   </div>
 
                   <div className="grid grid-cols-6 gap-2">
                     {workflowStages.map((stage, index) => {
                       const isCompleted =
                         workflowStages.findIndex(
-                          (s) => s.id === "PO Pending",
+                          (s) => s.id === "PO Pending"
                         ) >= index;
-                      const isCurrent =
-                        stage.id === "PO Pending";
+                      const isCurrent = stage.id === "PO Pending";
 
                       return (
                         <div
@@ -713,8 +717,8 @@ export function POPendingProjectDetailsDialog({
                             isCurrent
                               ? "bg-orange-100 border-2 border-orange-400 shadow-md"
                               : isCompleted
-                                ? "bg-green-50 border border-green-200"
-                                : "bg-gray-50 border border-gray-200"
+                              ? "bg-green-50 border border-green-200"
+                              : "bg-gray-50 border border-gray-200"
                           }`}
                         >
                           <div
@@ -722,8 +726,8 @@ export function POPendingProjectDetailsDialog({
                               isCurrent
                                 ? "bg-orange-500 text-white"
                                 : isCompleted
-                                  ? "bg-green-500 text-white"
-                                  : "bg-gray-300 text-gray-600"
+                                ? "bg-green-500 text-white"
+                                : "bg-gray-300 text-gray-600"
                             }`}
                           >
                             {isCompleted ? (
@@ -756,27 +760,45 @@ export function POPendingProjectDetailsDialog({
                 {/* Unified Product Details Section */}
                 <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-5">
-                    <h4 className="text-lg font-semibold text-gray-900">Product & Brand Details</h4>
-                    <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200">
+                    <h4 className="text-lg font-semibold text-gray-900">
+                      Product & Brand Details
+                    </h4>
+                    <Badge
+                      variant="secondary"
+                      className="bg-orange-50 text-orange-700 border-orange-200"
+                    >
                       PO Pending
                     </Badge>
                   </div>
-                    
+
                   {/* Horizontal Layout: Preview + Images */}
                   <div className="flex gap-4 mb-5">
                     {/* Product Preview - Compact */}
                     <div className="flex-shrink-0 w-44">
                       <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 h-full">
-                        <Label className="text-xs font-medium text-gray-600 mb-2 block">Preview</Label>
+                        <Label className="text-xs font-medium text-gray-600 mb-2 block">
+                          Preview
+                        </Label>
                         <div className="w-20 h-20 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm mx-auto mb-2">
-                          <img 
-                            src={coverPhoto || (projectData.category === "Sports" ? "https://images.unsplash.com/photo-1542291026-7eec264c27ff?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzcG9ydHMlMjBzaG9lJTIwcHJvZHVjdHxlbnwxfHx8fDE3NTY3MzU5MzB8MA&ixlib=rb-4.1.0&q=80&w=1080" : projectData.category === "Casual" ? "https://images.unsplash.com/photo-1549298916-b41d501d3772?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXN1YWwlMjBzaG9lJTIwcHJvZHVjdHxlbnwxfHx8fDE3NTY3MzU5MzB8MA&ixlib=rb-4.1.0&q=80&w=1080" : "https://images.unsplash.com/photo-1533158628620-7e35717d36e8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmb3JtYWwlMjBzaG9lJTIwcHJvZHVjdHxlbnwxfHx8fDE3NTY3MzU5MzB8MA&ixlib=rb-4.1.0&q=80&w=1080")}
+                          <img
+                            src={
+                              coverPhoto ||
+                              (projectData.category === "Sports"
+                                ? "https://images.unsplash.com/photo-1542291026-7eec264c27ff?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzcG9ydHMlMjBzaG9lJTIwcHJvZHVjdHxlbnwxfHx8fDE3NTY3MzU5MzB8MA&ixlib=rb-4.1.0&q=80&w=1080"
+                                : projectData.category === "Casual"
+                                ? "https://images.unsplash.com/photo-1549298916-b41d501d3772?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXN1YWwlMjBzaG9lJTIwcHJvZHVjdHxlbnwxfHx8fDE3NTY3MzU5MzB8MA&ixlib=rb-4.1.0&q=80&w=1080"
+                                : "https://images.unsplash.com/photo-1533158628620-7e35717d36e8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmb3JtYWwlMjBzaG9lJTIwcHJvZHVjdHxlbnwxfHx8fDE3NTY3MzU5MzB8MA&ixlib=rb-4.1.0&q=80&w=1080")
+                            }
                             alt={projectData.productCode}
                             className="w-full h-full object-cover"
                           />
                         </div>
-                        <div className="text-xs font-medium text-gray-900 text-center">{projectData.productCode}</div>
-                        <div className="text-xs text-gray-500 text-center mt-0.5">Sample</div>
+                        <div className="text-xs font-medium text-gray-900 text-center">
+                          {projectData.productCode}
+                        </div>
+                        <div className="text-xs text-gray-500 text-center mt-0.5">
+                          Sample
+                        </div>
                       </div>
                     </div>
 
@@ -788,81 +810,171 @@ export function POPendingProjectDetailsDialog({
                             <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
                               <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
                             </div>
-                            <Label className="text-xs font-semibold text-gray-800">Images</Label>
+                            <Label className="text-xs font-semibold text-gray-800">
+                              Images
+                            </Label>
                           </div>
-                          {(coverPhoto || additionalImages.filter(img => img).length > 0 || dynamicImages.length > 0) && (
-                            <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs h-5">
-                              {[coverPhoto, ...additionalImages.filter(img => img), ...dynamicImages].length}
+                          {(coverPhoto ||
+                            additionalImages.filter((img) => img).length > 0 ||
+                            dynamicImages.length > 0) && (
+                            <Badge
+                              variant="secondary"
+                              className="bg-blue-50 text-blue-700 border-blue-200 text-xs h-5"
+                            >
+                              {
+                                [
+                                  coverPhoto,
+                                  ...additionalImages.filter((img) => img),
+                                  ...dynamicImages,
+                                ].length
+                              }
                             </Badge>
                           )}
                         </div>
-                        
+
                         {!isEditing ? (
                           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
                             {coverPhoto && (
                               <div className="group relative flex-shrink-0">
                                 <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
-                                  <img src={coverPhoto} alt="Cover" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                                  <img
+                                    src={coverPhoto}
+                                    alt="Cover"
+                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                  />
                                 </div>
                               </div>
                             )}
-                            {additionalImages.filter(img => img).map((image, i) => (
-                              <div key={i} className="group relative flex-shrink-0">
-                                <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
-                                  <img src={image} alt={`Image ${i + 1}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                            {additionalImages
+                              .filter((img) => img)
+                              .map((image, i) => (
+                                <div
+                                  key={i}
+                                  className="group relative flex-shrink-0"
+                                >
+                                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
+                                    <img
+                                      src={image}
+                                      alt={`Image ${i + 1}`}
+                                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                    />
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              ))}
                             {dynamicImages.map((image, i) => (
-                              <div key={`dynamic-${i}`} className="group relative flex-shrink-0">
+                              <div
+                                key={`dynamic-${i}`}
+                                className="group relative flex-shrink-0"
+                              >
                                 <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
-                                  <img src={image} alt={`Image ${i + 1}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                                  <img
+                                    src={image}
+                                    alt={`Image ${i + 1}`}
+                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                  />
                                 </div>
                               </div>
                             ))}
-                            {(!coverPhoto && additionalImages.filter(img => img).length === 0 && dynamicImages.length === 0) && (
-                              <div className="w-full text-center py-4">
-                                <ImageIcon className="w-8 h-8 mx-auto mb-1 text-gray-400" />
-                                <p className="text-xs text-gray-500">No images</p>
-                              </div>
-                            )}
+                            {!coverPhoto &&
+                              additionalImages.filter((img) => img).length ===
+                                0 &&
+                              dynamicImages.length === 0 && (
+                                <div className="w-full text-center py-4">
+                                  <ImageIcon className="w-8 h-8 mx-auto mb-1 text-gray-400" />
+                                  <p className="text-xs text-gray-500">
+                                    No images
+                                  </p>
+                                </div>
+                              )}
                           </div>
                         ) : (
                           <div className="space-y-2">
                             <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
                               <div className="flex-shrink-0">
-                                <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverPhotoUpload} />
+                                <input
+                                  ref={coverInputRef}
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={handleCoverPhotoUpload}
+                                />
                                 {coverPhoto ? (
                                   <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md group">
-                                    <img src={coverPhoto} alt="Cover" className="w-full h-full object-cover" />
+                                    <img
+                                      src={coverPhoto}
+                                      alt="Cover"
+                                      className="w-full h-full object-cover"
+                                    />
                                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                      <Button type="button" variant="destructive" size="sm" onClick={removeCoverPhoto} className="h-6 w-6 p-0 shadow-lg">
+                                      <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={removeCoverPhoto}
+                                        className="h-6 w-6 p-0 shadow-lg"
+                                      >
                                         <Trash2 className="w-3 h-3" />
                                       </Button>
                                     </div>
                                   </div>
                                 ) : (
-                                  <div onClick={() => coverInputRef.current?.click()} className="w-20 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md">
+                                  <div
+                                    onClick={() =>
+                                      coverInputRef.current?.click()
+                                    }
+                                    className="w-20 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md"
+                                  >
                                     <ImageIcon className="w-5 h-5 text-blue-600" />
-                                    <span className="text-xs text-blue-700 mt-0.5">Cover</span>
+                                    <span className="text-xs text-blue-700 mt-0.5">
+                                      Cover
+                                    </span>
                                   </div>
                                 )}
                               </div>
 
                               {[0, 1, 2, 3, 4].map((i) => (
                                 <div key={i} className="flex-shrink-0">
-                                  <input ref={(el) => { if (additionalInputRefs.current) { additionalInputRefs.current[i] = el; }}} type="file" accept="image/*" className="hidden" onChange={(e) => handleAdditionalImageUpload(e, i)} />
+                                  <input
+                                    ref={(el) => {
+                                      if (additionalInputRefs.current) {
+                                        additionalInputRefs.current[i] = el;
+                                      }
+                                    }}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) =>
+                                      handleAdditionalImageUpload(e, i)
+                                    }
+                                  />
                                   {additionalImages[i] ? (
                                     <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
-                                      <img src={additionalImages[i]} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+                                      <img
+                                        src={additionalImages[i]}
+                                        alt={`Image ${i + 1}`}
+                                        className="w-full h-full object-cover"
+                                      />
                                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                        <Button type="button" variant="destructive" size="sm" onClick={() => removeAdditionalImage(i)} className="h-6 w-6 p-0 shadow-lg">
+                                        <Button
+                                          type="button"
+                                          variant="destructive"
+                                          size="sm"
+                                          onClick={() =>
+                                            removeAdditionalImage(i)
+                                          }
+                                          className="h-6 w-6 p-0 shadow-lg"
+                                        >
                                           <Trash2 className="w-3 h-3" />
                                         </Button>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div onClick={() => additionalInputRefs.current[i]?.click()} className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md">
+                                    <div
+                                      onClick={() =>
+                                        additionalInputRefs.current[i]?.click()
+                                      }
+                                      className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md"
+                                    >
                                       <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
                                     </div>
                                   )}
@@ -870,32 +982,69 @@ export function POPendingProjectDetailsDialog({
                               ))}
 
                               {dynamicImages.map((image, i) => (
-                                <div key={`dynamic-${i}`} className="flex-shrink-0">
-                                  <input ref={(el) => { if (dynamicInputRefs.current) { dynamicInputRefs.current[i] = el; }}} type="file" accept="image/*" className="hidden" onChange={(e) => handleDynamicImageUpload(e, i)} />
+                                <div
+                                  key={`dynamic-${i}`}
+                                  className="flex-shrink-0"
+                                >
+                                  <input
+                                    ref={(el) => {
+                                      if (dynamicInputRefs.current) {
+                                        dynamicInputRefs.current[i] = el;
+                                      }
+                                    }}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) =>
+                                      handleDynamicImageUpload(e, i)
+                                    }
+                                  />
                                   {image ? (
                                     <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
-                                      <img src={image} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+                                      <img
+                                        src={image}
+                                        alt={`Image ${i + 1}`}
+                                        className="w-full h-full object-cover"
+                                      />
                                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                        <Button type="button" variant="destructive" size="sm" onClick={() => removeDynamicImage(i)} className="h-6 w-6 p-0 shadow-lg">
+                                        <Button
+                                          type="button"
+                                          variant="destructive"
+                                          size="sm"
+                                          onClick={() => removeDynamicImage(i)}
+                                          className="h-6 w-6 p-0 shadow-lg"
+                                        >
                                           <Trash2 className="w-3 h-3" />
                                         </Button>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div onClick={() => dynamicInputRefs.current[i]?.click()} className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md">
+                                    <div
+                                      onClick={() =>
+                                        dynamicInputRefs.current[i]?.click()
+                                      }
+                                      className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md"
+                                    >
                                       <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
                                     </div>
                                   )}
                                 </div>
                               ))}
 
-                              <div onClick={handleAddImageSlot} className="w-20 h-20 flex-shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md">
+                              <div
+                                onClick={handleAddImageSlot}
+                                className="w-20 h-20 flex-shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md"
+                              >
                                 <Plus className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-all duration-200" />
                               </div>
                             </div>
 
                             <div className="flex justify-end pt-2 border-t border-gray-200">
-                              <Button onClick={handleSaveImages} className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-7 text-xs" size="sm">
+                              <Button
+                                onClick={handleSaveImages}
+                                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-7 text-xs"
+                                size="sm"
+                              >
                                 <Save className="w-3 h-3 mr-1.5" />
                                 Save
                               </Button>
@@ -910,69 +1059,117 @@ export function POPendingProjectDetailsDialog({
                   <div className="grid grid-cols-6 gap-x-3 gap-y-3">
                     <div>
                       <Label>Product Code</Label>
-                      <div className="mt-1 font-mono font-bold text-gray-900">{projectData.productCode}</div>
+                      <div className="mt-1 font-mono font-bold text-gray-900">
+                        {projectData.productCode}
+                      </div>
                     </div>
-                    
+
                     <div>
                       <Label>Company</Label>
                       {isEditing ? (
                         <Select defaultValue="1">
-                          <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="1">Phoenix Footwear</SelectItem>
                             <SelectItem value="2">Urban Sole</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (
-                        <div className="mt-1 text-gray-900">Phoenix Footwear</div>
+                        <div className="mt-1 text-gray-900">
+                          Phoenix Footwear
+                        </div>
                       )}
                     </div>
 
                     <div>
                       <Label>Brand</Label>
                       {isEditing ? (
-                        <Select value={editedProject.brandId} onValueChange={(value) => setEditedProject({...editedProject, brandId: value})}>
-                          <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <Select
+                          value={editedProject.brandId}
+                          onValueChange={(value) =>
+                            setEditedProject({
+                              ...editedProject,
+                              brandId: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
-                            {(brands || []).map(brand => (
-                              <SelectItem key={brand.id} value={brand.id}>{brand.brandName}</SelectItem>
+                            {(brands || []).map((brand) => (
+                              <SelectItem key={brand.id} value={brand.id}>
+                                {brand.brandName}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       ) : (
-                        <div className="mt-1 text-gray-900">{projectData.brand}</div>
+                        <div className="mt-1 text-gray-900">
+                          {projectData.brand}
+                        </div>
                       )}
                     </div>
 
                     <div>
                       <Label>Category</Label>
                       {isEditing ? (
-                        <Select value={editedProject.categoryId} onValueChange={(value) => setEditedProject({...editedProject, categoryId: value})}>
-                          <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <Select
+                          value={editedProject.categoryId}
+                          onValueChange={(value) =>
+                            setEditedProject({
+                              ...editedProject,
+                              categoryId: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
-                            {(categories || []).map(category => (
-                              <SelectItem key={category.id} value={category.id}>{category.categoryName}</SelectItem>
+                            {(categories || []).map((category) => (
+                              <SelectItem key={category.id} value={category.id}>
+                                {category.categoryName}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       ) : (
-                        <div className="mt-1 text-gray-900">{projectData.category}</div>
+                        <div className="mt-1 text-gray-900">
+                          {projectData.category}
+                        </div>
                       )}
                     </div>
 
                     <div>
                       <Label>Type</Label>
                       {isEditing ? (
-                        <Select value={editedProject.typeId} onValueChange={(value) => setEditedProject({...editedProject, typeId: value})}>
-                          <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <Select
+                          value={editedProject.typeId}
+                          onValueChange={(value) =>
+                            setEditedProject({
+                              ...editedProject,
+                              typeId: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
-                            {(types || []).map(type => (
-                              <SelectItem key={type.id} value={type.id}>{type.typeName}</SelectItem>
+                            {(types || []).map((type) => (
+                              <SelectItem key={type.id} value={type.id}>
+                                {type.typeName}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       ) : (
-                        <div className="mt-1 text-gray-900">{projectData.type}</div>
+                        <div className="mt-1 text-gray-900">
+                          {projectData.type}
+                        </div>
                       )}
                     </div>
 
@@ -980,7 +1177,9 @@ export function POPendingProjectDetailsDialog({
                       <Label>Gender</Label>
                       {isEditing ? (
                         <Select defaultValue={projectData.gender.toLowerCase()}>
-                          <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="male">Male</SelectItem>
                             <SelectItem value="female">Female</SelectItem>
@@ -988,29 +1187,50 @@ export function POPendingProjectDetailsDialog({
                           </SelectContent>
                         </Select>
                       ) : (
-                        <div className="mt-1 text-gray-900">{projectData.gender}</div>
+                        <div className="mt-1 text-gray-900">
+                          {projectData.gender}
+                        </div>
                       )}
                     </div>
 
                     <div>
                       <Label>Art</Label>
                       {isEditing ? (
-                        <Input type="text" defaultValue={projectData.artColour} className="mt-1" />
+                        <Input
+                          type="text"
+                          defaultValue={projectData.artColour}
+                          className="mt-1"
+                        />
                       ) : (
-                        <div className="mt-1 text-gray-900">{projectData.artColour}</div>
+                        <div className="mt-1 text-gray-900">
+                          {projectData.artColour}
+                        </div>
                       )}
                     </div>
 
                     <div>
                       <Label>Colour</Label>
                       {isEditing ? (
-                        <Select value={editedProject.colorId} onValueChange={(value) => setEditedProject({...editedProject, colorId: value})}>
-                          <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <Select
+                          value={editedProject.colorId}
+                          onValueChange={(value) =>
+                            setEditedProject({
+                              ...editedProject,
+                              colorId: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
-                            {(colors || []).map(color => (
+                            {(colors || []).map((color) => (
                               <SelectItem key={color.id} value={color.id}>
                                 <div className="flex items-center gap-2">
-                                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: color.hexCode }}></div>
+                                  <div
+                                    className="w-4 h-4 rounded-full"
+                                    style={{ backgroundColor: color.hexCode }}
+                                  ></div>
                                   {color.colorName}
                                 </div>
                               </SelectItem>
@@ -1019,8 +1239,12 @@ export function POPendingProjectDetailsDialog({
                         </Select>
                       ) : (
                         <div className="mt-1 flex items-center gap-2">
-                          <div className={`w-4 h-4 rounded-full ${getColorDisplay()}`}></div>
-                          <span className="text-gray-900">{projectData.color}</span>
+                          <div
+                            className={`w-4 h-4 rounded-full ${getColorDisplay()}`}
+                          ></div>
+                          <span className="text-gray-900">
+                            {projectData.color}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1028,16 +1252,30 @@ export function POPendingProjectDetailsDialog({
                     <div>
                       <Label>Country</Label>
                       {isEditing ? (
-                        <Select value={editedProject.countryId} onValueChange={(value) => setEditedProject({...editedProject, countryId: value})}>
-                          <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <Select
+                          value={editedProject.countryId}
+                          onValueChange={(value) =>
+                            setEditedProject({
+                              ...editedProject,
+                              countryId: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
-                            {(countries || []).map(country => (
-                              <SelectItem key={country.id} value={country.id}>{country.countryName}</SelectItem>
+                            {(countries || []).map((country) => (
+                              <SelectItem key={country.id} value={country.id}>
+                                {country.countryName}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       ) : (
-                        <div className="mt-1 text-gray-900">{projectData.country}</div>
+                        <div className="mt-1 text-gray-900">
+                          {projectData.country}
+                        </div>
                       )}
                     </div>
 
@@ -1053,26 +1291,60 @@ export function POPendingProjectDetailsDialog({
                     <div>
                       <Label>Start Date</Label>
                       {isEditing ? (
-                        <Input type="date" value={editedProject.startDate} onChange={(e) => setEditedProject({...editedProject, startDate: e.target.value})} className="mt-1" />
+                        <Input
+                          type="date"
+                          value={editedProject.startDate}
+                          onChange={(e) =>
+                            setEditedProject({
+                              ...editedProject,
+                              startDate: e.target.value,
+                            })
+                          }
+                          className="mt-1"
+                        />
                       ) : (
-                        <div className="mt-1 text-gray-900">{projectData.startDate}</div>
+                        <div className="mt-1 text-gray-900">
+                          {projectData.startDate}
+                        </div>
                       )}
                     </div>
 
                     <div>
                       <Label>Target Date</Label>
                       {isEditing ? (
-                        <Input type="date" value={editedProject.endDate} onChange={(e) => setEditedProject({...editedProject, endDate: e.target.value})} className="mt-1" />
+                        <Input
+                          type="date"
+                          value={editedProject.endDate}
+                          onChange={(e) =>
+                            setEditedProject({
+                              ...editedProject,
+                              endDate: e.target.value,
+                            })
+                          }
+                          className="mt-1"
+                        />
                       ) : (
-                        <div className="mt-1 text-gray-900">{projectData.poTargetDate}</div>
+                        <div className="mt-1 text-gray-900">
+                          {projectData.poTargetDate}
+                        </div>
                       )}
                     </div>
 
                     <div>
                       <Label>Priority</Label>
                       {isEditing ? (
-                        <Select value={editedProject.priority || 'Low'} onValueChange={(value) => setEditedProject({...editedProject, priority: value})}>
-                          <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <Select
+                          value={editedProject.priority || "Low"}
+                          onValueChange={(value) =>
+                            setEditedProject({
+                              ...editedProject,
+                              priority: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Low">Low</SelectItem>
                             <SelectItem value="Medium">Medium</SelectItem>
@@ -1081,11 +1353,15 @@ export function POPendingProjectDetailsDialog({
                         </Select>
                       ) : (
                         <div className="mt-1">
-                          <Badge className={
-                            projectData.priority === 'High' ? 'bg-red-500 text-white' :
-                            projectData.priority === 'Medium' ? 'bg-amber-500 text-white' :
-                            'bg-green-500 text-white'
-                          }>
+                          <Badge
+                            className={
+                              projectData.priority === "High"
+                                ? "bg-red-500 text-white"
+                                : projectData.priority === "Medium"
+                                ? "bg-amber-500 text-white"
+                                : "bg-green-500 text-white"
+                            }
+                          >
                             {projectData.priority}
                           </Badge>
                         </div>
@@ -1095,9 +1371,22 @@ export function POPendingProjectDetailsDialog({
                     <div>
                       <Label>Assigned To</Label>
                       {isEditing ? (
-                        <Input type="text" value={editedProject.taskInc} onChange={(e) => setEditedProject({...editedProject, taskInc: e.target.value})} className="mt-1" placeholder="Person name" />
+                        <Input
+                          type="text"
+                          value={editedProject.taskInc}
+                          onChange={(e) =>
+                            setEditedProject({
+                              ...editedProject,
+                              taskInc: e.target.value,
+                            })
+                          }
+                          className="mt-1"
+                          placeholder="Person name"
+                        />
                       ) : (
-                        <div className="mt-1 text-gray-900">{projectData.taskInc}</div>
+                        <div className="mt-1 text-gray-900">
+                          {projectData.taskInc}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1110,20 +1399,24 @@ export function POPendingProjectDetailsDialog({
                   <div className="w-10 h-10 bg-teal-500 rounded-xl flex items-center justify-center shadow-md">
                     <Calculator className="w-5 h-5 text-white" />
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900">Materials & Components Analysis</h3>
+                  <h3 className="text-xl font-semibold text-gray-900">
+                    Materials & Components Analysis
+                  </h3>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Components Analysis */}
                   <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
-                    <h4 className="text-lg font-semibold text-purple-900 mb-4">Components Used</h4>
+                    <h4 className="text-lg font-semibold text-purple-900 mb-4">
+                      Components Used
+                    </h4>
                     <div className="space-y-3">
                       <div className="grid grid-cols-3 gap-2 text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
                         <div>COMPONENT</div>
                         <div>DESCRIPTION</div>
                         <div>CONSUMPTION</div>
                       </div>
-                      
+
                       <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
                           <div className="font-medium">Foam</div>
@@ -1174,7 +1467,8 @@ export function POPendingProjectDetailsDialog({
 
                       <div className="bg-purple-50 p-3 rounded-lg mt-3">
                         <div className="text-sm text-purple-800">
-                          <strong>Total Components:</strong> 9 different components used in production
+                          <strong>Total Components:</strong> 9 different
+                          components used in production
                         </div>
                       </div>
                     </div>
@@ -1182,14 +1476,16 @@ export function POPendingProjectDetailsDialog({
 
                   {/* Materials Analysis */}
                   <div className="bg-white border-2 border-teal-200 rounded-xl p-6">
-                    <h4 className="text-lg font-semibold text-teal-900 mb-4">Materials Used</h4>
+                    <h4 className="text-lg font-semibold text-teal-900 mb-4">
+                      Materials Used
+                    </h4>
                     <div className="space-y-3">
                       <div className="grid grid-cols-3 gap-2 text-xs font-medium text-gray-600 bg-teal-50 p-2 rounded">
                         <div>MATERIAL</div>
                         <div>DESCRIPTION</div>
                         <div>CONSUMPTION</div>
                       </div>
-                      
+
                       <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
                           <div className="font-medium">Upper</div>
@@ -1204,7 +1500,9 @@ export function POPendingProjectDetailsDialog({
                         <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
                           <div className="font-medium">Lining</div>
                           <div className="text-gray-600">EVA</div>
-                          <div className="text-gray-600">33/70 - 1.5mm 35pair</div>
+                          <div className="text-gray-600">
+                            33/70 - 1.5mm 35pair
+                          </div>
                         </div>
                         <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
                           <div className="font-medium">Footbed</div>
@@ -1240,7 +1538,8 @@ export function POPendingProjectDetailsDialog({
 
                       <div className="bg-teal-50 p-3 rounded-lg mt-3">
                         <div className="text-sm text-teal-800">
-                          <strong>Total Materials:</strong> 9 different materials used in production
+                          <strong>Total Materials:</strong> 9 different
+                          materials used in production
                         </div>
                       </div>
                     </div>
@@ -1249,30 +1548,51 @@ export function POPendingProjectDetailsDialog({
 
                 {/* Additional Analysis Summary */}
                 <div className="bg-gradient-to-r from-purple-50 to-teal-50 border-2 border-purple-200 rounded-xl p-6">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Production Analysis Summary</h4>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                    Production Analysis Summary
+                  </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="text-center p-4 bg-white rounded-lg border border-purple-200">
-                      <div className="text-sm text-purple-600 font-medium">Total Components</div>
-                      <div className="text-2xl font-bold text-purple-800">9</div>
-                      <div className="text-xs text-gray-500 mt-1">Active components</div>
+                      <div className="text-sm text-purple-600 font-medium">
+                        Total Components
+                      </div>
+                      <div className="text-2xl font-bold text-purple-800">
+                        9
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Active components
+                      </div>
                     </div>
                     <div className="text-center p-4 bg-white rounded-lg border border-teal-200">
-                      <div className="text-sm text-teal-600 font-medium">Total Materials</div>
+                      <div className="text-sm text-teal-600 font-medium">
+                        Total Materials
+                      </div>
                       <div className="text-2xl font-bold text-teal-800">9</div>
-                      <div className="text-xs text-gray-500 mt-1">Raw materials</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Raw materials
+                      </div>
                     </div>
                     <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
-                      <div className="text-sm text-gray-600 font-medium">Production Complexity</div>
-                      <div className="text-2xl font-bold text-gray-800">Medium</div>
-                      <div className="text-xs text-gray-500 mt-1">18 total items</div>
+                      <div className="text-sm text-gray-600 font-medium">
+                        Production Complexity
+                      </div>
+                      <div className="text-2xl font-bold text-gray-800">
+                        Medium
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        18 total items
+                      </div>
                     </div>
                   </div>
                   <div className="mt-4 p-3 bg-white border border-gray-200 rounded-lg">
                     <div className="text-sm text-gray-700">
-                      <strong>PO Target Analysis:</strong> Product ready for production order with standardized materials and components. 
-                      Upper materials include Rexine and Skinfit lining with EVA padding. Component specifications finalized with 
-                      velcro, buckles, and heat transfer elements. All material consumption rates have been validated for efficient 
-                      production and cost optimization.
+                      <strong>PO Target Analysis:</strong> Product ready for
+                      production order with standardized materials and
+                      components. Upper materials include Rexine and Skinfit
+                      lining with EVA padding. Component specifications
+                      finalized with velcro, buckles, and heat transfer
+                      elements. All material consumption rates have been
+                      validated for efficient production and cost optimization.
                     </div>
                   </div>
                 </div>
@@ -1301,13 +1621,14 @@ export function POPendingProjectDetailsDialog({
                       </div>
                       <div>
                         <h4 className="text-xl font-semibold text-orange-900 mb-2">
-                          {editedProject?.poNumber ? "PO Number Added - Buttons Activated" : "PO Number Required to Proceed"}
+                          {editedProject?.poNumber
+                            ? "PO Number Added - Buttons Activated"
+                            : "PO Number Required to Proceed"}
                         </h4>
                         <p className="text-sm text-orange-800">
-                          {editedProject?.poNumber 
+                          {editedProject?.poNumber
                             ? "PO Number has been saved. The advance buttons at the top are now active. You can edit the PO number below if needed."
-                            : "Enter the Purchase Order number below to unlock the advance buttons. Once added, you can advance this project to PO Approved or directly to Production."
-                          }
+                            : "Enter the Purchase Order number below to unlock the advance buttons. Once added, you can advance this project to PO Approved or directly to Production."}
                         </p>
                       </div>
                     </div>
@@ -1318,7 +1639,7 @@ export function POPendingProjectDetailsDialog({
                           <ShoppingCart className="w-4 h-4 text-orange-600" />
                           Purchase Order Number
                         </Label>
-                        
+
                         <div className="flex gap-3 items-start">
                           <div className="flex-1">
                             <Input
@@ -1334,24 +1655,31 @@ export function POPendingProjectDetailsDialog({
                                   <span className="text-green-700 font-medium">
                                     Saved: {editedProject.poNumber}
                                   </span>
-                                  <span className="text-gray-500 ml-1">- You can edit and save again if needed</span>
+                                  <span className="text-gray-500 ml-1">
+                                    - You can edit and save again if needed
+                                  </span>
                                 </>
                               ) : (
                                 <>
                                   <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
-                                  Enter the official purchase order number provided by the client
+                                  Enter the official purchase order number
+                                  provided by the client
                                 </>
                               )}
                             </p>
                           </div>
-                          
+
                           <Button
                             onClick={handleAddPONumber}
                             disabled={!poNumber.trim()}
                             className="h-12 px-6 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed font-semibold shadow-lg whitespace-nowrap"
                           >
                             <Save className="w-5 h-5 mr-2" />
-                            {editedProject?.poNumber ? "Update PO Number" : poNumber.trim() ? "Save PO Number" : "Enter to Continue"}
+                            {editedProject?.poNumber
+                              ? "Update PO Number"
+                              : poNumber.trim()
+                              ? "Save PO Number"
+                              : "Enter to Continue"}
                           </Button>
                         </div>
                       </div>
@@ -1371,7 +1699,11 @@ export function POPendingProjectDetailsDialog({
                           PO Number Added Successfully!
                         </h4>
                         <p className="text-sm text-green-700 mb-3">
-                          PO Number <span className="font-mono font-bold">{project.poNumber}</span> has been added to this project.
+                          PO Number{" "}
+                          <span className="font-mono font-bold">
+                            {project.poNumber}
+                          </span>{" "}
+                          has been added to this project.
                         </p>
                         <p className="text-sm text-green-700">
                           You can now use the buttons at the top to:
@@ -1383,19 +1715,25 @@ export function POPendingProjectDetailsDialog({
                       <div className="bg-white p-4 rounded-lg border border-green-200">
                         <div className="flex items-center gap-2 mb-2">
                           <ArrowRight className="w-4 h-4 text-green-600" />
-                          <span className="text-sm font-semibold text-green-800">Option 1</span>
+                          <span className="text-sm font-semibold text-green-800">
+                            Option 1
+                          </span>
                         </div>
                         <p className="text-xs text-gray-600">
-                          <strong>Advance to PO Approved:</strong> Move project to PO Approved section for review before production
+                          <strong>Advance to PO Approved:</strong> Move project
+                          to PO Approved section for review before production
                         </p>
                       </div>
                       <div className="bg-white p-4 rounded-lg border border-blue-200">
                         <div className="flex items-center gap-2 mb-2">
                           <Factory className="w-4 h-4 text-blue-600" />
-                          <span className="text-sm font-semibold text-blue-800">Option 2</span>
+                          <span className="text-sm font-semibold text-blue-800">
+                            Option 2
+                          </span>
                         </div>
                         <p className="text-xs text-gray-600">
-                          <strong>Approve & Advance to Production:</strong> Skip PO Approved and go directly to Production
+                          <strong>Approve & Advance to Production:</strong> Skip
+                          PO Approved and go directly to Production
                         </p>
                       </div>
                     </div>
@@ -1423,9 +1761,8 @@ export function POPendingProjectDetailsDialog({
                           PO Number Approved
                         </h4>
                         <p className="text-sm text-green-700">
-                          This project has been approved and has
-                          an assigned PO number. You can edit
-                          the PO number if needed.
+                          This project has been approved and has an assigned PO
+                          number. You can edit the PO number if needed.
                         </p>
                       </div>
                     </div>
@@ -1440,8 +1777,7 @@ export function POPendingProjectDetailsDialog({
                             <div className="mt-1 flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
                               <div className="flex items-center gap-3">
                                 <Badge className="bg-green-100 text-green-800 px-3 py-1 text-base font-mono">
-                                  {project.poNumber ||
-                                    "PO-2024-001"}
+                                  {project.poNumber || "PO-2024-001"}
                                 </Badge>
                                 <span className="text-sm text-gray-600">
                                   Approved PO Number
@@ -1450,9 +1786,7 @@ export function POPendingProjectDetailsDialog({
                               <Button
                                 onClick={() => {
                                   setIsAddingPO(true);
-                                  setPONumber(
-                                    project.poNumber || "",
-                                  );
+                                  setPONumber(project.poNumber || "");
                                 }}
                                 variant="outline"
                                 size="sm"
@@ -1466,15 +1800,13 @@ export function POPendingProjectDetailsDialog({
                             <div className="mt-1 space-y-3">
                               <Input
                                 value={poNumber}
-                                onChange={(e) =>
-                                  setPONumber(e.target.value)
-                                }
+                                onChange={(e) => setPONumber(e.target.value)}
                                 placeholder="Enter new PO number (e.g., PO-2024-001)"
                                 className="mt-1"
                               />
                               <p className="text-xs text-gray-500">
-                                Update the purchase order number
-                                for this project
+                                Update the purchase order number for this
+                                project
                               </p>
                               <div className="flex gap-3">
                                 <Button
@@ -1509,18 +1841,12 @@ export function POPendingProjectDetailsDialog({
                         </span>
                       </div>
                       <ul className="text-xs text-blue-700 ml-6 space-y-1">
-                        <li>
-                          • This project is in the "PO Approved"
-                          section
-                        </li>
-                        <li>
-                          • Project status: "PO Issued" (100%
-                          complete)
-                        </li>
+                        <li>• This project is in the "PO Approved" section</li>
+                        <li>• Project status: "PO Issued" (100% complete)</li>
                         <li>• PO status: "Approved"</li>
                         <li>
-                          • You can edit the PO number without
-                          changing the project status
+                          • You can edit the PO number without changing the
+                          project status
                         </li>
                       </ul>
                     </div>
@@ -1549,22 +1875,18 @@ export function POPendingProjectDetailsDialog({
                         <div className="mt-2">
                           <Badge
                             className={
-                              projectData.status ===
-                              "PO Confirmed"
+                              projectData.status === "PO Confirmed"
                                 ? "bg-green-100 text-green-800 text-sm px-3 py-2"
-                                : projectData.status ===
-                                    "PO Ready"
-                                  ? "bg-blue-100 text-blue-800 text-sm px-3 py-2"
-                                  : "bg-orange-100 text-orange-800 text-sm px-3 py-2"
+                                : projectData.status === "PO Ready"
+                                ? "bg-blue-100 text-blue-800 text-sm px-3 py-2"
+                                : "bg-orange-100 text-orange-800 text-sm px-3 py-2"
                             }
                           >
-                            {projectData.status ===
-                            "PO Confirmed"
+                            {projectData.status === "PO Confirmed"
                               ? "✅ Client Approved & PO Confirmed"
-                              : projectData.status ===
-                                  "PO Ready"
-                                ? "📋 Ready for PO Generation"
-                                : "⏳ Awaiting Client Approval"}
+                              : projectData.status === "PO Ready"
+                              ? "📋 Ready for PO Generation"
+                              : "⏳ Awaiting Client Approval"}
                           </Badge>
                         </div>
                       </div>
@@ -1600,9 +1922,7 @@ export function POPendingProjectDetailsDialog({
                               Quantity:
                             </span>
                             <div className="text-gray-900">
-                              {projectData.orderQty.toLocaleString(
-                                "en-IN",
-                              )}{" "}
+                              {projectData.orderQty.toLocaleString("en-IN")}{" "}
                               units
                             </div>
                           </div>
@@ -1612,9 +1932,7 @@ export function POPendingProjectDetailsDialog({
                             </span>
                             <div className="text-gray-900 flex items-center">
                               <IndianRupee className="w-3 h-3 mr-1" />
-                              {projectData.poValue.toLocaleString(
-                                "en-IN",
-                              )}
+                              {projectData.poValue.toLocaleString("en-IN")}
                             </div>
                           </div>
                         </div>

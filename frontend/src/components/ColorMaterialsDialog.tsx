@@ -57,14 +57,14 @@ export function ColorMaterialsDialog({
     [key: string]: { name: string; hex: string };
   }>({});
   const [colorVariantsData, setColorVariantsData] = useState<{
-    [colorId: string]: {
-      materials: Array<{ name: string; desc: string; consumption: string }>;
-      components: Array<{ name: string; desc: string; consumption: string }>;
-      images?: string[];
-      updatedBy?: string | null;
-      updatedAt?: Date;
-    };
+    [colorId: string]: ColorVariantData;
   }>({});
+
+  // NEW: Track pending variants that haven't been saved to DB
+  const [pendingColorVariants, setPendingColorVariants] = useState<{
+    [colorId: string]: ColorVariantData;
+  }>({});
+  const [newColorVariants, setNewColorVariants] = useState<string[]>([]);
 
   // Current editing state for active color tab
   const [currentComponents, setCurrentComponents] = useState<
@@ -168,6 +168,10 @@ export function ColorMaterialsDialog({
 
       setColorVariantsData(variants);
 
+      // NEW: Reset pending variants when loading from backend
+      setPendingColorVariants({});
+      setNewColorVariants([]);
+
       const colorIds = Object.keys(variants);
       if (colorIds.length > 0) {
         setSelectedColors(colorIds);
@@ -200,7 +204,10 @@ export function ColorMaterialsDialog({
   // Load current components/materials when active tab changes
   useEffect(() => {
     if (activeColorTab) {
-      const variantData = colorVariantsData[activeColorTab];
+      // NEW: Check pending variants first, then saved variants
+      const variantData =
+        pendingColorVariants[activeColorTab] ||
+        colorVariantsData[activeColorTab];
       if (variantData) {
         setCurrentComponents(variantData.components || []);
         setCurrentMaterials(variantData.materials || []);
@@ -212,7 +219,7 @@ export function ColorMaterialsDialog({
       setCurrentComponents([]);
       setCurrentMaterials([]);
     }
-  }, [activeColorTab, colorVariantsData]);
+  }, [activeColorTab, colorVariantsData, pendingColorVariants]);
 
   if (!project) return null;
 
@@ -258,6 +265,37 @@ export function ColorMaterialsDialog({
     if (!project?._id) return;
 
     try {
+      // NEW: Check if it's a pending variant (not saved to DB yet)
+      if (pendingColorVariants[colorId]) {
+        // Remove from pending variants
+        const newPending = { ...pendingColorVariants };
+        delete newPending[colorId];
+        setPendingColorVariants(newPending);
+
+        // Remove from new color variants list
+        setNewColorVariants((prev) => prev.filter((id) => id !== colorId));
+
+        // Remove from selected colors
+        const newColors = selectedColors.filter((id) => id !== colorId);
+        setSelectedColors(newColors);
+
+        // Remove from custom colors
+        const newCustomColors = { ...customColors };
+        delete newCustomColors[colorId];
+        setCustomColors(newCustomColors);
+
+        // Switch to first color if we're removing the active tab
+        if (activeColorTab === colorId && newColors.length > 0) {
+          setActiveColorTab(newColors[0]);
+        } else if (newColors.length === 0) {
+          setActiveColorTab("");
+        }
+
+        toast.success("Color variant removed locally");
+        return;
+      }
+
+      // Existing variant - remove from DB
       await api.delete(`/projects/${project._id}/color-variants/${colorId}`);
 
       const newColors = selectedColors.filter((id) => id !== colorId);
@@ -282,53 +320,45 @@ export function ColorMaterialsDialog({
     }
   };
 
-  const handleAddNewColor = async () => {
-    if (!newColorName.trim() || !project?._id) return;
+  // UPDATED: handleAddNewColor - now only creates locally, not in DB
+  const handleAddNewColor = () => {
+    if (!newColorName.trim()) return;
 
-    try {
-      const newColorId = newColorName.toLowerCase().replace(/\s+/g, "_");
+    const newColorId = newColorName.toLowerCase().replace(/\s+/g, "_");
 
-      // Create new color variant with backend API using defaults
-      const variantData = {
-        materials: getDefaultMaterials(),
-        components: getDefaultComponents(),
-        images: [],
-      };
+    // Create new color variant locally only (not in DB yet)
+    const variantData = {
+      materials: getDefaultMaterials(),
+      components: getDefaultComponents(),
+      images: [],
+    };
 
-      await api.put(
-        `/projects/${project._id}/color-variants/${newColorId}`,
-        variantData
-      );
+    // Add to pending variants
+    setPendingColorVariants((prev) => ({
+      ...prev,
+      [newColorId]: variantData,
+    }));
 
-      // 🔥 FIXED: Immediately update local state instead of waiting for reload
-      const newVariantsData = {
-        ...colorVariantsData,
-        [newColorId]: variantData,
-      };
+    // Track as new variant
+    setNewColorVariants((prev) => [...prev, newColorId]);
 
-      setColorVariantsData(newVariantsData);
+    // Add to selected colors and set as active
+    setSelectedColors((prev) => [...prev, newColorId]);
+    setActiveColorTab(newColorId);
 
-      // Update selected colors and active tab immediately
-      setSelectedColors((prev) => [...prev, newColorId]);
-      setActiveColorTab(newColorId);
+    // Also update custom colors for display
+    setCustomColors((prev) => ({
+      ...prev,
+      [newColorId]: {
+        name: newColorName,
+        hex: getColorHex(newColorName),
+      },
+    }));
 
-      // Also update custom colors for display
-      setCustomColors((prev) => ({
-        ...prev,
-        [newColorId]: {
-          name: newColorName,
-          hex: getColorHex(newColorName),
-        },
-      }));
-
-      toast.success(`New color variant "${newColorName}" created`);
-      setNewColorName("");
-      setNewColorHex("#000000");
-      setIsAddingColor(false);
-    } catch (error) {
-      console.error("Error creating color variant:", error);
-      toast.error("Failed to create color variant");
-    }
+    toast.success(`New color variant "${newColorName}" created locally`);
+    setNewColorName("");
+    setNewColorHex("#000000");
+    setIsAddingColor(false);
   };
 
   const handleCloneDefaultColors = async (colorIds: string[]) => {
@@ -357,6 +387,29 @@ export function ColorMaterialsDialog({
     const updated = [...currentComponents];
     updated[index] = { ...updated[index], [field]: value };
     setCurrentComponents(updated);
+
+    // NEW: Update the pending or existing variant data
+    if (activeColorTab) {
+      if (pendingColorVariants[activeColorTab]) {
+        // Update pending variant
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...prev[activeColorTab],
+            components: updated,
+          },
+        }));
+      } else if (colorVariantsData[activeColorTab]) {
+        // Update existing variant in pending changes
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...colorVariantsData[activeColorTab],
+            components: updated,
+          },
+        }));
+      }
+    }
   };
 
   // Update material field
@@ -368,12 +421,57 @@ export function ColorMaterialsDialog({
     const updated = [...currentMaterials];
     updated[index] = { ...updated[index], [field]: value };
     setCurrentMaterials(updated);
+
+    // NEW: Update the pending or existing variant data
+    if (activeColorTab) {
+      if (pendingColorVariants[activeColorTab]) {
+        // Update pending variant
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...prev[activeColorTab],
+            materials: updated,
+          },
+        }));
+      } else if (colorVariantsData[activeColorTab]) {
+        // Update existing variant in pending changes
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...colorVariantsData[activeColorTab],
+            materials: updated,
+          },
+        }));
+      }
+    }
   };
 
   // Delete component
   const deleteComponent = (index: number) => {
     const updated = currentComponents.filter((_, i) => i !== index);
     setCurrentComponents(updated);
+
+    // NEW: Update the pending or existing variant data
+    if (activeColorTab) {
+      if (pendingColorVariants[activeColorTab]) {
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...prev[activeColorTab],
+            components: updated,
+          },
+        }));
+      } else if (colorVariantsData[activeColorTab]) {
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...colorVariantsData[activeColorTab],
+            components: updated,
+          },
+        }));
+      }
+    }
+
     toast.success("Component removed");
   };
 
@@ -381,6 +479,28 @@ export function ColorMaterialsDialog({
   const deleteMaterial = (index: number) => {
     const updated = currentMaterials.filter((_, i) => i !== index);
     setCurrentMaterials(updated);
+
+    // NEW: Update the pending or existing variant data
+    if (activeColorTab) {
+      if (pendingColorVariants[activeColorTab]) {
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...prev[activeColorTab],
+            materials: updated,
+          },
+        }));
+      } else if (colorVariantsData[activeColorTab]) {
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...colorVariantsData[activeColorTab],
+            materials: updated,
+          },
+        }));
+      }
+    }
+
     toast.success("Material removed");
   };
 
@@ -401,14 +521,37 @@ export function ColorMaterialsDialog({
       return;
     }
 
-    setCurrentComponents([
+    const newComponents = [
       ...currentComponents,
       {
         name: newComponentName,
         desc: newComponentDesc,
         consumption: newComponentConsumption,
       },
-    ]);
+    ];
+
+    setCurrentComponents(newComponents);
+
+    // NEW: Update the pending or existing variant data
+    if (activeColorTab) {
+      if (pendingColorVariants[activeColorTab]) {
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...prev[activeColorTab],
+            components: newComponents,
+          },
+        }));
+      } else if (colorVariantsData[activeColorTab]) {
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...colorVariantsData[activeColorTab],
+            components: newComponents,
+          },
+        }));
+      }
+    }
 
     // Reset form and close dialog
     setNewComponentName("");
@@ -425,14 +568,37 @@ export function ColorMaterialsDialog({
       return;
     }
 
-    setCurrentMaterials([
+    const newMaterials = [
       ...currentMaterials,
       {
         name: newMaterialName,
         desc: newMaterialDesc,
         consumption: newMaterialConsumption,
       },
-    ]);
+    ];
+
+    setCurrentMaterials(newMaterials);
+
+    // NEW: Update the pending or existing variant data
+    if (activeColorTab) {
+      if (pendingColorVariants[activeColorTab]) {
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...prev[activeColorTab],
+            materials: newMaterials,
+          },
+        }));
+      } else if (colorVariantsData[activeColorTab]) {
+        setPendingColorVariants((prev) => ({
+          ...prev,
+          [activeColorTab]: {
+            ...colorVariantsData[activeColorTab],
+            materials: newMaterials,
+          },
+        }));
+      }
+    }
 
     // Reset form and close dialog
     setNewMaterialName("");
@@ -442,30 +608,43 @@ export function ColorMaterialsDialog({
     toast.success("Material added successfully");
   };
 
+  // UPDATED: handleSave - saves all pending changes to DB
   const handleSave = async () => {
-    if (!project?._id || !activeColorTab) return;
+    if (!project?._id) return;
 
     try {
-      // Update the current variant data
-      const updatedVariantData = {
-        materials: currentMaterials,
-        components: currentComponents,
-        images: colorVariantsData[activeColorTab]?.images || [],
-      };
+      const updates = [];
 
-      // Save to backend
-      await api.put(
-        `/projects/${project._id}/color-variants/${activeColorTab}`,
-        updatedVariantData
-      );
+      // Save all pending new variants to DB
+      for (const [colorId, variantData] of Object.entries(
+        pendingColorVariants
+      )) {
+        updates.push(
+          api.put(
+            `/projects/${project._id}/color-variants/${colorId}`,
+            variantData
+          )
+        );
+      }
 
-      // Update local state
-      setColorVariantsData((prev) => ({
-        ...prev,
-        [activeColorTab]: updatedVariantData,
-      }));
+      // Execute all updates
+      if (updates.length > 0) {
+        await Promise.all(updates);
+      } else {
+        // If no new variants, but we have active tab changes, save them
+        if (activeColorTab && pendingColorVariants[activeColorTab]) {
+          await api.put(
+            `/projects/${project._id}/color-variants/${activeColorTab}`,
+            pendingColorVariants[activeColorTab]
+          );
+        }
+      }
 
-      toast.success("Color variants saved successfully!");
+      // Clear pending variants after successful save
+      setPendingColorVariants({});
+      setNewColorVariants([]);
+
+      toast.success("All color variants saved successfully!");
 
       // 🔥 FIXED: Call onSave with ALL selected colors, not just active one
       if (onSave) {
@@ -478,6 +657,9 @@ export function ColorMaterialsDialog({
       toast.error("Failed to save color variants");
     }
   };
+
+  // NEW: Check if there are unsaved changes
+  const hasUnsavedChanges = Object.keys(pendingColorVariants).length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -492,6 +674,11 @@ export function ColorMaterialsDialog({
               <div>
                 <DialogTitle className="text-3xl font-semibold text-gray-900 mb-2">
                   Brand Color Variants
+                  {hasUnsavedChanges && (
+                    <span className="ml-2 text-sm font-normal text-orange-600 bg-orange-100 px-2 py-1 rounded">
+                      Unsaved Changes
+                    </span>
+                  )}
                 </DialogTitle>
                 <DialogDescription className="sr-only">
                   Manage color options and their specific materials & components
@@ -500,6 +687,11 @@ export function ColorMaterialsDialog({
                   <span className="text-lg text-gray-600">
                     {project.autoCode}
                   </span>
+                  {newColorVariants.length > 0 && (
+                    <span className="text-sm text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                      {newColorVariants.length} new variant(s) pending save
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -507,6 +699,7 @@ export function ColorMaterialsDialog({
               <Button
                 onClick={handleSave}
                 className="bg-green-500 hover:bg-green-600"
+                disabled={!hasUnsavedChanges}
               >
                 <Save className="w-4 h-4 mr-2" />
                 Save Color Variant
@@ -550,6 +743,11 @@ export function ColorMaterialsDialog({
                       {colorId === project.color && (
                         <span className="ml-1.5 text-xs text-gray-500">
                           (Default)
+                        </span>
+                      )}
+                      {pendingColorVariants[colorId] && (
+                        <span className="ml-1.5 text-xs text-orange-500">
+                          *
                         </span>
                       )}
                     </span>
@@ -648,6 +846,11 @@ export function ColorMaterialsDialog({
                         <span className="text-xs font-medium text-purple-700">
                           {getColorName(activeColorTab)}
                         </span>
+                        {pendingColorVariants[activeColorTab] && (
+                          <span className="text-xs text-orange-500 ml-1">
+                            (unsaved)
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-3">
@@ -754,6 +957,11 @@ export function ColorMaterialsDialog({
                         <span className="text-xs font-medium text-teal-700">
                           {getColorName(activeColorTab)}
                         </span>
+                        {pendingColorVariants[activeColorTab] && (
+                          <span className="text-xs text-orange-500 ml-1">
+                            (unsaved)
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-3">

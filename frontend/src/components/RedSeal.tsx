@@ -239,7 +239,7 @@ export function RedSeal() {
                     "Status",
                     "Priority",
                     "Task-INC",
-                    "Cost Overview",
+                    // "Cost Overview",
                     "Remarks",
                     "Actions",
                   ].map((h) => (
@@ -385,7 +385,7 @@ export function RedSeal() {
                     </td>
 
                     {/* Cost Overview */}
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    {/* <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium">
                         {p.tentativeCost || "₹ 1,80,000"}
                       </div>
@@ -395,7 +395,7 @@ export function RedSeal() {
                       <div className="text-xs text-red-500">
                         {"vs Target: +5000"}
                       </div>
-                    </td>
+                    </td> */}
 
                     {/* Remarks */}
                     <td className="px-6 py-4 whitespace-nowrap">

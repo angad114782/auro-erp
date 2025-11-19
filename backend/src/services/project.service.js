@@ -1,3 +1,4 @@
+import { PoDetails } from "../models/PoDetails.model.js";
 import { Project } from "../models/Project.model.js";
 import {
   normalizeProjectStatus,
@@ -272,41 +273,85 @@ export const setProjectPO = async (id, payload = {}, by = null) => {
   const hasPoNumber = (payload.poNumber || "").trim().length > 0;
   const nextStatus = hasPoNumber ? "po_approved" : "po_pending";
 
-  const prev = project.po || {};
-  const effectiveQty = qty != null ? qty : prev.orderQuantity ?? null;
-  const effectivePrice = price != null ? price : prev.unitPrice ?? null;
+  // Find existing PO or create new one
+  let poDetails = await PoDetails.findOne({ project: id });
 
-  const totalAmount =
-    effectiveQty != null && effectivePrice != null
-      ? effectiveQty * effectivePrice
-      : prev.totalAmount ?? null;
+  if (poDetails) {
+    // Update existing PO
+    const prev = poDetails.toObject();
 
-  project.po = {
-    orderQuantity: effectiveQty,
-    unitPrice: effectivePrice,
-    totalAmount,
-    poNumber: payload.poNumber ?? prev.poNumber ?? "",
-    status: nextStatus,
-    deliveryDate: payload.deliveryDate
+    const effectiveQty = qty != null ? qty : prev.orderQuantity ?? null;
+    const effectivePrice = price != null ? price : prev.unitPrice ?? null;
+    const totalAmount =
+      effectiveQty != null && effectivePrice != null
+        ? effectiveQty * effectivePrice
+        : prev.totalAmount ?? null;
+
+    poDetails.orderQuantity = effectiveQty;
+    poDetails.unitPrice = effectivePrice;
+    poDetails.totalAmount = totalAmount;
+    poDetails.poNumber = payload.poNumber ?? prev.poNumber ?? "";
+    poDetails.status = nextStatus;
+    poDetails.deliveryDate = payload.deliveryDate
       ? new Date(payload.deliveryDate)
-      : prev.deliveryDate ?? null,
-    paymentTerms: payload.paymentTerms ?? prev.paymentTerms ?? "",
-    urgencyLevel: payload.urgencyLevel ?? prev.urgencyLevel ?? "Normal",
-    qualityRequirements:
-      payload.qualityRequirements ?? prev.qualityRequirements ?? "",
-    clientFeedback: payload.clientFeedback ?? prev.clientFeedback ?? "",
-    specialInstructions:
-      payload.specialInstructions ?? prev.specialInstructions ?? "",
-    targetAt: prev.targetAt ?? now,
-    issuedAt: hasPoNumber ? prev.issuedAt ?? now : prev.issuedAt ?? null,
-    updatedBy: by,
-    updatedAt: now,
-  };
+      : prev.deliveryDate ?? null;
+    poDetails.paymentTerms = payload.paymentTerms ?? prev.paymentTerms ?? "";
+    poDetails.urgencyLevel =
+      payload.urgencyLevel ?? prev.urgencyLevel ?? "Normal";
+    poDetails.qualityRequirements =
+      payload.qualityRequirements ?? prev.qualityRequirements ?? "";
+    poDetails.clientFeedback =
+      payload.clientFeedback ?? prev.clientFeedback ?? "";
+    poDetails.specialInstructions =
+      payload.specialInstructions ?? prev.specialInstructions ?? "";
+    poDetails.targetAt = prev.targetAt ?? now;
+    poDetails.issuedAt = hasPoNumber
+      ? prev.issuedAt ?? now
+      : prev.issuedAt ?? null;
+    poDetails.updatedBy = by;
+    poDetails.updatedAt = now;
 
+    await poDetails.save();
+  } else {
+    // Create new PO
+    const effectiveQty = qty;
+    const effectivePrice = price;
+    const totalAmount =
+      effectiveQty != null && effectivePrice != null
+        ? effectiveQty * effectivePrice
+        : null;
+
+    poDetails = await PoDetails.create({
+      project: id,
+      orderQuantity: effectiveQty,
+      unitPrice: effectivePrice,
+      totalAmount: totalAmount,
+      poNumber: payload.poNumber ?? "",
+      status: nextStatus,
+      deliveryDate: payload.deliveryDate
+        ? new Date(payload.deliveryDate)
+        : null,
+      paymentTerms: payload.paymentTerms ?? "",
+      urgencyLevel: payload.urgencyLevel ?? "Normal",
+      qualityRequirements: payload.qualityRequirements ?? "",
+      clientFeedback: payload.clientFeedback ?? "",
+      specialInstructions: payload.specialInstructions ?? "",
+      targetAt: now,
+      issuedAt: hasPoNumber ? now : null,
+      updatedBy: by,
+      updatedAt: now,
+    });
+  }
+
+  // Update project status and history
   const from = project.status || null;
   project.status = nextStatus;
   project.statusHistory.push({ from, to: nextStatus, by, at: now });
 
   await project.save();
-  return project;
+
+  return {
+    project,
+    poDetails,
+  };
 };
