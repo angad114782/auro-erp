@@ -1,210 +1,266 @@
-import React from 'react';
-import { Search, Bell, User, ChevronDown, LayoutDashboard, Tags, Lightbulb, ImageIcon, Workflow, Factory, Package, Users, BellIcon, BarChart3, Grid, CheckCircle, AlertTriangle, Info, Clock, Eye, MoreHorizontal, Truck } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { Badge } from './ui/badge';
-import { Separator } from './ui/separator';
-import { ScrollArea } from './ui/scroll-area';
-import { toast } from 'sonner@2.0.3';
+// components/HeaderBar.tsx
+import React from "react";
+import {
+  Search,
+  Bell,
+  User,
+  ChevronDown,
+  LayoutDashboard,
+  Tags,
+  Lightbulb,
+  ImageIcon,
+  Workflow,
+  Factory,
+  Package,
+  Users,
+  BellIcon,
+  BarChart3,
+  Grid,
+  CheckCircle,
+  AlertTriangle,
+  Info,
+  Clock,
+  Eye,
+  MoreHorizontal,
+  Truck,
+  LogOut,
+} from "lucide-react";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Badge } from "./ui/badge";
+import { Separator } from "./ui/separator";
+import { ScrollArea } from "./ui/scroll-area";
+import { toast } from "sonner";
+import { useAuth } from "../lib/AuthContext";
 
 interface HeaderBarProps {
   currentModule: string;
 }
 
-export function HeaderBar({ currentModule }: HeaderBarProps) {
+interface Notification {
+  id: number;
+  type: "success" | "warning" | "error" | "info";
+  title: string;
+  message: string;
+  time: string;
+  user: string;
+  unread: boolean;
+}
+
+interface ModuleInfo {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  gradient: string;
+}
+
+export function HeaderBar({
+  currentModule,
+}: HeaderBarProps): React.JSX.Element {
+  const { user, logout } = useAuth();
+
   // Sample notifications data
-  const notifications = [
+  const notifications: Notification[] = [
     {
       id: 1,
-      type: 'success',
-      title: 'Project RND0128 Approved',
-      message: 'Green seal approved for Bacca Bucci Sports Collection',
-      time: '2 minutes ago',
-      user: 'QC Manager',
-      unread: true
+      type: "success",
+      title: "Project RND0128 Approved",
+      message: "Green seal approved for Bacca Bucci Sports Collection",
+      time: "2 minutes ago",
+      user: "QC Manager",
+      unread: true,
     },
     {
       id: 2,
-      type: 'warning',
-      title: 'Cost Variance Alert',
-      message: 'Project RND0125 exceeded budget by 12%',
-      time: '15 minutes ago',
-      user: 'Finance Manager',
-      unread: true
+      type: "warning",
+      title: "Cost Variance Alert",
+      message: "Project RND0125 exceeded budget by 12%",
+      time: "15 minutes ago",
+      user: "Finance Manager",
+      unread: true,
     },
     {
       id: 3,
-      type: 'info',
-      title: 'New Prototype Uploaded',
-      message: 'Lifestyle Brand Summer Collection - 5 new designs',
-      time: '1 hour ago',
-      user: 'Designer A',
-      unread: false
+      type: "info",
+      title: "New Prototype Uploaded",
+      message: "Lifestyle Brand Summer Collection - 5 new designs",
+      time: "1 hour ago",
+      user: "Designer A",
+      unread: false,
     },
     {
       id: 4,
-      type: 'success',
-      title: 'Production Order Completed',
-      message: 'PO-2024-001 finished production (2,500 units)',
-      time: '2 hours ago',
-      user: 'Plant Manager',
-      unread: false
+      type: "success",
+      title: "Production Order Completed",
+      message: "PO-2024-001 finished production (2,500 units)",
+      time: "2 hours ago",
+      user: "Plant Manager",
+      unread: false,
     },
     {
       id: 5,
-      type: 'error',
-      title: 'System Alert',
-      message: 'Database backup failed - requires immediate attention',
-      time: '3 hours ago',
-      user: 'System Admin',
-      unread: true
+      type: "error",
+      title: "System Alert",
+      message: "Database backup failed - requires immediate attention",
+      time: "3 hours ago",
+      user: "System Admin",
+      unread: true,
     },
     {
       id: 6,
-      type: 'info',
-      title: 'Vendor Registration',
+      type: "info",
+      title: "Vendor Registration",
       message: 'New supplier "Premium Materials Ltd" approved',
-      time: '4 hours ago',
-      user: 'Procurement Head',
-      unread: false
-    }
+      time: "4 hours ago",
+      user: "Procurement Head",
+      unread: false,
+    },
   ];
 
-  const unreadCount = notifications.filter(n => n.unread).length;
+  const unreadCount = notifications.filter((n) => n.unread).length;
 
-  const getNotificationIcon = (type: string) => {
+  const getNotificationIcon = (type: string): React.ReactNode => {
     switch (type) {
-      case 'success':
+      case "success":
         return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'warning':
+      case "warning":
         return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
-      case 'error':
+      case "error":
         return <AlertTriangle className="w-4 h-4 text-red-500" />;
-      case 'info':
+      case "info":
       default:
         return <Info className="w-4 h-4 text-blue-500" />;
     }
   };
 
-  const getNotificationBg = (type: string, unread: boolean) => {
-    if (!unread) return 'bg-gray-50';
-    
+  const getNotificationBg = (type: string, unread: boolean): string => {
+    if (!unread) return "bg-gray-50";
+
     switch (type) {
-      case 'success':
-        return 'bg-green-50 border-l-4 border-l-green-500';
-      case 'warning':
-        return 'bg-yellow-50 border-l-4 border-l-yellow-500';
-      case 'error':
-        return 'bg-red-50 border-l-4 border-l-red-500';
-      case 'info':
+      case "success":
+        return "bg-green-50 border-l-4 border-l-green-500";
+      case "warning":
+        return "bg-yellow-50 border-l-4 border-l-yellow-500";
+      case "error":
+        return "bg-red-50 border-l-4 border-l-red-500";
+      case "info":
       default:
-        return 'bg-blue-50 border-l-4 border-l-blue-500';
+        return "bg-blue-50 border-l-4 border-l-blue-500";
     }
   };
 
-  const markAllAsRead = () => {
+  const markAllAsRead = (): void => {
     toast.success("All notifications marked as read");
   };
 
-  const getModuleInfo = (module: string) => {
+  const getModuleInfo = (module: string): ModuleInfo => {
     switch (module) {
-      case 'dashboard':
+      case "dashboard":
         return {
-          title: 'Executive Dashboard',
-          description: 'Comprehensive business intelligence and analytics overview',
+          title: "Executive Dashboard",
+          description:
+            "Comprehensive business intelligence and analytics overview",
           icon: <LayoutDashboard className="w-6 h-6 text-white" />,
-          gradient: 'from-[#0c9dcb] to-[#26b4e0]'
+          gradient: "from-[#0c9dcb] to-[#26b4e0]",
         };
-      case 'master-data':
+      case "master-data":
         return {
-          title: 'Master Data Management',
-          description: 'Centralized reference data management system',
+          title: "Master Data Management",
+          description: "Centralized reference data management system",
           icon: <Tags className="w-6 h-6 text-white" />,
-          gradient: 'from-[#20c997] to-[#17a2b8]'
+          gradient: "from-[#20c997] to-[#17a2b8]",
         };
-      case 'rd-management':
+      case "rd-management":
         return {
-          title: 'R&D Management',
-          description: 'Design lifecycle and project management system',
+          title: "R&D Management",
+          description: "Design lifecycle and project management system",
           icon: <Lightbulb className="w-6 h-6 text-white" />,
-          gradient: 'from-[#0c9dcb] to-[#26b4e0]'
+          gradient: "from-[#0c9dcb] to-[#26b4e0]",
         };
-      case 'image-document':
+      case "image-document":
         return {
-          title: 'Image & Document Management',
-          description: 'Digital asset management and document control system',
+          title: "Image & Document Management",
+          description: "Digital asset management and document control system",
           icon: <ImageIcon className="w-6 h-6 text-white" />,
-          gradient: 'from-[#fd7e14] to-[#ffc107]'
+          gradient: "from-[#fd7e14] to-[#ffc107]",
         };
-      case 'workflow-automation':
+      case "workflow-automation":
         return {
-          title: 'Workflow Automation',
-          description: 'Business process automation and optimization',
+          title: "Workflow Automation",
+          description: "Business process automation and optimization",
           icon: <Workflow className="w-6 h-6 text-white" />,
-          gradient: 'from-[#e83e8c] to-[#dc3545]'
+          gradient: "from-[#e83e8c] to-[#dc3545]",
         };
-      case 'production':
+      case "production":
         return {
-          title: 'Production Management',
-          description: 'Manufacturing process tracking: Cutting → Printing → Upper → Assembly → Packing → RFD',
+          title: "Production Management",
+          description:
+            "Manufacturing process tracking: Cutting → Printing → Upper → Assembly → Packing → RFD",
           icon: <Factory className="w-6 h-6 text-white" />,
-          gradient: 'from-[#6f42c1] to-[#7c3aed]'
+          gradient: "from-[#6f42c1] to-[#7c3aed]",
         };
-      case 'inventory':
+      case "inventory":
         return {
-          title: 'Procurement & Inventory Management',
-          description: 'Supply chain and inventory management system',
+          title: "Inventory & Storage",
+          description:
+            "Advanced inventory management and storage optimization system",
           icon: <Package className="w-6 h-6 text-white" />,
-          gradient: 'from-[#198754] to-[#20c997]'
+          gradient: "from-[#198754] to-[#20c997]",
         };
-      case 'delivery':
+      case "delivery":
         return {
-          title: 'Delivery Management',
-          description: 'Track deliveries, shipments, and logistics operations',
+          title: "Delivery Management",
+          description: "Track deliveries, shipments, and logistics operations",
           icon: <Truck className="w-6 h-6 text-white" />,
-          gradient: 'from-[#0d6efd] to-[#6610f2]'
+          gradient: "from-[#0d6efd] to-[#6610f2]",
         };
-      case 'users':
+      case "users":
         return {
-          title: 'User & Role Management',
-          description: 'System access control and user administration',
+          title: "User & Role Management",
+          description: "System access control and user administration",
           icon: <Users className="w-6 h-6 text-white" />,
-          gradient: 'from-[#6610f2] to-[#6f42c1]'
+          gradient: "from-[#6610f2] to-[#6f42c1]",
         };
-      case 'notifications':
+      case "notifications":
         return {
-          title: 'Notifications & Alerts',
-          description: 'System notifications and alert management',
+          title: "Notifications & Alerts",
+          description: "System notifications and alert management",
           icon: <BellIcon className="w-6 h-6 text-white" />,
-          gradient: 'from-[#dc3545] to-[#e83e8c]'
+          gradient: "from-[#dc3545] to-[#e83e8c]",
         };
-      case 'reports':
+      case "reports":
         return {
-          title: 'Reporting & Analytics',
-          description: 'Business intelligence and data analytics platform',
+          title: "Reporting & Analytics",
+          description: "Business intelligence and data analytics platform",
           icon: <BarChart3 className="w-6 h-6 text-white" />,
-          gradient: 'from-[#0d6efd] to-[#6610f2]'
+          gradient: "from-[#0d6efd] to-[#6610f2]",
         };
-      case 'wireframe':
+      case "wireframe":
         return {
-          title: 'System Wireframe',
-          description: 'System architecture and module overview',
+          title: "System Documentation",
+          description: "System architecture and module overview",
           icon: <Grid className="w-6 h-6 text-white" />,
-          gradient: 'from-[#495057] to-[#6c757d]'
+          gradient: "from-[#495057] to-[#6c757d]",
         };
       default:
         return {
-          title: 'Executive Dashboard',
-          description: 'Comprehensive business intelligence and analytics overview',
+          title: "Executive Dashboard",
+          description:
+            "Comprehensive business intelligence and analytics overview",
           icon: <LayoutDashboard className="w-6 h-6 text-white" />,
-          gradient: 'from-[#0c9dcb] to-[#26b4e0]'
+          gradient: "from-[#0c9dcb] to-[#26b4e0]",
         };
     }
   };
 
-  const handleNotificationClick = () => {
+  const handleNotificationClick = (): void => {
     toast.success("Opening notifications panel");
   };
 
@@ -216,16 +272,16 @@ export function HeaderBar({ currentModule }: HeaderBarProps) {
         <div className="flex items-center justify-between">
           {/* Enhanced Module Header */}
           <div className="flex items-center gap-4">
-            <div className={`w-12 h-12 bg-gradient-to-br ${moduleInfo.gradient} rounded-xl flex items-center justify-center shadow-lg`}>
+            <div
+              className={`w-12 h-12 bg-gradient-to-br ${moduleInfo.gradient} rounded-xl flex items-center justify-center shadow-lg`}
+            >
               {moduleInfo.icon}
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900 mb-1">
-                {moduleInfo.title === 'Procurement & Inventory Management' ? 'Inventory & Storage' : moduleInfo.title}
+                {moduleInfo.title}
               </h1>
-              <p className="text-gray-600 text-sm">
-                {moduleInfo.title === 'Procurement & Inventory Management' ? 'Advanced inventory management and storage optimization system' : moduleInfo.description}
-              </p>
+              <p className="text-gray-600 text-sm">{moduleInfo.description}</p>
             </div>
           </div>
 
@@ -251,8 +307,8 @@ export function HeaderBar({ currentModule }: HeaderBarProps) {
                 >
                   <Bell className="w-5 h-5 text-gray-600" />
                   {unreadCount > 0 && (
-                    <Badge 
-                      variant="destructive" 
+                    <Badge
+                      variant="destructive"
                       className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs font-semibold bg-red-500 hover:bg-red-500"
                     >
                       {unreadCount}
@@ -267,9 +323,14 @@ export function HeaderBar({ currentModule }: HeaderBarProps) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Bell className="w-5 h-5 text-gray-700" />
-                        <h3 className="font-semibold text-gray-900">Notifications</h3>
+                        <h3 className="font-semibold text-gray-900">
+                          Notifications
+                        </h3>
                         {unreadCount > 0 && (
-                          <Badge variant="secondary" className="bg-red-100 text-red-700 hover:bg-red-100">
+                          <Badge
+                            variant="secondary"
+                            className="bg-red-100 text-red-700 hover:bg-red-100"
+                          >
                             {unreadCount} new
                           </Badge>
                         )}
@@ -292,11 +353,14 @@ export function HeaderBar({ currentModule }: HeaderBarProps) {
                     <div className="p-2">
                       {notifications.map((notification, index) => (
                         <div key={notification.id}>
-                          <div 
-                            className={`group p-4 rounded-lg transition-all cursor-pointer hover:shadow-md ${
-                              getNotificationBg(notification.type, notification.unread)
-                            }`}
-                            onClick={() => toast.info(`Opening ${notification.title}`)}
+                          <div
+                            className={`group p-4 rounded-lg transition-all cursor-pointer hover:shadow-md ${getNotificationBg(
+                              notification.type,
+                              notification.unread
+                            )}`}
+                            onClick={() =>
+                              toast.info(`Opening ${notification.title}`)
+                            }
                           >
                             <div className="flex items-start gap-3">
                               <div className="flex-shrink-0 mt-0.5">
@@ -304,14 +368,26 @@ export function HeaderBar({ currentModule }: HeaderBarProps) {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between">
-                                  <h4 className={`font-medium text-sm ${notification.unread ? 'text-gray-900' : 'text-gray-700'}`}>
+                                  <h4
+                                    className={`font-medium text-sm ${
+                                      notification.unread
+                                        ? "text-gray-900"
+                                        : "text-gray-700"
+                                    }`}
+                                  >
                                     {notification.title}
                                   </h4>
                                   {notification.unread && (
                                     <div className="w-2 h-2 bg-[#0c9dcb] rounded-full flex-shrink-0 ml-2"></div>
                                   )}
                                 </div>
-                                <p className={`text-sm mt-1 ${notification.unread ? 'text-gray-700' : 'text-gray-600'}`}>
+                                <p
+                                  className={`text-sm mt-1 ${
+                                    notification.unread
+                                      ? "text-gray-700"
+                                      : "text-gray-600"
+                                  }`}
+                                >
                                   {notification.message}
                                 </p>
                                 <div className="flex items-center gap-3 mt-2">
@@ -337,11 +413,19 @@ export function HeaderBar({ currentModule }: HeaderBarProps) {
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => toast.info("Viewing details")}>
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        toast.info("Viewing details")
+                                      }
+                                    >
                                       <Eye className="w-4 h-4 mr-2" />
                                       View Details
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => toast.info("Marking as read")}>
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        toast.info("Marking as read")
+                                      }
+                                    >
                                       <CheckCircle className="w-4 h-4 mr-2" />
                                       Mark as Read
                                     </DropdownMenuItem>
@@ -383,8 +467,12 @@ export function HeaderBar({ currentModule }: HeaderBarProps) {
                     <User className="w-4 h-4 text-white" />
                   </div>
                   <div className="text-left">
-                    <div className="font-semibold text-gray-900 text-sm">Admin User</div>
-                    <div className="text-xs text-gray-500">Administrator</div>
+                    <div className="font-semibold text-gray-900 text-sm">
+                      {user?.name || "User"}
+                    </div>
+                    <div className="text-xs text-gray-500 capitalize">
+                      {user?.role || "User"}
+                    </div>
                   </div>
                   <ChevronDown className="w-4 h-4 text-gray-400" />
                 </Button>
@@ -393,13 +481,16 @@ export function HeaderBar({ currentModule }: HeaderBarProps) {
                 <DropdownMenuItem onClick={() => toast.info("Opening profile")}>
                   Profile Settings
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast.info("Opening preferences")}>
+                <DropdownMenuItem
+                  onClick={() => toast.info("Opening preferences")}
+                >
                   Account Preferences
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => toast.info("Opening help")}>
                   Help & Support
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast.info("Logging out")} className="text-red-600">
+                <DropdownMenuItem onClick={logout} className="text-red-600">
+                  <LogOut className="w-4 h-4 mr-2" />
                   Logout
                 </DropdownMenuItem>
               </DropdownMenuContent>

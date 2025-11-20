@@ -102,13 +102,24 @@ export const getProjects = async (query = {}) => {
 };
 
 export const getProjectById = async (id) => {
-  return Project.findOne({ _id: id, isActive: true })
+  const project = await Project.findOne({ _id: id, isActive: true })
     .populate("company", "name")
     .populate("brand", "name")
     .populate("category", "name")
     .populate("type", "name")
     .populate("country", "name")
-    .populate("assignPerson", "name");
+    .populate("assignPerson", "name")
+    .lean(); // make it plain object so we can attach PO easily
+
+  if (!project) return null;
+
+  // fetch PO for this project
+  const po = await PoDetails.findOne({ project: project._id }).lean();
+
+  // attach
+  project.po = po || null;
+
+  return project;
 };
 
 /** ---------- UPDATE (PUT) ---------- **/
@@ -198,11 +209,21 @@ export const updateProjectStatus = async (id, statusInput, by = null) => {
   if (!project || !project.isActive) return null;
 
   const from = project.status || null;
+
+  // ✅ Only update the status field, preserve everything else
   project.status = to;
   project.statusHistory.push({ from, to, by, at: new Date() });
 
   await project.save();
-  return project;
+
+  // ✅ Return the complete project with populated fields
+  return await Project.findById(id)
+    .populate("company", "name")
+    .populate("brand", "name")
+    .populate("category", "name")
+    .populate("type", "name")
+    .populate("country", "name")
+    .populate("assignPerson", "name");
 };
 
 export const setProjectNextUpdate = async (id, date, note = "", by = null) => {
@@ -252,6 +273,8 @@ export const setClientApproval = async (id, { status, by = null }) => {
 export const setProjectPO = async (id, payload = {}, by = null) => {
   const project = await Project.findById(id);
   if (!project || !project.isActive) return null;
+
+  console.log(id, payload, "dddddddddddddddd");
 
   const now = new Date();
 
@@ -350,8 +373,13 @@ export const setProjectPO = async (id, payload = {}, by = null) => {
 
   await project.save();
 
-  return {
-    project,
-    poDetails,
-  };
+  // Re-fetch full populated project after PO update
+  const populatedProject = await Project.findById(project._id)
+    .populate("company brand category type country assignPerson")
+    .lean();
+
+  // Attach PO details in same shape frontend expects
+  populatedProject.po = poDetails;
+
+  return populatedProject;
 };

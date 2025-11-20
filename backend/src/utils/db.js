@@ -1,7 +1,9 @@
 import mongoose from "mongoose";
 
 export const connectDb = async () => {
-  const uri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/footwear_erp";
+  const uri =
+    process.env.MONGO_URI ||
+    "mongodb+srv://ecommerce:puneet2001jangra@ecommerce.cpaysu1.mongodb.net/footwear_erp";
   try {
     await mongoose.connect(uri, {
       dbName: "footwear_erp",

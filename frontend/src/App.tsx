@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// App.tsx
+import React from "react";
 import { FigmaSidebar } from "./components/FigmaSidebar";
 import { HeaderBar } from "./components/HeaderBar";
 import { Dashboard } from "./components/Dashboard";
@@ -11,70 +12,77 @@ import { NotificationsAlerts } from "./components/NotificationsAlerts";
 import { ReportsAnalytics } from "./components/ReportsAnalytics";
 import { SystemWireframe } from "./components/SystemWireframe";
 import { DeliveryManagement } from "./components/DeliveryManagement";
-import { useERPStore } from "./lib/data-store";
+import { LoginPage } from "./components/LoginPage";
 import { Toaster } from "./components/ui/sonner";
+import { AuthProvider, useAuth } from "./lib/AuthContext";
+import { ERPProvider, useERP } from "./lib/stores/erpContext";
 
-export default function App() {
-  const { currentModule, setCurrentModule } = useERPStore();
-  const [currentSubModule, setCurrentSubModule] =
-    useState<string>("");
-  const [sidebarCollapsed, setSidebarCollapsed] =
-    useState(false);
+// Main App Content (protected routes)
+function AppContent(): React.JSX.Element {
+  const {
+    currentModule,
+    currentSubModule,
+    handleModuleChange,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+  } = useERP();
+  const { hasPermission } = useAuth();
 
-  const handleModuleChange = (
-    module: string,
-    subModule?: string,
-  ) => {
-    setCurrentModule(module);
-    setCurrentSubModule(subModule || "");
-  };
-
-  const handleSidebarCollapseChange = (collapsed: boolean) => {
+  const handleSidebarCollapseChange = (collapsed: boolean): void => {
     setSidebarCollapsed(collapsed);
   };
 
-  const renderContent = () => {
+  const renderContent = (): React.JSX.Element => {
+    // Check if user has permission to access the module
+    if (!hasPermission(currentModule)) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg
+                className="w-8 h-8 text-red-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 15v2m0 0v2m0-2h2m-2 0H9m3-9V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v2m4 6h4a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2v-6a2 2 0 012-2h4z"
+                />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Access Denied
+            </h3>
+            <p className="text-gray-600">
+              You don't have permission to access this module.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     switch (currentModule) {
       case "dashboard":
         return <Dashboard onNavigate={handleModuleChange} />;
       case "master-data":
-        return (
-          <MasterDataManagement
-            currentSubModule={currentSubModule}
-          />
-        );
+        return <MasterDataManagement currentSubModule={currentSubModule} />;
       case "rd-management":
-        return (
-          <RDManagement currentSubModule={currentSubModule} />
-        );
+        return <RDManagement currentSubModule={currentSubModule} />;
       case "production":
-        return (
-          <ProductionManagement
-            currentSubModule={currentSubModule}
-          />
-        );
+        return <ProductionManagement currentSubModule={currentSubModule} />;
       case "inventory":
-        return (
-          <InventoryManagement
-            currentSubModule={currentSubModule}
-          />
-        );
+        return <InventoryManagement currentSubModule={currentSubModule} />;
       case "delivery":
-        return (
-          <DeliveryManagement
-            currentSubModule={currentSubModule}
-          />
-        );
+        return <DeliveryManagement currentSubModule={currentSubModule} />;
       case "users":
         return <UserManagement />;
       case "notifications":
         return <NotificationsAlerts />;
       case "reports":
-        return (
-          <ReportsAnalytics
-            currentSubModule={currentSubModule}
-          />
-        );
+        return <ReportsAnalytics currentSubModule={currentSubModule} />;
       case "wireframe":
         return <SystemWireframe />;
       default:
@@ -91,19 +99,37 @@ export default function App() {
         onCollapseChange={handleSidebarCollapseChange}
       />
       <main
-        className={`h-screen transition-all duration-300 ${sidebarCollapsed ? "ml-16" : "ml-80"} scrollbar-hide overflow-hidden`}
+        className={`h-screen transition-all duration-300 ${
+          sidebarCollapsed ? "ml-16" : "ml-80"
+        } scrollbar-hide overflow-hidden`}
       >
         {/* Header Bar */}
         <HeaderBar currentModule={currentModule} />
 
         {/* Main Content */}
         <div className="h-[calc(100vh-80px)] p-6 scrollbar-hide overflow-y-auto overflow-x-hidden">
-          <div className="max-w-full mx-auto">
-            {renderContent()}
-          </div>
+          <div className="max-w-full mx-auto">{renderContent()}</div>
         </div>
       </main>
       <Toaster />
     </div>
+  );
+}
+
+// Root App Component
+function App(): React.JSX.Element {
+  const { isAuthenticated } = useAuth();
+
+  return isAuthenticated ? <AppContent /> : <LoginPage />;
+}
+
+// App with Providers
+export default function AppWithProviders(): React.JSX.Element {
+  return (
+    <AuthProvider>
+      <ERPProvider>
+        <App />
+      </ERPProvider>
+    </AuthProvider>
   );
 }

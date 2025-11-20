@@ -44,7 +44,7 @@ interface TentativeCostDialogProps {
 }
 
 // Cost item interface matching backend
-interface CostItem {
+export interface CostItem {
   _id: string;
   item: string;
   description: string;
@@ -56,7 +56,7 @@ interface CostItem {
 }
 
 // Labour cost interface matching backend
-interface LabourCost {
+export interface LabourCost {
   directTotal: number;
   items: Array<{
     _id: string;
@@ -66,7 +66,7 @@ interface LabourCost {
 }
 
 // Cost summary interface matching backend
-interface CostSummary {
+export interface CostSummary {
   additionalCosts: number;
   profitMargin: number | "";
 

@@ -388,7 +388,7 @@ export const updateClientApproval = async (req, res, next) => {
 export const updatePO = async (req, res, next) => {
   try {
     const by = req.user?._id || null;
-    const result = await setProjectPO(req.params.id, req.body, by);
+    const result = await setProjectPO(req?.params?.id, req?.body, by);
 
     if (!result) return res.status(404).json({ message: "Project not found" });
 

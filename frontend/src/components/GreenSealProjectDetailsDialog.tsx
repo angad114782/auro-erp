@@ -1,41 +1,46 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  Eye,
-  Edit2,
-  ArrowRight,
-  Calendar,
-  User,
-  IndianRupee,
-  Clock,
-  CheckCircle,
   AlertTriangle,
-  Workflow,
-  Target,
-  Building,
-  Users,
-  X,
-  Save,
-  RefreshCw,
+  ArrowRight,
   Calculator,
-  MessageSquare,
-  Award,
-  Shield,
+  Calendar,
+  CheckCircle,
+  Clock,
+  Edit2,
   ImageIcon,
-  Upload,
-  Trash2,
+  MessageSquare,
   Plus,
+  Save,
+  Shield,
+  Target,
+  Trash2,
+  Upload,
+  Workflow,
+  X,
 } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import api from "../lib/api";
+import { ColorMaterialsDialog } from "./ColorMaterialsDialog";
+import { POTargetDialog } from "./POTargetDialog";
+import {
+  dataUrlToFile,
+  formatDateDisplay,
+  getFullImageUrl,
+  getStage,
+  ProductDevelopment,
+  Props,
+} from "./ProjectDetailsDialog";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
+  DialogTitle,
 } from "./ui/dialog";
-import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Textarea } from "./ui/textarea";
+import { Progress } from "./ui/progress";
 import {
   Select,
   SelectContent,
@@ -43,23 +48,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Separator } from "./ui/separator";
-import { Badge } from "./ui/badge";
-import { Progress } from "./ui/progress";
-import { toast } from "sonner";
-import {
-  getStage,
-  ProductDevelopment,
-  Props,
-  dataUrlToFile,
-  getFullImageUrl,
-  formatDateDisplay,
-} from "./ProjectDetailsDialog";
-import api from "../lib/api";
-import { POTargetDialog } from "./POTargetDialog";
-import { ColorMaterialsDialog } from "./ColorMaterialsDialog";
+import { Textarea } from "./ui/textarea";
 
-const workflowStages = [
+export const workflowStages = [
   {
     id: "idea",
     name: "Idea Submitted",
@@ -98,19 +89,19 @@ const workflowStages = [
   },
 ];
 
-interface Material {
+export interface Material {
   name: string;
   desc: string;
   consumption: string;
 }
 
-interface Component {
+export interface Component {
   name: string;
   desc: string;
   consumption: string;
 }
 
-interface ColorVariantData {
+export interface ColorVariantData {
   materials: Material[];
   components: Component[];
   images: string[];

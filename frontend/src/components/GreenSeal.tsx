@@ -265,7 +265,6 @@ export function GreenSeal() {
                     "Status",
                     "Priority",
                     "Task-INC",
-                    // "Cost Overview",
                     "Remarks",
                     "Actions",
                   ].map((h) => (
@@ -485,7 +484,7 @@ export function GreenSeal() {
                         variant="ghost"
                         size="sm"
                         className="text-red-600 hover:text-red-700"
-                        onClick={(e) => {
+                        onClick={(e: any) => {
                           e.stopPropagation();
                           handleDelete(p);
                         }}
@@ -568,15 +567,12 @@ export function GreenSeal() {
         reloadProjects={reloadProjects}
         project={selectedProject}
         companies={companies}
-        setCompanies={setCompanies}
         brands={brands}
         setBrands={setBrands}
         categories={categories}
         setCategories={setCategories}
         countries={countries}
-        setCountries={setCountries}
         types={types}
-        setTypes={setTypes}
         assignPersons={assignPersons}
       />
     </div>

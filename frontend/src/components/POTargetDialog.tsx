@@ -84,6 +84,8 @@ export function POTargetDialog({
       return;
     }
 
+    console.log(project, "dfff");
+
     try {
       const poData = {
         orderQuantity: parseInt(orderQuantity),

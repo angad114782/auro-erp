@@ -31,7 +31,6 @@ export function POTargetDate() {
   const [companies, setCompanies] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [types, setTypes] = useState<any[]>([]);
-  const [colors, setColors] = useState<any[]>([]);
   const [countries, setCountries] = useState<any[]>([]);
   const [assignPersons, setAssignPersons] = useState<any[]>([]);
 
@@ -52,15 +51,14 @@ export function POTargetDate() {
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-  // Load master data (same endpoints as RedSeal)
+  // Load master data
   useEffect(() => {
     let cancel = false;
 
     async function loadMasters() {
       try {
-        const [cRes, bRes, tRes, coRes, apRes] = await Promise.all([
+        const [cRes, tRes, coRes, apRes] = await Promise.all([
           api.get("/companies"),
-          api.get("/brands"),
           api.get("/types"),
           api.get("/countries"),
           api.get("/assign-persons"),
@@ -74,12 +72,9 @@ export function POTargetDate() {
           (Array.isArray(r?.data) ? r.data : []);
 
         setCompanies(pick(cRes));
-        setBrands(pick(bRes));
         setTypes(pick(tRes));
         setCountries(pick(coRes));
         setAssignPersons(pick(apRes));
-
-        setCategories([]);
       } catch (e) {
         console.error("Masters load error", e);
       }
@@ -91,15 +86,15 @@ export function POTargetDate() {
     };
   }, []);
 
-  // Load projects from backend
+  // Load projects
   const reloadProjects = async () => {
     setLoading(true);
     try {
       const r = await api.get("/projects");
-      const data = r.data?.data ?? r.data?.items ?? r.data ?? [];
+      const data = r?.data?.data ?? r?.data?.items ?? r?.data ?? [];
       setProjects(data);
-    } catch (err) {
-      console.error("Failed to load projects", err);
+    } catch (e) {
+      console.error(e);
       toast.error("Failed to load projects");
     } finally {
       setLoading(false);
@@ -395,12 +390,12 @@ export function POTargetDate() {
                               t._id === project.typeId ||
                               t.id === project.type?.id
                           );
-                          const color = colors.find(
-                            (cl) =>
-                              cl.id === project.colorId ||
-                              cl._id === project.colorId ||
-                              cl.id === project.color?.id
-                          );
+                          // const color = colors.find(
+                          //   (cl) =>
+                          //     cl.id === project.colorId ||
+                          //     cl._id === project.colorId ||
+                          //     cl.id === project.color?.id
+                          // );
                           const country = countries.find(
                             (co) =>
                               co.id === project.countryId ||
@@ -479,7 +474,7 @@ export function POTargetDate() {
                                     "Unknown"}
                                 </div>
                                 <div className="text-sm text-gray-500">
-                                  Unisex
+                                  {project?.gender || "N/A"}
                                 </div>
                               </td>
 
@@ -489,9 +484,8 @@ export function POTargetDate() {
                                     className="w-4 h-4 rounded border border-gray-300 mr-2"
                                     style={{
                                       backgroundColor:
-                                        color?.hexCode ||
-                                        project.color?.hexCode ||
-                                        "#cccccc",
+                                        // color?.hexCode ||
+                                        project.color?.hexCode || "#cccccc",
                                     }}
                                   />
                                   <div>
@@ -502,9 +496,7 @@ export function POTargetDate() {
                                         .join(" ") || "Product Design"}
                                     </div>
                                     <div className="text-sm text-gray-500">
-                                      {color?.colorName ||
-                                        project.color ||
-                                        "Unknown"}
+                                      {project.color || "Unknown"}
                                     </div>
                                   </div>
                                 </div>
@@ -548,9 +540,9 @@ export function POTargetDate() {
                                     <Target className="w-3 h-3 text-gray-500" />
                                     <span>
                                       Target:{" "}
-                                      {project.poTarget
+                                      {project.redSealTargetDate
                                         ? new Date(
-                                            project.poTarget
+                                            project.redSealTargetDate
                                           ).toLocaleDateString("en-IN")
                                         : "TBD"}
                                     </span>
@@ -559,18 +551,16 @@ export function POTargetDate() {
                                     <Calendar className="w-3 h-3 text-gray-500" />
                                     <span
                                       className={`font-medium ${
-                                        project.poTarget &&
+                                        project.redSealTargetDate &&
                                         calculateDuration(
-                                          project.startDate ||
-                                            project.createdAt,
-                                          project.poTarget
+                                          project.createdAt,
+                                          project.redSealTargetDate
                                         ).includes("overdue")
                                           ? "text-red-600"
-                                          : project.poTarget &&
+                                          : project.redSealTargetDate &&
                                             calculateDuration(
-                                              project.startDate ||
-                                                project.createdAt,
-                                              project.poTarget
+                                              project.createdAt,
+                                              project.redSealTargetDate
                                             ).includes("Due today")
                                           ? "text-orange-600"
                                           : "text-gray-700"
@@ -578,8 +568,8 @@ export function POTargetDate() {
                                     >
                                       Duration:{" "}
                                       {calculateDuration(
-                                        project.startDate || project.createdAt,
-                                        project.poTarget
+                                        project.createdAt,
+                                        project.redSealTargetDate
                                       )}
                                     </span>
                                   </div>
@@ -596,9 +586,7 @@ export function POTargetDate() {
 
                               <td className="px-6 py-4">
                                 <div className="text-sm text-gray-900 max-w-xs truncate">
-                                  {project.nextUpdate?.note ??
-                                    project.remarks ??
-                                    "No remarks"}
+                                  {project.nextUpdate?.note || "No remarks"}
                                 </div>
                               </td>
 
@@ -731,12 +719,12 @@ export function POTargetDate() {
                               t._id === project.typeId ||
                               t.id === project.type?.id
                           );
-                          const color = colors.find(
-                            (cl) =>
-                              cl.id === project.colorId ||
-                              cl._id === project.colorId ||
-                              cl.id === project.color?.id
-                          );
+                          // const color = colors.find(
+                          //   (cl) =>
+                          //     cl.id === project.colorId ||
+                          //     cl._id === project.colorId ||
+                          //     cl.id === project.color?.id
+                          // );
                           const country = countries.find(
                             (co) =>
                               co.id === project.countryId ||
@@ -815,7 +803,7 @@ export function POTargetDate() {
                                     "Unknown"}
                                 </div>
                                 <div className="text-sm text-gray-500">
-                                  Unisex
+                                  {project?.gender || "Unknown"}
                                 </div>
                               </td>
 
@@ -825,22 +813,22 @@ export function POTargetDate() {
                                     className="w-4 h-4 rounded border border-gray-300 mr-2"
                                     style={{
                                       backgroundColor:
-                                        color?.hexCode ||
-                                        project.color?.hexCode ||
-                                        "#cccccc",
+                                        // color?.hexCode ||
+                                        project.color?.hexCode || "#cccccc",
                                     }}
                                   />
                                   <div>
                                     <div className="text-sm font-medium text-gray-900">
-                                      {(project.remarks || "")
+                                      {(project.artName || "")
                                         .split(" ")
                                         .slice(0, 2)
                                         .join(" ") || "Product Design"}
                                     </div>
                                     <div className="text-sm text-gray-500">
-                                      {color?.colorName ||
-                                        project.color?.name ||
-                                        "Unknown"}
+                                      {
+                                        // color?.colorName ||
+                                        project.color || "Unknown"
+                                      }
                                     </div>
                                   </div>
                                 </div>
@@ -860,7 +848,7 @@ export function POTargetDate() {
                                     <div className="flex items-center gap-2">
                                       <CheckCircle className="w-4 h-4 text-green-600" />
                                       <span className="text-sm font-semibold text-gray-900 font-mono">
-                                        {project.poNumber}
+                                        {project.po.poNumber}
                                       </span>
                                     </div>
                                     <div className="text-xs text-green-600 ml-6">
@@ -1019,6 +1007,11 @@ export function POTargetDate() {
       />
 
       <POPendingProjectDetailsDialog
+        reloadProjects={reloadProjects}
+        companies={companies}
+        setBrands={setBrands}
+        assignPersons={assignPersons}
+        setCategories={setCategories}
         open={poPendingDetailsOpen}
         onOpenChange={async (v: boolean) => {
           if (!v) await reloadProjects();
@@ -1028,7 +1021,7 @@ export function POTargetDate() {
         brands={brands}
         categories={categories}
         types={types}
-        colors={colors}
+        // colors={colors}
         countries={countries}
       />
 
@@ -1042,7 +1035,7 @@ export function POTargetDate() {
         brands={brands}
         categories={categories}
         types={types}
-        colors={colors}
+        // colors={colors}
         countries={countries}
       />
     </div>
