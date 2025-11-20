@@ -397,11 +397,11 @@ export const updatePO = async (req, res, next) => {
     return res.json({
       message: "PO details saved",
       data: {
-        _id: project._id,
-        status: project.status, // "po_pending" | "po_approved"
+        _id: project?._id,
+        status: project?.status, // "po_pending" | "po_approved"
         po: poDetails, // all PO fields from separate model
-        statusHistory: project.statusHistory.slice(-5),
-        updatedAt: project.updatedAt,
+        statusHistory: project?.statusHistory.slice(-5),
+        updatedAt: project?.updatedAt,
       },
     });
   } catch (e) {
