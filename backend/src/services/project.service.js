@@ -61,9 +61,10 @@ export const createProject = async (payload, { session } = {}) => {
   return project;
 };
 
-/** ---------- LIST / GET ---------- **/
+/** ---------- LIST WITH PO INCLUDED ---------- **/
 export const getProjects = async (query = {}) => {
   const filter = { isActive: true };
+
   if (query.company) filter.company = query.company;
   if (query.brand) filter.brand = query.brand;
   if (query.category) filter.category = query.category;
@@ -77,7 +78,7 @@ export const getProjects = async (query = {}) => {
     const appr = normalizeClientApproval(query.clientApproval);
     if (appr) filter.clientApproval = appr;
     else filter.clientApproval = "__no_match__";
-  } // <-- MISSING CLOSING BRACE FIXED
+  }
 
   if (query.minCost)
     filter.clientFinalCost = {
@@ -91,16 +92,36 @@ export const getProjects = async (query = {}) => {
       $lte: Number(query.maxCost),
     };
 
-  return Project.find(filter)
+  // 1️⃣ fetch all projects
+  const projects = await Project.find(filter)
     .populate("company", "name")
     .populate("brand", "name")
     .populate("category", "name")
     .populate("type", "name")
     .populate("country", "name")
     .populate("assignPerson", "name")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // 2️⃣ fetch all PO records for these projects
+  const projectIds = projects.map((p) => p._id);
+  const poList = await PoDetails.find({ project: { $in: projectIds } }).lean();
+
+  // 3️⃣ create a map for fast matching
+  const poMap = {};
+  poList.forEach((po) => {
+    poMap[po.project.toString()] = po;
+  });
+
+  // 4️⃣ attach PO to each project
+  projects.forEach((p) => {
+    p.po = poMap[p._id.toString()] || null;
+  });
+
+  return projects;
 };
 
+/** ---------- GET BY ID WITH PO ---------- **/
 export const getProjectById = async (id) => {
   const project = await Project.findOne({ _id: id, isActive: true })
     .populate("company", "name")
@@ -109,14 +130,11 @@ export const getProjectById = async (id) => {
     .populate("type", "name")
     .populate("country", "name")
     .populate("assignPerson", "name")
-    .lean(); // make it plain object so we can attach PO easily
+    .lean();
 
   if (!project) return null;
 
-  // fetch PO for this project
   const po = await PoDetails.findOne({ project: project._id }).lean();
-
-  // attach
   project.po = po || null;
 
   return project;
@@ -142,15 +160,14 @@ export const updateProjectById = async (id, payload) => {
     color: payload.color,
   };
 
-  // ✅ FIXED: Only update coverImage if explicitly provided
+  // Only update cover if new one given
   if (payload.coverImage !== undefined) {
     if (payload.keepExistingCover !== true) {
       set.coverImage = payload.coverImage;
     }
-    // If keepExistingCover is true, don't modify the field at all
   }
 
-  // ✅ FIXED: Only update sampleImages if provided
+  // Only update samples if explicitly passed
   if (payload.sampleImages !== undefined) {
     set.sampleImages = payload.sampleImages;
   }
@@ -202,21 +219,17 @@ export const deleteProjectById = async (id) => {
   );
 };
 
-/** ---------- Atomic PATCH actions ---------- **/
+/** ---------- STATUS UPDATE ---------- **/
 export const updateProjectStatus = async (id, statusInput, by = null) => {
   const to = requireValidProjectStatus(statusInput);
   const project = await Project.findById(id);
   if (!project || !project.isActive) return null;
 
   const from = project.status || null;
-
-  // ✅ Only update the status field, preserve everything else
   project.status = to;
   project.statusHistory.push({ from, to, by, at: new Date() });
-
   await project.save();
 
-  // ✅ Return the complete project with populated fields
   return await Project.findById(id)
     .populate("company", "name")
     .populate("brand", "name")
@@ -226,6 +239,7 @@ export const updateProjectStatus = async (id, statusInput, by = null) => {
     .populate("assignPerson", "name");
 };
 
+/** ---------- NEXT UPDATE ---------- **/
 export const setProjectNextUpdate = async (id, date, note = "", by = null) => {
   const d = new Date(date);
   if (Number.isNaN(d.getTime())) {
@@ -233,14 +247,17 @@ export const setProjectNextUpdate = async (id, date, note = "", by = null) => {
     err.status = 400;
     throw err;
   }
+
   const project = await Project.findById(id);
   if (!project || !project.isActive) return null;
 
   project.nextUpdate = { date: d, note: note || "", by, at: new Date() };
   await project.save();
+
   return project;
 };
 
+/** ---------- CLIENT COST ---------- **/
 export const setProjectClientCost = async (id, { amount, by = null }) => {
   const amt = Number(amount);
   if (!Number.isFinite(amt) || amt < 0) {
@@ -253,31 +270,28 @@ export const setProjectClientCost = async (id, { amount, by = null }) => {
 
   project.clientFinalCost = amt;
   project.clientCostHistory.push({ amount: amt, by, at: new Date() });
-
   await project.save();
+
   return project;
 };
 
+/** ---------- CLIENT APPROVAL ---------- **/
 export const setClientApproval = async (id, { status, by = null }) => {
   const appr = requireValidClientApproval(status);
   const project = await Project.findById(id);
   if (!project || !project.isActive) return null;
 
   project.clientApproval = appr;
-  // (No history for approval; add if needed in future)
-
   await project.save();
   return project;
 };
 
+/** ---------- PO SET/UPDATE ---------- **/
 export const setProjectPO = async (id, payload = {}, by = null) => {
   const project = await Project.findById(id);
   if (!project || !project.isActive) return null;
 
-  console.log(id, payload, "dddddddddddddddd");
-
   const now = new Date();
-
   const qty =
     payload.orderQuantity != null ? Number(payload.orderQuantity) : null;
   const price = payload.unitPrice != null ? Number(payload.unitPrice) : null;
@@ -296,15 +310,14 @@ export const setProjectPO = async (id, payload = {}, by = null) => {
   const hasPoNumber = (payload.poNumber || "").trim().length > 0;
   const nextStatus = hasPoNumber ? "po_approved" : "po_pending";
 
-  // Find existing PO or create new one
   let poDetails = await PoDetails.findOne({ project: id });
 
   if (poDetails) {
-    // Update existing PO
     const prev = poDetails.toObject();
 
     const effectiveQty = qty != null ? qty : prev.orderQuantity ?? null;
     const effectivePrice = price != null ? price : prev.unitPrice ?? null;
+
     const totalAmount =
       effectiveQty != null && effectivePrice != null
         ? effectiveQty * effectivePrice
@@ -318,6 +331,7 @@ export const setProjectPO = async (id, payload = {}, by = null) => {
     poDetails.deliveryDate = payload.deliveryDate
       ? new Date(payload.deliveryDate)
       : prev.deliveryDate ?? null;
+
     poDetails.paymentTerms = payload.paymentTerms ?? prev.paymentTerms ?? "";
     poDetails.urgencyLevel =
       payload.urgencyLevel ?? prev.urgencyLevel ?? "Normal";
@@ -327,27 +341,23 @@ export const setProjectPO = async (id, payload = {}, by = null) => {
       payload.clientFeedback ?? prev.clientFeedback ?? "";
     poDetails.specialInstructions =
       payload.specialInstructions ?? prev.specialInstructions ?? "";
+
     poDetails.targetAt = prev.targetAt ?? now;
     poDetails.issuedAt = hasPoNumber
       ? prev.issuedAt ?? now
       : prev.issuedAt ?? null;
+
     poDetails.updatedBy = by;
     poDetails.updatedAt = now;
 
     await poDetails.save();
   } else {
-    // Create new PO
-    const effectiveQty = qty;
-    const effectivePrice = price;
-    const totalAmount =
-      effectiveQty != null && effectivePrice != null
-        ? effectiveQty * effectivePrice
-        : null;
+    const totalAmount = qty != null && price != null ? qty * price : null;
 
     poDetails = await PoDetails.create({
       project: id,
-      orderQuantity: effectiveQty,
-      unitPrice: effectivePrice,
+      orderQuantity: qty,
+      unitPrice: price,
       totalAmount: totalAmount,
       poNumber: payload.poNumber ?? "",
       status: nextStatus,
@@ -361,24 +371,20 @@ export const setProjectPO = async (id, payload = {}, by = null) => {
       specialInstructions: payload.specialInstructions ?? "",
       targetAt: now,
       issuedAt: hasPoNumber ? now : null,
-      updatedBy: by,
       updatedAt: now,
+      updatedBy: by,
     });
   }
 
-  // Update project status and history
   const from = project.status || null;
   project.status = nextStatus;
   project.statusHistory.push({ from, to: nextStatus, by, at: now });
-
   await project.save();
 
-  // Re-fetch full populated project after PO update
   const populatedProject = await Project.findById(project._id)
     .populate("company brand category type country assignPerson")
     .lean();
 
-  // Attach PO details in same shape frontend expects
   populatedProject.po = poDetails;
 
   return populatedProject;

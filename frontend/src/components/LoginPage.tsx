@@ -108,8 +108,18 @@ export function LoginPage(): React.JSX.Element {
                 >
                   User ID
                 </Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <div style={{ position: "relative" }}>
+                  <User
+                    style={{
+                      position: "absolute",
+                      left: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      width: "16px",
+                      height: "16px",
+                      color: "#9CA3AF",
+                    }}
+                  />
                   <Input
                     id="userId"
                     type="text"
@@ -118,7 +128,8 @@ export function LoginPage(): React.JSX.Element {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       setUserId(e.target.value)
                     }
-                    className="pl-10 h-11"
+                    className="h-11"
+                    style={{ paddingLeft: "40px" }}
                     required
                     disabled={loading}
                   />
@@ -132,30 +143,63 @@ export function LoginPage(): React.JSX.Element {
                 >
                   Password
                 </Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <div style={{ position: "relative" }}>
+                  <Lock
+                    style={{
+                      position: "absolute",
+                      left: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      width: "16px",
+                      height: "16px",
+                      color: "#9CA3AF",
+                      zIndex: 1,
+                    }}
+                  />
+
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
                     value={password}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setPassword(e.target.value)
-                    }
-                    className="pl-10 pr-10 h-11"
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="h-11"
+                    style={{ paddingLeft: "40px", paddingRight: "48px" }}
                     required
                     disabled={loading}
                   />
+
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    style={{
+                      position: "absolute",
+                      right: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      padding: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#9CA3AF",
+                      zIndex: 1,
+                    }}
+                    onMouseEnter={(e) =>
+                      !loading && (e.currentTarget.style.color = "#4B5563")
+                    }
+                    onMouseLeave={(e) =>
+                      !loading && (e.currentTarget.style.color = "#9CA3AF")
+                    }
                     disabled={loading}
+                    tabIndex={-1}
                   >
                     {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
+                      <EyeOff style={{ width: "16px", height: "16px" }} />
                     ) : (
-                      <Eye className="w-4 h-4" />
+                      <Eye style={{ width: "16px", height: "16px" }} />
                     )}
                   </button>
                 </div>

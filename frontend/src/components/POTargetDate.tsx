@@ -1035,6 +1035,7 @@ export function POTargetDate() {
         brands={brands}
         categories={categories}
         types={types}
+        reloadProjects={reloadProjects}
         // colors={colors}
         countries={countries}
       />

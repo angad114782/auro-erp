@@ -394,33 +394,40 @@ export function POPendingProjectDetailsDialog(props: Props) {
     reloadProjects,
   ]);
 
-  // Keep other PO-specific helpers (PO number add/edit/advance) unchanged.
   const handleAddPONumber = useCallback(() => {
     if (!editedProject) return;
-    if (poNumber.trim()) {
-      const updatedProject = {
-        ...editedProject,
-        poNumber: poNumber.trim(),
-      } as ProductDevelopment;
-      // Update locally and persist - we now persist via api.put to be consistent
-      setEditedProject(updatedProject);
-      // save immediately
-      (async () => {
-        try {
-          const fd = new FormData();
-          fd.append("poNumber", updatedProject.poNumber as string);
-          await api.put(`/projects/${updatedProject._id}`, fd);
-          toast.success("PO Number added successfully!");
-          reloadProjects && (await reloadProjects());
-        } catch (error) {
-          console.error(error);
-          toast.error("Failed to save PO Number");
-        }
-      })();
-      setIsAddingPO(false);
-    } else {
+
+    const value = poNumber.trim();
+    if (!value) {
       toast.error("Please enter a valid PO number.");
+      return;
     }
+
+    const updatedProject = {
+      ...editedProject,
+      poNumber: value,
+    } as ProductDevelopment;
+
+    setEditedProject(updatedProject);
+
+    // Save only into PO model → does NOT affect images/types/assignPerson
+    (async () => {
+      try {
+        await api.patch(`/projects/${updatedProject._id}/po`, {
+          poNumber: value, // PO Number
+          orderQuantity: updatedProject.orderQuantity ?? null,
+          unitPrice: updatedProject.unitPrice ?? null,
+        });
+
+        toast.success("PO Number added successfully!");
+        reloadProjects && (await reloadProjects());
+      } catch (error) {
+        console.error(error);
+        toast.error("Failed to save PO Number");
+      }
+    })();
+
+    setIsAddingPO(false);
   }, [editedProject, poNumber, reloadProjects]);
 
   const handleEditPONumber = useCallback(() => {
@@ -453,52 +460,13 @@ export function POPendingProjectDetailsDialog(props: Props) {
 
   const handleAdvanceToPOApproved = useCallback(async () => {
     if (!editedProject?.poNumber) {
-      toast.error("PO Number is required to advance to PO Approved");
+      toast.error("PO Number is required to advance");
       return;
     }
 
     try {
-      // Create FormData with all project fields
-      const formData = new FormData();
-
-      // Append all project fields
-      if (editedProject.company?._id)
-        formData.append("company", editedProject.company._id);
-      if (editedProject.brand?._id)
-        formData.append("brand", editedProject.brand._id);
-      if (editedProject.category?._id)
-        formData.append("category", editedProject.category._id);
-      if (editedProject.type?._id)
-        formData.append("type", editedProject.type._id);
-      if (editedProject.country?._id)
-        formData.append("country", editedProject.country._id);
-      if (editedProject.assignPerson?._id)
-        formData.append("assignPerson", editedProject.assignPerson._id);
-      if (editedProject.color) formData.append("color", editedProject.color);
-      if (editedProject.artName)
-        formData.append("artName", editedProject.artName);
-      if (editedProject.size) formData.append("size", editedProject.size || "");
-      if (editedProject.gender) formData.append("gender", editedProject.gender);
-      if (editedProject.priority)
-        formData.append("priority", editedProject.priority);
-      if (editedProject.productDesc)
-        formData.append("productDesc", editedProject.productDesc);
-
-      // Handle images
-      if (coverPhoto && coverPhoto.startsWith("data:")) {
-        const file = dataUrlToFile(coverPhoto, "cover.png");
-        formData.append("coverImage", file);
-      } else if (coverPhoto) {
-        formData.append("keepExistingCover", "true");
-      }
-
-      // Send project update first
-      await api.put(`/projects/${editedProject._id}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      // Then update PO status
-      const response = await api.patch(`/projects/${editedProject._id}/po`, {
+      // Only update PO — do NOT update project fields
+      await api.patch(`/projects/${editedProject._id}/po`, {
         poNumber: editedProject.poNumber,
         orderQuantity: editedProject.orderQuantity,
         unitPrice: editedProject.unitPrice,
@@ -508,10 +476,10 @@ export function POPendingProjectDetailsDialog(props: Props) {
       reloadProjects && (await reloadProjects());
       onOpenChange(false);
     } catch (error) {
-      console.error("Failed to advance project", error);
       toast.error("Failed to advance project");
     }
-  }, [editedProject, coverPhoto, onOpenChange, reloadProjects]);
+  }, [editedProject, reloadProjects, onOpenChange]);
+
   const handleApproveAndAdvanceToProduction = useCallback(() => {
     if (!editedProject?.poNumber) {
       toast.error("PO Number is required to advance to Production");

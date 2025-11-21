@@ -376,24 +376,42 @@ export function POApprovedProjectDetailsDialog({
     reloadProjects,
   ]);
 
+  console.log(project, "cccccccccccccccc");
+
   // PO number edit handler
   const handleEditPONumber = useCallback(async () => {
     if (!editedProject) return;
-    if (poNumber.trim()) {
-      try {
-        await api.patch(`/projects/${editedProject._id}/po`, {
-          poNumber: poNumber.trim(),
-        });
 
-        toast.success("PO Number updated successfully!");
-        await reloadProjects?.();
-        setIsAddingPO(false);
-      } catch (error) {
-        console.error(error);
-        toast.error("Failed to update PO Number");
-      }
-    } else {
+    const value = poNumber.trim();
+    if (!value) {
       toast.error("Please enter a valid PO number.");
+      return;
+    }
+
+    try {
+      const res = await api.patch(`/projects/${editedProject._id}/po`, {
+        poNumber: value,
+      });
+
+      const updated = res.data?.data?.po ?? null;
+
+      // 🔥 Update UI immediately
+      setEditedProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              po: updated, // <── FIX: update PO in local state
+            }
+          : prev
+      );
+
+      toast.success("PO Number updated!");
+      setIsAddingPO(false);
+
+      await reloadProjects?.();
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed");
     }
   }, [editedProject, poNumber, reloadProjects]);
 
@@ -1248,8 +1266,8 @@ export function POApprovedProjectDetailsDialog({
                       PO Number Approved
                     </h4>
                     <p className="text-sm text-green-700">
-                      This project has been approved and has an assigned PO
-                      number. You can edit the PO number if needed.
+                      This project has an approved PO Number. You can update it
+                      anytime.
                     </p>
                   </div>
                 </div>
@@ -1260,20 +1278,22 @@ export function POApprovedProjectDetailsDialog({
                       <Label className="text-sm font-medium text-gray-700">
                         Current PO Number
                       </Label>
+
                       {!isAddingPO ? (
                         <div className="mt-1 flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
                           <div className="flex items-center gap-3">
                             <Badge className="bg-green-100 text-green-800 px-3 py-1 text-base font-mono">
-                              {project.po?.poNumber || "PO-2024-001"}
+                              {project?.po?.poNumber || "N/A"}
                             </Badge>
                             <span className="text-sm text-gray-600">
                               Approved PO Number
                             </span>
                           </div>
+
                           <Button
                             onClick={() => {
                               setIsAddingPO(true);
-                              setPONumber(project.po?.poNumber || "");
+                              setPONumber(project?.po?.poNumber || "");
                             }}
                             variant="outline"
                             size="sm"
@@ -1288,12 +1308,9 @@ export function POApprovedProjectDetailsDialog({
                           <Input
                             value={poNumber}
                             onChange={(e) => setPONumber(e.target.value)}
-                            placeholder="Enter new PO number (e.g., PO-2024-001)"
-                            className="mt-1"
+                            placeholder="Enter new PO number"
                           />
-                          <p className="text-xs text-gray-500">
-                            Update the purchase order number for this project
-                          </p>
+
                           <div className="flex gap-3">
                             <Button
                               onClick={handleEditPONumber}
@@ -1303,10 +1320,11 @@ export function POApprovedProjectDetailsDialog({
                               <Save className="w-4 h-4 mr-2" />
                               Update PO Number
                             </Button>
+
                             <Button
                               onClick={() => {
                                 setIsAddingPO(false);
-                                setPONumber(project.po?.poNumber || "");
+                                setPONumber(project?.po?.poNumber || "");
                               }}
                               variant="outline"
                             >
