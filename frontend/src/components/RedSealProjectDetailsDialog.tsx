@@ -1419,7 +1419,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                       </div>
                     </div>
                     <div className="text-3xl font-bold text-green-800 tracking-tight">
-                      ₹{costSummary.tentativeCost.toLocaleString()}
+                      ₹{costSummary?.tentativeCost?.toLocaleString()}
                     </div>
                   </div>
 
@@ -1450,7 +1450,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                       </div>
                     ) : (
                       <div className="text-3xl font-bold text-blue-800 tracking-tight">
-                        ₹{project.clientFinalCost.toLocaleString()}
+                        ₹{project?.clientFinalCost?.toLocaleString()}
                       </div>
                     )}
                   </div>
