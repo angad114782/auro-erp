@@ -35,6 +35,8 @@ import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
 import api from "../lib/api";
 import { ProductDevelopment } from "./ProjectDetailsDialog";
+import { useERP } from "../lib/stores/erpContext";
+import { useRedirect } from "../hooks/useRedirect";
 
 interface TentativeCostDialogProps {
   open: boolean;
@@ -567,7 +569,7 @@ export function TentativeCostDialog({
 
   // Use realTimeSummary for display, fallback to costSummary
   const displaySummary = realTimeSummary || costSummary;
-
+  const { goTo } = useRedirect();
   // Load all cost data from backend
   useEffect(() => {
     if (project && open && !dataLoaded) {
@@ -1184,6 +1186,7 @@ export function TentativeCostDialog({
         onApproved();
         onOpenChange(false);
       }, 1000);
+      goTo("rd-management", "red-seal");
     } catch (error) {
       console.error("Failed to approve cost:", error);
       toast.error("Failed to approve cost");

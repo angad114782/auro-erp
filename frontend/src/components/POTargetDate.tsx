@@ -28,7 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { useProjects } from "../hooks/useProjects";
 import { useMasters } from "../hooks/useMaster";
 
-export function POTargetDate() {
+export function POTargetDate({ defaultTab = "po-pending" }) {
   // Use hooks (from your project)
   const {
     projects,
@@ -48,6 +48,9 @@ export function POTargetDate() {
     setBrands,
     setCategories,
   } = useMasters();
+
+  const extra = (window as any).erpExtra;
+  const defaultTabFromRedirect = extra?.tab ?? "po-pending";
 
   // Local UI state
   const [loading, setLoading] = useState(false); // page-level loader if needed
@@ -244,7 +247,7 @@ export function POTargetDate() {
 
         <CardContent className="p-6">
           <Tabs
-            defaultValue="po-pending"
+            defaultValue={defaultTabFromRedirect}
             className="w-full"
             onValueChange={() => setCurrentPage(1)}
           >

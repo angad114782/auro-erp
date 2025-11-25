@@ -50,6 +50,7 @@ import {
 
 import { useCostManagement } from "../hooks/useCostManagement";
 import { Project, projectService } from "../components/services/projectService";
+import { useRedirect } from "../hooks/useRedirect";
 
 // AddNewItemDialog omitted for brevity in this snippet — copy from your original component
 const AddNewItemDialog = ({
@@ -165,7 +166,7 @@ export function RedSealProjectDetailsDialog(props: any) {
     reloadProjects,
     setSelectedSubModule,
   } = props;
-
+  const { goTo } = useRedirect();
   const [isEditing, setIsEditing] = useState(false);
   const [editedProject, setEditedProject] = useState<Project | null>(null);
 
@@ -432,6 +433,7 @@ export function RedSealProjectDetailsDialog(props: any) {
       await reloadProjects();
       setSelectedSubModule?.("green-seal");
       onOpenChange(false);
+      goTo("rd-management", "green-seal");
     } catch (err) {
       console.error(err);
       toast.error("Failed to update project stage");

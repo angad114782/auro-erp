@@ -8,12 +8,23 @@ import React, {
 import { useAuth } from "../AuthContext";
 
 // ➤ ★ GLOBAL REDIRECT HANDLER (new)
-let globalRedirect: ((module: string, subModule?: string) => void) | null =
-  null;
+let globalRedirect:
+  | ((module: string, subModule?: string, extra?: string) => void)
+  | null = null;
 
-export const redirectToModule = (module: string, subModule = "") => {
+// export const redirectToModule = (module: string, subModule = "") => {
+//   if (globalRedirect) {
+//     globalRedirect(module, subModule);
+//   }
+// };
+
+export const redirectToModule = (
+  module: string,
+  subModule = "",
+  extra?: any
+) => {
   if (globalRedirect) {
-    globalRedirect(module, subModule);
+    globalRedirect(module, subModule, extra);
   }
 };
 
@@ -34,10 +45,14 @@ export interface ERPContextType {
   currentModule: string;
   currentSubModule: string;
   sidebarCollapsed: boolean;
+
   setCurrentModule: (module: string) => void;
   setCurrentSubModule: (sub: string) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+
   handleModuleChange: (module: string, subModule?: string) => void;
+
+  goto: (module: string, subModule?: string) => void; // NEW
 }
 
 // REDUCER
@@ -106,14 +121,36 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "SET_SIDEBAR_COLLAPSED", payload: collapsed });
   };
 
-  const handleModuleChange = (module: string, subModule: string = "") => {
+  const handleModuleChange = (
+    module: string,
+    subModule: string = "",
+    extra?: any
+  ) => {
+    setCurrentModule(module);
+    setCurrentSubModule(subModule);
+
+    // store extra tab info globally (simple)
+    (window as any).erpExtra = extra;
+  };
+
+  const goto = (module: string, subModule: string = "") => {
+    console.log("🔵 goto triggered:", module, subModule);
     setCurrentModule(module);
     setCurrentSubModule(subModule);
   };
 
   // ➤ ★ GLOBAL REDIRECT REGISTRATION
+  // useEffect(() => {
+  //   globalRedirect = handleModuleChange;
+  //   return () => {
+  //     globalRedirect = null;
+  //   };
+  // }, [handleModuleChange]);
+
   useEffect(() => {
+    console.log("ERPContext mounted, redirect ready");
     globalRedirect = handleModuleChange;
+
     return () => {
       globalRedirect = null;
     };
@@ -127,6 +164,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     setCurrentSubModule,
     setSidebarCollapsed,
     handleModuleChange,
+    goto, // ADD THIS
   };
 
   return <ERPContext.Provider value={value}>{children}</ERPContext.Provider>;

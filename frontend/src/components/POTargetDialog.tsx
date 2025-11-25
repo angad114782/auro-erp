@@ -35,6 +35,7 @@ import {
 import { Badge } from "./ui/badge";
 import { toast } from "sonner";
 import api from "../lib/api";
+import { useRedirect } from "../hooks/useRedirect";
 
 interface POTargetDialogProps {
   open: boolean;
@@ -58,6 +59,8 @@ export function POTargetDialog({
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [urgencyLevel, setUrgencyLevel] = useState("Normal");
   const [qualityRequirements, setQualityRequirements] = useState("");
+
+  const { goTo } = useRedirect();
 
   if (!project) return null;
 
@@ -103,14 +106,27 @@ export function POTargetDialog({
       await api.patch(`/projects/${project._id}/po`, poData);
 
       if (poNumber.trim()) {
-        toast.success(
-          "PO Target advanced successfully! PO Number approved and project moved to PO Approved stage."
+        // PO APPROVED
+        toast.success("PO approved successfully!");
+
+        goTo(
+          "rd-management",
+          "po-target-date",
+          { tab: "po-approved" } // 💥 redirect to PO APPROVED tab
         );
       } else {
-        toast.success(
-          "PO Target advanced successfully! Status is pending - awaiting PO Number from client."
+        // PO PENDING
+        toast.success("PO saved — waiting for PO number (Pending)");
+
+        goTo(
+          "rd-management",
+          "po-target-date",
+          { tab: "po-pending" } // 💥 redirect to PO PENDING tab
         );
       }
+
+      onConfirm();
+      onOpenChange(false);
 
       onConfirm();
       onOpenChange(false);

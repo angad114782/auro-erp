@@ -344,6 +344,8 @@ export default function ProjectDetailsDialog(props: any) {
       onOpenChange(false);
       await reloadProjects();
 
+      console.log("redirecting ......");
+
       goTo("rd-management", "red_seal");
     } catch (err: any) {
       console.error(err);

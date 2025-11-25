@@ -284,7 +284,7 @@ export function ProductionManagement({
                     </div>
                   </div>
                   {index < productionStages.length - 1 && (
-                    <div className="flex-1 h-0.5 bg-gray-300 mx-4 mt-[-40px]"></div>
+                    <div className="flex-1 h-0.5 bg-gray-300 mx-4 -mt-10"></div>
                   )}
                 </div>
               ))}

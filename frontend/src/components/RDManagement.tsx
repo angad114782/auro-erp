@@ -12,6 +12,7 @@ import { CreateProjectDialog } from "./CreateProjectDialog";
 export function RDManagement() {
   const { currentSubModule, handleModuleChange } = useERP();
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
+  console.log("📌 RDManagement received submodule:", currentSubModule);
 
   const handleCloseDialog = React.useCallback(() => {
     setNewProjectOpen(false);
@@ -29,10 +30,10 @@ export function RDManagement() {
     case "project":
       return <ProjectDevelopment />;
 
-    case "red_seal":
+    case "red-seal":
       return <RedSeal />;
 
-    case "green_seal":
+    case "green-seal":
       return <GreenSeal />;
 
     case "po-target-date":
