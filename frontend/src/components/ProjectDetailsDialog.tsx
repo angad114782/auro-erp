@@ -1,4 +1,4 @@
-// ProjectDetailsDialog.tsx - Optimized Version
+// ProjectDetailsDialog.tsx
 import React, {
   useEffect,
   useRef,
@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
-
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -41,139 +40,13 @@ import {
   SelectItem,
 } from "./ui/select";
 
-import api from "../lib/api";
 import { toast } from "sonner";
 import { TentativeCostDialog } from "./TentativeCostDialog";
+import { useProjects } from "../hooks/useProjects";
+import { useERP } from "../lib/stores/erpContext";
+import { useRedirect } from "../hooks/useRedirect";
 
-// ------------------------- Types -------------------------
-export interface MasterItem {
-  _id: string;
-  name: string;
-  company?: {
-    _id: string;
-    name: string;
-  };
-  brand?: {
-    _id: string;
-    name: string;
-  };
-}
-
-export interface ProductDevelopment {
-  _id: string;
-  autoCode: string;
-  company: MasterItem | null;
-  brand: MasterItem | null;
-  category: MasterItem | null;
-  type: MasterItem | null;
-  country: MasterItem | null;
-  assignPerson: MasterItem | null;
-  artName?: string;
-  color?: string;
-  gender?: string;
-  size?: string;
-  priority?: string;
-  productDesc?: string;
-  status?: string;
-  redSealTargetDate?: string;
-  coverImage?: string | null;
-  sampleImages?: string[];
-  updateNotes?: string;
-  nextUpdateDate?: string;
-  clientApproval?: string;
-  clientFinalCost?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface Props {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  project: ProductDevelopment | null;
-  reloadProjects: () => Promise<void>;
-  companies: MasterItem[];
-  brands: MasterItem[];
-  categories: MasterItem[];
-  types: MasterItem[];
-  countries: MasterItem[];
-  assignPersons: MasterItem[];
-  setBrands: (items: MasterItem[]) => void;
-  setCategories: (items: MasterItem[]) => void;
-  setSelectedSubModule?: (sub: string) => void;
-}
-
-// ------------------------- Constants -------------------------
-const workflowStages = [
-  {
-    id: "idea",
-    name: "Idea Submitted",
-    progress: 12,
-    color: "bg-blue-100 text-blue-800",
-  },
-  {
-    id: "prototype",
-    name: "Prototype",
-    progress: 30,
-    color: "bg-purple-100 text-purple-800",
-  },
-  {
-    id: "red_seal",
-    name: "Red Seal",
-    progress: 50,
-    color: "bg-red-100 text-red-800",
-  },
-  {
-    id: "green_seal",
-    name: "Green Seal",
-    progress: 70,
-    color: "bg-green-100 text-green-800",
-  },
-  {
-    id: "po_pending",
-    name: "PO Pending",
-    progress: 86,
-    color: "bg-orange-100 text-orange-800",
-  },
-  {
-    id: "po_approved",
-    name: "PO Approved",
-    progress: 100,
-    color: "bg-emerald-100 text-emerald-800",
-  },
-];
-
-// ------------------------- Helpers -------------------------
-export const getStage = (id?: string) =>
-  workflowStages.find((s) => s.id === id) || workflowStages[0];
-
-export const dataUrlToFile = (dataUrl: string, filename: string) => {
-  const arr = dataUrl.split(",");
-  const mimeMatch = arr[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : "image/png";
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8 = new Uint8Array(n);
-  while (n--) u8[n] = bstr.charCodeAt(n);
-  return new File([u8], filename, { type: mime });
-};
-
-export const getFullImageUrl = (img?: string | null) => {
-  if (!img) return "";
-  if (img.startsWith("http") || img.startsWith("data:")) return img;
-  return `${import.meta.env.VITE_BACKEND_URL}/${img}`;
-};
-
-export const formatDateDisplay = (d?: string | null) => {
-  if (!d) return "TBD";
-  try {
-    return new Date(d).toLocaleDateString("en-GB");
-  } catch {
-    return d;
-  }
-};
-
-// ------------------------- Component -------------------------
-export default function ProjectDetailsDialog(props: Props) {
+export default function ProjectDetailsDialog(props: any) {
   const {
     open,
     onOpenChange,
@@ -184,14 +57,25 @@ export default function ProjectDetailsDialog(props: Props) {
     types,
     countries,
     assignPersons,
+    loadBrandsByCompany, // function from parent hook
+    loadCategoriesByBrand, // function from parent hook
     setBrands,
     setCategories,
     reloadProjects,
     setSelectedSubModule,
   } = props;
 
+  const { updateProject, updateProjectStatus } = useProjects();
+  const {
+    setCurrentModule,
+    setCurrentSubModule,
+    setSidebarCollapsed,
+    handleModuleChange,
+  } = useERP();
+
+  const { goTo } = useRedirect();
   const [isEditing, setIsEditing] = useState(false);
-  const [edited, setEdited] = useState<ProductDevelopment | null>(null);
+  const [edited, setEdited] = useState<any | null>(null);
   const [tentativeDialogOpen, setTentativeDialogOpen] = useState(false);
   const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
   const [samples, setSamples] = useState<string[]>([]);
@@ -199,7 +83,97 @@ export default function ProjectDetailsDialog(props: Props) {
   const coverRef = useRef<HTMLInputElement | null>(null);
   const sampleRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // 🚀 Memoize computed values
+  const workflowStages = [
+    {
+      id: "idea",
+      name: "Idea Submitted",
+      progress: 12,
+      color: "bg-blue-100 text-blue-800",
+    },
+    {
+      id: "prototype",
+      name: "Prototype",
+      progress: 30,
+      color: "bg-purple-100 text-purple-800",
+    },
+    {
+      id: "red_seal",
+      name: "Red Seal",
+      progress: 50,
+      color: "bg-red-100 text-red-800",
+    },
+    {
+      id: "green_seal",
+      name: "Green Seal",
+      progress: 70,
+      color: "bg-green-100 text-green-800",
+    },
+    {
+      id: "po_pending",
+      name: "PO Pending",
+      progress: 86,
+      color: "bg-orange-100 text-orange-800",
+    },
+    {
+      id: "po_approved",
+      name: "PO Approved",
+      progress: 100,
+      color: "bg-emerald-100 text-emerald-800",
+    },
+  ];
+
+  const getStage = (id?: string) =>
+    workflowStages.find((s) => s.id === id) || workflowStages[0];
+
+  // utilities
+  const getFullImageUrl = (img?: string | null) => {
+    if (!img) return "";
+    if (img.startsWith("http") || img.startsWith("data:")) return img;
+    return `${import.meta.env.VITE_BACKEND_URL}/${img}`;
+  };
+  const formatDateDisplay = (d?: string | null) => {
+    if (!d) return "TBD";
+    try {
+      return new Date(d).toLocaleDateString("en-GB");
+    } catch {
+      return d;
+    }
+  };
+
+  useEffect(() => {
+    if (!project || !open) return;
+    console.log("Incoming project 👉", project);
+    setEdited({
+      ...project,
+      nextUpdateDate: project?.nextUpdate?.date || "",
+      updateNotes: project?.nextUpdate?.note || "",
+    });
+
+    setCoverPhoto(project.coverImage || null);
+    setSamples(project.sampleImages ? [...project.sampleImages] : []);
+    setIsEditing(false);
+  }, [project, open]);
+
+  // When editing and company changes -> load brands via parent helper (so we don't call projectService here)
+  useEffect(() => {
+    if (!isEditing) return;
+    if (edited?.company?._id) {
+      loadBrandsByCompany(edited.company._id);
+    } else {
+      setBrands([]);
+    }
+  }, [edited?.company?._id, isEditing]);
+
+  // When brand changes -> load categories via parent helper
+  useEffect(() => {
+    if (!isEditing) return;
+    if (edited?.company?._id && edited?.brand?._id) {
+      loadCategoriesByBrand(edited.company._id, edited.brand._id);
+    } else {
+      setCategories([]);
+    }
+  }, [edited?.brand?._id, edited?.company?._id, isEditing]);
+
   const currentStage = useMemo(
     () => getStage(edited?.status),
     [edited?.status]
@@ -216,75 +190,7 @@ export default function ProjectDetailsDialog(props: Props) {
     [currentIndex]
   );
 
-  // 🚀 Memoize image URLs
-  const coverImageUrl = useMemo(
-    () => getFullImageUrl(coverPhoto),
-    [coverPhoto]
-  );
-  const sampleImageUrls = useMemo(
-    () => samples.map(getFullImageUrl),
-    [samples]
-  );
-
-  // 🚀 Initialize state only when dialog opens
-  useEffect(() => {
-    if (!project || !open) return;
-    setEdited({ ...project });
-    setCoverPhoto(project.coverImage || null);
-    setSamples(project.sampleImages ? [...project.sampleImages] : []);
-    setIsEditing(false);
-  }, [project, open]);
-
-  // 🚀 Fetch brands - debounced and only in edit mode
-  useEffect(() => {
-    if (!isEditing || !edited?.company?._id) {
-      if (isEditing) setBrands([]);
-      return;
-    }
-
-    const companyId = edited.company._id;
-    let cancelled = false;
-
-    api
-      .get("/brands", { params: { company: companyId } })
-      .then((res) => {
-        if (cancelled) return;
-        const arr = res.data?.items || res.data?.data || res.data || [];
-        setBrands(arr);
-      })
-      .catch(() => !cancelled && setBrands([]));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [edited?.company?._id, isEditing, setBrands]);
-
-  // 🚀 Fetch categories - debounced and only in edit mode
-  useEffect(() => {
-    if (!isEditing || !edited?.company?._id || !edited?.brand?._id) {
-      if (isEditing) setCategories([]);
-      return;
-    }
-
-    const c = edited.company._id;
-    const b = edited.brand._id;
-    let cancelled = false;
-
-    api
-      .get(`/companies/${c}/brands/${b}/categories`)
-      .then((res) => {
-        if (cancelled) return;
-        const arr = res.data?.items || res.data?.data || res.data || [];
-        setCategories(arr);
-      })
-      .catch(() => !cancelled && setCategories([]));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [edited?.company?._id, edited?.brand?._id, isEditing, setCategories]);
-
-  // 🚀 Memoized callbacks
+  // image handlers (same logic)
   const handleCoverUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -327,42 +233,16 @@ export default function ProjectDetailsDialog(props: Props) {
 
   const addSampleSlot = useCallback(() => setSamples((s) => [...s, ""]), []);
 
-  const updateStatus = useCallback(
-    async (newStatus: string) => {
-      if (!edited) return;
-      const companyId = edited.company?._id;
-      const brandId = edited.brand?._id;
-      const categoryId = edited.category?._id;
-      const projectId = edited._id;
-
-      await api.patch(
-        `/companies/${companyId}/brands/${brandId}/categories/${categoryId}/projects/${projectId}/status`,
-        { status: newStatus }
-      );
-    },
-    [edited]
-  );
-
-  const handleAdvanceStage = useCallback(async () => {
-    if (!nextStage) {
-      toast.info("Project is already at the final stage");
-      return;
-    }
-
-    if (nextStage.id === "red_seal") {
-      setTentativeDialogOpen(true);
-      return;
-    }
-
-    try {
-      await updateStatus(nextStage.id);
-      toast.success(`Moved to ${nextStage.name}`);
-      onOpenChange(false);
-    } catch (err: any) {
-      console.error(err);
-      toast.error("Failed to update project stage");
-    }
-  }, [nextStage, updateStatus, onOpenChange]);
+  const dataUrlToFile = (dataUrl: string, filename: string) => {
+    const arr = dataUrl.split(",");
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : "image/png";
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8 = new Uint8Array(n);
+    while (n--) u8[n] = bstr.charCodeAt(n);
+    return new File([u8], filename, { type: mime });
+  };
 
   const handleSave = useCallback(async () => {
     if (!edited) return;
@@ -374,7 +254,6 @@ export default function ProjectDetailsDialog(props: Props) {
 
     try {
       const fd = new FormData();
-
       fd.append("company", edited.company._id);
       fd.append("brand", edited.brand._id);
       fd.append("category", edited.category._id);
@@ -394,9 +273,8 @@ export default function ProjectDetailsDialog(props: Props) {
       if (edited.clientApproval)
         fd.append("clientApproval", edited.clientApproval);
 
-      // if (edited.updateNotes) fd.append("updateNotes", edited.updateNotes);
-
-      if (edited.nextUpdateDate)
+      // nextUpdate mapping
+      if (edited.nextUpdateDate) {
         fd.append(
           "nextUpdate",
           JSON.stringify({
@@ -404,7 +282,9 @@ export default function ProjectDetailsDialog(props: Props) {
             note: edited.updateNotes || "",
           })
         );
+      }
 
+      // cover handling
       if (coverPhoto) {
         if (coverPhoto.startsWith("data:")) {
           const file = dataUrlToFile(coverPhoto, "cover.png");
@@ -414,6 +294,7 @@ export default function ProjectDetailsDialog(props: Props) {
         }
       }
 
+      // samples
       const existingSamples = samples.filter(
         (s) => s && !s.startsWith("data:")
       );
@@ -426,21 +307,49 @@ export default function ProjectDetailsDialog(props: Props) {
         fd.append("sampleImages", file);
       });
 
-      const url = `/companies/${edited.company._id}/brands/${edited.brand._id}/categories/${edited.category._id}/projects/${edited._id}`;
-      // const url = `/projects/${edited._id}`;
-
-      await api.put(url, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // use hook (updateProject) — universal route
+      await updateProject(edited._id, fd);
 
       toast.success("Project updated");
       setIsEditing(false);
       onOpenChange(false);
+      await reloadProjects();
     } catch (err: any) {
       console.error("Update failed", err);
       toast.error(err?.response?.data?.message || "Update failed");
     }
-  }, [edited, coverPhoto, samples, onOpenChange]);
+  }, [
+    edited,
+    coverPhoto,
+    samples,
+    updateProject,
+    onOpenChange,
+    reloadProjects,
+  ]);
+
+  const handleAdvanceStage = useCallback(async () => {
+    if (!nextStage) {
+      toast.info("Project is already at the final stage");
+      return;
+    }
+
+    if (nextStage.id === "red_seal") {
+      setTentativeDialogOpen(true);
+      return;
+    }
+
+    try {
+      await updateProjectStatus(edited._id, nextStage.id);
+      toast.success(`Moved to ${nextStage.name}`);
+      onOpenChange(false);
+      await reloadProjects();
+
+      goTo("rd-management", "red_seal");
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to update project stage");
+    }
+  }, [nextStage, edited, updateProjectStatus, onOpenChange, reloadProjects]);
 
   const handleCancelEdit = useCallback(() => {
     if (!project) return;
@@ -452,14 +361,21 @@ export default function ProjectDetailsDialog(props: Props) {
 
   if (!project || !edited) return null;
 
+  const nextStageLocal =
+    currentIndex >= 0 && currentIndex < workflowStages.length - 1
+      ? workflowStages[currentIndex + 1]
+      : null;
+
+  const coverImageUrl = getFullImageUrl(coverPhoto);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 flex flex-col">
+      <DialogContent className="max-w-[85vw]! w-[85vw]! max-h-[90vh] overflow-hidden p-0 m-0 flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 z-50 px-8 py-6 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-b border-gray-200 shadow-sm">
+        <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
+              <div className="w-14 h-14 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
                 <Eye className="w-7 h-7 text-white" />
               </div>
               <div>
@@ -500,13 +416,13 @@ export default function ProjectDetailsDialog(props: Props) {
                 </>
               )}
 
-              {nextStage && (
+              {nextStageLocal && (
                 <Button
                   onClick={handleAdvanceStage}
                   className="bg-emerald-500 hover:bg-emerald-600"
                 >
                   <ArrowRight className="w-4 h-4 mr-2" />
-                  Advance to {nextStage.name}
+                  Advance to {nextStageLocal.name}
                 </Button>
               )}
 
@@ -525,7 +441,7 @@ export default function ProjectDetailsDialog(props: Props) {
         {/* Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-8 py-8 space-y-12">
-            {/* Workflow Progress */}
+            {/* Workflow & Product Details — (kept layout but trimmed for brevity) */}
             <div>
               <div className="flex items-center gap-5 mb-4">
                 <div className="w-10 h-10 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
@@ -589,7 +505,7 @@ export default function ProjectDetailsDialog(props: Props) {
               </div>
             </div>
 
-            {/* Product Details */}
+            {/* Product Details — images, fields */}
             <div>
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
@@ -601,7 +517,6 @@ export default function ProjectDetailsDialog(props: Props) {
               </div>
 
               <div className="bg-white border rounded-xl p-6">
-                {/* Images Section */}
                 <div className="flex gap-4 mb-6">
                   <div className="w-44">
                     <div className="bg-gray-50 border rounded-lg p-3 text-center">
@@ -635,7 +550,7 @@ export default function ProjectDetailsDialog(props: Props) {
                     {!isEditing ? (
                       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
                         {coverPhoto && (
-                          <div className="w-20 h-20 border rounded-md overflow-hidden flex-shrink-0">
+                          <div className="w-20 h-20 border rounded-md overflow-hidden shrink-0">
                             <img
                               src={coverImageUrl}
                               className="w-full h-full object-cover"
@@ -645,10 +560,10 @@ export default function ProjectDetailsDialog(props: Props) {
                         {samples.map((s, i) => (
                           <div
                             key={i}
-                            className="w-20 h-20 border rounded-md overflow-hidden flex-shrink-0"
+                            className="w-20 h-20 border rounded-md overflow-hidden shrink-0"
                           >
                             <img
-                              src={sampleImageUrls[i]}
+                              src={getFullImageUrl(s)}
                               className="w-full h-full object-cover"
                             />
                           </div>
@@ -663,7 +578,7 @@ export default function ProjectDetailsDialog(props: Props) {
                       </div>
                     ) : (
                       <div className="flex gap-3 overflow-x-auto pb-2">
-                        <div className="flex-shrink-0">
+                        <div className="shrink-0">
                           <input
                             ref={coverRef}
                             type="file"
@@ -687,7 +602,7 @@ export default function ProjectDetailsDialog(props: Props) {
                         </div>
 
                         {samples.map((s, idx) => (
-                          <div key={idx} className="flex-shrink-0 relative">
+                          <div key={idx} className="shrink-0 relative">
                             <input
                               ref={(el) => (sampleRefs.current[idx] = el)}
                               type="file"
@@ -701,7 +616,7 @@ export default function ProjectDetailsDialog(props: Props) {
                             >
                               {s ? (
                                 <img
-                                  src={sampleImageUrls[idx]}
+                                  src={getFullImageUrl(s)}
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
@@ -732,7 +647,7 @@ export default function ProjectDetailsDialog(props: Props) {
                   </div>
                 </div>
 
-                {/* Fields Grid */}
+                {/* Fields grid (company, brand, category, etc.) */}
                 <div className="grid grid-cols-6 gap-4">
                   <div>
                     <Label>Product Code</Label>
@@ -749,7 +664,8 @@ export default function ProjectDetailsDialog(props: Props) {
                         onValueChange={(v) =>
                           setEdited({
                             ...edited,
-                            company: companies.find((c) => c._id === v) || null,
+                            company:
+                              companies.find((c: any) => c._id === v) || null,
                             brand: null,
                             category: null,
                           })
@@ -759,7 +675,7 @@ export default function ProjectDetailsDialog(props: Props) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {companies.map((c) => (
+                          {companies.map((c: any) => (
                             <SelectItem key={c._id} value={c._id}>
                               {c.name}
                             </SelectItem>
@@ -779,7 +695,7 @@ export default function ProjectDetailsDialog(props: Props) {
                         onValueChange={(v) =>
                           setEdited({
                             ...edited,
-                            brand: brands.find((b) => b._id === v) || null,
+                            brand: brands.find((b: any) => b._id === v) || null,
                             category: null,
                           })
                         }
@@ -788,7 +704,7 @@ export default function ProjectDetailsDialog(props: Props) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {brands.map((b) => (
+                          {brands.map((b: any) => (
                             <SelectItem key={b._id} value={b._id}>
                               {b.name}
                             </SelectItem>
@@ -809,7 +725,7 @@ export default function ProjectDetailsDialog(props: Props) {
                           setEdited({
                             ...edited,
                             category:
-                              categories.find((c) => c._id === v) || null,
+                              categories.find((c: any) => c._id === v) || null,
                           })
                         }
                       >
@@ -817,7 +733,7 @@ export default function ProjectDetailsDialog(props: Props) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {categories.map((c) => (
+                          {categories.map((c: any) => (
                             <SelectItem key={c._id} value={c._id}>
                               {c.name}
                             </SelectItem>
@@ -837,7 +753,7 @@ export default function ProjectDetailsDialog(props: Props) {
                         onValueChange={(v) =>
                           setEdited({
                             ...edited,
-                            type: types.find((t) => t._id === v) || null,
+                            type: types.find((t: any) => t._id === v) || null,
                           })
                         }
                       >
@@ -845,7 +761,7 @@ export default function ProjectDetailsDialog(props: Props) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {types.map((t) => (
+                          {types.map((t: any) => (
                             <SelectItem key={t._id} value={t._id}>
                               {t.name}
                             </SelectItem>
@@ -919,7 +835,8 @@ export default function ProjectDetailsDialog(props: Props) {
                         onValueChange={(v) =>
                           setEdited({
                             ...edited,
-                            country: countries.find((c) => c._id === v) || null,
+                            country:
+                              countries.find((c: any) => c._id === v) || null,
                           })
                         }
                       >
@@ -927,7 +844,7 @@ export default function ProjectDetailsDialog(props: Props) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {countries.map((c) => (
+                          {countries.map((c: any) => (
                             <SelectItem key={c._id} value={c._id}>
                               {c.name}
                             </SelectItem>
@@ -1005,7 +922,8 @@ export default function ProjectDetailsDialog(props: Props) {
                           setEdited({
                             ...edited,
                             assignPerson:
-                              assignPersons.find((p) => p._id === v) || null,
+                              assignPersons.find((p: any) => p._id === v) ||
+                              null,
                           })
                         }
                       >
@@ -1013,7 +931,7 @@ export default function ProjectDetailsDialog(props: Props) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {assignPersons.map((p) => (
+                          {assignPersons.map((p: any) => (
                             <SelectItem key={p._id} value={p._id}>
                               {p.name}
                             </SelectItem>
@@ -1042,12 +960,10 @@ export default function ProjectDetailsDialog(props: Props) {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Client Feedback */}
                 <div className="bg-white border rounded-lg p-6">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">
                     Client Feedback
                   </h4>
-
                   <div className="mb-6">
                     <Label className="text-sm font-medium text-gray-600 mb-2 block">
                       Description
@@ -1056,10 +972,7 @@ export default function ProjectDetailsDialog(props: Props) {
                       <Textarea
                         value={edited.productDesc || ""}
                         onChange={(e) =>
-                          setEdited({
-                            ...edited,
-                            productDesc: e.target.value,
-                          })
+                          setEdited({ ...edited, productDesc: e.target.value })
                         }
                         className="min-h-[100px]"
                       />
@@ -1078,16 +991,12 @@ export default function ProjectDetailsDialog(props: Props) {
                       <Select
                         value={edited.clientApproval || "pending"}
                         onValueChange={(value) =>
-                          setEdited({
-                            ...edited,
-                            clientApproval: value,
-                          })
+                          setEdited({ ...edited, clientApproval: value })
                         }
                       >
                         <SelectTrigger className="mt-1">
                           <SelectValue placeholder="Select Approval Status" />
                         </SelectTrigger>
-
                         <SelectContent>
                           <SelectItem value="ok">Approved</SelectItem>
                           <SelectItem value="update_req">
@@ -1111,7 +1020,7 @@ export default function ProjectDetailsDialog(props: Props) {
                             ? "bg-yellow-100 text-yellow-700"
                             : edited.clientApproval === "review_req"
                             ? "bg-purple-100 text-purple-700"
-                            : "bg-red-100 text-red-700" // rejected
+                            : "bg-red-100 text-red-700"
                         }
                       >
                         {
@@ -1128,7 +1037,6 @@ export default function ProjectDetailsDialog(props: Props) {
                   </div>
                 </div>
 
-                {/* Next Update */}
                 <div className="bg-white border rounded-lg p-6">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">
                     Next Update Schedule
@@ -1141,7 +1049,11 @@ export default function ProjectDetailsDialog(props: Props) {
                     {isEditing ? (
                       <Input
                         type="date"
-                        value={edited.nextUpdateDate || ""}
+                        value={
+                          edited.nextUpdateDate
+                            ? edited.nextUpdateDate.split("T")[0]
+                            : ""
+                        }
                         onChange={(e) =>
                           setEdited({
                             ...edited,
@@ -1171,10 +1083,10 @@ export default function ProjectDetailsDialog(props: Props) {
                         onChange={(e) =>
                           setEdited({ ...edited, updateNotes: e.target.value })
                         }
-                        className="min-h-[80px]"
+                        className="min-h-20"
                       />
                     ) : (
-                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-[80px]">
+                      <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 min-h-20">
                         {project?.nextUpdate?.note || "No update notes"}
                       </div>
                     )}
@@ -1219,7 +1131,6 @@ export default function ProjectDetailsDialog(props: Props) {
                 </div>
               </div>
 
-              {/* Quick Actions */}
               {isEditing && (
                 <div className="bg-gray-50 border rounded-lg p-4">
                   <Label className="text-sm font-medium text-gray-700 mb-3 block">

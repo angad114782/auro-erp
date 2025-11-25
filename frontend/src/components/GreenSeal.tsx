@@ -6,15 +6,14 @@ import {
   FileSpreadsheet,
   Filter,
   Image as ImageIcon,
-  IndianRupee,
   Package,
   Search,
   Target,
   Trash2,
 } from "lucide-react";
+
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import api from "../lib/api";
 
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -28,20 +27,33 @@ import { Input } from "./ui/input";
 
 import { GreenSealProjectDetailsDialog } from "./GreenSealProjectDetailsDialog";
 import { ImportTemplateGenerator } from "./ImportTemplateGenerator";
-import { MasterItem, ProductDevelopment } from "./ProjectDetailsDialog";
+
+import { useMasters } from "../hooks/useMaster";
+import { useProjects } from "../hooks/useProjects";
+import { Project } from "./services/projectService";
 
 export function GreenSeal() {
-  const [loading, setLoading] = useState(false);
+  // Centralized Master Data (from useMasters)
+  const {
+    companies,
+    brands,
+    categories,
+    types,
+    countries,
+    assignPersons,
 
-  const [companies, setCompanies] = useState<MasterItem[]>([]);
-  const [brands, setBrands] = useState<MasterItem[]>([]);
-  const [categories, setCategories] = useState<MasterItem[]>([]);
-  const [types, setTypes] = useState<MasterItem[]>([]);
-  // const [colors, setColors] = useState<MasterItem[]>([]);
-  const [countries, setCountries] = useState<MasterItem[]>([]);
-  const [assignPersons, setAssignPersons] = useState<MasterItem[]>([]);
+    loadAllMasters,
+    setBrands,
+    setCategories,
+  } = useMasters();
 
-  const [projects, setProjects] = useState<ProductDevelopment[]>([]);
+  // Central Project Loader
+  const {
+    projects,
+    loadProjects,
+    loading: projectsLoading,
+    deleteProject,
+  } = useProjects();
 
   // UI state
   const [searchTerm, setSearchTerm] = useState("");
@@ -49,72 +61,21 @@ export function GreenSeal() {
   const itemsPerPage = 8;
 
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [selectedProject, setSelectedProject] =
-    useState<ProductDevelopment | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-  // Load master data
+  // Load master data ONCE
   useEffect(() => {
-    let cancel = false;
+    loadAllMasters();
+  }, [loadAllMasters]);
 
-    async function loadMasters() {
-      try {
-        const [cRes, tRes, coRes, apRes] = await Promise.all([
-          api.get("/companies"),
-          // api.get("/brands"),
-          // api.get("/categories"),
-          api.get("/types"),
-          // api.get("/colors"),
-          api.get("/countries"),
-          api.get("/assign-persons"),
-        ]);
-
-        if (cancel) return;
-
-        const pick = (r: any) =>
-          r?.data?.data ??
-          r?.data?.items ??
-          (Array.isArray(r?.data) ? r.data : []);
-
-        setCompanies(pick(cRes));
-        // setBrands(pick(bRes));
-        // setCategories(pick(catRes));
-        setTypes(pick(tRes));
-        // setColors(pick(colRes));
-        setCountries(pick(coRes));
-        setAssignPersons(pick(apRes));
-      } catch (e) {
-        console.error("Masters load error", e);
-      }
-    }
-
-    loadMasters();
-    return () => {
-      cancel = true;
-    };
-  }, []);
-
-  // Load projects
-  const reloadProjects = async () => {
-    setLoading(true);
-    try {
-      const r = await api.get("/projects");
-      const data = r?.data?.data ?? r?.data?.items ?? r?.data ?? [];
-      setProjects(data);
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to load projects");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Load projects ONCE
   useEffect(() => {
-    reloadProjects();
-  }, []);
+    loadProjects();
+  }, [loadProjects]);
 
-  // Search filter
+  // Search
   const filteredProjects = useMemo(() => {
     if (!searchTerm) return projects;
 
@@ -130,13 +91,13 @@ export function GreenSeal() {
     });
   }, [projects, searchTerm]);
 
-  // Only Green Seal
+  // Only Green Seal items
   const greenSealProjects = filteredProjects.filter(
     (p) => p.status === "green_seal"
   );
 
-  // Pagination
-  const paginated = (list: any[]) => {
+  // Pagination helpers
+  const paginated = (list: Project[]) => {
     const start = (currentPage - 1) * itemsPerPage;
     return list.slice(start, start + itemsPerPage);
   };
@@ -149,26 +110,19 @@ export function GreenSeal() {
   // Helpers
   const calculateDuration = (start?: string, target?: string) => {
     if (!start || !target) return "TBD";
-
     const s = new Date(start);
     const t = new Date(target);
     const diff = t.getTime() - s.getTime();
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-
+    const days = Math.ceil(diff / 86400000);
     if (days < 0) return `${Math.abs(days)} days overdue`;
     if (days === 0) return "Due today";
     return `${days} days`;
   };
 
-  const getStageColor = (stage?: string) => {
-    const map: Record<string, string> = {
-      green_seal: "bg-green-100 text-green-800",
-    };
-    return map[stage ?? ""] || "bg-gray-100 text-gray-800";
-  };
+  const getStageColor = () => "bg-green-100 text-green-800";
 
   const getPriorityColor = (priority?: string) => {
-    const map: Record<string, string> = {
+    const map: any = {
       high: "bg-red-500 text-white",
       medium: "bg-purple-500 text-white",
       low: "bg-green-600 text-white",
@@ -176,38 +130,23 @@ export function GreenSeal() {
     return map[priority ?? ""] || "bg-gray-100 text-gray-800";
   };
 
-  // Handlers
-  const handleProjectClick = (p: any) => {
-    setSelectedProject(p);
-    setDetailsOpen(true);
-  };
-
-  const handleDelete = async (p: any) => {
-    try {
-      await api.delete(`/projects/${p._id}`);
-      setProjects((prev) => prev.filter((x) => x._id !== p._id));
-      toast.success("Project removed");
-    } catch (e) {
-      toast.error("Delete failed");
-    }
-  };
-
   return (
     <div className="space-y-6">
       <Card className="border-0 shadow-lg bg-white">
-        <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
+        <CardHeader className="bg-linear-to-r from-gray-50 to-gray-100 rounded-t-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white">
                 <CheckCircle className="w-5 h-5" />
               </div>
               <div>
-                <CardTitle className="text-xl">Green Seal Management</CardTitle>
+                <CardTitle className="text-xl">Green Seal Projects</CardTitle>
                 <p className="text-sm text-gray-600 mt-1">
-                  Review and approve designs for Green Seal certification
+                  View all projects currently in Green Seal stage
                 </p>
               </div>
             </div>
+
             <div className="flex items-center gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -223,6 +162,7 @@ export function GreenSeal() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
               <ImportTemplateGenerator moduleType="GreenSeal" />
             </div>
           </div>
@@ -243,13 +183,14 @@ export function GreenSeal() {
                 className="pl-10"
               />
             </div>
+
             <Button variant="outline">
               <Filter className="w-4 h-4 mr-2" />
               Filters
             </Button>
           </div>
 
-          {/* Table */}
+          {/* TABLE */}
           <div className="overflow-x-auto border border-gray-200 rounded-lg">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -283,7 +224,10 @@ export function GreenSeal() {
                   <tr
                     key={p._id}
                     className="hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleProjectClick(p)}
+                    onClick={() => {
+                      setSelectedProject(p);
+                      setDetailsOpen(true);
+                    }}
                   >
                     {/* Product Code */}
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -309,7 +253,6 @@ export function GreenSeal() {
                                   : `${BACKEND_URL}/${p.coverImage}`
                               }
                               className="w-full h-full object-cover rounded-lg"
-                              alt="Product"
                             />
                           ) : (
                             <ImageIcon className="w-6 h-6 text-gray-400" />
@@ -318,7 +261,7 @@ export function GreenSeal() {
                       </div>
                     </td>
 
-                    {/* Company & Brand */}
+                    {/* Company/Brand */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium">
                         {p.company?.name}
@@ -328,7 +271,7 @@ export function GreenSeal() {
                       </div>
                     </td>
 
-                    {/* Category, Type, Gender */}
+                    {/* Category */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium">
                         {p.category?.name}
@@ -339,7 +282,7 @@ export function GreenSeal() {
                       <div className="text-xs text-gray-400">{p.gender}</div>
                     </td>
 
-                    {/* Art & Colour */}
+                    {/* Art */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium">{p.artName}</div>
                       <div className="text-sm text-gray-500">{p.color}</div>
@@ -403,9 +346,7 @@ export function GreenSeal() {
                     {/* Status */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
-                        className={`inline-flex px-2 text-xs font-semibold rounded-full ${getStageColor(
-                          p.status
-                        )}`}
+                        className={`inline-flex px-2 text-xs font-semibold rounded-full ${getStageColor()}`}
                       >
                         Green Seal
                       </span>
@@ -422,49 +363,16 @@ export function GreenSeal() {
                       </span>
                     </td>
 
-                    {/* Task INC */}
+                    {/* Task */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       {p.assignPerson?.name || "N/A"}
                     </td>
-
-                    {/* Cost Overview */}
-                    {/* <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-1 text-sm font-semibold text-gray-900">
-                        <IndianRupee className="w-3 h-3" />
-                        <span>
-                          {p.finalCost
-                            ? p.finalCost.toLocaleString("en-IN")
-                            : p.targetCost
-                            ? p.targetCost.toLocaleString("en-IN")
-                            : "0"}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {p.finalCost ? "Final Cost" : "Target Cost"}
-                      </div>
-                      {p.finalCost && p.targetCost && (
-                        <div
-                          className={`text-xs font-medium mt-1 ${
-                            p.finalCost - p.targetCost < 0
-                              ? "text-green-600"
-                              : p.finalCost - p.targetCost > 0
-                              ? "text-red-600"
-                              : "text-gray-600"
-                          }`}
-                        >
-                          Variance: {p.finalCost - p.targetCost > 0 ? "+" : ""}₹
-                          {Math.abs(p.finalCost - p.targetCost).toLocaleString(
-                            "en-IN"
-                          )}
-                        </div>
-                      )}
-                    </td> */}
 
                     {/* Remarks */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
                         Next:{" "}
-                        {p?.nextUpdate && p?.nextUpdate?.date
+                        {p?.nextUpdate?.date
                           ? new Date(p.nextUpdate.date).toLocaleDateString(
                               "en-GB"
                             )
@@ -472,9 +380,7 @@ export function GreenSeal() {
                       </div>
 
                       <div className="text-sm text-gray-500">
-                        {p?.nextUpdate && p?.nextUpdate?.note
-                          ? p.nextUpdate.note
-                          : "N/A"}
+                        {p?.nextUpdate?.note ?? "N/A"}
                       </div>
                     </td>
 
@@ -484,9 +390,11 @@ export function GreenSeal() {
                         variant="ghost"
                         size="sm"
                         className="text-red-600 hover:text-red-700"
-                        onClick={(e: any) => {
+                        onClick={async (e: any) => {
                           e.stopPropagation();
-                          handleDelete(p);
+
+                          await deleteProject(p._id);
+                          toast.success("Project removed successfully!");
                         }}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -499,7 +407,7 @@ export function GreenSeal() {
           </div>
 
           {/* Empty state */}
-          {greenSealProjects.length === 0 && !loading && (
+          {greenSealProjects.length === 0 && !projectsLoading && (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Package className="w-8 h-8 text-gray-400" />
@@ -508,7 +416,7 @@ export function GreenSeal() {
                 No Green Seal projects found
               </h3>
               <p className="text-gray-600">
-                Projects will appear here when they reach the Green Seal stage.
+                Projects appear here when they reach Green Seal stage.
               </p>
             </div>
           )}
@@ -557,14 +465,14 @@ export function GreenSeal() {
         </CardContent>
       </Card>
 
-      {/* Dialog */}
+      {/* DETAILS DIALOG */}
       <GreenSealProjectDetailsDialog
         open={detailsOpen}
         onOpenChange={async (v) => {
-          if (!v) await reloadProjects();
+          if (!v) await loadProjects();
           setDetailsOpen(v);
         }}
-        reloadProjects={reloadProjects}
+        reloadProjects={loadProjects}
         project={selectedProject}
         companies={companies}
         brands={brands}

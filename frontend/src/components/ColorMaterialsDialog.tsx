@@ -665,10 +665,10 @@ export function ColorMaterialsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
         {/* Sticky Header Section - Green Theme (matching Green Seal) */}
-        <div className="sticky top-0 z-50 px-8 py-6 bg-gradient-to-r from-green-50 via-white to-green-50 border-b border-gray-200 shadow-sm">
+        <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-green-50 via-white to-green-50 border-b border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
-              <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+              <div className="w-14 h-14 bg-linear-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
                 <Palette className="w-7 h-7 text-white" />
               </div>
               <div>
@@ -783,7 +783,7 @@ export function ColorMaterialsDialog({
 
               {/* Add New Color Form */}
               {isAddingColor && (
-                <div className="p-5 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
+                <div className="p-5 bg-linear-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
                   <h4 className="font-semibold text-gray-900 mb-4">
                     Create New Color Variant
                   </h4>
@@ -802,7 +802,7 @@ export function ColorMaterialsDialog({
                     <div className="flex items-end gap-2">
                       <Button
                         onClick={handleAddNewColor}
-                        className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 flex-1"
+                        className="bg-linear-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 flex-1"
                         disabled={!newColorName.trim()}
                       >
                         <CheckCircle className="w-4 h-4 mr-2" />

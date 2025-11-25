@@ -82,13 +82,13 @@ export function LoginPage(): React.JSX.Element {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-green-50 flex items-center justify-center p-4">
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
         {/* Login Form */}
         <Card className="w-full max-w-md mx-auto shadow-xl border-0">
           <CardHeader className="space-y-1 pb-4">
             <div className="flex items-center justify-center mb-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-green-600 rounded-xl flex items-center justify-center">
+              <div className="w-12 h-12 bg-linear-to-br from-blue-600 to-green-600 rounded-xl flex items-center justify-center">
                 <Building className="w-6 h-6 text-white" />
               </div>
             </div>
@@ -213,7 +213,7 @@ export function LoginPage(): React.JSX.Element {
 
               <Button
                 type="submit"
-                className="w-full h-11 bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white font-semibold"
+                className="w-full h-11 bg-linear-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white font-semibold"
                 disabled={loading}
               >
                 {loading ? (
@@ -230,7 +230,7 @@ export function LoginPage(): React.JSX.Element {
         </Card>
 
         {/* Demo Accounts Panel */}
-        <Card className="w-full max-w-md mx-auto shadow-xl border-0 bg-gradient-to-br from-gray-50 to-blue-50">
+        <Card className="w-full max-w-md mx-auto shadow-xl border-0 bg-linear-to-br from-gray-50 to-blue-50">
           <CardHeader>
             <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
               <Shield className="w-5 h-5" />

@@ -70,7 +70,7 @@ function AppContent(): React.JSX.Element {
       case "master-data":
         return <MasterDataManagement currentSubModule={currentSubModule} />;
       case "rd-management":
-        return <RDManagement currentSubModule={currentSubModule} />;
+        return <RDManagement />;
       case "production":
         return <ProductionManagement currentSubModule={currentSubModule} />;
       case "inventory":
@@ -91,7 +91,7 @@ function AppContent(): React.JSX.Element {
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
+    <div className="h-screen bg-linear-to-br from-gray-50 to-gray-100 overflow-hidden">
       <FigmaSidebar
         currentModule={currentModule}
         currentSubModule={currentSubModule}

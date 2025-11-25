@@ -1,43 +1,46 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+// src/components/POApprovedProjectDetailsDialog.tsx
 import {
-  Eye,
-  Edit2,
-  ArrowRight,
-  Calendar,
-  User,
-  IndianRupee,
-  Clock,
   CheckCircle,
-  AlertTriangle,
-  Workflow,
-  Target,
-  Building,
-  Users,
-  X,
-  Save,
-  RefreshCw,
-  Calculator,
-  MessageSquare,
-  Award,
-  ShoppingCart,
+  Edit2,
   Factory,
   ImageIcon,
-  Upload,
-  Trash2,
+  IndianRupee,
   Plus,
-  Package,
+  Save,
+  ShoppingCart,
+  Target,
+  Trash2,
+  Upload,
+  Workflow,
+  X,
 } from "lucide-react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
+import { toast } from "sonner";
+import api from "../lib/api";
+import { workflowStages } from "./GreenSealProjectDetailsDialog";
+import {
+  dataUrlToFile,
+  getFullImageUrl,
+  formatDateDisplay,
+  getStage,
+} from "../lib/utils";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
+  DialogTitle,
 } from "./ui/dialog";
-import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Textarea } from "./ui/textarea";
+import { Progress } from "./ui/progress";
 import {
   Select,
   SelectContent,
@@ -45,19 +48,49 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Separator } from "./ui/separator";
-import { Badge } from "./ui/badge";
-import { Progress } from "./ui/progress";
-import { toast } from "sonner";
-import api from "../lib/api";
-import {
-  dataUrlToFile,
-  formatDateDisplay,
-  getFullImageUrl,
-  getStage,
-  ProductDevelopment,
-} from "./ProjectDetailsDialog";
-import { workflowStages } from "./GreenSealProjectDetailsDialog";
+
+/**
+ * Minimal ProductDevelopment shape used locally in this file.
+ * You can replace this with your shared type if you have one.
+ */
+type ProductDevelopment = {
+  _id?: string;
+  autoCode?: string;
+  company?: { _id?: string; name?: string };
+  brand?: { _id?: string; name?: string };
+  category?: { _id?: string; name?: string };
+  type?: { _id?: string; name?: string };
+  country?: { _id?: string; name?: string };
+  assignPerson?: { _id?: string; name?: string };
+  artName?: string;
+  color?: string;
+  colorHex?: string;
+  size?: string;
+  priority?: string;
+  productDesc?: string;
+  status?: string;
+  createdAt?: string;
+  redSealTargetDate?: string;
+  coverImage?: string | null;
+  sampleImages?: string[];
+  po?: {
+    poNumber?: string;
+    orderQuantity?: number;
+    unitPrice?: number;
+    totalAmount?: number;
+  };
+  poNumber?: string; // legacy shape
+  orderQuantity?: number;
+  unitPrice?: number;
+  poTarget?: string;
+  nextUpdate?: { date?: string; note?: string };
+  productionComplexity?: string;
+  totalItems?: string;
+  components?: any[];
+  materials?: any[];
+  poValue?: number;
+  [k: string]: any;
+};
 
 interface POApprovedProjectDetailsDialogProps {
   open: boolean;
@@ -74,6 +107,16 @@ interface POApprovedProjectDetailsDialogProps {
   reloadProjects?: () => Promise<void>;
 }
 
+/**
+ * PO Approved Dialog component
+ *
+ * Notes on fixes applied:
+ * - Ensured all hooks are called unconditionally and in stable order.
+ * - Added missing utility imports (dataUrlToFile, getFullImageUrl, formatDateDisplay, getStage).
+ * - Added a local ProductDevelopment type to avoid an implicit global type dependency.
+ * - Removed stray console.log and fixed small className inconsistencies.
+ * - Updated PO edit handler to update local state with returned PO object.
+ */
 export function POApprovedProjectDetailsDialog({
   open,
   onOpenChange,
@@ -103,9 +146,10 @@ export function POApprovedProjectDetailsDialog({
   const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [dynamicImages, setDynamicImages] = useState<string[]>([]);
 
-  const coverInputRef = React.useRef<HTMLInputElement | null>(null);
-  const additionalInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
-  const dynamicInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
+  // stable refs
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const additionalInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const dynamicInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Initialize local edit state when dialog opens
   useEffect(() => {
@@ -305,12 +349,12 @@ export function POApprovedProjectDetailsDialog({
         fd.append("clientApproval", editedProject.clientApproval);
 
       // nextUpdate mapping
-      if (editedProject?.nextUpdateDate) {
+      if (editedProject?.nextUpdate?.date) {
         fd.append(
           "nextUpdate",
           JSON.stringify({
-            date: editedProject.nextUpdateDate,
-            note: editedProject?.updateNotes || "",
+            date: editedProject.nextUpdate.date,
+            note: editedProject.nextUpdate.note || "",
           })
         );
       }
@@ -348,7 +392,7 @@ export function POApprovedProjectDetailsDialog({
         }
       });
 
-      // PO-specific fields
+      // PO-specific fields (if present)
       if (editedProject.po?.poNumber) {
         fd.append("poNumber", editedProject.po.poNumber);
       }
@@ -376,8 +420,6 @@ export function POApprovedProjectDetailsDialog({
     reloadProjects,
   ]);
 
-  console.log(project, "cccccccccccccccc");
-
   // PO number edit handler
   const handleEditPONumber = useCallback(async () => {
     if (!editedProject) return;
@@ -393,25 +435,33 @@ export function POApprovedProjectDetailsDialog({
         poNumber: value,
       });
 
-      const updated = res.data?.data?.po ?? null;
+      // backend returns updated project.po or po object; handle both shapes
+      const updatedPo =
+        res.data?.data?.po ?? res.data?.po ?? res.data?.data ?? null;
 
-      // 🔥 Update UI immediately
+      // Update local editedProject.po and also reflect UI
       setEditedProject((prev) =>
         prev
           ? {
               ...prev,
-              po: updated, // <── FIX: update PO in local state
+              po: {
+                ...(prev.po || {}),
+                ...(updatedPo || { poNumber: value }),
+                poNumber:
+                  (updatedPo && (updatedPo.poNumber || updatedPo)) || value,
+              },
             }
           : prev
       );
 
       toast.success("PO Number updated!");
       setIsAddingPO(false);
+      setPONumber("");
 
       await reloadProjects?.();
     } catch (err) {
       console.error(err);
-      toast.error("Failed");
+      toast.error("Failed to update PO Number");
     }
   }, [editedProject, poNumber, reloadProjects]);
 
@@ -438,10 +488,10 @@ export function POApprovedProjectDetailsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
         {/* Sticky Header Section - Emerald/Green Theme */}
-        <div className="sticky top-0 z-50 px-8 py-6 bg-gradient-to-r from-emerald-50 via-white to-emerald-50 border-b border-gray-200 shadow-sm">
+        <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-emerald-50 via-white to-emerald-50 border-b border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
-              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+              <div className="w-14 h-14 bg-linear-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
                 <ShoppingCart className="w-7 h-7 text-white" />
               </div>
               <div>
@@ -475,7 +525,7 @@ export function POApprovedProjectDetailsDialog({
             <div className="flex items-center gap-3">
               <Button
                 onClick={handleAdvanceToProduction}
-                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                className="bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
               >
                 <Factory className="w-4 h-4 mr-2" />
                 Advance to Production
@@ -547,10 +597,8 @@ export function POApprovedProjectDetailsDialog({
                 </div>
 
                 <div className="grid grid-cols-6 gap-2">
-                  {workflowStages.map((stage, index) => {
-                    const isCompleted = true;
+                  {workflowStages.map((stage) => {
                     const isCurrent = stage.id === "PO Approved";
-
                     return (
                       <div
                         key={stage.id}
@@ -590,7 +638,6 @@ export function POApprovedProjectDetailsDialog({
                 </h3>
               </div>
 
-              {/* Unified Product Details Section - Same as PO Pending */}
               <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
                 <div className="flex items-center justify-between mb-5">
                   <h4 className="text-lg font-semibold text-gray-900">
@@ -607,7 +654,7 @@ export function POApprovedProjectDetailsDialog({
                 {/* Horizontal Layout: Preview + Images */}
                 <div className="flex gap-4 mb-5">
                   {/* Product Preview - Compact */}
-                  <div className="flex-shrink-0 w-44">
+                  <div className="shrink-0 w-44">
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 h-full">
                       <Label className="text-xs font-medium text-gray-600 mb-2 block">
                         Preview
@@ -632,7 +679,7 @@ export function POApprovedProjectDetailsDialog({
 
                   {/* Product Images Gallery */}
                   <div className="flex-1 min-w-0">
-                    <div className="p-3 bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
+                    <div className="p-3 bg-linear-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5">
                           <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
@@ -663,7 +710,7 @@ export function POApprovedProjectDetailsDialog({
                       {!isEditing ? (
                         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
                           {coverPhoto && (
-                            <div className="group relative flex-shrink-0">
+                            <div className="group relative shrink-0">
                               <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
                                 <img
                                   src={getFullImageUrl(coverPhoto)}
@@ -676,10 +723,7 @@ export function POApprovedProjectDetailsDialog({
                           {additionalImages
                             .filter((img) => img)
                             .map((image, i) => (
-                              <div
-                                key={i}
-                                className="group relative flex-shrink-0"
-                              >
+                              <div key={i} className="group relative shrink-0">
                                 <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
                                   <img
                                     src={getFullImageUrl(image)}
@@ -692,7 +736,7 @@ export function POApprovedProjectDetailsDialog({
                           {dynamicImages.map((image, i) => (
                             <div
                               key={`dynamic-${i}`}
-                              className="group relative flex-shrink-0"
+                              className="group relative shrink-0"
                             >
                               <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
                                 <img
@@ -718,7 +762,7 @@ export function POApprovedProjectDetailsDialog({
                       ) : (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                            <div className="flex-shrink-0">
+                            <div className="shrink-0">
                               <input
                                 ref={coverInputRef}
                                 type="file"
@@ -748,7 +792,7 @@ export function POApprovedProjectDetailsDialog({
                               ) : (
                                 <div
                                   onClick={() => coverInputRef.current?.click()}
-                                  className="w-20 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md"
+                                  className="w-20 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md"
                                 >
                                   <ImageIcon className="w-5 h-5 text-blue-600" />
                                   <span className="text-xs text-blue-700 mt-0.5">
@@ -759,7 +803,7 @@ export function POApprovedProjectDetailsDialog({
                             </div>
 
                             {[0, 1, 2, 3, 4].map((i) => (
-                              <div key={i} className="flex-shrink-0">
+                              <div key={i} className="shrink-0">
                                 <input
                                   ref={(el) => {
                                     if (additionalInputRefs.current) {
@@ -806,10 +850,7 @@ export function POApprovedProjectDetailsDialog({
                             ))}
 
                             {dynamicImages.map((image, i) => (
-                              <div
-                                key={`dynamic-${i}`}
-                                className="flex-shrink-0"
-                              >
+                              <div key={`dynamic-${i}`} className="shrink-0">
                                 <input
                                   ref={(el) => {
                                     if (dynamicInputRefs.current) {
@@ -857,7 +898,7 @@ export function POApprovedProjectDetailsDialog({
 
                             <div
                               onClick={handleAddImageSlot}
-                              className="w-20 h-20 flex-shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md"
+                              className="w-20 h-20 shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md"
                             >
                               <Plus className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-all duration-200" />
                             </div>
@@ -866,7 +907,7 @@ export function POApprovedProjectDetailsDialog({
                           <div className="flex justify-end pt-2 border-t border-gray-200">
                             <Button
                               onClick={handleSaveImages}
-                              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-7 text-xs"
+                              className="bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-7 text-xs"
                               size="sm"
                             >
                               <Save className="w-3 h-3 mr-1.5" />
@@ -1162,7 +1203,7 @@ export function POApprovedProjectDetailsDialog({
                         }
                         onChange={(e) =>
                           setEditedProject({
-                            ...editedProject!,
+                            ...(editedProject || {}),
                             redSealTargetDate: e.target.value,
                           } as ProductDevelopment)
                         }
@@ -1182,7 +1223,7 @@ export function POApprovedProjectDetailsDialog({
                         value={editedProject?.priority || "low"}
                         onValueChange={(value) =>
                           setEditedProject({
-                            ...editedProject!,
+                            ...(editedProject || {}),
                             priority: value,
                           } as ProductDevelopment)
                         }
@@ -1220,7 +1261,7 @@ export function POApprovedProjectDetailsDialog({
                         value={editedProject?.assignPerson?._id || ""}
                         onValueChange={(v) =>
                           setEditedProject({
-                            ...editedProject!,
+                            ...(editedProject || {}),
                             assignPerson:
                               assignPersons.find((p) => p._id === v) || null,
                           } as ProductDevelopment)
@@ -1340,7 +1381,7 @@ export function POApprovedProjectDetailsDialog({
             </div>
 
             {/* Success Summary Section */}
-            <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-200 rounded-xl p-6">
+            <div className="bg-linear-to-r from-emerald-50 to-green-50 border-2 border-emerald-200 rounded-xl p-6">
               <div className="text-center">
                 <CheckCircle className="w-16 h-16 mx-auto mb-4 text-emerald-600" />
                 <h3 className="text-2xl font-bold text-emerald-900 mb-2">

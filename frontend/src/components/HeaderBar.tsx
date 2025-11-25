@@ -273,7 +273,7 @@ export function HeaderBar({
           {/* Enhanced Module Header */}
           <div className="flex items-center gap-4">
             <div
-              className={`w-12 h-12 bg-gradient-to-br ${moduleInfo.gradient} rounded-xl flex items-center justify-center shadow-lg`}
+              className={`w-12 h-12 bg-linear-to-br ${moduleInfo.gradient} rounded-xl flex items-center justify-center shadow-lg`}
             >
               {moduleInfo.icon}
             </div>
@@ -319,7 +319,7 @@ export function HeaderBar({
               <PopoverContent className="w-96 p-0 mr-4" align="end">
                 <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
                   {/* Header */}
-                  <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                  <div className="px-6 py-4 bg-linear-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Bell className="w-5 h-5 text-gray-700" />
@@ -363,7 +363,7 @@ export function HeaderBar({
                             }
                           >
                             <div className="flex items-start gap-3">
-                              <div className="flex-shrink-0 mt-0.5">
+                              <div className="shrink-0 mt-0.5">
                                 {getNotificationIcon(notification.type)}
                               </div>
                               <div className="flex-1 min-w-0">
@@ -378,7 +378,7 @@ export function HeaderBar({
                                     {notification.title}
                                   </h4>
                                   {notification.unread && (
-                                    <div className="w-2 h-2 bg-[#0c9dcb] rounded-full flex-shrink-0 ml-2"></div>
+                                    <div className="w-2 h-2 bg-[#0c9dcb] rounded-full shrink-0 ml-2"></div>
                                   )}
                                 </div>
                                 <p
@@ -401,7 +401,7 @@ export function HeaderBar({
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex-shrink-0">
+                              <div className="shrink-0">
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <Button

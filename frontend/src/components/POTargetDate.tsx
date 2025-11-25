@@ -1,3 +1,4 @@
+// POTargetDate.tsx
 import {
   Calendar,
   CheckCircle,
@@ -13,9 +14,8 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
-import api from "../lib/api";
 import { POApprovedProjectDetailsDialog } from "./POApprovedProjectDetailsDialog";
 import { POPendingProjectDetailsDialog } from "./POTargetProjectDetailsDialog";
 import ProjectDetailsDialog from "./ProjectDetailsDialog";
@@ -25,20 +25,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
+import { useProjects } from "../hooks/useProjects";
+import { useMasters } from "../hooks/useMaster";
+
 export function POTargetDate() {
-  // Master data
-  const [brands, setBrands] = useState<any[]>([]);
-  const [companies, setCompanies] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [types, setTypes] = useState<any[]>([]);
-  const [countries, setCountries] = useState<any[]>([]);
-  const [assignPersons, setAssignPersons] = useState<any[]>([]);
+  // Use hooks (from your project)
+  const {
+    projects,
+    loadProjects: reloadProjects,
+    loading: projectsLoading,
+    deleteProject,
+  } = useProjects();
 
-  // Projects
-  const [projects, setProjects] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const {
+    companies,
+    brands,
+    categories,
+    types,
+    countries,
+    assignPersons,
+    loadAllMasters,
+    setBrands,
+    setCategories,
+  } = useMasters();
 
-  // UI state
+  // Local UI state
+  const [loading, setLoading] = useState(false); // page-level loader if needed
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
@@ -51,97 +63,16 @@ export function POTargetDate() {
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-  // Load master data
-  useEffect(() => {
-    let cancel = false;
+  // Load masters and projects on mount (hooks expose loaders)
+  React.useEffect(() => {
+    loadAllMasters();
+  }, [loadAllMasters]);
 
-    async function loadMasters() {
-      try {
-        const [cRes, tRes, coRes, apRes] = await Promise.all([
-          api.get("/companies"),
-          api.get("/types"),
-          api.get("/countries"),
-          api.get("/assign-persons"),
-        ]);
-
-        if (cancel) return;
-
-        const pick = (r: any) =>
-          r?.data?.data ??
-          r?.data?.items ??
-          (Array.isArray(r?.data) ? r.data : []);
-
-        setCompanies(pick(cRes));
-        setTypes(pick(tRes));
-        setCountries(pick(coRes));
-        setAssignPersons(pick(apRes));
-      } catch (e) {
-        console.error("Masters load error", e);
-      }
-    }
-
-    loadMasters();
-    return () => {
-      cancel = true;
-    };
-  }, []);
-
-  // Load projects
-  const reloadProjects = async () => {
-    setLoading(true);
-    try {
-      const r = await api.get("/projects");
-      const data = r?.data?.data ?? r?.data?.items ?? r?.data ?? [];
-      setProjects(data);
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to load projects");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
+  React.useEffect(() => {
     reloadProjects();
-  }, []);
+  }, [reloadProjects]);
 
-  // Search filter (applied before tab filtering)
-  const filteredProjects = useMemo(() => {
-    if (!searchTerm) return projects;
-    const q = searchTerm.toLowerCase();
-    return projects.filter((p) => {
-      return (
-        (p.autoCode?.toLowerCase() ?? "").includes(q) ||
-        (p.remarks?.toLowerCase() ?? "").includes(q) ||
-        (p.company?.name?.toLowerCase() ?? "").includes(q) ||
-        (p.brand?.name?.toLowerCase() ?? "").includes(q) ||
-        (p.category?.name?.toLowerCase() ?? "").includes(q)
-      );
-    });
-  }, [projects, searchTerm]);
-
-  // Tabs filter: status keys as you confirmed
-  const getProjectsByTab = (tabValue: string) => {
-    switch (tabValue) {
-      case "po-pending":
-        return filteredProjects.filter((p) => p.status === "po_pending");
-      case "po-approved":
-        return filteredProjects.filter((p) => p.status === "po_approved");
-      default:
-        return filteredProjects;
-    }
-  };
-
-  // Pagination helpers
-  const getPaginatedProjects = (list: any[]) => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return list.slice(startIndex, startIndex + itemsPerPage);
-  };
-
-  const getTotalPages = (totalItems: number) =>
-    Math.max(1, Math.ceil(totalItems / itemsPerPage));
-
-  // Duration calculator reused from RedSeal style
+  // Helpers
   const calculateDuration = (startDate?: string, targetDate?: string) => {
     if (!startDate || !targetDate) return "TBD";
     const s = new Date(startDate);
@@ -153,20 +84,40 @@ export function POTargetDate() {
     return `${days} days`;
   };
 
-  // Click handler - opens correct dialog depending on status
-  const handleProjectClick = (project: any) => {
-    setSelectedProject(project);
+  // Filter and tabs logic (same as your original)
+  const filteredProjects = useMemo(() => {
+    if (!searchTerm) return projects || [];
+    const q = searchTerm.toLowerCase();
+    return (projects || []).filter((p: any) => {
+      return (
+        (p.autoCode?.toLowerCase() ?? "").includes(q) ||
+        (p.remarks?.toLowerCase() ?? "").includes(q) ||
+        (p.company?.name?.toLowerCase() ?? "").includes(q) ||
+        (p.brand?.name?.toLowerCase() ?? "").includes(q) ||
+        (p.category?.name?.toLowerCase() ?? "").includes(q)
+      );
+    });
+  }, [projects, searchTerm]);
 
-    // Determine which dialog to open
-    if (project.status === "po_approved") {
-      setPOApprovedDetailsOpen(true);
-    } else {
-      // defaults to pending dialog for po_pending (and anything else)
-      setPOPendingDetailsOpen(true);
+  const getProjectsByTab = (tabValue: string) => {
+    switch (tabValue) {
+      case "po-pending":
+        return filteredProjects.filter((p: any) => p.status === "po_pending");
+      case "po-approved":
+        return filteredProjects.filter((p: any) => p.status === "po_approved");
+      default:
+        return filteredProjects;
     }
   };
 
-  // Render pagination UI (keeps same look & feel)
+  const getPaginatedProjects = (list: any[]) => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return list.slice(startIndex, startIndex + itemsPerPage);
+  };
+
+  const getTotalPages = (totalItems: number) =>
+    Math.max(1, Math.ceil(totalItems / itemsPerPage));
+
   const renderPagination = (allProjects: any[]) => {
     const totalPages = getTotalPages(allProjects.length);
     const paginatedProjects = getPaginatedProjects(allProjects);
@@ -194,11 +145,7 @@ export function POTargetDate() {
                 key={pageNumber}
                 size="sm"
                 variant={currentPage === pageNumber ? "default" : "outline"}
-                className={
-                  currentPage === pageNumber
-                    ? "bg-blue-500 hover:bg-blue-600"
-                    : ""
-                }
+                className={currentPage === pageNumber ? "bg-blue-500" : ""}
                 onClick={() => setCurrentPage(pageNumber)}
               >
                 {pageNumber}
@@ -220,14 +167,25 @@ export function POTargetDate() {
     );
   };
 
-  // Delete handler (keeps similar behavior to RedSeal if you want delete)
+  // Click handler opens the appropriate dialog
+  const handleProjectClick = (project: any) => {
+    setSelectedProject(project);
+
+    if (project?.status === "po_approved") {
+      setPOApprovedDetailsOpen(true);
+    } else {
+      setPOPendingDetailsOpen(true);
+    }
+  };
+
+  // Delete handler uses the hook's deleteProject (keeps UI consistent)
   const handleDelete = async (project: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
-      await api.delete(`/projects/${project._id || project.id}`);
-      setProjects((prev) =>
-        prev.filter((p) => (p._id || p.id) !== (project._id || project.id))
-      );
+      // useProjects.deleteProject should accept project id (adjust if your hook signature differs)
+      await deleteProject(project._id || project.id);
+      // local state update is optional because hook's reloadProjects will refresh; still update for immediate UX
+      await reloadProjects();
       toast.success("Project removed");
     } catch (err) {
       console.error("Delete failed", err);
@@ -235,11 +193,27 @@ export function POTargetDate() {
     }
   };
 
+  // Small helper to safely pick a field from masters
+  const pickMasterName = (
+    masterList: any[],
+    projectField: any,
+    fallback?: string
+  ) => {
+    if (!projectField) return fallback || "Unknown";
+    // Try to find by id in masterList, otherwise use projectField.name
+    const found = masterList.find(
+      (m) =>
+        m._id === projectField._id ||
+        m.id === projectField._id ||
+        m._id === projectField?.id
+    );
+    return found?.name || projectField?.name || fallback || "Unknown";
+  };
+
   return (
     <div className="space-y-6">
-      {/* Main Content Card */}
       <Card className="shadow-lg border-0">
-        <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
+        <CardHeader className="bg-linear-to-r from-gray-50 to-gray-100 rounded-t-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center text-white">
@@ -269,7 +243,6 @@ export function POTargetDate() {
         </CardHeader>
 
         <CardContent className="p-6">
-          {/* Tabs */}
           <Tabs
             defaultValue="po-pending"
             className="w-full"
@@ -304,7 +277,7 @@ export function POTargetDate() {
               </TabsTrigger>
             </TabsList>
 
-            {/* PO Pending Tab Content */}
+            {/* PO Pending */}
             <TabsContent value="po-pending">
               <div className="flex items-center gap-4 mb-6">
                 <div className="relative flex-1">
@@ -347,10 +320,10 @@ export function POTargetDate() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Country
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-44 min-w-[176px]">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-44 min-w-44">
                         PO Number
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 min-w-[192px]">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 min-w-48">
                         Timeline, Dates & Duration
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -361,46 +334,36 @@ export function POTargetDate() {
                       </th>
                     </tr>
                   </thead>
+
                   <tbody className="bg-white divide-y divide-gray-200">
                     {getPaginatedProjects(getProjectsByTab("po-pending"))
                       .length > 0 ? (
                       getPaginatedProjects(getProjectsByTab("po-pending")).map(
-                        (project, index) => {
-                          const brand = brands.find(
-                            (b) =>
-                              b.id === project.brandId ||
-                              b._id === project.brandId ||
-                              b.id === project.brand?.id
+                        (project: any, index: number) => {
+                          const companyName = pickMasterName(
+                            companies,
+                            project.company,
+                            "Unknown Company"
                           );
-                          const company = companies.find(
-                            (c) =>
-                              c.id === project.companyId ||
-                              c._id === project.companyId ||
-                              c.id === project.company?.id
+                          const brandName = pickMasterName(
+                            brands,
+                            project.brand,
+                            "Unknown Brand"
                           );
-                          const category = categories.find(
-                            (c) =>
-                              c.id === project.categoryId ||
-                              c._id === project.categoryId ||
-                              c.id === project.category?.id
+                          const categoryName = pickMasterName(
+                            categories,
+                            project.category,
+                            "Unknown"
                           );
-                          const type = types.find(
-                            (t) =>
-                              t.id === project.typeId ||
-                              t._id === project.typeId ||
-                              t.id === project.type?.id
+                          const typeName = pickMasterName(
+                            types,
+                            project.type,
+                            "Unknown"
                           );
-                          // const color = colors.find(
-                          //   (cl) =>
-                          //     cl.id === project.colorId ||
-                          //     cl._id === project.colorId ||
-                          //     cl.id === project.color?.id
-                          // );
-                          const country = countries.find(
-                            (co) =>
-                              co.id === project.countryId ||
-                              co._id === project.countryId ||
-                              co.id === project.country?.id
+                          const countryName = pickMasterName(
+                            countries,
+                            project.country,
+                            "Unknown"
                           );
 
                           return (
@@ -428,7 +391,7 @@ export function POTargetDate() {
                                         (
                                           project.coverImage ||
                                           project.coverPhoto
-                                        ).startsWith?.("http")
+                                        )?.startsWith?.("http")
                                           ? project.coverImage ||
                                             project.coverPhoto
                                           : `${BACKEND_URL}/${
@@ -450,28 +413,20 @@ export function POTargetDate() {
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div>
                                   <div className="text-sm font-medium text-gray-900">
-                                    {company?.companyName ||
-                                      project.company?.name ||
-                                      "Unknown Company"}
+                                    {companyName}
                                   </div>
                                   <div className="text-sm text-gray-500">
-                                    {brand?.brandName ||
-                                      project.brand?.name ||
-                                      "Unknown Brand"}
+                                    {brandName}
                                   </div>
                                 </div>
                               </td>
 
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
-                                  {category?.categoryName ||
-                                    project.category?.name ||
-                                    "Unknown"}
+                                  {categoryName}
                                 </div>
                                 <div className="text-sm text-gray-500">
-                                  {type?.typeName ||
-                                    project.type?.name ||
-                                    "Unknown"}
+                                  {typeName}
                                 </div>
                                 <div className="text-sm text-gray-500">
                                   {project?.gender || "N/A"}
@@ -484,7 +439,6 @@ export function POTargetDate() {
                                     className="w-4 h-4 rounded border border-gray-300 mr-2"
                                     style={{
                                       backgroundColor:
-                                        // color?.hexCode ||
                                         project.color?.hexCode || "#cccccc",
                                     }}
                                   />
@@ -504,13 +458,11 @@ export function POTargetDate() {
 
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
-                                  {country?.countryName ||
-                                    project.country?.name ||
-                                    "Unknown"}
+                                  {countryName}
                                 </div>
                               </td>
 
-                              <td className="px-6 py-4 whitespace-nowrap w-44 min-w-[176px]">
+                              <td className="px-6 py-4 whitespace-nowrap w-44 min-w-44">
                                 <div className="text-sm font-medium text-gray-500">
                                   Pending Assignment
                                 </div>
@@ -519,7 +471,7 @@ export function POTargetDate() {
                                 </div>
                               </td>
 
-                              <td className="px-6 py-4 whitespace-nowrap w-48 min-w-[192px]">
+                              <td className="px-6 py-4 whitespace-nowrap w-48 min-w-48">
                                 <div>
                                   <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
                                     <Clock className="w-3 h-3 text-gray-500" />
@@ -595,7 +547,7 @@ export function POTargetDate() {
                                   variant="ghost"
                                   size="sm"
                                   className="text-red-600 hover:text-red-700"
-                                  onClick={(e) => handleDelete(project, e)}
+                                  onClick={(e: any) => handleDelete(project, e)}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
@@ -633,7 +585,7 @@ export function POTargetDate() {
               {renderPagination(getProjectsByTab("po-pending"))}
             </TabsContent>
 
-            {/* PO Approved Tab Content */}
+            {/* PO Approved */}
             <TabsContent value="po-approved">
               <div className="flex items-center gap-4 mb-6">
                 <div className="relative flex-1">
@@ -676,10 +628,10 @@ export function POTargetDate() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Country
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-44 min-w-[176px]">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-44 min-w-44">
                         PO Number
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 min-w-[192px]">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 min-w-48">
                         Timeline, Dates & Duration
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -690,46 +642,36 @@ export function POTargetDate() {
                       </th>
                     </tr>
                   </thead>
+
                   <tbody className="bg-white divide-y divide-gray-200">
                     {getPaginatedProjects(getProjectsByTab("po-approved"))
                       .length > 0 ? (
                       getPaginatedProjects(getProjectsByTab("po-approved")).map(
-                        (project, index) => {
-                          const brand = brands.find(
-                            (b) =>
-                              b.id === project.brandId ||
-                              b._id === project.brandId ||
-                              b.id === project.brand?.id
+                        (project: any, index: number) => {
+                          const companyName = pickMasterName(
+                            companies,
+                            project.company,
+                            "Unknown Company"
                           );
-                          const company = companies.find(
-                            (c) =>
-                              c.id === project.companyId ||
-                              c._id === project.companyId ||
-                              c.id === project.company?.id
+                          const brandName = pickMasterName(
+                            brands,
+                            project.brand,
+                            "Unknown Brand"
                           );
-                          const category = categories.find(
-                            (c) =>
-                              c.id === project.categoryId ||
-                              c._id === project.categoryId ||
-                              c.id === project.category?.id
+                          const categoryName = pickMasterName(
+                            categories,
+                            project.category,
+                            "Unknown"
                           );
-                          const type = types.find(
-                            (t) =>
-                              t.id === project.typeId ||
-                              t._id === project.typeId ||
-                              t.id === project.type?.id
+                          const typeName = pickMasterName(
+                            types,
+                            project.type,
+                            "Unknown"
                           );
-                          // const color = colors.find(
-                          //   (cl) =>
-                          //     cl.id === project.colorId ||
-                          //     cl._id === project.colorId ||
-                          //     cl.id === project.color?.id
-                          // );
-                          const country = countries.find(
-                            (co) =>
-                              co.id === project.countryId ||
-                              co._id === project.countryId ||
-                              co.id === project.country?.id
+                          const countryName = pickMasterName(
+                            countries,
+                            project.country,
+                            "Unknown"
                           );
 
                           return (
@@ -757,7 +699,7 @@ export function POTargetDate() {
                                         (
                                           project.coverImage ||
                                           project.coverPhoto
-                                        ).startsWith?.("http")
+                                        )?.startsWith?.("http")
                                           ? project.coverImage ||
                                             project.coverPhoto
                                           : `${BACKEND_URL}/${
@@ -779,28 +721,20 @@ export function POTargetDate() {
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div>
                                   <div className="text-sm font-medium text-gray-900">
-                                    {company?.companyName ||
-                                      project.company?.name ||
-                                      "Unknown Company"}
+                                    {companyName}
                                   </div>
                                   <div className="text-sm text-gray-500">
-                                    {brand?.brandName ||
-                                      project.brand?.name ||
-                                      "Unknown Brand"}
+                                    {brandName}
                                   </div>
                                 </div>
                               </td>
 
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
-                                  {category?.categoryName ||
-                                    project.category?.name ||
-                                    "Unknown"}
+                                  {categoryName}
                                 </div>
                                 <div className="text-sm text-gray-500">
-                                  {type?.typeName ||
-                                    project.type?.name ||
-                                    "Unknown"}
+                                  {typeName}
                                 </div>
                                 <div className="text-sm text-gray-500">
                                   {project?.gender || "Unknown"}
@@ -813,7 +747,6 @@ export function POTargetDate() {
                                     className="w-4 h-4 rounded border border-gray-300 mr-2"
                                     style={{
                                       backgroundColor:
-                                        // color?.hexCode ||
                                         project.color?.hexCode || "#cccccc",
                                     }}
                                   />
@@ -825,10 +758,7 @@ export function POTargetDate() {
                                         .join(" ") || "Product Design"}
                                     </div>
                                     <div className="text-sm text-gray-500">
-                                      {
-                                        // color?.colorName ||
-                                        project.color || "Unknown"
-                                      }
+                                      {project.color || "Unknown"}
                                     </div>
                                   </div>
                                 </div>
@@ -836,19 +766,19 @@ export function POTargetDate() {
 
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
-                                  {country?.countryName ||
-                                    project.country?.name ||
-                                    "Unknown"}
+                                  {countryName}
                                 </div>
                               </td>
 
-                              <td className="px-6 py-4 whitespace-nowrap w-44 min-w-[176px]">
-                                {project.poNumber ? (
+                              <td className="px-6 py-4 whitespace-nowrap w-44 min-w-44">
+                                {project.poNumber ||
+                                (project.po && project.po.poNumber) ? (
                                   <div>
                                     <div className="flex items-center gap-2">
                                       <CheckCircle className="w-4 h-4 text-green-600" />
                                       <span className="text-sm font-semibold text-gray-900 font-mono">
-                                        {project.po.poNumber}
+                                        {project.po?.poNumber ??
+                                          project.poNumber}
                                       </span>
                                     </div>
                                     <div className="text-xs text-green-600 ml-6">
@@ -867,7 +797,7 @@ export function POTargetDate() {
                                 )}
                               </td>
 
-                              <td className="px-6 py-4 whitespace-nowrap w-48 min-w-[192px]">
+                              <td className="px-6 py-4 whitespace-nowrap w-48 min-w-48">
                                 <div>
                                   <div className="flex items-center space-x-1 text-xs text-gray-700 mb-1">
                                     <Clock className="w-3 h-3 text-gray-500" />
@@ -947,7 +877,7 @@ export function POTargetDate() {
                                   variant="ghost"
                                   size="sm"
                                   className="text-red-600 hover:text-red-700"
-                                  onClick={(e) => handleDelete(project, e)}
+                                  onClick={(e: any) => handleDelete(project, e)}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
@@ -1003,7 +933,6 @@ export function POTargetDate() {
         assignPersons={assignPersons}
         setBrands={setBrands}
         setCategories={setCategories}
-        // setSelectedSubModule={setse}
       />
 
       <POPendingProjectDetailsDialog
@@ -1021,7 +950,6 @@ export function POTargetDate() {
         brands={brands}
         categories={categories}
         types={types}
-        // colors={colors}
         countries={countries}
       />
 
@@ -1036,7 +964,6 @@ export function POTargetDate() {
         categories={categories}
         types={types}
         reloadProjects={reloadProjects}
-        // colors={colors}
         countries={countries}
       />
     </div>

@@ -1,4 +1,3 @@
-// contexts/ERPContext.jsx
 import React, {
   createContext,
   useContext,
@@ -8,7 +7,17 @@ import React, {
 } from "react";
 import { useAuth } from "../AuthContext";
 
-// types/erp.ts
+// ➤ ★ GLOBAL REDIRECT HANDLER (new)
+let globalRedirect: ((module: string, subModule?: string) => void) | null =
+  null;
+
+export const redirectToModule = (module: string, subModule = "") => {
+  if (globalRedirect) {
+    globalRedirect(module, subModule);
+  }
+};
+
+// TYPES
 export interface ERPState {
   currentModule: string;
   currentSubModule: string;
@@ -26,12 +35,12 @@ export interface ERPContextType {
   currentSubModule: string;
   sidebarCollapsed: boolean;
   setCurrentModule: (module: string) => void;
-  setCurrentSubModule: (subModule: string) => void;
+  setCurrentSubModule: (sub: string) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   handleModuleChange: (module: string, subModule?: string) => void;
 }
 
-// ERP state reducer
+// REDUCER
 const erpReducer = (state: ERPState, action: ERPAction): ERPState => {
   switch (action.type) {
     case "SET_CURRENT_MODULE":
@@ -55,6 +64,7 @@ const erpReducer = (state: ERPState, action: ERPAction): ERPState => {
   }
 };
 
+// INITIAL STATE
 const initialState: ERPState = {
   currentModule: "dashboard",
   currentSubModule: "",
@@ -63,53 +73,56 @@ const initialState: ERPState = {
 
 const ERPContext = createContext<ERPContextType | undefined>(undefined);
 
-interface ERPProviderProps {
-  children: ReactNode;
-}
-
-export function ERPProvider({ children }: ERPProviderProps) {
+// PROVIDER
+export function ERPProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(erpReducer, initialState);
   const { user, getDefaultModule } = useAuth();
 
-  // Reset ERP state when user logs out
+  // Reset when logged out
   useEffect(() => {
-    if (!user) {
-      dispatch({ type: "RESET_STATE" });
+    if (!user) dispatch({ type: "RESET_STATE" });
+  }, [user]);
+
+  // Apply default module on login
+  useEffect(() => {
+    if (user) {
+      dispatch({
+        type: "SET_CURRENT_MODULE",
+        payload: getDefaultModule(),
+      });
     }
   }, [user]);
 
-  // Set default module based on user role when authenticated
-  useEffect(() => {
-    if (user) {
-      const defaultModule = getDefaultModule();
-      dispatch({ type: "SET_CURRENT_MODULE", payload: defaultModule });
-    }
-  }, [user, getDefaultModule]);
-
-  const setCurrentModule = (module: string): void => {
+  // ACTIONS
+  const setCurrentModule = (module: string) => {
     dispatch({ type: "SET_CURRENT_MODULE", payload: module });
   };
 
-  const setCurrentSubModule = (subModule: string): void => {
+  const setCurrentSubModule = (subModule: string) => {
     dispatch({ type: "SET_CURRENT_SUB_MODULE", payload: subModule });
   };
 
-  const setSidebarCollapsed = (collapsed: boolean): void => {
+  const setSidebarCollapsed = (collapsed: boolean) => {
     dispatch({ type: "SET_SIDEBAR_COLLAPSED", payload: collapsed });
   };
 
-  const handleModuleChange = (module: string, subModule: string = ""): void => {
+  const handleModuleChange = (module: string, subModule: string = "") => {
     setCurrentModule(module);
     setCurrentSubModule(subModule);
   };
 
+  // ➤ ★ GLOBAL REDIRECT REGISTRATION
+  useEffect(() => {
+    globalRedirect = handleModuleChange;
+    return () => {
+      globalRedirect = null;
+    };
+  }, [handleModuleChange]);
+
   const value: ERPContextType = {
-    // State
     currentModule: state.currentModule,
     currentSubModule: state.currentSubModule,
     sidebarCollapsed: state.sidebarCollapsed,
-
-    // Actions
     setCurrentModule,
     setCurrentSubModule,
     setSidebarCollapsed,
@@ -119,6 +132,7 @@ export function ERPProvider({ children }: ERPProviderProps) {
   return <ERPContext.Provider value={value}>{children}</ERPContext.Provider>;
 }
 
+// HOOK
 export const useERP = (): ERPContextType => {
   const context = useContext(ERPContext);
   if (!context) {

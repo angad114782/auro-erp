@@ -296,7 +296,7 @@ export function FigmaSidebar({
                   isCollapsed ? "justify-center" : "gap-3"
                 }`}
               >
-                <div className="w-8 h-8 bg-gradient-to-br from-[#0c9dcb] to-[#26b4e0] rounded-lg flex items-center justify-center shadow-md">
+                <div className="w-8 h-8 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-lg flex items-center justify-center shadow-md">
                   <span className="text-white font-bold text-sm">E</span>
                 </div>
                 {!isCollapsed && (
@@ -370,7 +370,7 @@ export function FigmaSidebar({
                     title={isCollapsed ? module.name : ""}
                   >
                     <div
-                      className={`flex-shrink-0 ${
+                      className={`shrink-0 ${
                         currentModule === module.id
                           ? "text-white"
                           : "text-gray-500 group-hover:text-gray-700"
@@ -433,7 +433,7 @@ export function FigmaSidebar({
                             }`}
                           >
                             <div
-                              className={`flex-shrink-0 ${
+                              className={`shrink-0 ${
                                 currentSubModule === subModule.id &&
                                 currentModule === module.id
                                   ? "text-[#0c9dcb]"

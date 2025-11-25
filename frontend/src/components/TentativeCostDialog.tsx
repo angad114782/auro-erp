@@ -1196,10 +1196,10 @@ export function TentativeCostDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[75vw] !w-[75vw] max-h-[85vh] overflow-hidden p-0 m-0 top-[7.5vh] translate-y-0 flex flex-col">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-50 px-6 py-4 bg-gradient-to-r from-blue-50 via-white to-blue-50 border-b border-blue-200 shadow-sm">
+        <div className="sticky top-0 z-50 px-6 py-4 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b border-blue-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+              <div className="w-12 h-12 bg-linear-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                 <Calculator className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -1574,7 +1574,7 @@ export function TentativeCostDialog({
         </div>
 
         {/* Sticky Footer */}
-        <div className="sticky bottom-0 z-40 flex items-center justify-between px-6 py-4 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-t-2 border-gray-200 shadow-lg">
+        <div className="sticky bottom-0 z-40 flex items-center justify-between px-6 py-4 bg-linear-to-r from-gray-50 via-white to-gray-50 border-t-2 border-gray-200 shadow-lg">
           <div className="flex items-center gap-4">
             <Badge
               variant="outline"

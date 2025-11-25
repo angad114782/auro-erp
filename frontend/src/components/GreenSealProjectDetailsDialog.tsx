@@ -1,3 +1,11 @@
+// GreenSealProjectDetailsDialog.tsx
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -6,7 +14,7 @@ import {
   CheckCircle,
   Clock,
   Edit2,
-  ImageIcon,
+  Image as ImageIcon,
   MessageSquare,
   Plus,
   Save,
@@ -16,20 +24,10 @@ import {
   Upload,
   Workflow,
   X,
+  Palette,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import api from "../lib/api";
-import { ColorMaterialsDialog } from "./ColorMaterialsDialog";
-import { POTargetDialog } from "./POTargetDialog";
-import {
-  dataUrlToFile,
-  formatDateDisplay,
-  getFullImageUrl,
-  getStage,
-  ProductDevelopment,
-  Props,
-} from "./ProjectDetailsDialog";
+
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -49,6 +47,44 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
+
+import { ColorMaterialsDialog } from "./ColorMaterialsDialog";
+import { POTargetDialog } from "./POTargetDialog";
+
+import {
+  Project as ProductDevelopment,
+  Material,
+  Component as CompType,
+  ColorVariantData as ColorVariantDataType,
+  projectService,
+  CostItem,
+  LabourCost,
+  CostSummary,
+} from "./services/projectService";
+
+import {
+  getFullImageUrl,
+  dataUrlToFile,
+  formatDateDisplay,
+  getStage,
+} from "../lib/utils";
+
+// Props interface (adapted — match your usage)
+export type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  project: ProductDevelopment | null;
+  companies: any[];
+  brands: any[];
+  categories: any[];
+  types: any[];
+  countries: any[];
+  assignPersons: any[];
+  setBrands: (b: any[]) => void;
+  setCategories: (c: any[]) => void;
+  reloadProjects?: () => Promise<void> | void;
+  setSelectedSubModule?: (s: string) => void;
+};
 
 export const workflowStages = [
   {
@@ -89,27 +125,67 @@ export const workflowStages = [
   },
 ];
 
-export interface Material {
-  name: string;
-  desc: string;
-  consumption: string;
-}
+// Default materials/components
+const DEFAULT_MATERIALS = (): Material[] => [
+  { name: "Upper", desc: "Rexine", consumption: "26 pairs/mtr" },
+  { name: "Lining", desc: "Skinfit", consumption: "25 pair @ 155/-" },
+  { name: "Lining", desc: "EVA", consumption: "33/70 - 1.5mm 35pair" },
+  { name: "Footbed", desc: "-", consumption: "-" },
+  { name: "Mid Sole 1", desc: "-", consumption: "-" },
+  { name: "Mid Sole 2", desc: "-", consumption: "-" },
+  { name: "Out Sole", desc: "-", consumption: "-" },
+  { name: "PU Adhesive", desc: "-", consumption: "-" },
+  { name: "Print", desc: "-", consumption: "-" },
+];
 
-export interface Component {
-  name: string;
-  desc: string;
-  consumption: string;
-}
+const DEFAULT_COMPONENTS = (): CompType[] => [
+  { name: "Foam", desc: "-", consumption: "7.5grm" },
+  { name: "Velcro", desc: "75mm", consumption: "1.25 pair" },
+  { name: "Elastic Roop", desc: "-", consumption: "-" },
+  { name: "Thread", desc: "-", consumption: "-" },
+  { name: "Tafta Label", desc: "MRP", consumption: "-" },
+  { name: "Buckle", desc: "-", consumption: "2pcs" },
+  { name: "Heat Transfer", desc: "-", consumption: "-" },
+  { name: "Trim", desc: "sticker", consumption: "10 pcs" },
+  { name: "Welding", desc: "-", consumption: "-" },
+];
 
-export interface ColorVariantData {
-  materials: Material[];
-  components: Component[];
-  images: string[];
-  updatedBy?: string | null;
-  updatedAt?: Date;
+function convertColorVariants(
+  projectData: any
+): Map<string, ColorVariantDataType> {
+  const variantsMap = new Map<string, ColorVariantDataType>();
+  if (!projectData?.colorVariants) return variantsMap;
+
+  // If it's already a Map-like object
+  if (projectData.colorVariants instanceof Map) {
+    for (const [k, v] of projectData.colorVariants.entries()) {
+      variantsMap.set(k, {
+        materials: Array.isArray(v?.materials) ? v.materials : [],
+        components: Array.isArray(v?.components) ? v.components : [],
+        images: Array.isArray(v?.images) ? v.images : [],
+        updatedBy: v?.updatedBy || null,
+        updatedAt: v?.updatedAt ? new Date(v.updatedAt) : new Date(),
+      });
+    }
+    return variantsMap;
+  }
+
+  // object format
+  for (const [k, v] of Object.entries(projectData.colorVariants || {})) {
+    const val: any = v;
+    variantsMap.set(k, {
+      materials: Array.isArray(val?.materials) ? val.materials : [],
+      components: Array.isArray(val?.components) ? val.components : [],
+      images: Array.isArray(val?.images) ? val.images : [],
+      updatedBy: val?.updatedBy || null,
+      updatedAt: val?.updatedAt ? new Date(val.updatedAt) : new Date(),
+    });
+  }
+  return variantsMap;
 }
 
 export function GreenSealProjectDetailsDialog(props: Props) {
+  // Props
   const {
     open,
     onOpenChange,
@@ -126,43 +202,47 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     setSelectedSubModule,
   } = props;
 
+  // -----------------------------
+  // Hooks (declared unconditionally)
+  // -----------------------------
   const [isEditing, setIsEditing] = useState(false);
   const [editedProject, setEditedProject] = useState<ProductDevelopment | null>(
     null
   );
   const [isLoading, setIsLoading] = useState(false);
+
   const [poTargetDialogOpen, setPOTargetDialogOpen] = useState(false);
   const [colorMaterialsDialogOpen, setColorMaterialsDialogOpen] =
     useState(false);
+
   const [activeColorTab, setActiveColorTab] = useState<string>("");
 
-  // This state holds color variants map (converted to JS Map)
+  // color variants maps
   const [colorVariants, setColorVariants] = useState<
-    Map<string, ColorVariantData>
+    Map<string, ColorVariantDataType>
   >(new Map());
-
-  // NEW: Local color variants for better management
   const [localColorVariants, setLocalColorVariants] = useState<
-    Map<string, ColorVariantData>
+    Map<string, ColorVariantDataType>
   >(new Map());
 
-  // cover & samples
-  const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
-  const [samples, setSamples] = useState<string[]>([]);
-  const coverRef = React.useRef<HTMLInputElement | null>(null);
-  const sampleRefs = React.useRef<(HTMLInputElement | null)[]>([]);
+  // images
+  const [coverPhoto, setCoverPhoto] = useState<string | null>(null); // data-url or existing url preview
+  const [coverFile, setCoverFile] = useState<File | null>(null); // actual chosen file
+  const [samples, setSamples] = useState<string[]>([]); // data-url or existing url
+  const [sampleFiles, setSampleFiles] = useState<(File | null)[]>([]);
 
-  // Memoized values
+  const coverRef = useRef<HTMLInputElement | null>(null);
+  const sampleRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Memoized computed values
   const currentStage = useMemo(
     () => getStage(editedProject?.status),
     [editedProject?.status]
   );
-
   const currentIndex = useMemo(
     () => workflowStages.findIndex((s) => s.id === editedProject?.status),
     [editedProject?.status]
   );
-
   const nextStage = useMemo(
     () =>
       currentIndex >= 0 && currentIndex < workflowStages.length - 1
@@ -180,137 +260,80 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     [samples]
   );
 
-  // Color handling functions
-  const getColorName = (colorId: string): string => {
-    return colorId || "Default Color";
-  };
+  const colorVariantTabs = useMemo(() => {
+    const keys = Array.from(localColorVariants.keys());
+    if (project?.color) {
+      const filtered = keys.filter((k) => k !== project.color);
+      return [project.color, ...filtered];
+    }
+    return keys.length > 0 ? keys : [];
+  }, [localColorVariants, project?.color]);
 
-  const getColorHex = (colorId: string): string => {
-    const colorName = getColorName(colorId).toLowerCase();
-
-    // Color mapping fallback
-    const colorMap: Record<string, string> = {
-      black: "#000000",
-      white: "#ffffff",
-      brown: "#a52a2a",
-      "navy blue": "#000080",
-      red: "#ff0000",
-      blue: "#0000ff",
-      green: "#008000",
-      yellow: "#ffff00",
-      orange: "#ffa500",
-      purple: "#800080",
-      pink: "#ffc0cb",
-      gray: "#808080",
-      "rose gold": "#b76e79",
-      "mahogany brown": "#c04000",
-      default: "#6b7280",
-    };
-
-    return colorMap[colorName] || colorMap["default"];
-  };
-
-  // Convert MongoDB Map/object to JS Map
-  const convertColorVariants = useCallback(
-    (projectData: any): Map<string, ColorVariantData> => {
-      const variantsMap = new Map<string, ColorVariantData>();
-
-      if (!projectData?.colorVariants) return variantsMap;
-
-      // Handle different possible formats from backend
-      if (projectData.colorVariants instanceof Map) {
-        // Direct Map from MongoDB
-        for (const [colorId, data] of projectData.colorVariants.entries()) {
-          variantsMap.set(colorId, {
-            materials: Array.isArray(data?.materials) ? data.materials : [],
-            components: Array.isArray(data?.components) ? data.components : [],
-            images: Array.isArray(data?.images) ? data.images : [],
-            updatedBy: data?.updatedBy || null,
-            updatedAt: data?.updatedAt ? new Date(data.updatedAt) : new Date(),
-          });
-        }
-      } else if (typeof projectData.colorVariants === "object") {
-        // Object format from API response
-        for (const [colorId, data] of Object.entries(
-          projectData.colorVariants
-        )) {
-          const variantData = data as any;
-          variantsMap.set(colorId, {
-            materials: Array.isArray(variantData?.materials)
-              ? variantData.materials
-              : [],
-            components: Array.isArray(variantData?.components)
-              ? variantData.components
-              : [],
-            images: Array.isArray(variantData?.images)
-              ? variantData.images
-              : [],
-            updatedBy: variantData?.updatedBy || null,
-            updatedAt: variantData?.updatedAt
-              ? new Date(variantData.updatedAt)
-              : new Date(),
-          });
-        }
-      }
-
-      return variantsMap;
-    },
-    []
-  );
-
-  // Initialize state when dialog opens
+  // -----------------------------
+  // Effects: initialize when dialog opens (unconditional hook usage above)
+  // -----------------------------
   useEffect(() => {
     if (!project || !open) return;
 
-    setEditedProject({ ...project });
+    // initialize editedProject & images & color variants
+    setEditedProject({
+      ...project,
+      // keep clientFinalCost in project (if missing, keep as-is)
+      clientFinalCost: project.clientFinalCost || project.clientFinalCost,
+      nextUpdateDate: project?.nextUpdate?.date || project.nextUpdateDate || "",
+      updateNotes: project?.nextUpdate?.note || project.updateNotes || "",
+    } as ProductDevelopment);
+
     setCoverPhoto(project.coverImage || null);
-    setSamples(project.sampleImages ? [...project.sampleImages] : []);
+    setCoverFile(null);
+    setSamples(
+      Array.isArray(project.sampleImages) ? [...project.sampleImages] : []
+    );
+    setSampleFiles(
+      Array.isArray(project.sampleImages)
+        ? new Array(project.sampleImages.length).fill(null)
+        : []
+    );
+
+    const variants = convertColorVariants(project);
+    setColorVariants(variants);
+    setLocalColorVariants(variants);
+
+    // set active tab: prefer existing activeColorTab if still present, else project.color, else first variant
+    setActiveColorTab((prev) => {
+      if (prev && variants.has(prev)) return prev;
+      if (project.color) return project.color;
+      return variants.size > 0 ? Array.from(variants.keys())[0] : "";
+    });
+
     setIsEditing(false);
+  }, [project, open]);
 
-    // Load color variants from project data
-    const variantsMap = convertColorVariants(project);
-    setColorVariants(variantsMap);
-    setLocalColorVariants(variantsMap); // Initialize local variants
-
-    // Set active tab logic
-    if (project.color) {
-      setActiveColorTab((prev) => {
-        if (prev && variantsMap.has(prev)) return prev;
-        return project.color;
-      });
-    } else {
-      const first =
-        variantsMap.size > 0 ? Array.from(variantsMap.keys())[0] : "";
-      setActiveColorTab(first);
-    }
-  }, [project, open, convertColorVariants]);
-
-  // Fetch brands when company changes
+  // -----------------------------
+  // Fetch brands/categories when editedCompany/Brand changes (no conditional hooks)
+  // -----------------------------
   useEffect(() => {
+    // When user changes company in edit mode, load its brands.
     if (!isEditing || !editedProject?.company?._id) {
       if (isEditing) setBrands([]);
       return;
     }
-
+    let canceled = false;
     const companyId = editedProject.company._id;
-    let cancelled = false;
-
-    api
-      .get("/brands", { params: { company: companyId } })
-      .then((res) => {
-        if (cancelled) return;
-        const arr = res.data?.items || res.data?.data || res.data || [];
+    projectService
+      .getBrands(companyId)
+      .then((arr) => {
+        if (canceled) return;
         setBrands(arr);
       })
-      .catch(() => !cancelled && setBrands([]));
-
+      .catch(() => !canceled && setBrands([]));
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [editedProject?.company?._id, isEditing, setBrands]);
 
-  // Fetch categories when brand changes
   useEffect(() => {
+    // load categories when brand changes in edit mode
     if (
       !isEditing ||
       !editedProject?.company?._id ||
@@ -319,22 +342,18 @@ export function GreenSealProjectDetailsDialog(props: Props) {
       if (isEditing) setCategories([]);
       return;
     }
-
+    let canceled = false;
     const c = editedProject.company._id;
     const b = editedProject.brand._id;
-    let cancelled = false;
-
-    api
-      .get(`/companies/${c}/brands/${b}/categories`)
-      .then((res) => {
-        if (cancelled) return;
-        const arr = res.data?.items || res.data?.data || res.data || [];
+    projectService
+      .getCategories(c, b)
+      .then((arr) => {
+        if (canceled) return;
         setCategories(arr);
       })
-      .catch(() => !cancelled && setCategories([]));
-
+      .catch(() => !canceled && setCategories([]));
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [
     editedProject?.company?._id,
@@ -343,149 +362,116 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     setCategories,
   ]);
 
-  // Default materials and components
-  const getDefaultMaterials = (): Material[] => [
-    { name: "Upper", desc: "Rexine", consumption: "26 pairs/mtr" },
-    { name: "Lining", desc: "Skinfit", consumption: "25 pair @ 155/-" },
-    { name: "Lining", desc: "EVA", consumption: "33/70 - 1.5mm 35pair" },
-    { name: "Footbed", desc: "-", consumption: "-" },
-    { name: "Mid Sole 1", desc: "-", consumption: "-" },
-    { name: "Mid Sole 2", desc: "-", consumption: "-" },
-    { name: "Out Sole", desc: "-", consumption: "-" },
-    { name: "PU Adhesive", desc: "-", consumption: "-" },
-    { name: "Print", desc: "-", consumption: "-" },
-  ];
-
-  const getDefaultComponents = (): Component[] => [
-    { name: "Foam", desc: "-", consumption: "7.5grm" },
-    { name: "Velcro", desc: "75mm", consumption: "1.25 pair" },
-    { name: "Elastic Roop", desc: "-", consumption: "-" },
-    { name: "Thread", desc: "-", consumption: "-" },
-    { name: "Tafta Label", desc: "MRP", consumption: "-" },
-    { name: "Buckle", desc: "-", consumption: "2pcs" },
-    { name: "Heat Transfer", desc: "-", consumption: "-" },
-    { name: "Trim", desc: "sticker", consumption: "10 pcs" },
-    { name: "Welding", desc: "-", consumption: "-" },
-  ];
-
-  // Safe variant data getters (updated to use localColorVariants)
-  const getActiveColorVariant = (): ColorVariantData | null => {
-    if (!localColorVariants || localColorVariants.size === 0) {
-      return null;
-    }
-    if (!activeColorTab) return null;
-    return localColorVariants.get(activeColorTab) || null;
-  };
-
-  const getActiveColorMaterials = (): Material[] => {
-    const variant = getActiveColorVariant();
-    if (variant && Array.isArray(variant.materials)) {
-      return variant.materials;
-    }
-    // if no variant found, but default exists — fallback to default list
-    if (project?.color && activeColorTab === project.color) {
-      return getDefaultMaterials();
-    }
-    return [];
-  };
-
-  const getActiveColorComponents = (): Component[] => {
-    const variant = getActiveColorVariant();
-    if (variant && Array.isArray(variant.components)) {
-      return variant.components;
-    }
-    if (project?.color && activeColorTab === project.color) {
-      return getDefaultComponents();
-    }
-    return [];
-  };
-
-  // NEW: Helper to check if we should show default data
-  const shouldShowDefaultData = (): boolean => {
-    return (
-      localColorVariants.size === 0 &&
-      project?.color &&
-      activeColorTab === project.color
-    );
-  };
-
-  // Compute color tabs as union: default color (project.color) + variants keys (without duplicates)
-  const colorVariantTabs = useMemo(() => {
-    const keys: string[] = Array.from(localColorVariants.keys());
-    if (project?.color) {
-      // ensure default appears first
-      const filtered = keys.filter((k) => k !== project.color);
-      return [project.color, ...filtered];
-    }
-    return keys.length > 0 ? keys : [];
-  }, [localColorVariants, project?.color]);
-
+  // -----------------------------
   // Image upload handlers
+  // -----------------------------
   const handleCoverUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      if (file.size > 5 * 1024 * 1024) {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      if (f.size > 5 * 1024 * 1024) {
         toast.error("Image must be < 5MB");
         return;
       }
-      const r = new FileReader();
-      r.onloadend = () => setCoverPhoto(r.result as string);
-      r.readAsDataURL(file);
+      // set preview as data-url for immediate preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCoverPhoto(reader.result as string);
+        setCoverFile(f);
+      };
+      reader.readAsDataURL(f);
     },
     []
   );
 
   const handleSampleUpload = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>, i: number) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      if (file.size > 5 * 1024 * 1024) {
+    (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      if (f.size > 5 * 1024 * 1024) {
         toast.error("Image must be < 5MB");
         return;
       }
-      const r = new FileReader();
-      r.onloadend = () => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
         setSamples((prev) => {
           const arr = [...prev];
-          arr[i] = r.result as string;
+          arr[idx] = reader.result as string;
+          return arr;
+        });
+        setSampleFiles((prev) => {
+          const arr = [...prev];
+          arr[idx] = f;
           return arr;
         });
       };
-      r.readAsDataURL(file);
+      reader.readAsDataURL(f);
     },
     []
   );
 
-  const removeSample = useCallback((i: number) => {
-    setSamples((s) => s.filter((_, idx) => idx !== i));
+  const addSampleSlot = useCallback(() => {
+    setSamples((s) => [...s, ""]);
+    setSampleFiles((s) => [...s, null]);
   }, []);
 
-  const addSampleSlot = useCallback(() => setSamples((s) => [...s, ""]), []);
+  const removeSample = useCallback((i: number) => {
+    setSamples((s) => s.filter((_, idx) => idx !== i));
+    setSampleFiles((s) => s.filter((_, idx) => idx !== i));
+  }, []);
 
+  // -----------------------------
+  // Utility getters for color variant data
+  // -----------------------------
+  const getActiveColorVariant = useCallback((): ColorVariantDataType | null => {
+    if (!localColorVariants || localColorVariants.size === 0) return null;
+    if (!activeColorTab) return null;
+    return localColorVariants.get(activeColorTab) || null;
+  }, [localColorVariants, activeColorTab]);
+
+  const getActiveColorMaterials = useCallback((): Material[] => {
+    const v = getActiveColorVariant();
+    if (v && Array.isArray(v.materials) && v.materials.length > 0)
+      return v.materials;
+    // fallback default if default color and none present
+    if (project?.color && activeColorTab === project.color)
+      return DEFAULT_MATERIALS();
+    return [];
+  }, [getActiveColorVariant, project?.color, activeColorTab]);
+
+  const getActiveColorComponents = useCallback((): CompType[] => {
+    const v = getActiveColorVariant();
+    if (v && Array.isArray(v.components) && v.components.length > 0)
+      return v.components;
+    if (project?.color && activeColorTab === project.color)
+      return DEFAULT_COMPONENTS();
+    return [];
+  }, [getActiveColorVariant, project?.color, activeColorTab]);
+
+  const shouldShowDefaultData = useCallback(() => {
+    return (
+      localColorVariants.size === 0 &&
+      project?.color &&
+      activeColorTab === project.color
+    );
+  }, [localColorVariants.size, project?.color, activeColorTab]);
+
+  // -----------------------------
+  // Actions: advance stage, save color variants callback, save project, cancel edit
+  // -----------------------------
   const handleAdvanceToPOPending = useCallback(async () => {
     try {
       if (!editedProject) return;
-
-      const companyId = editedProject.company?._id;
-      const brandId = editedProject.brand?._id;
-      const categoryId = editedProject.category?._id;
-      const projectId = editedProject._id;
-
-      await api.patch(
-        `/companies/${companyId}/brands/${brandId}/categories/${categoryId}/projects/${projectId}/status`,
-        { status: "po_pending" }
-      );
-
-      toast.success(`Moved to PO Pending stage`);
-      await reloadProjects();
+      await projectService.updateProjectStatus(editedProject._id, "po_pending");
+      toast.success("Moved to PO Pending stage");
+      if (reloadProjects) await reloadProjects();
       setSelectedSubModule?.("po-pending");
       onOpenChange(false);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       toast.error("Failed to update project stage");
     }
-  }, [editedProject, onOpenChange, reloadProjects, setSelectedSubModule]);
+  }, [editedProject, reloadProjects, onOpenChange, setSelectedSubModule]);
 
   const handlePOConfirm = useCallback(() => {
     toast.success("Project advanced to PO Issued stage!");
@@ -493,45 +479,34 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     onOpenChange(false);
   }, [onOpenChange]);
 
-  // UPDATED: When color variants saved in ColorMaterialsDialog, reload project and set active tab
   const handleColorVariantsSave = useCallback(
     async (savedColorIds: string[]) => {
       try {
-        if (project?._id) {
-          // Force reload the project from backend
-          const response = await api.get(`/projects/${project._id}`);
-          const updatedProject = response.data?.data;
-
-          if (updatedProject) {
-            // Update ALL local states with fresh data
-            setEditedProject(updatedProject);
-
-            // Update color variants map with fresh data
-            const variantsMap = convertColorVariants(updatedProject);
-            setColorVariants(variantsMap);
-            setLocalColorVariants(variantsMap);
-
-            // Update active tab
-            if (savedColorIds && savedColorIds.length > 0) {
-              setActiveColorTab(savedColorIds[0]);
-            } else if (updatedProject.color) {
-              setActiveColorTab(updatedProject.color);
-            }
-          }
+        if (!project?._id) return;
+        // Refresh project from backend
+        const updated = await projectService.getProjects(); // NOTE: cheaper: projectService.getProjectById if available
+        // find project
+        const p =
+          (await projectService.getProjects()).find(
+            (x) => x._id === project._id
+          ) || null;
+        if (p) {
+          setEditedProject({ ...p });
+          const vm = convertColorVariants(p);
+          setColorVariants(vm);
+          setLocalColorVariants(vm);
+          if (savedColorIds && savedColorIds.length > 0)
+            setActiveColorTab(savedColorIds[0]);
+          else if (p.color) setActiveColorTab(p.color);
         }
-
-        // Trigger parent reload
-        if (props.reloadProjects) {
-          await props.reloadProjects();
-        }
-
+        if (reloadProjects) await reloadProjects();
         toast.success("Color variants saved successfully!");
       } catch (error) {
-        console.error("Failed to fetch updated color variants:", error);
+        console.error("Failed to refresh color variants:", error);
         toast.error("Failed to load updated color variants");
       }
     },
-    [project, convertColorVariants, props]
+    [project, reloadProjects]
   );
 
   const handleSave = useCallback(async () => {
@@ -546,9 +521,9 @@ export function GreenSealProjectDetailsDialog(props: Props) {
       return;
     }
 
+    setIsLoading(true);
     try {
       const fd = new FormData();
-
       fd.append("company", editedProject.company._id);
       fd.append("brand", editedProject.brand._id);
       fd.append("category", editedProject.category._id);
@@ -570,65 +545,70 @@ export function GreenSealProjectDetailsDialog(props: Props) {
       if (editedProject.clientApproval)
         fd.append("clientApproval", editedProject.clientApproval);
 
-      // Convert Map to object for form data
-      if (colorVariants.size > 0) {
-        const colorVariantsObj: Record<string, any> = {};
-        colorVariants.forEach((value, key) => {
-          colorVariantsObj[key] = value;
-        });
-        fd.append("colorVariants", JSON.stringify(colorVariantsObj));
-      }
-
-      if (editedProject?.nextUpdateDate) {
+      // nextUpdate
+      if (editedProject.nextUpdateDate) {
         fd.append(
           "nextUpdate",
           JSON.stringify({
             date: editedProject.nextUpdateDate,
-            note: editedProject?.updateNotes || "",
+            note: editedProject.updateNotes || "",
           })
         );
       }
 
-      if (coverPhoto) {
-        if (coverPhoto.startsWith("data:")) {
-          const file = dataUrlToFile(coverPhoto, "cover.png");
-          fd.append("coverImage", file);
-        } else {
-          fd.append("keepExistingCover", "true");
-        }
+      // colorVariants: convert local map to object
+      if (localColorVariants && localColorVariants.size > 0) {
+        const obj: Record<string, any> = {};
+        localColorVariants.forEach((val, key) => {
+          obj[key] = val;
+        });
+        fd.append("colorVariants", JSON.stringify(obj));
       }
 
-      const existingSamples = samples.filter(
+      // cover image: if user selected a new file (coverFile) -> append; else, if current coverPhoto is existing url, tell backend to keep
+      if (coverFile) {
+        fd.append("coverImage", coverFile);
+      } else if (coverPhoto && !coverPhoto.startsWith("data:")) {
+        fd.append("keepExistingCover", "true");
+      }
+
+      // samples: decide which are new (data:) and which are existing (urls)
+      const existingSampleUrls = samples.filter(
         (s) => s && !s.startsWith("data:")
       );
-      const newSamplesData = samples.filter((s) => s && s.startsWith("data:"));
+      const newSampleDataUrls = samples.filter(
+        (s) => s && s.startsWith("data:")
+      );
 
-      if (existingSamples.length > 0)
-        fd.append("keepExistingSamples", JSON.stringify(existingSamples));
-      newSamplesData.forEach((d, idx) => {
+      if (existingSampleUrls.length > 0) {
+        fd.append("keepExistingSamples", JSON.stringify(existingSampleUrls));
+      }
+
+      // append new sample files
+      newSampleDataUrls.forEach((d, idx) => {
         const file = dataUrlToFile(d, `sample-${Date.now()}-${idx}.png`);
         fd.append("sampleImages", file);
       });
 
-      const url = `/projects/${editedProject._id}`;
-
-      await api.put(url, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // call update project (projectService)
+      await projectService.updateProject(editedProject._id, fd);
 
       toast.success("Project updated");
-      await reloadProjects();
+      if (reloadProjects) await reloadProjects();
       setIsEditing(false);
       onOpenChange(false);
     } catch (err: any) {
       console.error("Update failed", err);
       toast.error(err?.response?.data?.message || "Update failed");
+    } finally {
+      setIsLoading(false);
     }
   }, [
     editedProject,
+    coverFile,
     coverPhoto,
     samples,
-    colorVariants,
+    localColorVariants,
     onOpenChange,
     reloadProjects,
   ]);
@@ -638,31 +618,39 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     setIsEditing(false);
     setEditedProject({ ...project });
     setCoverPhoto(project.coverImage || null);
-    setSamples(project.sampleImages || []);
-    // Reset color variants to original state
-    const variantsMap = convertColorVariants(project);
-    setColorVariants(variantsMap);
-    setLocalColorVariants(variantsMap);
-    // reset active tab to default or first
+    setCoverFile(null);
+    setSamples(
+      Array.isArray(project.sampleImages) ? [...project.sampleImages] : []
+    );
+    setSampleFiles(
+      Array.isArray(project.sampleImages)
+        ? new Array(project.sampleImages.length).fill(null)
+        : []
+    );
+    const vm = convertColorVariants(project);
+    setColorVariants(vm);
+    setLocalColorVariants(vm);
     if (project.color) setActiveColorTab(project.color);
     else {
-      const first =
-        variantsMap.size > 0 ? Array.from(variantsMap.keys())[0] : "";
+      const first = vm.size > 0 ? Array.from(vm.keys())[0] : "";
       setActiveColorTab(first);
     }
-  }, [project, convertColorVariants]);
+  }, [project]);
 
+  // -----------------------------
+  // Rendering safe-guards
+  // -----------------------------
   if (!project || !editedProject) return null;
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
-          {/* Sticky Header Section */}
-          <div className="sticky top-0 z-50 px-8 py-6 bg-gradient-to-r from-green-50 via-white to-green-50 border-b border-gray-200 shadow-sm">
+          {/* Header */}
+          <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-green-50 via-white to-green-50 border-b border-gray-200 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-6">
-                <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                <div className="w-14 h-14 bg-linear-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
                   <Shield className="w-7 h-7 text-white" />
                 </div>
                 <div>
@@ -696,6 +684,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                   </div>
                 </div>
               </div>
+
               <div className="flex items-center gap-3">
                 {!isEditing ? (
                   <>
@@ -703,8 +692,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                       onClick={() => setIsEditing(true)}
                       className="bg-blue-500 hover:bg-blue-600"
                     >
-                      <Edit2 className="w-4 h-4 mr-2" />
-                      Edit Project
+                      <Edit2 className="w-4 h-4 mr-2" /> Edit Project
                     </Button>
                     {nextStage && (
                       <Button
@@ -722,14 +710,14 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                       onClick={handleSave}
                       className="bg-green-500 hover:bg-green-600"
                     >
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Changes
+                      <Save className="w-4 h-4 mr-2" /> Save Changes
                     </Button>
                     <Button onClick={handleCancelEdit} variant="outline">
                       Cancel Edit
                     </Button>
                   </div>
                 )}
+
                 <Button
                   onClick={() => onOpenChange(false)}
                   variant="ghost"
@@ -742,7 +730,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
             </div>
           </div>
 
-          {/* Scrollable Main Content */}
+          {/* Scrollable Content */}
           <div className="flex-1 overflow-y-auto scrollbar-hide">
             <div className="px-8 py-8 space-y-10">
               {/* Approval Progress */}
@@ -773,7 +761,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     {workflowStages.map((stage, index) => {
                       const isCompleted = currentIndex >= index;
                       const isCurrent = stage.id === editedProject.status;
-
                       return (
                         <div
                           key={stage.id}
@@ -810,7 +797,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                 </div>
               </div>
 
-              {/* Green Seal Information */}
+              {/* Basic Product Info */}
               <div className="space-y-6">
                 <div className="flex items-center gap-5">
                   <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
@@ -821,7 +808,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                   </h3>
                 </div>
 
-                {/* Unified Product Details Section */}
                 <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-5">
                     <h4 className="text-lg font-semibold text-gray-900">
@@ -835,10 +821,8 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     </Badge>
                   </div>
 
-                  {/* Horizontal Layout: Preview + Images */}
                   <div className="flex gap-4 mb-5">
-                    {/* Product Preview - Compact */}
-                    <div className="flex-shrink-0 w-44">
+                    <div className="shrink-0 w-44">
                       <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 h-full">
                         <Label className="text-xs font-medium text-gray-600 mb-2 block">
                           Preview
@@ -859,9 +843,8 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                       </div>
                     </div>
 
-                    {/* Product Images Gallery */}
                     <div className="flex-1 min-w-0">
-                      <div className="p-3 bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
+                      <div className="p-3 bg-linear-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-1.5">
                             <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
@@ -872,23 +855,21 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                             </Label>
                           </div>
                           {(coverPhoto ||
-                            samples.filter((img) => img).length > 0) && (
+                            samples.filter(Boolean).length > 0) && (
                             <Badge
                               variant="secondary"
                               className="bg-blue-50 text-blue-700 border-blue-200 text-xs h-5"
                             >
-                              {
-                                [coverPhoto, ...samples.filter((img) => img)]
-                                  .length
-                              }
+                              {[coverPhoto, ...samples.filter(Boolean)].length}
                             </Badge>
                           )}
                         </div>
 
+                        {/* Images gallery / upload */}
                         {!isEditing ? (
                           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
                             {coverPhoto && (
-                              <div className="group relative flex-shrink-0">
+                              <div className="group relative shrink-0">
                                 <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
                                   <img
                                     src={coverImageUrl}
@@ -910,7 +891,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                                 image && (
                                   <div
                                     key={i}
-                                    className="group relative flex-shrink-0"
+                                    className="group relative shrink-0"
                                   >
                                     <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
                                       <img
@@ -934,7 +915,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                           </div>
                         ) : (
                           <div className="flex gap-3 overflow-x-auto pb-2">
-                            <div className="flex-shrink-0">
+                            <div className="shrink-0">
                               <input
                                 ref={coverRef}
                                 type="file"
@@ -958,11 +939,9 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                             </div>
 
                             {samples.map((s, idx) => (
-                              <div key={idx} className="flex-shrink-0 relative">
+                              <div key={idx} className="shrink-0 relative">
                                 <input
-                                  ref={(el) => {
-                                    sampleRefs.current[idx] = el;
-                                  }}
+                                  ref={(el) => (sampleRefs.current[idx] = el)}
                                   type="file"
                                   accept="image/*"
                                   hidden
@@ -1008,7 +987,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     </div>
                   </div>
 
-                  {/* All Fields in Horizontal Grid - 6 columns */}
+                  {/* Fields grid */}
                   <div className="grid grid-cols-6 gap-x-3 gap-y-3">
                     <div>
                       <Label>Product Code</Label>
@@ -1298,11 +1277,8 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                       {isEditing ? (
                         <Select
                           value={editedProject.priority || "low"}
-                          onValueChange={(value) =>
-                            setEditedProject({
-                              ...editedProject,
-                              priority: value,
-                            })
+                          onValueChange={(v) =>
+                            setEditedProject({ ...editedProject, priority: v })
                           }
                         >
                           <SelectTrigger className="mt-1">
@@ -1365,7 +1341,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                 </div>
               </div>
 
-              {/* Materials & Components Analysis */}
+              {/* Materials & Components Analysis (color variants) */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-5">
@@ -1378,7 +1354,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                   </div>
                 </div>
 
-                {/* Color Variant Tabs - FIXED SECTION */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2 border-b border-gray-200">
                     <div className="flex items-center gap-2">
@@ -1395,10 +1370,16 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                           >
                             <div
                               className="w-4 h-4 rounded-full border border-gray-300"
-                              style={{ backgroundColor: getColorHex(colorId) }}
+                              style={{
+                                backgroundColor: (colorId || "")
+                                  .toLowerCase()
+                                  .includes("#")
+                                  ? colorId
+                                  : undefined,
+                              }}
                             ></div>
                             <span>
-                              {getColorName(colorId)}
+                              {colorId}
                               {project?.color && colorId === project.color && (
                                 <span className="ml-1.5 text-xs text-gray-500">
                                   (Default)
@@ -1413,19 +1394,16 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                         </div>
                       )}
                     </div>
+
                     <Button
-                      onClick={() => {
-                        setColorMaterialsDialogOpen(true);
-                      }}
-                      className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 mr-2 mb-2"
+                      onClick={() => setColorMaterialsDialogOpen(true)}
+                      className="bg-linear-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 mr-2 mb-2"
                       size="sm"
                     >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Color Variant
+                      <Plus className="w-4 h-4 mr-2" /> Color Variant
                     </Button>
                   </div>
 
-                  {/* Show message when no variants but default color exists */}
                   {colorVariantTabs.length === 0 && project?.color && (
                     <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg">
                       <Palette className="w-8 h-8 mx-auto mb-2 text-gray-400" />
@@ -1437,10 +1415,8 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                   )}
                 </div>
 
-                {/* Materials & Components Display */}
                 {(colorVariantTabs.length > 0 || shouldShowDefaultData()) && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Components Analysis */}
                     <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
                       <h4 className="text-lg font-semibold text-purple-900 mb-4">
                         Components Used
@@ -1451,7 +1427,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                           <div>DESCRIPTION</div>
                           <div>CONSUMPTION</div>
                         </div>
-
                         <div className="space-y-2">
                           {getActiveColorComponents().length > 0 ? (
                             getActiveColorComponents().map(
@@ -1478,7 +1453,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                             </div>
                           )}
                         </div>
-
                         <div className="bg-purple-50 p-3 rounded-lg mt-3">
                           <div className="text-sm text-purple-800">
                             <strong>Total Components:</strong>{" "}
@@ -1489,7 +1463,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                       </div>
                     </div>
 
-                    {/* Materials Analysis */}
                     <div className="bg-white border-2 border-teal-200 rounded-xl p-6">
                       <h4 className="text-lg font-semibold text-teal-900 mb-4">
                         Materials Used
@@ -1539,7 +1512,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                 )}
               </div>
 
-              {/* Client Feedback & Updates Section */}
+              {/* Client Feedback & Next Update (same as RedSeal implementation) */}
               <div className="space-y-6">
                 <div className="flex items-center gap-5">
                   <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
@@ -1551,12 +1524,10 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Client Feedback Card */}
                   <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
                     <h4 className="text-lg font-semibold text-gray-900 mb-4">
                       Client Feedback
                     </h4>
-
                     <div className="space-y-4">
                       <div>
                         <Label className="text-sm font-medium text-gray-600 mb-2 block">
@@ -1646,12 +1617,10 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     </div>
                   </div>
 
-                  {/* Next Update Schedule Card */}
                   <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
                     <h4 className="text-lg font-semibold text-gray-900 mb-4">
                       Next Update Schedule
                     </h4>
-
                     <div className="space-y-4">
                       <div>
                         <Label className="text-sm font-medium text-gray-600 mb-2 block">
@@ -1710,12 +1679,10 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                         )}
                       </div>
 
-                      {/* Days Until Next Update */}
                       {(() => {
                         const nextDate =
                           editedProject?.nextUpdateDate ||
                           project?.nextUpdate?.date;
-
                         if (!nextDate) {
                           return (
                             <div className="p-4 border rounded-lg bg-gray-50 text-center text-gray-600">
@@ -1724,7 +1691,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                             </div>
                           );
                         }
-
                         const today = new Date();
                         const updateDate = new Date(nextDate);
                         const diffDays = Math.ceil(
@@ -1732,7 +1698,6 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                             (1000 * 60 * 60 * 24)
                         );
                         const isOverdue = diffDays < 0;
-
                         return (
                           <div
                             className={`${
@@ -1772,92 +1737,13 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     </div>
                   </div>
                 </div>
-
-                {/* Quick Actions for Client Feedback */}
-                {isEditing && (
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <Label className="text-sm font-medium text-gray-700 mb-3 block">
-                      Quick Update Actions
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const nextWeek = new Date();
-                          nextWeek.setDate(nextWeek.getDate() + 7);
-                          setEditedProject({
-                            ...editedProject,
-                            nextUpdateDate: nextWeek
-                              .toISOString()
-                              .split("T")[0],
-                            updateNotes:
-                              "Schedule follow-up meeting for next week to review updated Green Seal sample",
-                          });
-                        }}
-                      >
-                        <Calendar className="w-4 h-4 mr-1" />
-                        Schedule Next Week
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const twoWeeks = new Date();
-                          twoWeeks.setDate(twoWeeks.getDate() + 14);
-                          setEditedProject({
-                            ...editedProject,
-                            nextUpdateDate: twoWeeks
-                              .toISOString()
-                              .split("T")[0],
-                            updateNotes:
-                              "Allow 2 weeks for Green Seal modifications and client review",
-                          });
-                        }}
-                      >
-                        <Calendar className="w-4 h-4 mr-1" />
-                        Schedule 2 Weeks
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setEditedProject({
-                            ...editedProject,
-                            clientApproval: "update_req",
-                            updateNotes:
-                              "Client requested modifications - awaiting revised Green Seal sample",
-                          });
-                        }}
-                      >
-                        <AlertTriangle className="w-4 h-4 mr-1" />
-                        Mark Update Required
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setEditedProject({
-                            ...editedProject,
-                            clientApproval: "ok",
-                            updateNotes:
-                              "Green Seal approved by client - ready to proceed to PO Pending stage",
-                          });
-                        }}
-                      >
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        Mark Approved
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* PO Target Dialog */}
+      {/* POTargetDialog */}
       <POTargetDialog
         open={poTargetDialogOpen}
         onOpenChange={setPOTargetDialogOpen}
@@ -1865,12 +1751,12 @@ export function GreenSealProjectDetailsDialog(props: Props) {
         onConfirm={handlePOConfirm}
       />
 
-      {/* Color Materials Dialog */}
+      {/* ColorMaterialsDialog */}
       <ColorMaterialsDialog
         open={colorMaterialsDialogOpen}
         onOpenChange={setColorMaterialsDialogOpen}
         project={editedProject}
-        colors={[]}
+        colors={Array.from(localColorVariants.keys())}
         onSave={handleColorVariantsSave}
       />
     </>

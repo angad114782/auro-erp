@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Plus,
   Package,
@@ -13,24 +13,30 @@ import {
   Upload,
   FileText,
   Paperclip,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from './ui/dialog';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Label } from './ui/label';
-import { Separator } from './ui/separator';
-import { RadioGroup, RadioGroupItem } from './ui/radio-group';
-import { Badge } from './ui/badge';
-import { toast } from 'sonner@2.0.3';
-import { useERPStore } from '../lib/data-store';
+} from "./ui/dialog";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import { Label } from "./ui/label";
+import { Separator } from "./ui/separator";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Badge } from "./ui/badge";
+import { toast } from "sonner@2.0.3";
+import { useERPStore } from "../lib/data-store";
 
 interface NewItem {
   itemName: string;
@@ -54,19 +60,24 @@ interface AddItemDialogProps {
   isEditMode?: boolean;
 }
 
-export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = false }: AddItemDialogProps) {
+export function AddItemDialog({
+  open,
+  onOpenChange,
+  editingItem,
+  isEditMode = false,
+}: AddItemDialogProps) {
   const [newItem, setNewItem] = useState<NewItem>({
-    itemName: '',
-    category: '',
-    brand: '',
-    color: '',
-    vendorId: '',
-    expiryDate: '',
-    quantity: '',
-    quantityUnit: 'piece',
-    description: '',
-    billNumber: '',
-    billDate: '',
+    itemName: "",
+    category: "",
+    brand: "",
+    color: "",
+    vendorId: "",
+    expiryDate: "",
+    quantity: "",
+    quantityUnit: "piece",
+    description: "",
+    billNumber: "",
+    billDate: "",
     billAttachment: null,
   });
 
@@ -77,32 +88,32 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
     if (open) {
       if (isEditMode && editingItem) {
         setNewItem({
-          itemName: editingItem.itemName || '',
-          category: editingItem.category || '',
-          brand: editingItem.brand || '',
-          color: editingItem.color || '',
-          vendorId: editingItem.vendorId || '',
-          expiryDate: editingItem.expiryDate || '',
-          quantity: editingItem.quantity?.toString() || '',
-          quantityUnit: editingItem.quantityUnit || 'piece',
-          description: editingItem.description || '',
-          billNumber: editingItem.billNumber || '',
-          billDate: editingItem.billDate || '',
+          itemName: editingItem.itemName || "",
+          category: editingItem.category || "",
+          brand: editingItem.brand || "",
+          color: editingItem.color || "",
+          vendorId: editingItem.vendorId || "",
+          expiryDate: editingItem.expiryDate || "",
+          quantity: editingItem.quantity?.toString() || "",
+          quantityUnit: editingItem.quantityUnit || "piece",
+          description: editingItem.description || "",
+          billNumber: editingItem.billNumber || "",
+          billDate: editingItem.billDate || "",
           billAttachment: null,
         });
       } else {
         setNewItem({
-          itemName: '',
-          category: '',
-          brand: '',
-          color: '',
-          vendorId: '',
-          expiryDate: '',
-          quantity: '',
-          quantityUnit: 'piece',
-          description: '',
-          billNumber: '',
-          billDate: '',
+          itemName: "",
+          category: "",
+          brand: "",
+          color: "",
+          vendorId: "",
+          expiryDate: "",
+          quantity: "",
+          quantityUnit: "piece",
+          description: "",
+          billNumber: "",
+          billDate: "",
           billAttachment: null,
         });
       }
@@ -112,19 +123,19 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
   const generateItemCode = () => {
     const now = new Date();
     const currentYear = now.getFullYear();
-    const month = (now.getMonth() + 1).toString().padStart(2, '0');
-    const day = now.getDate().toString().padStart(2, '0');
-    
+    const month = (now.getMonth() + 1).toString().padStart(2, "0");
+    const day = now.getDate().toString().padStart(2, "0");
+
     // Generate a random 4-digit number for uniqueness
     const randomNum = Math.floor(1000 + Math.random() * 9000);
-    
+
     return `ITM-${currentYear}-${month}${day}-${randomNum}`;
   };
 
   const handleCreateItem = () => {
     // Validation
     if (!newItem.itemName || !newItem.category) {
-      toast.error('Please fill in all required fields');
+      toast.error("Please fill in all required fields");
       return;
     }
 
@@ -132,49 +143,71 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
       // Update existing item
       updateInventoryItem(editingItem.id, {
         itemName: newItem.itemName,
-        category: newItem.category as 'Raw Materials' | 'Components & Parts' | 'Finished Footwear' | 'Accessories & Hardware',
+        category: newItem.category as
+          | "Raw Materials"
+          | "Components & Parts"
+          | "Finished Footwear"
+          | "Accessories & Hardware",
         subCategory: getSubCategoryFromCategory(newItem.category),
         brand: newItem.brand,
         color: newItem.color,
         vendorId: newItem.vendorId,
         expiryDate: newItem.expiryDate,
         quantity: parseInt(newItem.quantity) || 0,
-        quantityUnit: newItem.quantityUnit as 'piece' | 'pair' | 'kg' | 'gm' | 'meter' | 'sq-ft' | 'liter',
+        quantityUnit: newItem.quantityUnit as
+          | "piece"
+          | "pair"
+          | "kg"
+          | "gm"
+          | "meter"
+          | "sq-ft"
+          | "liter",
         description: newItem.description,
-        isDraft: false
+        isDraft: false,
       });
 
-      toast.success('Item updated successfully!');
+      toast.success("Item updated successfully!");
     } else {
       // Create item with isDraft: false
       addInventoryItem({
         itemName: newItem.itemName,
-        category: newItem.category as 'Raw Materials' | 'Components & Parts' | 'Finished Footwear' | 'Accessories & Hardware',
+        category: newItem.category as
+          | "Raw Materials"
+          | "Components & Parts"
+          | "Finished Footwear"
+          | "Accessories & Hardware",
         subCategory: getSubCategoryFromCategory(newItem.category),
         brand: newItem.brand,
         color: newItem.color,
         vendorId: newItem.vendorId,
         expiryDate: newItem.expiryDate,
         quantity: parseInt(newItem.quantity) || 0,
-        quantityUnit: newItem.quantityUnit as 'piece' | 'pair' | 'kg' | 'gm' | 'meter' | 'sq-ft' | 'liter',
+        quantityUnit: newItem.quantityUnit as
+          | "piece"
+          | "pair"
+          | "kg"
+          | "gm"
+          | "meter"
+          | "sq-ft"
+          | "liter",
         description: newItem.description,
-        isDraft: false
+        isDraft: false,
       });
 
-      toast.success('Item added successfully!');
+      toast.success("Item added successfully!");
     }
 
     // Reset form
     setNewItem({
-      itemName: '',
-      category: '',
-      brand: '',
-      color: '',
-      vendorId: '',
-      expiryDate: '',
-      quantity: '',
-      quantityUnit: 'piece',
-      description: '',
+      itemName: "",
+      category: "",
+      brand: "",
+      color: "",
+      vendorId: "",
+      expiryDate: "",
+      quantity: "",
+      quantityUnit: "piece",
+      description: "",
     });
 
     onOpenChange(false);
@@ -184,63 +217,87 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
     if (isEditMode && editingItem) {
       // Update existing item as draft
       updateInventoryItem(editingItem.id, {
-        itemName: newItem.itemName || 'Untitled Draft',
-        category: (newItem.category as 'Raw Materials' | 'Components & Parts' | 'Finished Footwear' | 'Accessories & Hardware') || 'Raw Materials',
-        subCategory: getSubCategoryFromCategory(newItem.category) || 'General',
-        brand: newItem.brand || 'N/A',
-        color: newItem.color || 'N/A',
-        vendorId: newItem.vendorId || 'N/A',
+        itemName: newItem.itemName || "Untitled Draft",
+        category:
+          (newItem.category as
+            | "Raw Materials"
+            | "Components & Parts"
+            | "Finished Footwear"
+            | "Accessories & Hardware") || "Raw Materials",
+        subCategory: getSubCategoryFromCategory(newItem.category) || "General",
+        brand: newItem.brand || "N/A",
+        color: newItem.color || "N/A",
+        vendorId: newItem.vendorId || "N/A",
         expiryDate: newItem.expiryDate,
         quantity: parseInt(newItem.quantity) || 0,
-        quantityUnit: newItem.quantityUnit as 'piece' | 'pair' | 'kg' | 'gm' | 'meter' | 'sq-ft' | 'liter',
+        quantityUnit: newItem.quantityUnit as
+          | "piece"
+          | "pair"
+          | "kg"
+          | "gm"
+          | "meter"
+          | "sq-ft"
+          | "liter",
         description: newItem.description,
-        isDraft: true
+        isDraft: true,
       });
 
-      toast.success('Item changes saved!');
+      toast.success("Item changes saved!");
     } else {
       // Create item with isDraft: true
       addInventoryItem({
-        itemName: newItem.itemName || 'Untitled Draft',
-        category: (newItem.category as 'Raw Materials' | 'Components & Parts' | 'Finished Footwear' | 'Accessories & Hardware') || 'Raw Materials',
-        subCategory: getSubCategoryFromCategory(newItem.category) || 'General',
-        brand: newItem.brand || 'N/A',
-        color: newItem.color || 'N/A',
-        vendorId: newItem.vendorId || 'N/A',
+        itemName: newItem.itemName || "Untitled Draft",
+        category:
+          (newItem.category as
+            | "Raw Materials"
+            | "Components & Parts"
+            | "Finished Footwear"
+            | "Accessories & Hardware") || "Raw Materials",
+        subCategory: getSubCategoryFromCategory(newItem.category) || "General",
+        brand: newItem.brand || "N/A",
+        color: newItem.color || "N/A",
+        vendorId: newItem.vendorId || "N/A",
         expiryDate: newItem.expiryDate,
         quantity: parseInt(newItem.quantity) || 0,
-        quantityUnit: newItem.quantityUnit as 'piece' | 'pair' | 'kg' | 'gm' | 'meter' | 'sq-ft' | 'liter',
+        quantityUnit: newItem.quantityUnit as
+          | "piece"
+          | "pair"
+          | "kg"
+          | "gm"
+          | "meter"
+          | "sq-ft"
+          | "liter",
         description: newItem.description,
-        isDraft: true
+        isDraft: true,
       });
 
-      toast.success('Item saved as draft successfully!');
+      toast.success("Item saved as draft successfully!");
     }
 
     // Reset form
     setNewItem({
-      itemName: '',
-      category: '',
-      brand: '',
-      color: '',
-      vendorId: '',
-      expiryDate: '',
-      quantity: '',
-      quantityUnit: 'piece',
-      description: '',
+      itemName: "",
+      category: "",
+      brand: "",
+      color: "",
+      vendorId: "",
+      expiryDate: "",
+      quantity: "",
+      quantityUnit: "piece",
+      description: "",
     });
 
     onOpenChange(false);
   };
-  
+
   const getSubCategoryFromCategory = (category: string): string => {
     const subCategoryMap: { [key: string]: string } = {
-      'Raw Materials': 'General',
-      'Components & Parts': 'General',
-      'Finished Footwear': 'General',
-      'Accessories & Hardware': 'General'
+      "Raw Materials": "General",
+      "Components & Parts": "General",
+      "Finished Footwear": "General",
+      "Accessories & Hardware": "General",
     };
-    return subCategoryMap[category] || 'General';
+    return subCategoryMap[category] || "General";
   };
 
   return (
@@ -252,18 +309,20 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
     >
       <DialogContent className="!max-w-[96vw] !w-[96vw] max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
         {/* Sticky Header Section */}
-        <div className="sticky top-0 z-50 px-12 py-8 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
+        <div className="sticky top-0 z-50 px-12 py-8 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-8">
-              <div className="w-16 h-16 bg-gradient-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
+              <div className="w-16 h-16 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
                 <Package className="w-8 h-8 text-white" />
               </div>
               <div>
                 <DialogTitle className="text-4xl font-semibold text-gray-900 mb-2">
-                  {isEditMode ? 'Edit Item' : 'Add New Item'}
+                  {isEditMode ? "Edit Item" : "Add New Item"}
                 </DialogTitle>
                 <DialogDescription className="text-xl text-gray-600">
-                  {isEditMode ? 'Update item details and inventory information' : 'Add items to your inventory with comprehensive details and pricing'}
+                  {isEditMode
+                    ? "Update item details and inventory information"
+                    : "Add items to your inventory with comprehensive details and pricing"}
                 </DialogDescription>
               </div>
             </div>
@@ -293,7 +352,7 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                 <h3 className="text-2xl font-semibold text-gray-900">
                   Item Information
                 </h3>
-                <div className="flex-1 h-px bg-gradient-to-r from-gray-200 via-gray-400 to-gray-200"></div>
+                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-6 gap-8">
@@ -325,7 +384,9 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                   </Label>
                   <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-lg h-12">
                     <span className="text-base font-mono font-bold text-gray-900">
-                      {isEditMode && editingItem ? editingItem.code : generateItemCode()}
+                      {isEditMode && editingItem
+                        ? editingItem.code
+                        : generateItemCode()}
                     </span>
                   </div>
                 </div>
@@ -350,10 +411,18 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Raw Materials">Raw Materials</SelectItem>
-                      <SelectItem value="Components & Parts">Components & Parts</SelectItem>
-                      <SelectItem value="Finished Footwear">Finished Footwear</SelectItem>
-                      <SelectItem value="Accessories & Hardware">Accessories & Hardware</SelectItem>
+                      <SelectItem value="Raw Materials">
+                        Raw Materials
+                      </SelectItem>
+                      <SelectItem value="Components & Parts">
+                        Components & Parts
+                      </SelectItem>
+                      <SelectItem value="Finished Footwear">
+                        Finished Footwear
+                      </SelectItem>
+                      <SelectItem value="Accessories & Hardware">
+                        Accessories & Hardware
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -450,7 +519,7 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                     }
                     className="h-12 text-base border-2 focus:border-[#0c9dcb]"
                     style={{
-                      colorScheme: 'light',
+                      colorScheme: "light",
                     }}
                   />
                 </div>
@@ -554,8 +623,11 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                 <h3 className="text-2xl font-semibold text-gray-900">
                   Billing Information
                 </h3>
-                <div className="flex-1 h-px bg-gradient-to-r from-gray-200 via-gray-400 to-gray-200"></div>
-                <Badge variant="secondary" className="bg-gray-100 text-gray-600 px-3 py-1">
+                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
+                <Badge
+                  variant="secondary"
+                  className="bg-gray-100 text-gray-600 px-3 py-1"
+                >
                   Optional
                 </Badge>
               </div>
@@ -573,7 +645,7 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                     <Barcode className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <Input
                       id="billNumber"
-                      value={newItem.billNumber || ''}
+                      value={newItem.billNumber || ""}
                       onChange={(e) =>
                         setNewItem({
                           ...newItem,
@@ -599,7 +671,7 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                     <Input
                       id="billDate"
                       type="date"
-                      value={newItem.billDate || ''}
+                      value={newItem.billDate || ""}
                       onChange={(e) =>
                         setNewItem({
                           ...newItem,
@@ -608,7 +680,7 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                       }
                       className="pl-12 h-12 text-base border-2 focus:border-[#0c9dcb]"
                       style={{
-                        colorScheme: 'light',
+                        colorScheme: "light",
                       }}
                     />
                   </div>
@@ -642,14 +714,16 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => document.getElementById('billAttachment')?.click()}
+                      onClick={() =>
+                        document.getElementById("billAttachment")?.click()
+                      }
                       className="w-full h-12 border-2 border-gray-300 hover:border-[#0c9dcb] hover:bg-blue-50 transition-all text-base"
                     >
                       <Paperclip className="w-5 h-5 mr-2 text-gray-500" />
                       <span className="flex-1 text-left truncate">
-                        {newItem.billAttachment 
-                          ? newItem.billAttachment.name 
-                          : 'Choose file (PDF, Image, Doc)'}
+                        {newItem.billAttachment
+                          ? newItem.billAttachment.name
+                          : "Choose file (PDF, Image, Doc)"}
                       </span>
                       {newItem.billAttachment && (
                         <X
@@ -661,9 +735,11 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                               billAttachment: null,
                             });
                             // Reset file input
-                            const fileInput = document.getElementById('billAttachment') as HTMLInputElement;
-                            if (fileInput) fileInput.value = '';
-                            toast.success('File removed');
+                            const fileInput = document.getElementById(
+                              "billAttachment"
+                            ) as HTMLInputElement;
+                            if (fileInput) fileInput.value = "";
+                            toast.success("File removed");
                           }}
                         />
                       )}
@@ -672,7 +748,8 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
                   {newItem.billAttachment && (
                     <p className="text-sm text-gray-500 flex items-center gap-1.5">
                       <CheckCircle className="w-4 h-4 text-emerald-500" />
-                      File attached: {(newItem.billAttachment.size / 1024).toFixed(1)} KB
+                      File attached:{" "}
+                      {(newItem.billAttachment.size / 1024).toFixed(1)} KB
                     </p>
                   )}
                 </div>
@@ -687,7 +764,9 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
             <AlertCircle className="w-6 h-6 text-blue-600" />
             <div>
               <p className="text-base font-semibold text-gray-900">
-                {isEditMode ? 'Ready to Update This Item?' : 'Ready to Add This Item?'}
+                {isEditMode
+                  ? "Ready to Update This Item?"
+                  : "Ready to Add This Item?"}
               </p>
               <p className="text-sm text-gray-600">
                 Double-check all required fields marked with * before submission
@@ -696,15 +775,15 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
           </div>
 
           <div className="flex items-center gap-4">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="lg"
               className="px-8 py-3 text-base border-gray-300 text-gray-700 hover:bg-gray-50"
               onClick={handleSaveAsDraft}
               type="button"
             >
               <Package className="w-5 h-5 mr-3" />
-              {isEditMode ? 'Save Changes' : 'Save as Draft'}
+              {isEditMode ? "Save Changes" : "Save as Draft"}
             </Button>
             <Button
               onClick={handleCreateItem}
@@ -713,7 +792,7 @@ export function AddItemDialog({ open, onOpenChange, editingItem, isEditMode = fa
               type="button"
             >
               <Plus className="w-5 h-5 mr-3" />
-              {isEditMode ? 'Update Item' : 'Add Item'}
+              {isEditMode ? "Update Item" : "Add Item"}
             </Button>
           </div>
         </div>

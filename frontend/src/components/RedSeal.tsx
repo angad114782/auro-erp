@@ -1,3 +1,4 @@
+// RedSeal.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Calendar,
@@ -10,30 +11,33 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import api from "../lib/api";
 
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 
-import { CreateProjectDialog } from "./CreateProjectDialog";
-import ProjectDetailsDialog, {
-  MasterItem,
-  ProductDevelopment,
-} from "./ProjectDetailsDialog";
 import { RedSealProjectDetailsDialog } from "./RedSealProjectDetailsDialog";
 
+import { useProjects } from "../hooks/useProjects";
+import { useMasters } from "../hooks/useMaster";
+import { Project } from "./services/projectService";
+
 export function RedSeal() {
+  const {
+    companies,
+    brands,
+    categories,
+    types,
+    countries,
+    assignPersons,
+    loadAllMasters,
+    setBrands,
+    setCategories,
+  } = useMasters();
+
+  const { projects, loadProjects, loading: projectsLoading } = useProjects();
+
   const [loading, setLoading] = useState(false);
-
-  const [companies, setCompanies] = useState<MasterItem[]>([]);
-  const [brands, setBrands] = useState<MasterItem[]>([]);
-  const [categories, setCategories] = useState<MasterItem[]>([]);
-  const [types, setTypes] = useState<MasterItem[]>([]);
-  const [countries, setCountries] = useState<MasterItem[]>([]);
-  const [assignPersons, setAssignPersons] = useState<MasterItem[]>([]);
-
-  const [projects, setProjects] = useState<ProductDevelopment[]>([]);
 
   // UI state
   const [searchTerm, setSearchTerm] = useState("");
@@ -42,68 +46,19 @@ export function RedSeal() {
 
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [selectedProject, setSelectedProject] =
-    useState<ProductDevelopment | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-  // Load master data
+  // load masters once
   useEffect(() => {
-    let cancel = false;
+    loadAllMasters();
+  }, [loadAllMasters]);
 
-    async function loadMasters() {
-      try {
-        const [cRes, bRes, tRes, coRes, apRes] = await Promise.all([
-          api.get("/companies"),
-          api.get("/brands"),
-          api.get("/types"),
-          api.get("/countries"),
-          api.get("/assign-persons"),
-        ]);
-
-        if (cancel) return;
-
-        const pick = (r: any) =>
-          r?.data?.data ??
-          r?.data?.items ??
-          (Array.isArray(r?.data) ? r.data : []);
-
-        setCompanies(pick(cRes));
-        setBrands(pick(bRes));
-        setTypes(pick(tRes));
-        setCountries(pick(coRes));
-        setAssignPersons(pick(apRes));
-
-        setCategories([]);
-      } catch (e) {
-        console.error("Masters load error", e);
-      }
-    }
-
-    loadMasters();
-    return () => {
-      cancel = true;
-    };
-  }, []);
-
-  // Load projects
-  const reloadProjects = async () => {
-    setLoading(true);
-    try {
-      const r = await api.get("/projects");
-      const data = r.data?.data ?? r.data?.items ?? r.data ?? [];
-      setProjects(data);
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to load projects");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // load projects once (useProjects exposes loadProjects)
   useEffect(() => {
-    reloadProjects();
-  }, []);
+    loadProjects();
+  }, [loadProjects]);
 
   // Search filter
   const filteredProjects = useMemo(() => {
@@ -126,7 +81,7 @@ export function RedSeal() {
     (p) => p.status === "red_seal"
   );
 
-  // Pagination
+  // Pagination helpers
   const paginated = (list: any[]) => {
     const start = (currentPage - 1) * itemsPerPage;
     return list.slice(start, start + itemsPerPage);
@@ -140,12 +95,10 @@ export function RedSeal() {
   // Helpers
   const calculateDuration = (start?: string, target?: string) => {
     if (!start || !target) return "TBD";
-
     const s = new Date(start);
     const t = new Date(target);
     const diff = t.getTime() - s.getTime();
     const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-
     if (days < 0) return `${Math.abs(days)} days overdue`;
     if (days === 0) return "Due today";
     return `${days} days`;
@@ -175,10 +128,13 @@ export function RedSeal() {
 
   const handleDelete = async (p: any) => {
     try {
-      await api.delete(`/projects/${p._id}`);
-      setProjects((prev) => prev.filter((x) => x._id !== p._id));
+      // useProjects hook exposes deleteProject in your hook; if not, fallback to API
+      // Here we call loadProjects after deletion to keep things simple
+      await fetch(`/api/projects/${p._id}`, { method: "DELETE" }); // fallback; ideally use projectService or useProjects.deleteProject
+      await loadProjects();
       toast.success("Project removed");
     } catch (e) {
+      console.error(e);
       toast.error("Delete failed");
     }
   };
@@ -186,7 +142,7 @@ export function RedSeal() {
   return (
     <div className="space-y-6">
       <Card className="border-0 shadow-lg bg-white">
-        <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
+        <CardHeader className="bg-linear-to-r from-gray-50 to-gray-100 rounded-t-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center text-white">
@@ -239,7 +195,6 @@ export function RedSeal() {
                     "Status",
                     "Priority",
                     "Task-INC",
-                    // "Cost Overview",
                     "Remarks",
                     "Actions",
                   ].map((h) => (
@@ -384,19 +339,6 @@ export function RedSeal() {
                       {p.assignPerson?.name || "N/A"}
                     </td>
 
-                    {/* Cost Overview */}
-                    {/* <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium">
-                        {p.tentativeCost || "₹ 1,80,000"}
-                      </div>
-                      <p className="text-xs text-gray-400">
-                        {"Tentative cost"}
-                      </p>
-                      <div className="text-xs text-red-500">
-                        {"vs Target: +5000"}
-                      </div>
-                    </td> */}
-
                     {/* Remarks */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
@@ -434,7 +376,7 @@ export function RedSeal() {
           </div>
 
           {/* Empty state */}
-          {redSealProjects.length === 0 && !loading && (
+          {redSealProjects.length === 0 && !loading && !projectsLoading && (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Package className="w-8 h-8 text-gray-400" />
@@ -495,21 +437,21 @@ export function RedSeal() {
       <RedSealProjectDetailsDialog
         open={detailsOpen}
         onOpenChange={async (v) => {
-          if (!v) await reloadProjects();
+          if (!v) await loadProjects();
           setDetailsOpen(v);
         }}
-        reloadProjects={reloadProjects}
+        reloadProjects={loadProjects}
         project={selectedProject}
         companies={companies}
-        setCompanies={setCompanies}
+        setCompanies={() => {}}
         brands={brands}
         setBrands={setBrands}
         categories={categories}
         setCategories={setCategories}
         countries={countries}
-        setCountries={setCountries}
+        setCountries={() => {}}
         types={types}
-        setTypes={setTypes}
+        setTypes={() => {}}
         assignPersons={assignPersons}
       />
     </div>

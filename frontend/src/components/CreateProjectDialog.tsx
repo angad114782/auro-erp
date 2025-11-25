@@ -649,12 +649,12 @@ export function CreateProjectDialog({
         }
       }}
     >
-      <DialogContent className="!max-w-[96vw] !w-[96vw] max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
+      <DialogContent className="max-w-[96vw]! w-[96vw]! max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-50 px-12 py-8 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
+        <div className="sticky top-0 z-50 px-12 py-8 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-8">
-              <div className="w-16 h-16 bg-gradient-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
+              <div className="w-16 h-16 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
                 <Plus className="w-8 h-8 text-white" />
               </div>
               <div>
@@ -668,7 +668,7 @@ export function CreateProjectDialog({
               </div>
             </div>
             <div className="flex items-center gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-xl px-8 py-6 shadow-lg">
+              <div className="bg-linear-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-xl px-8 py-6 shadow-lg">
                 <div className="flex items-center gap-4">
                   <CheckCircle className="w-6 h-6 text-blue-600" />
                   <div className="text-right">
@@ -713,7 +713,7 @@ export function CreateProjectDialog({
                 <h3 className="text-2xl font-semibold text-gray-900">
                   Product Development Information
                 </h3>
-                <div className="flex-1 h-px bg-gradient-to-r from-gray-200 via-gray-400 to-gray-200"></div>
+                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-6 gap-8">
@@ -1620,7 +1620,7 @@ export function CreateProjectDialog({
                 <h3 className="text-2xl font-semibold text-gray-900">
                   Image & Profile
                 </h3>
-                <div className="flex-1 h-px bg-gradient-to-r from-gray-200 via-gray-400 to-gray-200"></div>
+                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
               </div>
 
               <div className="grid grid-cols-1 gap-6">
@@ -1630,7 +1630,7 @@ export function CreateProjectDialog({
                   </Label>
                   <div className="flex items-center gap-4 flex-wrap">
                     {/* Cover */}
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <input
                         ref={coverInputRef}
                         type="file"
@@ -1786,7 +1786,7 @@ export function CreateProjectDialog({
                 <h3 className="text-2xl font-semibold text-gray-900">
                   Cost Structure & Development Timeline
                 </h3>
-                <div className="flex-1 h-px bg-gradient-to-r from-gray-200 via-gray-400 to-gray-200"></div>
+                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">

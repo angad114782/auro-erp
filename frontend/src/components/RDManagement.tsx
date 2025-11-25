@@ -1,64 +1,56 @@
-import React, { useState } from 'react';
-import { CreateProjectDialog } from './CreateProjectDialog';
+import React from "react";
+import { useERP } from "../lib/stores/erpContext";
 
-// Import sub-components
-import { RDDashboard } from './RDDashboard';
-import { ProjectDevelopment } from './ProjectDevelopment';
-import { RedSeal } from './RedSeal';
-import { GreenSeal } from './GreenSeal';
-import { POTargetDate } from './POTargetDate';
+// Import sub-modules
+import { RDDashboard } from "./RDDashboard";
+import ProjectDevelopment from "./ProjectDevelopment";
+import { RedSeal } from "./RedSeal";
+import { GreenSeal } from "./GreenSeal";
+import { POTargetDate } from "./POTargetDate";
+import { CreateProjectDialog } from "./CreateProjectDialog";
 
-interface RDManagementProps {
-  currentSubModule?: string;
-}
+export function RDManagement() {
+  const { currentSubModule, handleModuleChange } = useERP();
+  const [newProjectOpen, setNewProjectOpen] = React.useState(false);
 
-export function RDManagement({ currentSubModule }: RDManagementProps) {
-  const [selectedSubModule, setSelectedSubModule] = useState('');
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
-
-  // Safe close handler for dialog
   const handleCloseDialog = React.useCallback(() => {
-    console.log('RDManagement handleCloseDialog called');
     setNewProjectOpen(false);
   }, []);
 
-  React.useEffect(() => {
-    if (currentSubModule) {
-      setSelectedSubModule(currentSubModule);
-    }
-  }, [currentSubModule]);
+  // Render specific module based on global sub-module
+  switch (currentSubModule) {
+    case "rd-dashboard":
+      return (
+        <RDDashboard
+          onNavigate={(m) => handleModuleChange("rd-management", m)}
+        />
+      );
 
-  // Route to specific components based on sub-module
-  if (selectedSubModule === 'rd-dashboard') {
-    return <RDDashboard onNavigate={setSelectedSubModule} />;
-  }
-  
-  if (selectedSubModule === 'project') {
-    return <ProjectDevelopment />;
-  }
-  
-  if (selectedSubModule === 'red-seal') {
-    return <RedSeal />;
-  }
-  
-  if (selectedSubModule === 'green-seal') {
-    return <GreenSeal />;
-  }
-  
-  if (selectedSubModule === 'po-target-date') {
-    return <POTargetDate />;
-  }
+    case "project":
+      return <ProjectDevelopment />;
 
-  // Default view - show RDDashboard when no sub-module is selected
-  return (
-    <div className="space-y-6">
-      <RDDashboard onNavigate={setSelectedSubModule} />
-      
-      {/* Create Project Dialog */}
-      <CreateProjectDialog 
-        open={newProjectOpen}
-        onClose={handleCloseDialog}
-      />
-    </div>
-  );
+    case "red_seal":
+      return <RedSeal />;
+
+    case "green_seal":
+      return <GreenSeal />;
+
+    case "po-target-date":
+      return <POTargetDate />;
+
+    // DEFAULT: RD Dashboard
+    default:
+      return (
+        <div className="space-y-6">
+          <RDDashboard
+            onNavigate={(m) => handleModuleChange("rd-management", m)}
+          />
+
+          <CreateProjectDialog
+            open={newProjectOpen}
+            onClose={handleCloseDialog}
+          />
+        </div>
+      );
+  }
 }

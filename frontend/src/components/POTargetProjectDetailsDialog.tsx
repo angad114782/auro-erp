@@ -1,43 +1,44 @@
 import {
-  Eye,
-  Edit2,
-  ArrowRight,
-  Calendar,
-  User,
-  IndianRupee,
-  Clock,
-  CheckCircle,
   AlertTriangle,
-  Workflow,
-  Target,
-  Building,
-  Users,
-  X,
-  Save,
-  RefreshCw,
+  ArrowRight,
   Calculator,
-  MessageSquare,
-  Award,
-  ShoppingCart,
+  CheckCircle,
+  Edit2,
   Factory,
   ImageIcon,
-  Upload,
-  Trash2,
-  Plus,
+  IndianRupee,
+  MessageSquare,
   Package,
+  Plus,
+  Save,
+  ShoppingCart,
+  Target,
+  Trash2,
+  Upload,
+  Workflow,
+  X,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { toast } from "sonner";
+import api from "../lib/api";
+import { workflowStages } from "./GreenSealProjectDetailsDialog";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
+  DialogTitle,
 } from "./ui/dialog";
-import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Textarea } from "./ui/textarea";
+import { Progress } from "./ui/progress";
 import {
   Select,
   SelectContent,
@@ -46,20 +47,106 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Separator } from "./ui/separator";
-import { Badge } from "./ui/badge";
-import { Progress } from "./ui/progress";
-import { toast } from "sonner";
-// NOTE: using the real api and helpers (same as GreenSeal)
-import api from "../lib/api";
-import {
-  dataUrlToFile,
-  formatDateDisplay,
-  getFullImageUrl,
-  getStage,
-  ProductDevelopment,
-  Props,
-} from "./ProjectDetailsDialog";
-import { workflowStages } from "./GreenSealProjectDetailsDialog";
+
+// --- Minimal helper implementations so this file is self-contained ---
+function dataUrlToFile(dataUrl: string, filename: string) {
+  const arr = dataUrl.split(",");
+  const mime = arr[0].match(/:(.*?);/)?.[1] || "image/png";
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) u8arr[n] = bstr.charCodeAt(n);
+  return new File([u8arr], filename, { type: mime });
+}
+
+function formatDateDisplay(d?: string | null) {
+  if (!d) return "-";
+  try {
+    return new Date(d).toLocaleDateString("en-IN");
+  } catch {
+    return String(d);
+  }
+}
+
+function getFullImageUrl(path?: string | null) {
+  if (!path) return "";
+  try {
+    if (path.startsWith("http")) return path;
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
+    return `${BACKEND_URL}/${path}`;
+  } catch {
+    return String(path);
+  }
+}
+
+function getStage(status?: string | null) {
+  // simple mapping - keep parity with workflowStages
+  const s = workflowStages.find((w) => w.id === status) || workflowStages[2];
+  return s;
+}
+
+// --- Basic types used in this file (kept small & flexible) ---
+interface MasterItem {
+  _id: string;
+  name: string;
+}
+
+interface NextUpdate {
+  date?: string;
+  note?: string;
+}
+
+interface ProductDevelopment {
+  _id?: string;
+  autoCode?: string;
+  company?: MasterItem | null;
+  brand?: MasterItem | null;
+  category?: MasterItem | null;
+  type?: MasterItem | null;
+  country?: MasterItem | null;
+  assignPerson?: MasterItem | null;
+  artName?: string;
+  color?: string;
+  colorHex?: string;
+  gender?: string;
+  size?: string;
+  priority?: string;
+  productDesc?: string;
+  status?: string;
+  redSealTargetDate?: string;
+  coverImage?: string | null;
+  sampleImages?: string[];
+  updateNotes?: string;
+  nextUpdateDate?: string;
+  clientApproval?: string;
+  clientFinalCost?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  components?: any[];
+  materials?: any[];
+  orderQuantity?: number;
+  unitPrice?: number;
+  poNumber?: string;
+  poStatus?: string;
+  poValue?: number;
+  nextUpdate?: NextUpdate;
+}
+
+interface Props {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  project: ProductDevelopment | null;
+  companies: MasterItem[];
+  brands: MasterItem[];
+  categories: MasterItem[];
+  types: MasterItem[];
+  countries: MasterItem[];
+  assignPersons: MasterItem[];
+  setBrands?: (b: MasterItem[]) => void;
+  setCategories?: (c: MasterItem[]) => void;
+  reloadProjects?: () => Promise<void>;
+  setSelectedSubModule?: (s: string) => void;
+}
 
 export function POPendingProjectDetailsDialog(props: Props) {
   const {
@@ -78,52 +165,41 @@ export function POPendingProjectDetailsDialog(props: Props) {
     setSelectedSubModule,
   } = props;
 
-  // --- Editing state ---
+  // --- Hooks (kept in stable order) ---
   const [isEditing, setIsEditing] = useState(false);
   const [editedProject, setEditedProject] = useState<ProductDevelopment | null>(
     null
   );
 
-  // PO-specific states (kept from your original file)
   const [poNumber, setPONumber] = useState("");
   const [isAddingPO, setIsAddingPO] = useState(false);
 
-  // Images state (kept same names as original UI uses)
   const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
   const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [dynamicImages, setDynamicImages] = useState<string[]>([]);
 
-  const coverInputRef = React.useRef<HTMLInputElement | null>(null);
-  const additionalInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
-  const dynamicInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const additionalInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const dynamicInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Initialize local edit state when dialog opens (use backend project object)
-  useEffect(() => {
-    if (!project || !open) return;
-
-    // Use the backend project object shape (same as GreenSeal)
-    // keep a shallow copy for editing
-    setEditedProject({ ...project } as ProductDevelopment);
-
-    // Images: project may have coverImage / sampleImages fields depending on backend
-    setCoverPhoto((project as any).coverImage || null);
-    setAdditionalImages(
-      (project as any).sampleImages ? [...(project as any).sampleImages] : []
-    );
-    setDynamicImages([]); // keep as empty unless you have dynamic images stored
-
-    setIsEditing(false);
-    setPONumber((project as any).poNumber || "");
-  }, [project, open]);
-
-  // Memoized stage info (reuse getStage helper)
+  // Derived values
   const currentStage = useMemo(
     () => getStage(editedProject?.status || project?.status),
     [editedProject?.status, project?.status]
   );
-  const nextStage = useMemo(() => null, []); // PO Pending has no next stage in this component
 
-  // --- Fetch brands when company changes (GreenSeal-style) ---
+  // Effects: initialize edit state when dialog opens
+  useEffect(() => {
+    if (!project || !open) return;
+    setEditedProject({ ...project });
+    setCoverPhoto(project.coverImage || null);
+    setAdditionalImages(project.sampleImages ? [...project.sampleImages] : []);
+    setDynamicImages([]);
+    setIsEditing(false);
+    setPONumber(project.poNumber || "");
+  }, [project, open]);
+
+  // Fetch brands when company changes
   useEffect(() => {
     if (!isEditing || !editedProject?.company?._id) {
       if (isEditing) setBrands && setBrands([]);
@@ -132,7 +208,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
 
     const companyId = editedProject.company._id;
     let cancelled = false;
-
     api
       .get("/brands", { params: { company: companyId } })
       .then((res) => {
@@ -147,7 +222,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
     };
   }, [editedProject?.company?._id, isEditing, setBrands]);
 
-  // --- Fetch categories when brand changes (GreenSeal-style) ---
+  // Fetch categories when brand changes
   useEffect(() => {
     if (
       !isEditing ||
@@ -181,7 +256,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
     setCategories,
   ]);
 
-  // --- Image handlers (kept same behaviour as your original) ---
+  // --- Image handlers ---
   const handleCoverPhotoUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -247,29 +322,25 @@ export function POPendingProjectDetailsDialog(props: Props) {
       return arr;
     });
   }, []);
-  const removeDynamicImage = useCallback((index: number) => {
-    setDynamicImages((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
+  const removeDynamicImage = useCallback(
+    (index: number) =>
+      setDynamicImages((prev) => prev.filter((_, i) => i !== index)),
+    []
+  );
   const handleAddImageSlot = useCallback(
     () => setDynamicImages((s) => [...s, ""]),
     []
   );
 
-  // This was your original handler for saving images locally via your store.
-  // We'll keep it as-is (does not touch product update logic).
   const handleSaveImages = useCallback(() => {
     if (!editedProject) return;
-    // If you still use updateRDProject / local store for images, call it here.
-    // We intentionally don't change image-saving flow (per your instruction).
     toast.success("Images saved (local logic kept).");
   }, [editedProject]);
 
-  // --- UPDATED: Save product details using FormData & api.put (GreenSeal-style) ---
+  // --- Save edited project (FormData -> PUT) ---
   const handleSave = useCallback(async () => {
     if (!editedProject) return;
 
-    // Validate required fields (same requirements as Green Seal)
     if (
       !editedProject.company?._id ||
       !editedProject.brand?._id ||
@@ -281,8 +352,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
 
     try {
       const fd = new FormData();
-
-      // company/brand/category are objects now (same as GreenSeal)
       fd.append("company", editedProject.company._id);
       fd.append("brand", editedProject.brand._id);
       fd.append("category", editedProject.category._id);
@@ -299,16 +368,13 @@ export function POPendingProjectDetailsDialog(props: Props) {
       if (editedProject.priority) fd.append("priority", editedProject.priority);
       if (editedProject.productDesc)
         fd.append("productDesc", editedProject.productDesc);
-      // Map start date to createdAt (as requested)
       if (editedProject.createdAt)
         fd.append("createdAt", editedProject.createdAt);
-      // Map target date to redSealTargetDate (as requested)
       if (editedProject.redSealTargetDate)
         fd.append("redSealTargetDate", editedProject.redSealTargetDate);
       if (editedProject.clientApproval)
         fd.append("clientApproval", editedProject.clientApproval);
 
-      // nextUpdate mapping (same as GreenSeal)
       if (editedProject?.nextUpdateDate) {
         fd.append(
           "nextUpdate",
@@ -319,7 +385,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
         );
       }
 
-      // Images handling (coverPhoto, additionalImages, dynamicImages)
       if (coverPhoto) {
         if (coverPhoto.startsWith("data:")) {
           const file = dataUrlToFile(coverPhoto, "cover.png");
@@ -336,48 +401,41 @@ export function POPendingProjectDetailsDialog(props: Props) {
         (s) => s && s.startsWith("data:")
       );
 
-      if (existingAdditional.length > 0) {
+      if (existingAdditional.length > 0)
         fd.append("keepExistingSamples", JSON.stringify(existingAdditional));
-      }
-      newAdditional.forEach((d, idx) => {
-        const file = dataUrlToFile(d, `sample-${Date.now()}-${idx}.png`);
-        fd.append("sampleImages", file);
-      });
+      newAdditional.forEach((d, idx) =>
+        fd.append(
+          "sampleImages",
+          dataUrlToFile(d, `sample-${Date.now()}-${idx}.png`)
+        )
+      );
 
-      // dynamic images (treated as new uploads)
       dynamicImages.forEach((d, idx) => {
-        if (d && d.startsWith("data:")) {
-          const file = dataUrlToFile(d, `dynamic-${Date.now()}-${idx}.png`);
-          fd.append("sampleImages", file);
-        }
+        if (d && d.startsWith("data:"))
+          fd.append(
+            "sampleImages",
+            dataUrlToFile(d, `dynamic-${Date.now()}-${idx}.png`)
+          );
       });
 
-      // PO-specific fields we keep:
-      if ((editedProject as any).poNumber) {
+      if ((editedProject as any).poNumber)
         fd.append("poNumber", (editedProject as any).poNumber);
-      }
-      if ((editedProject as any).poStatus) {
+      if ((editedProject as any).poStatus)
         fd.append("poStatus", (editedProject as any).poStatus);
-      }
-      if ((editedProject as any).orderQuantity != null) {
+      if ((editedProject as any).orderQuantity != null)
         fd.append(
           "orderQuantity",
           String((editedProject as any).orderQuantity)
         );
-      }
-      if ((editedProject as any).poValue != null) {
+      if ((editedProject as any).poValue != null)
         fd.append("poValue", String((editedProject as any).poValue));
-      }
 
-      // Finally, send to backend using same endpoint as GreenSeal
       const url = `/projects/${editedProject._id}`;
-
       await api.put(url, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
       toast.success("Project updated");
-      // reload the list in parent
       await reloadProjects?.();
       setIsEditing(false);
       onOpenChange(false);
@@ -394,33 +452,23 @@ export function POPendingProjectDetailsDialog(props: Props) {
     reloadProjects,
   ]);
 
+  // PO handlers
   const handleAddPONumber = useCallback(() => {
     if (!editedProject) return;
-
     const value = poNumber.trim();
-    if (!value) {
-      toast.error("Please enter a valid PO number.");
-      return;
-    }
+    if (!value) return toast.error("Please enter a valid PO number.");
 
-    const updatedProject = {
-      ...editedProject,
-      poNumber: value,
-    } as ProductDevelopment;
+    setEditedProject({ ...editedProject, poNumber: value });
 
-    setEditedProject(updatedProject);
-
-    // Save only into PO model → does NOT affect images/types/assignPerson
     (async () => {
       try {
-        await api.patch(`/projects/${updatedProject._id}/po`, {
-          poNumber: value, // PO Number
-          orderQuantity: updatedProject.orderQuantity ?? null,
-          unitPrice: updatedProject.unitPrice ?? null,
+        await api.patch(`/projects/${editedProject._id}/po`, {
+          poNumber: value,
+          orderQuantity: editedProject.orderQuantity ?? null,
+          unitPrice: editedProject.unitPrice ?? null,
         });
-
         toast.success("PO Number added successfully!");
-        reloadProjects && (await reloadProjects());
+        await reloadProjects?.();
       } catch (error) {
         console.error(error);
         toast.error("Failed to save PO Number");
@@ -432,77 +480,63 @@ export function POPendingProjectDetailsDialog(props: Props) {
 
   const handleEditPONumber = useCallback(() => {
     if (!editedProject) return;
-    if (poNumber.trim()) {
-      const updatedProject = {
-        ...editedProject,
-        poNumber: poNumber.trim(),
-      } as ProductDevelopment;
-      setEditedProject(updatedProject);
-      (async () => {
-        try {
-          await api.patch(`/projects/${updatedProject._id}/po`, {
-            poNumber: updatedProject.poNumber,
-          });
+    if (!poNumber.trim()) return toast.error("Please enter a valid PO number.");
 
-          toast.success("PO Number updated successfully!");
-          reloadProjects && (await reloadProjects());
-        } catch (error) {
-          console.error(error);
-          toast.error("Failed to update PO Number");
-        }
-      })();
-      setPONumber("");
-      setIsAddingPO(false);
-    } else {
-      toast.error("Please enter a valid PO number.");
-    }
+    const updatedProject = { ...editedProject, poNumber: poNumber.trim() };
+    setEditedProject(updatedProject);
+
+    (async () => {
+      try {
+        await api.patch(`/projects/${updatedProject._id}/po`, {
+          poNumber: updatedProject.poNumber,
+        });
+        toast.success("PO Number updated successfully!");
+        await reloadProjects?.();
+      } catch (error) {
+        console.error(error);
+        toast.error("Failed to update PO Number");
+      }
+    })();
+
+    setPONumber("");
+    setIsAddingPO(false);
   }, [editedProject, poNumber, reloadProjects]);
 
   const handleAdvanceToPOApproved = useCallback(async () => {
-    if (!editedProject?.poNumber) {
-      toast.error("PO Number is required to advance");
-      return;
-    }
+    if (!editedProject?.poNumber)
+      return toast.error("PO Number is required to advance");
 
     try {
-      // Only update PO — do NOT update project fields
       await api.patch(`/projects/${editedProject._id}/po`, {
         poNumber: editedProject.poNumber,
         orderQuantity: editedProject.orderQuantity,
         unitPrice: editedProject.unitPrice,
       });
-
       toast.success("Project advanced to PO Approved!");
-      reloadProjects && (await reloadProjects());
+      await reloadProjects?.();
       onOpenChange(false);
     } catch (error) {
       toast.error("Failed to advance project");
     }
   }, [editedProject, reloadProjects, onOpenChange]);
 
-  const handleApproveAndAdvanceToProduction = useCallback(() => {
-    if (!editedProject?.poNumber) {
-      toast.error("PO Number is required to advance to Production");
-      return;
+  const handleApproveAndAdvanceToProduction = useCallback(async () => {
+    if (!editedProject?.poNumber)
+      return toast.error("PO Number is required to advance to Production");
+    try {
+      await api.patch(
+        `/companies/${editedProject.company?._id}/brands/${editedProject.brand?._id}/categories/${editedProject.category?._id}/projects/${editedProject._id}/status`,
+        { status: "production" }
+      );
+      toast.success("Project approved and advanced to Production!");
+      await reloadProjects?.();
+      onOpenChange(false);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to advance project to production");
     }
-    (async () => {
-      try {
-        // update status to production on backend
-        await api.patch(
-          `/companies/${editedProject.company?._id}/brands/${editedProject.brand?._id}/categories/${editedProject.category?._id}/projects/${editedProject._id}/status`,
-          { status: "production" }
-        );
-        toast.success("Project approved and advanced to Production!");
-        reloadProjects && (await reloadProjects());
-        onOpenChange(false);
-      } catch (error) {
-        console.error(error);
-        toast.error("Failed to advance project to production");
-      }
-    })();
   }, [editedProject, onOpenChange, reloadProjects]);
 
-  // Helper checks
   const isPOPending = useCallback(() => {
     return (
       !(project as any)?.poNumber &&
@@ -516,17 +550,16 @@ export function POPendingProjectDetailsDialog(props: Props) {
     );
   }, [project]);
 
-  // Part 1 ends here — JSX/UI unchanged will come in Part 2 & Part 3
-
+  // --- Render (JSX) ---
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
           {/* Sticky Header Section */}
-          <div className="sticky top-0 z-50 px-8 py-6 bg-gradient-to-r from-orange-50 via-white to-orange-50 border-b border-gray-200 shadow-sm">
+          <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-orange-50 via-white to-orange-50 border-b border-gray-200 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-6">
-                <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg">
+                <div className="w-14 h-14 bg-linear-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg">
                   <Package className="w-7 h-7 text-white" />
                 </div>
                 <div>
@@ -559,12 +592,12 @@ export function POPendingProjectDetailsDialog(props: Props) {
                   </div>
                 </div>
               </div>
+
               <div className="flex items-center gap-3">
-                {/* Advance to PO Approved Button - Only enabled if PO number exists */}
                 <Button
                   onClick={handleAdvanceToPOApproved}
                   disabled={!editedProject?.poNumber}
-                  className={`bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 ${
+                  className={`bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 ${
                     !editedProject?.poNumber
                       ? "opacity-50 cursor-not-allowed"
                       : ""
@@ -579,11 +612,10 @@ export function POPendingProjectDetailsDialog(props: Props) {
                   Advance to PO Approved
                 </Button>
 
-                {/* Approve & Advance to Production Button - Only enabled if PO number exists */}
                 <Button
                   onClick={handleApproveAndAdvanceToProduction}
                   disabled={!editedProject?.poNumber}
-                  className={`bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 ${
+                  className={`bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 ${
                     !editedProject?.poNumber
                       ? "opacity-50 cursor-not-allowed"
                       : ""
@@ -626,6 +658,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                     </Button>
                   </div>
                 )}
+
                 <button
                   onClick={() => onOpenChange(false)}
                   type="button"
@@ -736,7 +769,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                   {/* Horizontal Layout: Preview + Images */}
                   <div className="flex gap-4 mb-5">
                     {/* Product Preview - Compact */}
-                    <div className="flex-shrink-0 w-44">
+                    <div className="shrink-0 w-44">
                       <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 h-full">
                         <Label className="text-xs font-medium text-gray-600 mb-2 block">
                           Preview
@@ -762,7 +795,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
 
                     {/* Product Images Gallery (same as other dialogs) */}
                     <div className="flex-1 min-w-0">
-                      <div className="p-3 bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
+                      <div className="p-3 bg-linear-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-1.5">
                             <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
@@ -793,7 +826,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                         {!isEditing ? (
                           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
                             {coverPhoto && (
-                              <div className="group relative flex-shrink-0">
+                              <div className="group relative shrink-0">
                                 <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
                                   <img
                                     src={getFullImageUrl(coverPhoto)}
@@ -808,7 +841,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                               .map((image, i) => (
                                 <div
                                   key={i}
-                                  className="group relative flex-shrink-0"
+                                  className="group relative shrink-0"
                                 >
                                   <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
                                     <img
@@ -822,7 +855,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                             {dynamicImages.map((image, i) => (
                               <div
                                 key={`dynamic-${i}`}
-                                className="group relative flex-shrink-0"
+                                className="group relative shrink-0"
                               >
                                 <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
                                   <img
@@ -848,7 +881,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                         ) : (
                           <div className="space-y-2">
                             <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                              <div className="flex-shrink-0">
+                              <div className="shrink-0">
                                 <input
                                   ref={coverInputRef}
                                   type="file"
@@ -880,7 +913,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                                     onClick={() =>
                                       coverInputRef.current?.click()
                                     }
-                                    className="w-20 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md"
+                                    className="w-20 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md"
                                   >
                                     <ImageIcon className="w-5 h-5 text-blue-600" />
                                     <span className="text-xs text-blue-700 mt-0.5">
@@ -891,7 +924,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                               </div>
 
                               {[0, 1, 2, 3, 4].map((i) => (
-                                <div key={i} className="flex-shrink-0">
+                                <div key={i} className="shrink-0">
                                   <input
                                     ref={(el) => {
                                       if (additionalInputRefs.current) {
@@ -942,10 +975,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                               ))}
 
                               {dynamicImages.map((image, i) => (
-                                <div
-                                  key={`dynamic-${i}`}
-                                  className="flex-shrink-0"
-                                >
+                                <div key={`dynamic-${i}`} className="shrink-0">
                                   <input
                                     ref={(el) => {
                                       if (dynamicInputRefs.current) {
@@ -993,7 +1023,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
 
                               <div
                                 onClick={handleAddImageSlot}
-                                className="w-20 h-20 flex-shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md"
+                                className="w-20 h-20 shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md"
                               >
                                 <Plus className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-all duration-200" />
                               </div>
@@ -1002,7 +1032,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                             <div className="flex justify-end pt-2 border-t border-gray-200">
                               <Button
                                 onClick={handleSaveImages}
-                                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-7 text-xs"
+                                className="bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-7 text-xs"
                                 size="sm"
                               >
                                 <Save className="w-3 h-3 mr-1.5" />
@@ -1621,7 +1651,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                 </div>
 
                 {/* Additional Analysis Summary */}
-                <div className="bg-gradient-to-r from-purple-50 to-teal-50 border-2 border-purple-200 rounded-xl p-6">
+                <div className="bg-linear-to-r from-purple-50 to-teal-50 border-2 border-purple-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">
                     Production Analysis Summary
                   </h4>
@@ -1693,9 +1723,9 @@ export function POPendingProjectDetailsDialog(props: Props) {
                     </h3>
                   </div>
 
-                  <div className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-300 rounded-xl p-8 shadow-lg">
+                  <div className="bg-linear-to-br from-orange-50 to-orange-100 border-2 border-orange-300 rounded-xl p-8 shadow-lg">
                     <div className="flex items-start gap-4 mb-6">
-                      <div className="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                      <div className="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
                         {(editedProject as any)?.poNumber ? (
                           <CheckCircle className="w-6 h-6 text-white" />
                         ) : (
@@ -1759,7 +1789,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                           <Button
                             onClick={handleAddPONumber}
                             disabled={!poNumber.trim()}
-                            className="h-12 px-6 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed font-semibold shadow-lg whitespace-nowrap"
+                            className="h-12 px-6 bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed font-semibold shadow-lg whitespace-nowrap"
                           >
                             <Save className="w-5 h-5 mr-2" />
                             {(editedProject as any)?.poNumber
@@ -1778,7 +1808,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
               {/* PO Number Added - Ready to Advance Section */}
               {(project as any)?.poNumber && !isPOApproved() && (
                 <div className="space-y-6">
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
+                  <div className="bg-linear-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
                     <div className="flex items-start gap-4 mb-4">
                       <CheckCircle className="w-6 h-6 text-green-600 mt-0.5" />
                       <div>
