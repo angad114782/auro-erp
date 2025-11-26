@@ -1,4 +1,3 @@
-// contexts/AuthContext.jsx
 import React, {
   createContext,
   useContext,
@@ -6,61 +5,54 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-// types/auth.ts
+import api from "./api";
+
+// TYPES
 export interface User {
-  userId: string;
-  role: "superadmin" | "admin" | "manager" | "supervisor" | "user";
+  id: string;
   name: string;
+  role: string;
   loginTime: string;
   permissions: string[];
 }
 
-export interface AuthState {
+interface AuthState {
   isAuthenticated: boolean;
   user: User | null;
   loading: boolean;
   error: string | null;
 }
-
-export type AuthAction =
+// ACTION TYPES
+type AuthAction =
   | { type: "LOGIN_START" }
   | { type: "LOGIN_SUCCESS"; payload: User }
   | { type: "LOGIN_FAILURE"; payload: string }
   | { type: "LOGOUT" }
   | { type: "CLEAR_ERROR" };
 
-export interface AuthContextType extends AuthState {
-  login: (userId: string, password: string) => Promise<boolean>;
+interface AuthContextType extends AuthState {
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   clearError: () => void;
   hasPermission: (module: string) => boolean;
   getDefaultModule: () => string;
 }
-// contexts/AuthContext.tsx
 
-// Mock user database
-const users: Record<
-  string,
-  { password: string; role: User["role"]; name: string }
-> = {
-  superadmin: {
-    password: "superadmin123",
-    role: "superadmin",
-    name: "Super Admin",
-  },
-  admin: { password: "admin123", role: "admin", name: "Administrator" },
-  manager: { password: "manager123", role: "manager", name: "Project Manager" },
-  supervisor: {
-    password: "supervisor123",
-    role: "supervisor",
-    name: "Supervisor",
-  },
-  user: { password: "user123", role: "user", name: "Regular User" },
-};
-
-// Role-based access control
-const rolePermissions: Record<User["role"], string[]> = {
-  superadmin: [
+/* ROLE → MODULE PERMISSIONS */
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  SuperAdmin: [
+    "dashboard",
+    "master-data",
+    "rd-management",
+    "production",
+    "inventory",
+    "delivery",
+    "users",
+    "reports",
+    "notifications",
+    "wireframe",
+  ],
+  Admin: [
     "dashboard",
     "master-data",
     "rd-management",
@@ -70,19 +62,9 @@ const rolePermissions: Record<User["role"], string[]> = {
     "users",
     "notifications",
     "reports",
-    "wireframe",
   ],
-  admin: [
-    "dashboard",
-    "master-data",
-    "rd-management",
-    "production",
-    "inventory",
-    "delivery",
-    "notifications",
-    "reports",
-  ],
-  manager: [
+
+  Manager: [
     "dashboard",
     "rd-management",
     "production",
@@ -90,18 +72,16 @@ const rolePermissions: Record<User["role"], string[]> = {
     "delivery",
     "reports",
   ],
-  supervisor: ["dashboard", "production", "inventory", "delivery"],
-  user: ["dashboard", "reports"],
+
+  Supervisor: ["dashboard", "production", "inventory", "delivery"],
 };
 
-// Default modules for each role
-const getDefaultModuleByRole = (role: User["role"]): string => {
-  const modules = rolePermissions[role] || ["dashboard"];
-  return modules[0];
+const defaultModuleByRole = (role: string): string => {
+  return ROLE_PERMISSIONS[role]?.[0] || "dashboard";
 };
 
-// Auth state reducer
-const authReducer = (state: AuthState, action: AuthAction): AuthState => {
+/* REDUCER */
+const reducer = (state: AuthState, action: AuthAction): AuthState => {
   switch (action.type) {
     case "LOGIN_START":
       return { ...state, loading: true, error: null };
@@ -111,8 +91,8 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
         ...state,
         loading: false,
         isAuthenticated: true,
-        user: action.payload,
         error: null,
+        user: action.payload,
       };
 
     case "LOGIN_FAILURE":
@@ -120,17 +100,12 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
         ...state,
         loading: false,
         isAuthenticated: false,
-        user: null,
         error: action.payload,
+        user: null,
       };
 
     case "LOGOUT":
-      return {
-        ...state,
-        isAuthenticated: false,
-        user: null,
-        error: null,
-      };
+      return { ...state, isAuthenticated: false, user: null };
 
     case "CLEAR_ERROR":
       return { ...state, error: null };
@@ -142,130 +117,92 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 
 const initialState: AuthState = {
   isAuthenticated: false,
-  user: null,
   loading: false,
+  user: null,
   error: null,
 };
 
-// Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(reducer, initialState);
 
-// Auth Provider component
-export function AuthProvider({ children }: AuthProviderProps) {
-  const [state, dispatch] = useReducer(authReducer, initialState);
-
-  // Check for existing session on mount
+  /* RESTORE on page refresh */
   useEffect(() => {
-    const savedAuth = localStorage.getItem("erp_auth");
-    if (savedAuth) {
-      try {
-        const authData = JSON.parse(savedAuth) as {
-          user: User;
-          isAuthenticated: boolean;
-        };
-        if (authData.user && authData.isAuthenticated) {
-          dispatch({ type: "LOGIN_SUCCESS", payload: authData.user });
-        }
-      } catch (error) {
-        localStorage.removeItem("erp_auth");
-      }
+    const token = localStorage.getItem("erp_token");
+    const userJson = localStorage.getItem("erp_user");
+
+    if (token && userJson) {
+      const user = JSON.parse(userJson);
+      dispatch({ type: "LOGIN_SUCCESS", payload: user });
     }
   }, []);
 
-  const login = async (userId: string, password: string): Promise<boolean> => {
+  /* REAL LOGIN */
+  const login = async (email: string, password: string): Promise<boolean> => {
     dispatch({ type: "LOGIN_START" });
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const res = await api.post("/auth/login", { email, password });
 
-      const user = users[userId.toLowerCase()];
+      const { user, token } = res.data.data;
 
-      if (!user) {
-        dispatch({ type: "LOGIN_FAILURE", payload: "User ID not found" });
-        return false;
-      }
-
-      if (user.password !== password) {
-        dispatch({ type: "LOGIN_FAILURE", payload: "Invalid password" });
-        return false;
-      }
-
-      const userData: User = {
-        userId: userId.toLowerCase(),
-        role: user.role,
+      const formattedUser: User = {
+        id: user._id,
         name: user.name,
+        role: user.role,
         loginTime: new Date().toISOString(),
-        permissions: rolePermissions[user.role] || [],
+        permissions: ROLE_PERMISSIONS[user.role] || [],
       };
 
-      dispatch({ type: "LOGIN_SUCCESS", payload: userData });
+      // Save session
+      localStorage.setItem("erp_token", token);
+      localStorage.setItem("erp_user", JSON.stringify(formattedUser));
 
-      // Save to localStorage
-      localStorage.setItem(
-        "erp_auth",
-        JSON.stringify({
-          user: userData,
-          isAuthenticated: true,
-        })
-      );
+      dispatch({ type: "LOGIN_SUCCESS", payload: formattedUser });
 
       return true;
-    } catch (error) {
+    } catch (err: any) {
       dispatch({
         type: "LOGIN_FAILURE",
-        payload: "Login failed. Please try again.",
+        payload: err.response?.data?.message || "Invalid credentials",
       });
       return false;
     }
   };
 
-  const logout = (): void => {
+  const logout = () => {
+    localStorage.removeItem("erp_token");
+    localStorage.removeItem("erp_user");
     dispatch({ type: "LOGOUT" });
-    localStorage.removeItem("erp_auth");
   };
 
-  const clearError = (): void => {
-    dispatch({ type: "CLEAR_ERROR" });
-  };
+  const clearError = () => dispatch({ type: "CLEAR_ERROR" });
 
-  const hasPermission = (module: string): boolean => {
+  const hasPermission = (module: string) => {
     if (!state.user) return false;
     return state.user.permissions.includes(module);
   };
 
-  const getDefaultModule = (): string => {
+  const getDefaultModule = () => {
     if (!state.user) return "dashboard";
-    return getDefaultModuleByRole(state.user.role);
+    return defaultModuleByRole(state.user.role);
   };
 
-  const value: AuthContextType = {
-    // State
-    isAuthenticated: state.isAuthenticated,
-    user: state.user,
-    loading: state.loading,
-    error: state.error,
-
-    // Actions
-    login,
-    logout,
-    clearError,
-    hasPermission,
-    getDefaultModule,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        ...state,
+        login,
+        logout,
+        clearError,
+        hasPermission,
+        getDefaultModule,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-// Custom hook to use auth context
-export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext)!;

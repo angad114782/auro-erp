@@ -8,16 +8,14 @@ import typeRoutes from "./type.routes.js";
 import countryRoutes from "./country.routes.js";
 import assignPersonRoutes from "./assignPerson.routes.js";
 import costRoutes from "./cost.routes.js";
-
-
+import userRoutes from "./user.routes.js";
+import authRoutes from "./auth.routes.js";
 
 const router = Router();
 
 router.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
-
-
 
 router.use("/sequences", sequenceRoutes);
 router.use("/companies", companyRoutes);
@@ -47,5 +45,7 @@ router.use("/assign-persons", assignPersonRoutes);
 router.use("/projects", projectRoutes);
 router.use("/projects/:projectId/costs", costRoutes);
 
+router.use("/users", userRoutes);
+router.use("/auth", authRoutes);
 
 export default router;
