@@ -1443,7 +1443,7 @@ export function ProductionPlanning() {
                               </div>
 
                               {/* Day Content */}
-                              <div className={`${cellBg} p-3 min-h-[160px]`}>
+                              <div className={`${cellBg} p-3 min-h-40`}>
                                 {isCurrentMonth ? (
                                   <div className="space-y-2">
                                     {dayProductions.map((production, idx) => (
@@ -1485,6 +1485,7 @@ export function ProductionPlanning() {
                                         )}
 
                                         {/* Calendar Icon - Bottom Right */}
+                                        {/* Calendar Button - Bottom Left */}
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
@@ -1496,10 +1497,29 @@ export function ProductionPlanning() {
                                             );
                                             setIsDateChangeDialogOpen(true);
                                           }}
-                                          className="absolute bottom-2 right-2 w-6 h-6 bg-blue-500 hover:bg-blue-600 rounded-md flex items-center justify-center shadow-sm hover:shadow-md transition-all duration-200 group"
+                                          className="absolute bottom-2 left-2 w-6 h-6 bg-blue-500 hover:bg-blue-600 
+             rounded-md flex items-center justify-center shadow-sm 
+             hover:shadow-md transition-all duration-200 group"
                                           title="Change production date"
                                         >
                                           <Calendar className="w-3.5 h-3.5 text-white" />
+                                        </button>
+
+                                        {/* Trash Button - Bottom Right */}
+                                        <button
+                                          // onClick={(e) => {
+                                          //   e.stopPropagation();
+                                          //   setSelectedProductionForDelete(
+                                          //     production
+                                          //   ); // <-- you should define this
+                                          //   setIsDeleteDialogOpen(true); // <-- also define this modal
+                                          // }}
+                                          className="absolute bottom-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 
+             rounded-md flex items-center justify-center shadow-sm 
+             hover:shadow-md transition-all duration-200 group"
+                                          title="Delete production"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 text-white" />
                                         </button>
                                       </div>
                                     ))}

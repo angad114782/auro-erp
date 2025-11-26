@@ -1,49 +1,36 @@
-import React, { useState } from "react";
+// src/components/AddItemDialog.tsx
+import React from "react";
 import {
   Plus,
   Package,
-  Calculator,
-  IndianRupee,
   X,
-  CheckCircle,
-  AlertCircle,
-  Calendar,
-  Barcode,
-  Tag,
-  Upload,
   FileText,
   Paperclip,
+  Barcode,
+  Calendar,
+  Tag,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
 } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 import { Label } from "./ui/label";
-import { Separator } from "./ui/separator";
-import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Badge } from "./ui/badge";
-import { toast } from "sonner@2.0.3";
-import { useERPStore } from "../lib/data-store";
+import { toast } from "sonner";
 
 interface NewItem {
   itemName: string;
   category: string;
   brand: string;
   color: string;
-  vendorId: string;
+  vendorId: string; // now free-text (id or name)
   expiryDate: string;
   quantity: string;
   quantityUnit: string;
@@ -53,11 +40,14 @@ interface NewItem {
   billAttachment?: File | null;
 }
 
-interface AddItemDialogProps {
+interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editingItem?: any;
   isEditMode?: boolean;
+  createItem: (args: { formData: FormData }) => Promise<any>;
+  updateItem: (id: string, formData: FormData) => Promise<any>;
+  vendors?: any[]; // provided but we use free text
 }
 
 export function AddItemDialog({
@@ -65,8 +55,11 @@ export function AddItemDialog({
   onOpenChange,
   editingItem,
   isEditMode = false,
-}: AddItemDialogProps) {
-  const [newItem, setNewItem] = useState<NewItem>({
+  createItem,
+  updateItem,
+  vendors = [],
+}: Props) {
+  const [newItem, setNewItem] = React.useState<NewItem>({
     itemName: "",
     category: "",
     brand: "",
@@ -81,9 +74,6 @@ export function AddItemDialog({
     billAttachment: null,
   });
 
-  const { addInventoryItem, updateInventoryItem, vendors } = useERPStore();
-
-  // Reset form when opening in add mode or populate when editing
   React.useEffect(() => {
     if (open) {
       if (isEditMode && editingItem) {
@@ -94,7 +84,7 @@ export function AddItemDialog({
           color: editingItem.color || "",
           vendorId: editingItem.vendorId || "",
           expiryDate: editingItem.expiryDate || "",
-          quantity: editingItem.quantity?.toString() || "",
+          quantity: (editingItem.quantity || 0).toString(),
           quantityUnit: editingItem.quantityUnit || "piece",
           description: editingItem.description || "",
           billNumber: editingItem.billNumber || "",
@@ -125,179 +115,73 @@ export function AddItemDialog({
     const currentYear = now.getFullYear();
     const month = (now.getMonth() + 1).toString().padStart(2, "0");
     const day = now.getDate().toString().padStart(2, "0");
-
-    // Generate a random 4-digit number for uniqueness
     const randomNum = Math.floor(1000 + Math.random() * 9000);
-
     return `ITM-${currentYear}-${month}${day}-${randomNum}`;
   };
 
-  const handleCreateItem = () => {
-    // Validation
+  const handleSubmit = async (draft = false) => {
     if (!newItem.itemName || !newItem.category) {
-      toast.error("Please fill in all required fields");
+      toast.error("Please fill required fields");
       return;
     }
 
-    if (isEditMode && editingItem) {
-      // Update existing item
-      updateInventoryItem(editingItem.id, {
-        itemName: newItem.itemName,
-        category: newItem.category as
-          | "Raw Materials"
-          | "Components & Parts"
-          | "Finished Footwear"
-          | "Accessories & Hardware",
-        subCategory: getSubCategoryFromCategory(newItem.category),
-        brand: newItem.brand,
-        color: newItem.color,
-        vendorId: newItem.vendorId,
-        expiryDate: newItem.expiryDate,
-        quantity: parseInt(newItem.quantity) || 0,
-        quantityUnit: newItem.quantityUnit as
-          | "piece"
-          | "pair"
-          | "kg"
-          | "gm"
-          | "meter"
-          | "sq-ft"
-          | "liter",
-        description: newItem.description,
-        isDraft: false,
-      });
+    // Build FormData for file upload
+    const formData = new FormData();
+    formData.append("itemName", newItem.itemName);
+    formData.append("category", newItem.category);
+    formData.append("subCategory", "General");
+    formData.append("brand", newItem.brand || "N/A");
+    formData.append("color", newItem.color || "N/A");
+    formData.append("vendorId", newItem.vendorId || "N/A");
+    formData.append("expiryDate", newItem.expiryDate || "");
+    formData.append(
+      "quantity",
+      (parseInt(newItem.quantity || "0") || 0).toString()
+    );
+    formData.append("quantityUnit", newItem.quantityUnit || "piece");
+    formData.append("description", newItem.description || "");
+    formData.append("billNumber", newItem.billNumber || "");
+    formData.append("billDate", newItem.billDate || "");
+    formData.append("isDraft", draft ? "true" : "false");
+    formData.append(
+      "code",
+      isEditMode && editingItem ? editingItem.code : generateItemCode()
+    );
 
-      toast.success("Item updated successfully!");
-    } else {
-      // Create item with isDraft: false
-      addInventoryItem({
-        itemName: newItem.itemName,
-        category: newItem.category as
-          | "Raw Materials"
-          | "Components & Parts"
-          | "Finished Footwear"
-          | "Accessories & Hardware",
-        subCategory: getSubCategoryFromCategory(newItem.category),
-        brand: newItem.brand,
-        color: newItem.color,
-        vendorId: newItem.vendorId,
-        expiryDate: newItem.expiryDate,
-        quantity: parseInt(newItem.quantity) || 0,
-        quantityUnit: newItem.quantityUnit as
-          | "piece"
-          | "pair"
-          | "kg"
-          | "gm"
-          | "meter"
-          | "sq-ft"
-          | "liter",
-        description: newItem.description,
-        isDraft: false,
-      });
-
-      toast.success("Item added successfully!");
+    if (newItem.billAttachment) {
+      formData.append("billAttachment", newItem.billAttachment);
     }
 
-    // Reset form
-    setNewItem({
-      itemName: "",
-      category: "",
-      brand: "",
-      color: "",
-      vendorId: "",
-      expiryDate: "",
-      quantity: "",
-      quantityUnit: "piece",
-      description: "",
-    });
-
-    onOpenChange(false);
-  };
-
-  const handleSaveAsDraft = () => {
-    if (isEditMode && editingItem) {
-      // Update existing item as draft
-      updateInventoryItem(editingItem.id, {
-        itemName: newItem.itemName || "Untitled Draft",
-        category:
-          (newItem.category as
-            | "Raw Materials"
-            | "Components & Parts"
-            | "Finished Footwear"
-            | "Accessories & Hardware") || "Raw Materials",
-        subCategory: getSubCategoryFromCategory(newItem.category) || "General",
-        brand: newItem.brand || "N/A",
-        color: newItem.color || "N/A",
-        vendorId: newItem.vendorId || "N/A",
-        expiryDate: newItem.expiryDate,
-        quantity: parseInt(newItem.quantity) || 0,
-        quantityUnit: newItem.quantityUnit as
-          | "piece"
-          | "pair"
-          | "kg"
-          | "gm"
-          | "meter"
-          | "sq-ft"
-          | "liter",
-        description: newItem.description,
-        isDraft: true,
+    try {
+      if (isEditMode && editingItem) {
+        await updateItem(editingItem._id, formData);
+        toast.success("Item updated successfully!");
+      } else {
+        await createItem({ formData });
+        toast.success(
+          draft ? "Item saved as draft!" : "Item added successfully!"
+        );
+      }
+      // reset & close
+      setNewItem({
+        itemName: "",
+        category: "",
+        brand: "",
+        color: "",
+        vendorId: "",
+        expiryDate: "",
+        quantity: "",
+        quantityUnit: "piece",
+        description: "",
+        billNumber: "",
+        billDate: "",
+        billAttachment: null,
       });
-
-      toast.success("Item changes saved!");
-    } else {
-      // Create item with isDraft: true
-      addInventoryItem({
-        itemName: newItem.itemName || "Untitled Draft",
-        category:
-          (newItem.category as
-            | "Raw Materials"
-            | "Components & Parts"
-            | "Finished Footwear"
-            | "Accessories & Hardware") || "Raw Materials",
-        subCategory: getSubCategoryFromCategory(newItem.category) || "General",
-        brand: newItem.brand || "N/A",
-        color: newItem.color || "N/A",
-        vendorId: newItem.vendorId || "N/A",
-        expiryDate: newItem.expiryDate,
-        quantity: parseInt(newItem.quantity) || 0,
-        quantityUnit: newItem.quantityUnit as
-          | "piece"
-          | "pair"
-          | "kg"
-          | "gm"
-          | "meter"
-          | "sq-ft"
-          | "liter",
-        description: newItem.description,
-        isDraft: true,
-      });
-
-      toast.success("Item saved as draft successfully!");
+      onOpenChange(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Save failed");
     }
-
-    // Reset form
-    setNewItem({
-      itemName: "",
-      category: "",
-      brand: "",
-      color: "",
-      vendorId: "",
-      expiryDate: "",
-      quantity: "",
-      quantityUnit: "piece",
-      description: "",
-    });
-
-    onOpenChange(false);
-  };
-
-  const getSubCategoryFromCategory = (category: string): string => {
-    const subCategoryMap: { [key: string]: string } = {
-      "Raw Materials": "General",
-      "Components & Parts": "General",
-      "Finished Footwear": "General",
-      "Accessories & Hardware": "General",
-    };
-    return subCategoryMap[category] || "General";
   };
 
   return (
@@ -308,7 +192,6 @@ export function AddItemDialog({
       }}
     >
       <DialogContent className="!max-w-[96vw] !w-[96vw] max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
-        {/* Sticky Header Section */}
         <div className="sticky top-0 z-50 px-12 py-8 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-8">
@@ -340,10 +223,8 @@ export function AddItemDialog({
           </div>
         </div>
 
-        {/* Scrollable Main Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-12 py-10">
-            {/* Item Information Section */}
             <div className="space-y-8">
               <div className="flex items-center gap-6">
                 <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
@@ -356,7 +237,6 @@ export function AddItemDialog({
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-6 gap-8">
-                {/* First Row - 6 columns */}
                 <div className="xl:col-span-2 space-y-4">
                   <Label
                     htmlFor="itemName"
@@ -368,12 +248,9 @@ export function AddItemDialog({
                     id="itemName"
                     value={newItem.itemName}
                     onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        itemName: e.target.value,
-                      })
+                      setNewItem({ ...newItem, itemName: e.target.value })
                     }
-                    placeholder="e.g., Premium Leather Running Shoes, Cotton Shoe Laces"
+                    placeholder="e.g., Premium Leather Running Shoes"
                     className="h-12 text-base border-2 focus:border-[#0c9dcb]"
                   />
                 </div>
@@ -391,6 +268,7 @@ export function AddItemDialog({
                   </div>
                 </div>
 
+                {/* CATEGORY as text input (requested) */}
                 <div className="xl:col-span-2 space-y-4">
                   <Label
                     htmlFor="category"
@@ -398,36 +276,17 @@ export function AddItemDialog({
                   >
                     Category *
                   </Label>
-                  <Select
+                  <Input
+                    id="category"
                     value={newItem.category}
-                    onValueChange={(value) =>
-                      setNewItem({
-                        ...newItem,
-                        category: value,
-                      })
+                    onChange={(e) =>
+                      setNewItem({ ...newItem, category: e.target.value })
                     }
-                  >
-                    <SelectTrigger className="h-12 border-2 focus:border-[#0c9dcb]">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Raw Materials">
-                        Raw Materials
-                      </SelectItem>
-                      <SelectItem value="Components & Parts">
-                        Components & Parts
-                      </SelectItem>
-                      <SelectItem value="Finished Footwear">
-                        Finished Footwear
-                      </SelectItem>
-                      <SelectItem value="Accessories & Hardware">
-                        Accessories & Hardware
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    placeholder="e.g., Raw Materials"
+                    className="h-12 text-base border-2 focus:border-[#0c9dcb]"
+                  />
                 </div>
 
-                {/* Second Row */}
                 <div className="xl:col-span-2 space-y-4">
                   <Label
                     htmlFor="brand"
@@ -439,12 +298,9 @@ export function AddItemDialog({
                     id="brand"
                     value={newItem.brand}
                     onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        brand: e.target.value,
-                      })
+                      setNewItem({ ...newItem, brand: e.target.value })
                     }
-                    placeholder="e.g., Nike, Adidas, Puma"
+                    placeholder="e.g., Nike"
                     className="h-12 text-base border-2 focus:border-[#0c9dcb]"
                   />
                 </div>
@@ -460,16 +316,14 @@ export function AddItemDialog({
                     id="color"
                     value={newItem.color}
                     onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        color: e.target.value,
-                      })
+                      setNewItem({ ...newItem, color: e.target.value })
                     }
-                    placeholder="e.g., Black, White, Red"
+                    placeholder="e.g., Black"
                     className="h-12 text-base border-2 focus:border-[#0c9dcb]"
                   />
                 </div>
 
+                {/* VENDOR as text input (requested) */}
                 <div className="xl:col-span-2 space-y-4">
                   <Label
                     htmlFor="vendorId"
@@ -477,29 +331,17 @@ export function AddItemDialog({
                   >
                     Vendor / Supplier
                   </Label>
-                  <Select
+                  <Input
+                    id="vendorId"
                     value={newItem.vendorId}
-                    onValueChange={(value) =>
-                      setNewItem({
-                        ...newItem,
-                        vendorId: value,
-                      })
+                    onChange={(e) =>
+                      setNewItem({ ...newItem, vendorId: e.target.value })
                     }
-                  >
-                    <SelectTrigger className="h-12 border-2 focus:border-[#0c9dcb]">
-                      <SelectValue placeholder="Select vendor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vendors.map((vendor) => (
-                        <SelectItem key={vendor.id} value={vendor.id}>
-                          {vendor.vendorName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Vendor id or name (free text)"
+                    className="h-12 text-base border-2 focus:border-[#0c9dcb]"
+                  />
                 </div>
 
-                {/* Third Row */}
                 <div className="xl:col-span-2 space-y-4">
                   <Label
                     htmlFor="expiryDate"
@@ -512,18 +354,14 @@ export function AddItemDialog({
                     type="date"
                     value={newItem.expiryDate}
                     onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        expiryDate: e.target.value,
-                      })
+                      setNewItem({ ...newItem, expiryDate: e.target.value })
                     }
                     className="h-12 text-base border-2 focus:border-[#0c9dcb]"
-                    style={{
-                      colorScheme: "light",
-                    }}
+                    style={{ colorScheme: "light" }}
                   />
                 </div>
 
+                {/* QUANTITY & QUANTITY UNIT (unit as input, requested) */}
                 <div className="xl:col-span-2 space-y-4">
                   <Label
                     htmlFor="quantity"
@@ -538,10 +376,7 @@ export function AddItemDialog({
                       type="number"
                       value={newItem.quantity}
                       onChange={(e) =>
-                        setNewItem({
-                          ...newItem,
-                          quantity: e.target.value,
-                        })
+                        setNewItem({ ...newItem, quantity: e.target.value })
                       }
                       placeholder="0"
                       className="pl-12 h-12 text-base border-2 focus:border-[#0c9dcb]"
@@ -556,40 +391,17 @@ export function AddItemDialog({
                   >
                     Quantity Unit *
                   </Label>
-                  <Select
+                  <Input
+                    id="quantityUnit"
                     value={newItem.quantityUnit}
-                    onValueChange={(value) =>
-                      setNewItem({
-                        ...newItem,
-                        quantityUnit: value,
-                      })
+                    onChange={(e) =>
+                      setNewItem({ ...newItem, quantityUnit: e.target.value })
                     }
-                  >
-                    <SelectTrigger className="h-12 border-2 focus:border-[#0c9dcb]">
-                      <SelectValue placeholder="Select unit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="piece">Piece</SelectItem>
-                      <SelectItem value="pair">Pair</SelectItem>
-                      <SelectItem value="kg">Kilograms</SelectItem>
-                      <SelectItem value="g">Grams</SelectItem>
-                      <SelectItem value="meter">Meter</SelectItem>
-                      <SelectItem value="cm">Centimeter</SelectItem>
-                      <SelectItem value="liter">Liter</SelectItem>
-                      <SelectItem value="ml">Milliliter</SelectItem>
-                      <SelectItem value="box">Box</SelectItem>
-                      <SelectItem value="carton">Carton</SelectItem>
-                      <SelectItem value="roll">Roll</SelectItem>
-                      <SelectItem value="sheet">Sheet</SelectItem>
-                      <SelectItem value="bottle">Bottle</SelectItem>
-                      <SelectItem value="tube">Tube</SelectItem>
-                      <SelectItem value="pack">Pack</SelectItem>
-                      <SelectItem value="set">Set</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    placeholder="piece / pair / kg / liter"
+                    className="h-12 text-base border-2 focus:border-[#0c9dcb]"
+                  />
                 </div>
 
-                {/* Fourth Row - Item Description */}
                 <div className="xl:col-span-6 space-y-4">
                   <Label
                     htmlFor="description"
@@ -601,12 +413,9 @@ export function AddItemDialog({
                     id="description"
                     value={newItem.description}
                     onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        description: e.target.value,
-                      })
+                      setNewItem({ ...newItem, description: e.target.value })
                     }
-                    placeholder="Describe the item details, specifications, materials, dimensions, colors, key features, quality standards, and any special characteristics or certifications..."
+                    placeholder="Describe the item..."
                     rows={4}
                     className="resize-none text-base border-2 focus:border-[#0c9dcb] leading-relaxed"
                   />
@@ -614,7 +423,7 @@ export function AddItemDialog({
               </div>
             </div>
 
-            {/* Billing Information Section */}
+            {/* Billing Info */}
             <div className="space-y-8 mt-10">
               <div className="flex items-center gap-6">
                 <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
@@ -633,7 +442,6 @@ export function AddItemDialog({
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* Bill Number */}
                 <div className="space-y-4">
                   <Label
                     htmlFor="billNumber"
@@ -647,18 +455,14 @@ export function AddItemDialog({
                       id="billNumber"
                       value={newItem.billNumber || ""}
                       onChange={(e) =>
-                        setNewItem({
-                          ...newItem,
-                          billNumber: e.target.value,
-                        })
+                        setNewItem({ ...newItem, billNumber: e.target.value })
                       }
-                      placeholder="e.g., INV-2024-001, BILL-12345"
+                      placeholder="e.g., INV-2024-001"
                       className="pl-12 h-12 text-base border-2 focus:border-[#0c9dcb]"
                     />
                   </div>
                 </div>
 
-                {/* Bill Date */}
                 <div className="space-y-4">
                   <Label
                     htmlFor="billDate"
@@ -673,20 +477,14 @@ export function AddItemDialog({
                       type="date"
                       value={newItem.billDate || ""}
                       onChange={(e) =>
-                        setNewItem({
-                          ...newItem,
-                          billDate: e.target.value,
-                        })
+                        setNewItem({ ...newItem, billDate: e.target.value })
                       }
                       className="pl-12 h-12 text-base border-2 focus:border-[#0c9dcb]"
-                      style={{
-                        colorScheme: "light",
-                      }}
+                      style={{ colorScheme: "light" }}
                     />
                   </div>
                 </div>
 
-                {/* Bill Attachment */}
                 <div className="space-y-4">
                   <Label
                     htmlFor="billAttachment"
@@ -701,13 +499,8 @@ export function AddItemDialog({
                       accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
                       onChange={(e) => {
                         const file = e.target.files?.[0] || null;
-                        setNewItem({
-                          ...newItem,
-                          billAttachment: file,
-                        });
-                        if (file) {
-                          toast.success(`File "${file.name}" attached`);
-                        }
+                        setNewItem({ ...newItem, billAttachment: file });
+                        if (file) toast.success(`File "${file.name}" attached`);
                       }}
                       className="hidden"
                     />
@@ -730,11 +523,7 @@ export function AddItemDialog({
                           className="w-4 h-4 ml-2 text-red-500 hover:text-red-700"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setNewItem({
-                              ...newItem,
-                              billAttachment: null,
-                            });
-                            // Reset file input
+                            setNewItem({ ...newItem, billAttachment: null });
                             const fileInput = document.getElementById(
                               "billAttachment"
                             ) as HTMLInputElement;
@@ -747,8 +536,8 @@ export function AddItemDialog({
                   </div>
                   {newItem.billAttachment && (
                     <p className="text-sm text-gray-500 flex items-center gap-1.5">
-                      <CheckCircle className="w-4 h-4 text-emerald-500" />
-                      File attached:{" "}
+                      <CheckCircle className="w-4 h-4 text-emerald-500" /> File
+                      attached:{" "}
                       {(newItem.billAttachment.size / 1024).toFixed(1)} KB
                     </p>
                   )}
@@ -758,7 +547,6 @@ export function AddItemDialog({
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-12 py-8 flex justify-between items-center shadow-lg z-50">
           <div className="flex items-center gap-4">
             <AlertCircle className="w-6 h-6 text-blue-600" />
@@ -779,14 +567,14 @@ export function AddItemDialog({
               variant="outline"
               size="lg"
               className="px-8 py-3 text-base border-gray-300 text-gray-700 hover:bg-gray-50"
-              onClick={handleSaveAsDraft}
+              onClick={() => handleSubmit(true)}
               type="button"
             >
               <Package className="w-5 h-5 mr-3" />
               {isEditMode ? "Save Changes" : "Save as Draft"}
             </Button>
             <Button
-              onClick={handleCreateItem}
+              onClick={() => handleSubmit(false)}
               size="lg"
               className="px-8 py-3 text-base bg-[#0c9dcb] hover:bg-[#0c9dcb]/90"
               type="button"

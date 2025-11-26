@@ -52,10 +52,10 @@ import {
 } from "./ui/table";
 import { useERPStore } from "../lib/data-store";
 import { IssueMaterial } from "./IssueMaterial";
-import { Inventory } from "./Inventory";
 import { VendorManagement } from "./VendorManagement";
 import { InventoryReportsAnalysis } from "./InventoryReportsAnalysis";
 import svgPaths from "../imports/svg-gixm2ll7zv";
+import { Inventory } from "./Inventory";
 
 interface InventoryManagementProps {
   currentSubModule?: string;
@@ -143,8 +143,8 @@ export function InventoryManagement({
     switch (selectedSubModule) {
       case "inventory":
         return <Inventory searchTerm={searchTerm} />;
-      case "material-requisition":
-        return <IssueMaterial searchTerm={searchTerm} />;
+      // case "material-requisition":
+      // return <IssueMaterial searchTerm={searchTerm} />;
       case "vendor-management":
         return (
           <VendorManagement

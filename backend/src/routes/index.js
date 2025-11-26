@@ -10,6 +10,7 @@ import assignPersonRoutes from "./assignPerson.routes.js";
 import costRoutes from "./cost.routes.js";
 import userRoutes from "./user.routes.js";
 import authRoutes from "./auth.routes.js";
+import inventoryRoutes from "./inventory.routes.js";
 
 const router = Router();
 
@@ -47,5 +48,6 @@ router.use("/projects/:projectId/costs", costRoutes);
 
 router.use("/users", userRoutes);
 router.use("/auth", authRoutes);
+router.use("/inventory", inventoryRoutes);
 
 export default router;

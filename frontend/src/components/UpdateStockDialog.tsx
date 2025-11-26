@@ -1,27 +1,22 @@
-import React, { useState, useEffect } from "react";
+// src/components/UpdateStockDialog.tsx
+import React, { useEffect, useState } from "react";
 import {
-  Package,
   Plus,
   Minus,
   X,
   AlertCircle,
-  FileText,
-  Truck,
-  Barcode,
   Paperclip,
+  Barcode,
   CheckCircle,
   Calendar,
+  FileText,
+  Package,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "./ui/dialog";
+import { Dialog, DialogContent } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
+import { Label } from "./ui/label";
 import {
   Select,
   SelectContent,
@@ -29,26 +24,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { toast } from "sonner@2.0.3";
-import { useERPStore } from "../lib/data-store";
+import { toast } from "sonner";
 
-interface UpdateStockDialogProps {
+interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedItem: any;
+  updateStock: (itemId: string, payload: any) => Promise<any>;
+  vendors?: any[];
 }
 
 export function UpdateStockDialog({
   open,
   onOpenChange,
   selectedItem,
-}: UpdateStockDialogProps) {
+  updateStock,
+  vendors = [],
+}: Props) {
   const [activeTab, setActiveTab] = useState("add-stock");
   const [stockUpdate, setStockUpdate] = useState({
     additionalQuantity: "",
+    subtractQuantity: "",
     vendorId: "",
     notes: "",
     billNumber: "",
@@ -56,10 +54,6 @@ export function UpdateStockDialog({
     billAttachment: null as File | null,
   });
 
-  const { updateInventoryItem, vendors, addInventoryTransaction } =
-    useERPStore();
-
-  // Reset form when dialog opens
   useEffect(() => {
     if (open && selectedItem) {
       setStockUpdate({
@@ -74,105 +68,67 @@ export function UpdateStockDialog({
     }
   }, [open, selectedItem]);
 
-  const handleUpdateStock = () => {
-    // Validation - must have either add or subtract quantity
+  if (!selectedItem) return null;
+
+  const handleUpdateStock = async () => {
     if (!stockUpdate.additionalQuantity && !stockUpdate.subtractQuantity) {
       toast.error("Please enter either add or reduce stock quantity");
       return;
     }
 
     const currentQuantity = selectedItem.quantity || 0;
-    let newTotalQuantity = currentQuantity;
-    let transactionType = "";
+    let type: "add" | "reduce" = "add";
     let quantity = 0;
-    let reason = "";
-
-    // Handle Add Stock
     if (stockUpdate.additionalQuantity) {
-      const additionalQuantity = parseInt(stockUpdate.additionalQuantity);
-      if (isNaN(additionalQuantity) || additionalQuantity < 0) {
-        toast.error("Please enter a valid quantity to add (0 or greater)");
+      type = "add";
+      quantity = parseInt(stockUpdate.additionalQuantity);
+      if (isNaN(quantity) || quantity < 0) {
+        toast.error("Enter valid quantity to add");
         return;
       }
-      newTotalQuantity = currentQuantity + additionalQuantity;
-      transactionType = "Stock In";
-      quantity = additionalQuantity;
-      reason = "Stock Added";
-    }
-    // Handle Subtract Stock
-    else if (stockUpdate.subtractQuantity) {
-      const subtractQuantity = parseInt(stockUpdate.subtractQuantity);
-      if (isNaN(subtractQuantity) || subtractQuantity < 0) {
-        toast.error("Please enter a valid quantity to reduce (0 or greater)");
+    } else {
+      type = "reduce";
+      quantity = parseInt(stockUpdate.subtractQuantity);
+      if (isNaN(quantity) || quantity < 0) {
+        toast.error("Enter valid quantity to reduce");
         return;
       }
-      if (subtractQuantity > currentQuantity) {
-        toast.error("Reduction quantity cannot exceed current stock");
+      if (quantity > currentQuantity) {
+        toast.error("Reduction cannot exceed current stock");
         return;
       }
-      newTotalQuantity = currentQuantity - subtractQuantity;
-      transactionType = "Stock Out";
-      quantity = subtractQuantity;
-      reason = stockUpdate.notes || "Stock Reduced";
     }
 
-    // Update the inventory item
-    updateInventoryItem(selectedItem.id, {
-      quantity: newTotalQuantity,
-      vendorId: stockUpdate.vendorId || selectedItem.vendorId,
-      lastUpdate: new Date().toLocaleDateString(),
-      lastUpdateTime: new Date().toLocaleTimeString(),
-    });
+    try {
+      await updateStock(selectedItem._id, {
+        type: type === "add" ? "add" : "reduce",
+        quantity,
+        vendorId: stockUpdate.vendorId,
+        billNumber: stockUpdate.billNumber,
+        billDate: stockUpdate.billDate,
+        notes: stockUpdate.notes,
+      });
 
-    // Add inventory transaction record
-    addInventoryTransaction({
-      itemId: selectedItem.id,
-      transactionType,
-      quantity,
-      previousStock: currentQuantity,
-      newStock: newTotalQuantity,
-      billNumber: stockUpdate.billNumber || undefined,
-      vendorId: stockUpdate.vendorId || selectedItem.vendorId,
-      reason,
-      remarks: stockUpdate.notes || undefined,
-      transactionDate: new Date().toISOString(),
-      createdBy: "Current User",
-    });
-
-    const action = stockUpdate.additionalQuantity ? "Added" : "Reduced";
-    const actionQuantity =
-      stockUpdate.additionalQuantity || stockUpdate.subtractQuantity;
-    toast.success(
-      `Stock updated successfully! ${action} ${actionQuantity} ${selectedItem.quantityUnit}. New total: ${newTotalQuantity} ${selectedItem.quantityUnit}`
-    );
-
-    // Reset form and close dialog
-    setStockUpdate({
-      additionalQuantity: "",
-      subtractQuantity: "",
-      vendorId: "",
-      notes: "",
-      billNumber: "",
-      billDate: "",
-      billAttachment: null,
-    });
-
-    onOpenChange(false);
+      const action =
+        type === "add" ? `Added ${quantity}` : `Reduced ${quantity}`;
+      toast.success(
+        `Stock updated successfully! ${action} ${selectedItem.quantityUnit}.`
+      );
+      onOpenChange(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Stock update failed");
+    }
   };
 
   const calculateNewTotal = () => {
     const currentQuantity = selectedItem?.quantity || 0;
     const additionalQuantity = parseInt(stockUpdate.additionalQuantity) || 0;
     const subtractQuantity = parseInt(stockUpdate.subtractQuantity) || 0;
-    if (additionalQuantity) {
-      return currentQuantity + additionalQuantity;
-    } else if (subtractQuantity) {
-      return currentQuantity - subtractQuantity;
-    }
+    if (additionalQuantity) return currentQuantity + additionalQuantity;
+    if (subtractQuantity) return currentQuantity - subtractQuantity;
     return currentQuantity;
   };
-
-  if (!selectedItem) return null;
 
   return (
     <Dialog
@@ -182,7 +138,6 @@ export function UpdateStockDialog({
       }}
     >
       <DialogContent className="!max-w-2xl !w-2xl max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
-        {/* Header Section */}
         <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b-2 border-blue-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
@@ -190,12 +145,12 @@ export function UpdateStockDialog({
                 <Package className="w-7 h-7 text-white" />
               </div>
               <div>
-                <DialogTitle className="text-3xl font-semibold text-gray-900 mb-1">
+                <h3 className="text-3xl font-semibold text-gray-900 mb-1">
                   Update Stock
-                </DialogTitle>
-                <DialogDescription className="text-lg text-gray-600">
+                </h3>
+                <p className="text-lg text-gray-600">
                   Add or reduce stock for {selectedItem.itemName}
-                </DialogDescription>
+                </p>
               </div>
             </div>
             <Button
@@ -209,9 +164,7 @@ export function UpdateStockDialog({
           </div>
         </div>
 
-        {/* Content Section */}
         <div className="flex-1 overflow-y-auto p-8 space-y-8">
-          {/* Item Information Card */}
           <div className="bg-linear-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-xl p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -228,13 +181,6 @@ export function UpdateStockDialog({
                   <p className="text-xs text-gray-500">
                     {selectedItem.subCategory}
                   </p>
-                  {(selectedItem.brand || selectedItem.color) && (
-                    <p className="text-xs text-blue-600">
-                      {selectedItem.brand && `Brand: ${selectedItem.brand}`}
-                      {selectedItem.brand && selectedItem.color && " • "}
-                      {selectedItem.color && `Color: ${selectedItem.color}`}
-                    </p>
-                  )}
                 </div>
               </div>
               <div className="text-right">
@@ -249,7 +195,6 @@ export function UpdateStockDialog({
             </div>
           </div>
 
-          {/* Stock Update Form with Tabs */}
           <Tabs
             defaultValue="add-stock"
             className="w-full"
@@ -260,21 +205,17 @@ export function UpdateStockDialog({
                 value="add-stock"
                 className="h-full data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md transition-all"
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Stock
+                <Plus className="w-4 h-4 mr-2" /> Add Stock
               </TabsTrigger>
               <TabsTrigger
                 value="reduce-stock"
                 className="h-full data-[state=active]:bg-red-500 data-[state=active]:text-white data-[state=active]:shadow-md transition-all"
               >
-                <Minus className="w-4 h-4 mr-2" />
-                Reduce Stock
+                <Minus className="w-4 h-4 mr-2" /> Reduce Stock
               </TabsTrigger>
             </TabsList>
 
-            {/* Add Stock Tab Content */}
             <TabsContent value="add-stock" className="space-y-6 mt-6">
-              {/* New Stock Input - Highlighted */}
               <div className="space-y-4">
                 <Label
                   htmlFor="additionalQuantity"
@@ -309,7 +250,6 @@ export function UpdateStockDialog({
                 </p>
               </div>
 
-              {/* Stock Calculation Summary - Add */}
               {stockUpdate.additionalQuantity && (
                 <div className="bg-green-50 border-2 border-green-200 rounded-xl p-6">
                   <div className="flex items-center gap-3 mb-4">
@@ -354,7 +294,6 @@ export function UpdateStockDialog({
                 </div>
               )}
 
-              {/* Vendor Selection */}
               <div className="space-y-4">
                 <Label
                   htmlFor="vendorId"
@@ -362,29 +301,19 @@ export function UpdateStockDialog({
                 >
                   Vendor / Supplier
                 </Label>
-                <Select
+                <Input
                   value={stockUpdate.vendorId}
-                  onValueChange={(value) =>
-                    setStockUpdate({ ...stockUpdate, vendorId: value })
+                  onChange={(e) =>
+                    setStockUpdate({ ...stockUpdate, vendorId: e.target.value })
                   }
-                >
-                  <SelectTrigger className="h-12 border-2 focus:border-blue-500">
-                    <SelectValue placeholder="Select vendor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {vendors.map((vendor) => (
-                      <SelectItem key={vendor.id} value={vendor.id}>
-                        {vendor.vendorName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Vendor id or name"
+                  className="h-12 border-2 focus:border-blue-500"
+                />
                 <p className="text-sm text-gray-600">
-                  Select the vendor who supplied this stock
+                  Select or enter the vendor who supplied this stock
                 </p>
               </div>
 
-              {/* Bill Number */}
               <div className="space-y-4">
                 <Label
                   htmlFor="billNumber"
@@ -403,7 +332,7 @@ export function UpdateStockDialog({
                         billNumber: e.target.value,
                       })
                     }
-                    placeholder="e.g., INV-2024-001, BILL-12345"
+                    placeholder="e.g., INV-2024-001"
                     className="pl-12 h-12 text-base border-2 focus:border-blue-500"
                   />
                 </div>
@@ -412,7 +341,6 @@ export function UpdateStockDialog({
                 </p>
               </div>
 
-              {/* Bill Date */}
               <div className="space-y-4">
                 <Label
                   htmlFor="billDate"
@@ -433,9 +361,7 @@ export function UpdateStockDialog({
                       })
                     }
                     className="pl-12 h-12 text-base border-2 focus:border-blue-500"
-                    style={{
-                      colorScheme: "light",
-                    }}
+                    style={{ colorScheme: "light" }}
                   />
                 </div>
                 <p className="text-sm text-gray-600">
@@ -443,7 +369,6 @@ export function UpdateStockDialog({
                 </p>
               </div>
 
-              {/* Bill Attachment */}
               <div className="space-y-4">
                 <Label
                   htmlFor="billAttachment"
@@ -459,9 +384,7 @@ export function UpdateStockDialog({
                     onChange={(e) => {
                       const file = e.target.files?.[0] || null;
                       setStockUpdate({ ...stockUpdate, billAttachment: file });
-                      if (file) {
-                        toast.success(`File "${file.name}" attached`);
-                      }
+                      if (file) toast.success(`File "${file.name}" attached`);
                     }}
                     className="hidden"
                   />
@@ -479,29 +402,11 @@ export function UpdateStockDialog({
                         ? stockUpdate.billAttachment.name
                         : "Choose file (PDF, Image, Doc)"}
                     </span>
-                    {stockUpdate.billAttachment && (
-                      <X
-                        className="w-4 h-4 ml-2 text-red-500 hover:text-red-700"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setStockUpdate({
-                            ...stockUpdate,
-                            billAttachment: null,
-                          });
-                          const fileInput = document.getElementById(
-                            "billAttachment"
-                          ) as HTMLInputElement;
-                          if (fileInput) fileInput.value = "";
-                          toast.success("File removed");
-                        }}
-                      />
-                    )}
                   </Button>
                 </div>
                 {stockUpdate.billAttachment && (
                   <p className="text-sm text-emerald-600 flex items-center gap-1.5">
-                    <CheckCircle className="w-4 h-4" />
-                    File attached:{" "}
+                    <CheckCircle className="w-4 h-4" /> File attached:{" "}
                     {(stockUpdate.billAttachment.size / 1024).toFixed(1)} KB
                   </p>
                 )}
@@ -510,7 +415,6 @@ export function UpdateStockDialog({
                 </p>
               </div>
 
-              {/* Notes Section */}
               <div className="space-y-4">
                 <Label
                   htmlFor="notes"
@@ -526,7 +430,7 @@ export function UpdateStockDialog({
                     onChange={(e) =>
                       setStockUpdate({ ...stockUpdate, notes: e.target.value })
                     }
-                    placeholder="Add notes about this stock update (supplier, batch number, quality notes, etc.)"
+                    placeholder="Add notes about this stock update"
                     rows={4}
                     className="pl-12 pt-4 text-base border-2 focus:border-blue-500 resize-none"
                   />
@@ -534,9 +438,7 @@ export function UpdateStockDialog({
               </div>
             </TabsContent>
 
-            {/* Reduce Stock Tab Content */}
             <TabsContent value="reduce-stock" className="space-y-6 mt-6">
-              {/* Minus Stock Section */}
               <div className="space-y-4">
                 <Label className="text-base font-semibold text-gray-700">
                   Reduce Stock Quantity
@@ -564,13 +466,11 @@ export function UpdateStockDialog({
                   </div>
                 </div>
                 <p className="text-sm text-orange-600 flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4" />
-                  Use this to reduce stock (e.g., damaged, returned, or written
-                  off items)
+                  <AlertCircle className="w-4 h-4" /> Use this to reduce stock
+                  (e.g., damaged, returned, or written off items)
                 </p>
               </div>
 
-              {/* Stock Calculation Summary - Subtract */}
               {stockUpdate.subtractQuantity && (
                 <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-6">
                   <div className="flex items-center gap-3 mb-4">
@@ -626,7 +526,6 @@ export function UpdateStockDialog({
                 </div>
               )}
 
-              {/* Remarks for Stock Reduction */}
               <div className="space-y-4">
                 <Label
                   htmlFor="reduction-remarks"
@@ -642,7 +541,7 @@ export function UpdateStockDialog({
                     onChange={(e) =>
                       setStockUpdate({ ...stockUpdate, notes: e.target.value })
                     }
-                    placeholder="Add remarks about this stock reduction (reason: damaged, returned, written off, etc.)"
+                    placeholder="Add remarks about this stock reduction"
                     rows={4}
                     className="pl-12 pt-3 text-base border-2 focus:border-blue-500 resize-none"
                   />
@@ -656,7 +555,6 @@ export function UpdateStockDialog({
           </Tabs>
         </div>
 
-        {/* Action Buttons */}
         <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-8 py-6 flex justify-between items-center shadow-lg">
           <div className="flex items-center gap-4 ml-auto">
             <Button
@@ -683,7 +581,7 @@ export function UpdateStockDialog({
                 <Minus className="w-5 h-5 mr-2" />
               ) : (
                 <Plus className="w-5 h-5 mr-2" />
-              )}
+              )}{" "}
               Update Stock
             </Button>
           </div>

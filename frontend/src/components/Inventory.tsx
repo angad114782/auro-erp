@@ -1,31 +1,30 @@
-import React, { useState } from "react";
-import {
-  Plus,
-  Search,
-  Edit,
-  Trash2,
-  IndianRupee,
-  Package,
-  ChevronLeft,
-  ChevronRight,
-  Settings,
-  FileText,
-} from "lucide-react";
+// src/components/Inventory.tsx
+import React, { useEffect, useState } from "react";
+import { Plus, Search, Edit, Settings, FileText, Package } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Badge } from "./ui/badge";
-import { AddItemDialog } from "./AddProductDialog";
 import { UpdateStockDialog } from "./UpdateStockDialog";
 import { ItemHistoryDialog } from "./ItemHistoryDialog";
-import { useERPStore } from "../lib/data-store";
-import svgPaths from "../imports/svg-gixm2ll7zv";
+import { useInventory } from "../hooks/useInventory";
+import { AddItemDialog } from "./AddProductDialog";
 
 interface InventoryProps {
   searchTerm?: string;
 }
 
 export function Inventory({ searchTerm = "" }: InventoryProps) {
+  const {
+    items,
+    vendors,
+    loadItems,
+    loadVendors,
+    createItem,
+    updateItem,
+    updateStock,
+  } = useInventory();
+
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showUpdateStockDialog, setShowUpdateStockDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
@@ -38,71 +37,57 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
   const [selectedItemForHistory, setSelectedItemForHistory] =
     useState<any>(null);
 
-  // Get data from store
-  const { inventoryItems, vendors } = useERPStore();
+  useEffect(() => {
+    loadItems();
+    loadVendors();
+  }, [loadItems, loadVendors]);
 
-  // Separate items and drafts
-  const items = inventoryItems.filter((item) => !item.isDraft);
-  const drafts = inventoryItems.filter((item) => item.isDraft);
+  const itemsList = items || [];
+  const drafts = itemsList.filter((i) => i.isDraft);
+  const itemsOnly = itemsList.filter((i) => !i.isDraft);
+  const currentData = currentTab === "items" ? itemsOnly : drafts;
 
-  // Use appropriate data based on current tab
-  const currentData = currentTab === "items" ? items : drafts;
-
-  // Handle edit item
-  const handleEditItem = (item: any) => {
-    setEditingItem(item);
-    setIsEditMode(true);
-    setShowAddDialog(true);
-  };
-
-  // Handle dialog close
-  const handleDialogClose = (open: boolean) => {
-    if (!open) {
-      setEditingItem(null);
-      setIsEditMode(false);
-    }
-    setShowAddDialog(open);
-  };
-
-  // Filter data based on active category and search query
   const filteredData = currentData.filter((item) => {
     const matchesCategory =
       activeCategory === "All" || item.category === activeCategory;
 
-    // Get vendor name for search
-    const vendor = vendors.find((v) => v.id === item.vendorId);
+    const vendor = vendors.find((v) => v._id === item.vendorId);
     const vendorName = vendor?.vendorName || "";
 
+    const q = searchQuery || searchTerm || "";
     const matchesSearch =
-      searchQuery === "" ||
-      item.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.subCategory.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.brand || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.color || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      vendorName.toLowerCase().includes(searchQuery.toLowerCase());
+      q === "" ||
+      item.itemName?.toLowerCase().includes(q.toLowerCase()) ||
+      (item.code || "").toLowerCase().includes(q.toLowerCase()) ||
+      (item.category || "").toLowerCase().includes(q.toLowerCase()) ||
+      (item.subCategory || "").toLowerCase().includes(q.toLowerCase()) ||
+      (item.brand || "").toLowerCase().includes(q.toLowerCase()) ||
+      (item.color || "").toLowerCase().includes(q.toLowerCase()) ||
+      vendorName.toLowerCase().includes(q.toLowerCase());
 
     return matchesCategory && matchesSearch;
   });
 
-  // Calculate category counts based on current tab
-  const getCategoryCount = (categoryName: string) => {
-    if (categoryName === "All") return currentData.length;
-    return currentData.filter((item) => item.category === categoryName).length;
-  };
-
   const categories = [
-    { name: "All", count: getCategoryCount("All") },
-    { name: "Raw Materials", count: getCategoryCount("Raw Materials") },
+    { name: "All", count: currentData.length },
+    {
+      name: "Raw Materials",
+      count: currentData.filter((i) => i.category === "Raw Materials").length,
+    },
     {
       name: "Components & Parts",
-      count: getCategoryCount("Components & Parts"),
+      count: currentData.filter((i) => i.category === "Components & Parts")
+        .length,
     },
-    { name: "Finished Footwear", count: getCategoryCount("Finished Footwear") },
+    {
+      name: "Finished Footwear",
+      count: currentData.filter((i) => i.category === "Finished Footwear")
+        .length,
+    },
     {
       name: "Accessories & Hardware",
-      count: getCategoryCount("Accessories & Hardware"),
+      count: currentData.filter((i) => i.category === "Accessories & Hardware")
+        .length,
     },
   ];
 
@@ -119,30 +104,39 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
     return colorMap[color] || "bg-gray-100 text-gray-600";
   };
 
-  // Helper function to get vendor name
   const getVendorName = (vendorId: string) => {
-    const vendor = vendors.find((v) => v.id === vendorId);
+    const vendor = vendors.find((v) => v._id === vendorId);
     return vendor?.vendorName || "No Vendor";
+  };
+
+  const handleEditItem = (item: any) => {
+    setEditingItem(item);
+    setIsEditMode(true);
+    setShowAddDialog(true);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    if (!open) {
+      setEditingItem(null);
+      setIsEditMode(false);
+    }
+    setShowAddDialog(open);
   };
 
   return (
     <div className="w-full">
-      {/* Inventory Navigation Bar */}
+      {/* Top bar */}
       <div className="flex flex-col gap-6 p-6 pb-4">
-        {/* Top Navigation with Tabs and Actions */}
         <div className="flex items-center justify-between w-full border-b border-gray-200 pb-2">
-          {/* Left: Tabs */}
           <Tabs
             defaultValue="items"
             className="flex-1"
-            onValueChange={(value) => {
-              setCurrentTab(value);
-            }}
+            onValueChange={(v) => setCurrentTab(v)}
           >
             <TabsList className="inline-flex h-9 items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground">
               <TabsTrigger
                 value="items"
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow gap-1.5"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium gap-1.5"
               >
                 <Package className="w-3.5 h-3.5 text-[#0c9dcb]" />
                 Items
@@ -150,12 +144,12 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
                   variant="secondary"
                   className="ml-1 h-4 px-1.5 text-xs font-medium"
                 >
-                  {items.length}
+                  {itemsOnly.length}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger
                 value="drafts"
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow gap-1.5"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium gap-1.5"
               >
                 <FileText className="w-3.5 h-3.5 text-gray-600" />
                 Drafts
@@ -169,9 +163,7 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
             </TabsList>
           </Tabs>
 
-          {/* Right: Action Buttons */}
           <div className="flex items-center gap-2">
-            {/* Search */}
             <div className="relative w-80">
               <Input
                 value={searchQuery}
@@ -182,13 +174,12 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             </div>
 
-            {/* Total Item */}
             <div className="px-3 py-2 border border-[#0c9dcb] rounded-lg">
               <span className="text-[#0c9dcb] font-semibold text-sm">
                 Total Item : {filteredData.length.toString().padStart(2, "0")}
               </span>
             </div>
-            {/* Add New Item */}
+
             <Button
               onClick={() => setShowAddDialog(true)}
               className="bg-[#0c9dcb] hover:bg-[#26b4e0] px-3 py-2 rounded-lg"
@@ -201,7 +192,6 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
           </div>
         </div>
 
-        {/* Category Filters */}
         <div className="flex gap-2 py-2">
           {categories.map((category) => (
             <div
@@ -227,7 +217,7 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
         </div>
       </div>
 
-      {/* Inventory Table */}
+      {/* Table */}
       <div className="mx-6 mb-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -259,8 +249,8 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredData.map((item) => (
                 <tr
+                  key={item._id}
                   className="hover:bg-gray-50 transition-colors cursor-pointer"
-                  key={item.id}
                   onClick={() => {
                     setSelectedItemForHistory(item);
                     setShowHistoryDialog(true);
@@ -312,7 +302,10 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
-                      {item.quantity} {item.quantityUnit}
+                      {item.quantity}{" "}
+                      <span className="text-lg font-normal text-gray-600">
+                        {item.quantityUnit}
+                      </span>
                     </div>
                     <div className="text-sm text-gray-500">
                       {item.isDraft ? "Draft" : "Available"}
@@ -329,8 +322,7 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
                           handleEditItem(item);
                         }}
                       >
-                        <Edit className="w-4 h-4 mr-1" />
-                        Edit Item
+                        <Edit className="w-4 h-4 mr-1" /> Edit Item
                       </Button>
                     ) : (
                       <Button
@@ -343,8 +335,7 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
                           setShowUpdateStockDialog(true);
                         }}
                       >
-                        <Settings className="w-4 h-4 mr-1" />
-                        Update Stock
+                        <Settings className="w-4 h-4 mr-1" /> Update Stock
                       </Button>
                     )}
                   </td>
@@ -354,12 +345,11 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
           </table>
         </div>
 
-        {/* Table Footer */}
         <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-500">
-              Showing {filteredData.length} of {currentData.length} results
-              {activeCategory !== "All" && ` (filtered by ${activeCategory})`}
+              Showing {filteredData.length} of {currentData.length} results{" "}
+              {activeCategory !== "All" && ` (filtered by ${activeCategory})`}{" "}
               {currentTab === "drafts" && " in drafts"}
             </p>
 
@@ -388,22 +378,22 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
         </div>
       </div>
 
-      {/* Add Product Dialog */}
       <AddItemDialog
         open={showAddDialog}
         onOpenChange={handleDialogClose}
         editingItem={editingItem}
         isEditMode={isEditMode}
+        createItem={createItem}
+        updateItem={updateItem}
+        vendors={vendors}
       />
-
-      {/* Update Stock Dialog */}
       <UpdateStockDialog
         open={showUpdateStockDialog}
         onOpenChange={() => setShowUpdateStockDialog(false)}
         selectedItem={selectedItemForStock}
+        updateStock={updateStock}
+        vendors={vendors}
       />
-
-      {/* Item History Dialog */}
       <ItemHistoryDialog
         open={showHistoryDialog}
         onOpenChange={setShowHistoryDialog}

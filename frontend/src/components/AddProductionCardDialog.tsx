@@ -534,7 +534,7 @@ export function AddProductionCardDialog({
                 </div>
 
                 {/* Production Unit */}
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <Label
                     htmlFor="productionUnit"
                     className="text-base font-semibold text-gray-700"
@@ -557,7 +557,7 @@ export function AddProductionCardDialog({
                       <SelectItem value="sets">Sets</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                </div> */}
               </div>
             </div>
 

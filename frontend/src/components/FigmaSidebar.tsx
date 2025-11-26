@@ -239,12 +239,12 @@ export function FigmaSidebar({
         },
       ],
     },
-    {
-      id: "wireframe",
-      name: "System Documentation",
-      icon: <BarChart3 className="w-5 h-5" />,
-      description: "Design system",
-    },
+    // {
+    //   id: "wireframe",
+    //   name: "System Documentation",
+    //   icon: <BarChart3 className="w-5 h-5" />,
+    //   description: "Design system",
+    // },
   ];
 
   // Filter modules based on user permissions
@@ -460,7 +460,7 @@ export function FigmaSidebar({
             </div>
           </nav>
 
-          {/* Footer - only when expanded */}
+          {/* Footer - only when expanded
           {!isCollapsed && (
             <>
               <Separator className="mx-4" />
@@ -473,7 +473,6 @@ export function FigmaSidebar({
             </>
           )}
 
-          {/* Collapsed footer */}
           {isCollapsed && (
             <div className="p-2 border-t border-gray-100">
               <button
@@ -483,7 +482,7 @@ export function FigmaSidebar({
                 <Settings className="w-4 h-4 mx-auto" />
               </button>
             </div>
-          )}
+          )} */}
         </div>
       </div>
     </>
