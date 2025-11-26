@@ -25,7 +25,7 @@ async function seed() {
     name: "Super Admin",
     email: "superadmin@erp.com",
     password: hashed,
-    role: "Admin", // OR "SuperAdmin" if you want a new tier
+    role: "SuperAdmin", // OR "SuperAdmin" if you want a new tier
   });
 
   console.log("Super Admin created ✔");
