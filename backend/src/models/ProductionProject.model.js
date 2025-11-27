@@ -7,7 +7,7 @@ const phaseSchema = new mongoose.Schema(
     endDate: { type: Date, default: null },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     note: { type: String, default: "" },
-    status: { type: String, default: "not-started" }, // you can normalize to Planning/Assigned/In Production/QC/Completed
+    status: { type: String, default: "not-started" },
   },
   { _id: false }
 );
@@ -25,7 +25,14 @@ const materialSchema = new mongoose.Schema(
 
 const productionSchema = new mongoose.Schema(
   {
-    project: { type: mongoose.Schema.Types.ObjectId, ref: "Project", required: true, index: true, unique: true },
+    project: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Project",
+      required: true,
+      index: true,
+      unique: true,
+    },
+
     autoCodeSnapshot: { type: String },
     artNameSnapshot: { type: String },
     colorSnapshot: { type: String },
@@ -42,16 +49,26 @@ const productionSchema = new mongoose.Schema(
       status: { type: String, default: "" },
     },
 
-    status: { 
+    status: {
       type: String,
-      enum: ["Planning", "Capacity Allocated", "Manufacturing Assigned", "Process Defined", "Ready for Production", "In Production", "QC", "Completed", "On Hold"],
+      enum: [
+        "Planning",
+        "Capacity Allocated",
+        "Manufacturing Assigned",
+        "Process Defined",
+        "Ready for Production",
+        "In Production",
+        "QC",
+        "Completed",
+        "On Hold",
+      ],
       default: "Planning",
-      index: true
+      index: true,
     },
 
     phases: { type: [phaseSchema], default: [] },
     materials: { type: [materialSchema], default: [] },
-    assignedTeam: { type: [ { type: mongoose.Schema.Types.ObjectId, ref: "User" } ], default: [] },
+    assignedTeam: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], default: [] },
 
     startDate: { type: Date, default: null },
     targetCompletionDate: { type: Date, default: null },
@@ -83,5 +100,7 @@ const productionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-const ProductionProject = mongoose.model("ProductionProject", productionSchema);
+// Ensure model created only once (safe for hot reloads)
+const ProductionProject = mongoose.models?.ProductionProject || mongoose.model("ProductionProject", productionSchema);
+
 export default ProductionProject;
