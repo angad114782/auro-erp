@@ -13,6 +13,8 @@ import {
   searchProjects,
 } from "../controllers/project.controller.js";
 
+import { moveToProduction } from "../controllers/project.controller.js";
+
 import {
   cloneDefault as cloneDefaultVariants,
   getOne as getColorVariant,
@@ -49,5 +51,8 @@ router.post("/:id/color-variants/clone-default", cloneDefaultVariants);
 router.get("/:id/color-variants/:colorId", getColorVariant);
 router.put("/:id/color-variants/:colorId", upsertColorVariant);
 router.delete("/:id/color-variants/:colorId", deleteColorVariant);
+
+
+router.post("/:id/move-to-production", moveToProduction);
 
 export default router;

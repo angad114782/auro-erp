@@ -13,6 +13,7 @@ import {
   setProjectPO,
 } from "../services/project.service.js";
 import { Project } from "../models/Project.model.js";
+import { createProductionFromProject } from "../services/production.service.js";
 
 /** CREATE */
 export const create = async (req, res, next) => {
@@ -438,5 +439,48 @@ export const searchProjects = async (req, res) => {
   } catch (err) {
     console.error("Search error:", err);
     res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+export const moveToProduction = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const projectId = req.params.id;
+      if (!projectId)
+        return res.status(400).json({ message: "project id required" });
+
+      const options = {
+        initialPlan: req.body?.initialPlan || {},
+        force: !!req.body?.force,
+        by: req.user?._id || null,
+      };
+
+      const result = await createProductionFromProject(projectId, options, {
+        session,
+      });
+
+      if (!result)
+        return res
+          .status(404)
+          .json({ message: "Project not found or not active" });
+
+      // result contains { project: populatedProject, production: productionDoc }
+      return res.status(201).json({
+        message: "Project moved to production",
+        data: {
+          project: result.project,
+          production: result.production,
+        },
+      });
+    });
+  } catch (err) {
+    // handle duplicate / validation errors gracefully
+    if (err?.code === 11000) {
+      return res.status(409).json({ message: "Production already exists" });
+    }
+    next(err);
+  } finally {
+    session.endSession();
   }
 };
