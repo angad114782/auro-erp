@@ -11,6 +11,7 @@ import costRoutes from "./cost.routes.js";
 import userRoutes from "./user.routes.js";
 import authRoutes from "./auth.routes.js";
 import inventoryRoutes from "./inventory.routes.js";
+import productionCalendarRouter from "./productionCalendar.routes.js";
 
 const router = Router();
 
@@ -49,5 +50,6 @@ router.use("/projects/:projectId/costs", costRoutes);
 router.use("/users", userRoutes);
 router.use("/auth", authRoutes);
 router.use("/inventory", inventoryRoutes);
+router.use("/", productionCalendarRouter);
 
 export default router;
