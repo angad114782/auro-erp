@@ -8,6 +8,7 @@ interface VendorStore {
   updateVendor: (id: string, payload: any) => Promise<void>;
   deleteVendor: (id: string) => Promise<void>;
 }
+
 export const useVendorStore = create<VendorStore>((set) => ({
   vendors: [],
 

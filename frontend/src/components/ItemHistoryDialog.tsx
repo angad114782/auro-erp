@@ -20,6 +20,9 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Label } from "./ui/label";
+import { useVendorStore } from "../hooks/useVendor";
+import { useEffect, useState } from "react";
+import { useInventory } from "../hooks/useInventory";
 
 interface ItemHistoryDialogProps {
   open: boolean;
@@ -32,12 +35,35 @@ export function ItemHistoryDialog({
   onOpenChange,
   item,
 }: ItemHistoryDialogProps) {
-  const { getInventoryTransactionsByItem, vendors } = useERPStore();
+  // const { getInventoryTransactionsByItem } = useERPStore();
+  const { vendors, loadVendors } = useVendorStore();
+  const { getHistory } = useInventory();
+
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [attachmentDialogOpen, setAttachmentDialogOpen] = useState(false);
+  const [selectedAttachment, setSelectedAttachment] = useState<string | null>(
+    null
+  );
+
+  console.log("Vendors in ItemHistoryDialogeee:", transactions);
+
+  useEffect(() => {
+    loadVendors();
+  }, [loadVendors]);
+
+  console.log("ItemHistoryDialog item:", item);
+
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      const history = await getHistory(item?._id);
+      setTransactions(history);
+    };
+    fetchTransactions();
+  }, [item, getHistory]);
 
   if (!item) return null;
-
-  const transactions = getInventoryTransactionsByItem(item.id);
-  const vendor = vendors.find((v) => v.id === item.vendorId);
+  // const transactions =   getHistory(item?._id!);
+  const vendor = vendors.find((v) => v._id === item.vendorId);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -198,7 +224,7 @@ export function ItemHistoryDialog({
                       Vendor
                     </Label>
                     <div className="mt-1 text-base text-gray-900">
-                      {vendor?.vendorName || "N/A"}
+                      {item?.vendorId?.vendorName || "N/A"}
                     </div>
                   </div>
 
@@ -346,20 +372,23 @@ export function ItemHistoryDialog({
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
-                                  {transactionVendor?.vendorName || "-"}
+                                  {transaction?.vendorId?.vendorName || "-"}
                                 </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                {transaction.billNumber ? (
+                                {transaction.billNumber &&
+                                (transaction.billAttachmentUrl ||
+                                  transaction.attachment) ? (
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     className="h-8 text-xs border-blue-200 text-blue-600 hover:bg-blue-50"
                                     onClick={() => {
-                                      // For demo purposes, show an alert. In real implementation, this would open the actual file
-                                      alert(
-                                        `Opening attachment for Bill: ${transaction.billNumber}\n\nIn production, this would display the actual bill document.`
+                                      setSelectedAttachment(
+                                        transaction.billAttachmentUrl ||
+                                          transaction.attachment
                                       );
+                                      setAttachmentDialogOpen(true);
                                     }}
                                   >
                                     <FileText className="w-3.5 h-3.5 mr-1.5" />
@@ -393,6 +422,36 @@ export function ItemHistoryDialog({
           </div>
         </div>
       </DialogContent>
+
+      {/* Attachment View Dialog */}
+      <Dialog
+        open={attachmentDialogOpen}
+        onOpenChange={setAttachmentDialogOpen}
+      >
+        <DialogContent className="max-w-3xl w-full max-h-[80vh] overflow-hidden p-0 m-0 top-[10vh] translate-y-0 flex flex-col bg-white">
+          <div className="sticky top-0 z-50 px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Bill Attachment
+            </h2>
+            <button
+              onClick={() => setAttachmentDialogOpen(false)}
+              type="button"
+              className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto flex items-center justify-center bg-gray-50 p-6">
+            {selectedAttachment && (
+              <img
+                src={`${import.meta.env.VITE_BACKEND_URL}${selectedAttachment}`}
+                alt="Bill Attachment"
+                className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

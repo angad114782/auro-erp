@@ -10,9 +10,9 @@ const inventoryItemSchema = new mongoose.Schema(
     brand: { type: String, default: "N/A" },
     color: { type: String, default: "N/A" },
 
-    // vendorId: { type: mongoose.Schema.Types.ObjectId, ref: "Vendor" },
+    vendorId: { type: mongoose.Schema.Types.ObjectId, ref: "Vendor" },
 
-    vendorId: { type: String, default: "" },
+    // vendorId: { type: String, default: "" },
 
     expiryDate: { type: String },
 

@@ -9,21 +9,17 @@ import { UpdateStockDialog } from "./UpdateStockDialog";
 import { ItemHistoryDialog } from "./ItemHistoryDialog";
 import { useInventory } from "../hooks/useInventory";
 import { AddItemDialog } from "./AddProductDialog";
+import { useVendorStore } from "../hooks/useVendor";
 
 interface InventoryProps {
   searchTerm?: string;
 }
 
 export function Inventory({ searchTerm = "" }: InventoryProps) {
-  const {
-    items,
-    vendors,
-    loadItems,
-    loadVendors,
-    createItem,
-    updateItem,
-    updateStock,
-  } = useInventory();
+  const { items, loadItems, createItem, updateItem, updateStock } =
+    useInventory();
+
+  const { vendors, loadVendors } = useVendorStore();
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showUpdateStockDialog, setShowUpdateStockDialog] = useState(false);
@@ -47,6 +43,10 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
   const itemsOnly = itemsList.filter((i) => !i.isDraft);
   const currentData = currentTab === "items" ? itemsOnly : drafts;
 
+  console.log("Inventory currentData:", currentData);
+  console.log("Inventory vendors:", vendors);
+  console.log("Inventory itemsOnly:", itemsOnly);
+
   const filteredData = currentData.filter((item) => {
     const matchesCategory =
       activeCategory === "All" || item.category === activeCategory;
@@ -67,6 +67,8 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
 
     return matchesCategory && matchesSearch;
   });
+
+  console.log("Inventory filteredData:", filteredData);
 
   const categories = [
     { name: "All", count: currentData.length },
@@ -104,10 +106,10 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
     return colorMap[color] || "bg-gray-100 text-gray-600";
   };
 
-  const getVendorName = (vendorId: string) => {
-    const vendor = vendors.find((v) => v._id === vendorId);
-    return vendor?.vendorName || "No Vendor";
-  };
+  // const getVendorName = (vendorId: string) => {
+  //   const vendor = vendors.find((v) => v._id === vendorId);
+  //   return vendor?.vendorName || "No Vendor";
+  // };
 
   const handleEditItem = (item: any) => {
     setEditingItem(item);
@@ -293,7 +295,9 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
-                      {getVendorName(item.vendorId)}
+                      {/* {getVendorName(item.vendorId)} */}
+
+                      {item?.vendorId?.vendorName || "No Vendor"}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

@@ -24,6 +24,13 @@ import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 interface NewItem {
   itemName: string;
@@ -323,23 +330,28 @@ export function AddItemDialog({
                   />
                 </div>
 
-                {/* VENDOR as text input (requested) */}
+                {/* VENDOR as shadcn select */}
                 <div className="xl:col-span-2 space-y-4">
-                  <Label
-                    htmlFor="vendorId"
-                    className="text-base font-semibold text-gray-700"
-                  >
+                  <Label className="text-base font-semibold text-gray-700">
                     Vendor / Supplier
                   </Label>
-                  <Input
-                    id="vendorId"
+                  <Select
                     value={newItem.vendorId}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, vendorId: e.target.value })
+                    onValueChange={(value) =>
+                      setNewItem({ ...newItem, vendorId: value })
                     }
-                    placeholder="Vendor id or name (free text)"
-                    className="h-12 text-base border-2 focus:border-[#0c9dcb]"
-                  />
+                  >
+                    <SelectTrigger className="h-12 text-base">
+                      <SelectValue placeholder="Select a vendor..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vendors.map((vendor) => (
+                        <SelectItem key={vendor._id} value={vendor._id}>
+                          {vendor.vendorName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="xl:col-span-2 space-y-4">

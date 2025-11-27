@@ -4,7 +4,6 @@ import { inventoryService } from "../services/inventoryService";
 
 export const useInventory = () => {
   const [items, setItems] = useState<any[]>([]);
-  const [vendors, setVendors] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadItems = useCallback(async () => {
@@ -17,16 +16,6 @@ export const useInventory = () => {
       setItems([]);
     } finally {
       setLoading(false);
-    }
-  }, []);
-
-  const loadVendors = useCallback(async () => {
-    try {
-      const v = await inventoryService.getVendors();
-      setVendors(v || []);
-    } catch (err) {
-      console.warn("loadVendors failed:", err);
-      setVendors([]);
     }
   }, []);
 
@@ -93,10 +82,8 @@ export const useInventory = () => {
 
   return {
     items,
-    vendors,
     loading,
     loadItems,
-    loadVendors,
     createItem,
     updateItem,
     updateStock,

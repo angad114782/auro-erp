@@ -28,7 +28,7 @@ export const createItem = async (req, res) => {
       return res.status(400).json({ message: "itemName & category required" });
     }
 
-    const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
+    const fileUrl = req.file.path ? req.file.path : null;
 
     const itemPayload = {
       itemName,

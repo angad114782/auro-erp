@@ -1,53 +1,22 @@
-import React, { useState } from "react";
 import {
-  Plus,
-  Search,
+  Download,
   Edit,
-  Trash2,
-  AlertTriangle,
-  IndianRupee,
-  FileText,
-  Filter,
-  Users,
-  Clock,
-  CheckCircle,
-  ArrowUp,
-  ArrowDown,
+  Eye,
+  Mail,
   MapPin,
   Phone,
-  Mail,
-  Package,
-  Calendar,
-  TrendingUp,
-  Building,
-  Archive,
-  Send,
-  Eye,
-  Download,
-  RefreshCw,
-  BarChart3,
-  X,
-  Target,
-  MoreHorizontal,
-  Settings,
+  Plus,
+  Search,
+  Users,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useERPStore } from "../lib/data-store";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Badge } from "./ui/badge";
-import { Progress } from "./ui/progress";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table";
-import { useERPStore } from "../lib/data-store";
-import { VendorViewDialog } from "./VendorViewDialog";
-import { VendorEditDialog } from "./VendorEditDialog";
 import { VendorAddDialog } from "./VendorAddDialog";
+import { VendorEditDialog } from "./VendorEditDialog";
+import { VendorViewDialog } from "./VendorViewDialog";
+import { useVendorStore } from "../hooks/useVendor";
 
 interface VendorManagementProps {
   searchTerm: string;
@@ -58,7 +27,12 @@ export function VendorManagement({
   searchTerm,
   onSearchChange,
 }: VendorManagementProps) {
-  const { vendors } = useERPStore();
+  const { vendors, loadVendors } = useVendorStore();
+
+  useEffect(() => {
+    loadVendors();
+  }, []);
+
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
   const [showVendorDialog, setShowVendorDialog] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState<any>(null);

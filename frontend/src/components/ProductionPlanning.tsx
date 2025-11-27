@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Calendar,
   Plus,
@@ -56,8 +56,7 @@ import { CreateProductionCardDialog } from "./CreateProductionCardDialog";
 import { AddProductionCardDialog } from "./AddProductionCardDialog";
 import { ViewProductionCardDialog } from "./ViewProductionCardDialog";
 import { ProductionPlanDetailsDialog } from "./ProductionPlanDetailsDialog";
-import { toast } from "sonner@2.0.3";
-import useProduction from "../lib/stores/useProductionStore";
+import { toast } from "sonner";
 
 // Production Plan interface based on R&D project data
 interface ProductionPlan {
@@ -116,14 +115,6 @@ interface ProductionPlan {
 export function ProductionPlanning() {
   const { rdProjects, brands, categories, types, colors, countries } =
     useERPStore();
-
-  const { items: productionPlans, loadProduction } = useProduction();
-
-  useEffect(() => {
-    loadProduction();
-  }, [loadProduction]);
-
-  console.log(productionPlans, "items");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -167,229 +158,229 @@ export function ProductionPlanning() {
   >([]);
 
   // Production plans data based on R&D approved projects
-  // const [productionPlans, setProductionPlans] = useState<ProductionPlan[]>([
-  //   {
-  //     id: "PP001",
-  //     rdProjectId: "rd-001",
-  //     projectCode: "RND/25-26/09/103",
-  //     poNumber: "PO-2024-001",
-  //     planName: "Milange Black Production",
-  //     productName: "Milange-Black",
-  //     brand: "UA Sports",
-  //     brandCode: "UAS01",
-  //     category: "Formal",
-  //     type: "Leather",
-  //     gender: "Men",
-  //     artColour: "Milange Black",
-  //     color: "Black",
-  //     country: "China",
-  //     quantity: 1200,
-  //     startDate: "2025-09-01",
-  //     endDate: "2025-09-30",
-  //     deliveryDate: "2025-10-15",
-  //     priority: "High",
-  //     status: "Planning",
-  //     assignedPlant: "Plant A - China",
-  //     assignedTeam: "Team Alpha",
-  //     taskInc: "Priyanka",
-  //     targetCost: 1200,
-  //     finalCost: 1250,
-  //     poValue: 1875000,
-  //     estimatedCost: 1875000,
-  //     costVariance: {
-  //       amount: 50,
-  //       isOverBudget: true,
-  //       percentage: "4.2",
-  //     },
-  //     materials: [
-  //       { name: "Upper (Rexine)", required: 60, available: 55 },
-  //       { name: "Lining (Skinfit)", required: 65, available: 70 },
-  //       { name: "Out Sole", required: 1500, available: 1520 },
-  //       { name: "Velcro & Buckles", required: 3000, available: 2800 },
-  //     ],
-  //     progress: 15,
-  //     remarks: "All Ok",
-  //     createdDate: "2025-01-11",
-  //     updatedDate: "2025-01-11",
-  //   },
-  //   {
-  //     id: "PP002",
-  //     rdProjectId: "rd-002",
-  //     projectCode: "RND/25-26/09/104",
-  //     poNumber: "PO-2024-002",
-  //     planName: "Cityfit Camo Production",
-  //     productName: "Cityfit-camo",
-  //     brand: "CityFit",
-  //     brandCode: "CIF02",
-  //     category: "Casual",
-  //     type: "CKD",
-  //     gender: "Men",
-  //     artColour: "Camo",
-  //     color: "Tan",
-  //     country: "India",
-  //     quantity: 350,
-  //     startDate: "2025-09-02",
-  //     endDate: "2025-09-30",
-  //     deliveryDate: "2025-10-10",
-  //     priority: "Medium",
-  //     status: "Capacity Allocated",
-  //     assignedPlant: "Plant B - India",
-  //     assignedTeam: "Team Beta",
-  //     taskInc: "Priyanka",
-  //     targetCost: 850,
-  //     finalCost: 890,
-  //     poValue: 1780000,
-  //     estimatedCost: 1780000,
-  //     costVariance: {
-  //       amount: 40,
-  //       isOverBudget: true,
-  //       percentage: "4.7",
-  //     },
-  //     materials: [
-  //       { name: "Upper (Synthetic)", required: 75, available: 80 },
-  //       { name: "Lining (Mesh)", required: 70, available: 65 },
-  //       { name: "Out Sole (Rubber)", required: 2000, available: 2100 },
-  //       { name: "Thread & Labels", required: 4000, available: 4500 },
-  //     ],
-  //     progress: 35,
-  //     remarks: "All ok",
-  //     createdDate: "2025-01-08",
-  //     updatedDate: "2025-01-11",
-  //   },
-  //   {
-  //     id: "PP003",
-  //     rdProjectId: "rd-003",
-  //     projectCode: "RND/25-26/09/105",
-  //     poNumber: "PO-2024-003",
-  //     planName: "KAPPA Black Production",
-  //     productName: "KAPPA-Black",
-  //     brand: "KAPPA",
-  //     brandCode: "KAP03",
-  //     category: "Sports",
-  //     type: "Running",
-  //     gender: "Men",
-  //     artColour: "KAPPA Black",
-  //     color: "Black",
-  //     country: "India",
-  //     quantity: 1200,
-  //     startDate: "2025-09-08",
-  //     endDate: "2025-09-30",
-  //     deliveryDate: "2025-10-05",
-  //     priority: "Medium",
-  //     status: "Manufacturing Assigned",
-  //     assignedPlant: "Plant C - India",
-  //     assignedTeam: "Team Gamma",
-  //     taskInc: "Priyanka",
-  //     targetCost: 1050,
-  //     finalCost: 1100,
-  //     poValue: 1320000,
-  //     estimatedCost: 1320000,
-  //     costVariance: {
-  //       amount: 50,
-  //       isOverBudget: true,
-  //       percentage: "4.8",
-  //     },
-  //     materials: [
-  //       { name: "Upper (Leather)", required: 55, available: 50 },
-  //       { name: "Lining (Fabric)", required: 60, available: 65 },
-  //       { name: "Zip & Hardware", required: 1200, available: 1100 },
-  //       { name: "Thread (Cotton)", required: 2400, available: 2600 },
-  //     ],
-  //     progress: 60,
-  //     remarks: "Size 11-upper issue",
-  //     createdDate: "2025-01-05",
-  //     updatedDate: "2025-01-10",
-  //   },
-  //   {
-  //     id: "PP004",
-  //     rdProjectId: "rd-004",
-  //     projectCode: "RND/25-26/09/106",
-  //     poNumber: "PO-2024-004",
-  //     planName: "Floral Baby P Production",
-  //     productName: "Floral-Baby-P",
-  //     brand: "FlexiWalk",
-  //     brandCode: "FLW01",
-  //     category: "Kids",
-  //     type: "Casual",
-  //     gender: "Kids",
-  //     artColour: "Floral Baby",
-  //     color: "Pink",
-  //     country: "Vietnam",
-  //     quantity: 1200,
-  //     startDate: "2025-09-05",
-  //     endDate: "2025-09-30",
-  //     deliveryDate: "2025-10-20",
-  //     priority: "High",
-  //     status: "Process Defined",
-  //     assignedPlant: "Plant D - Vietnam",
-  //     assignedTeam: "Team Delta",
-  //     taskInc: "Rajesh",
-  //     targetCost: 1400,
-  //     finalCost: 1450,
-  //     poValue: 4350000,
-  //     estimatedCost: 4350000,
-  //     costVariance: {
-  //       amount: 50,
-  //       isOverBudget: true,
-  //       percentage: "3.6",
-  //     },
-  //     materials: [
-  //       { name: "Upper (Mesh)", required: 105, available: 110 },
-  //       { name: "Out Sole (EVA)", required: 3000, available: 3200 },
-  //       { name: "Laces & Eyelets", required: 6000, available: 6500 },
-  //       { name: "Thread (Nylon)", required: 9000, available: 8800 },
-  //     ],
-  //     progress: 80,
-  //     remarks: "All ok",
-  //     createdDate: "2025-01-03",
-  //     updatedDate: "2025-01-11",
-  //   },
-  //   // Additional products to match the calendar image
-  //   {
-  //     id: "PP005",
-  //     rdProjectId: "rd-005",
-  //     projectCode: "RND/25-26/09/107",
-  //     poNumber: "PO-2024-005",
-  //     planName: "Drift Grey Production",
-  //     productName: "Drift-Grey",
-  //     brand: "UrbanStep",
-  //     brandCode: "UST04",
-  //     category: "Casual",
-  //     type: "Sneakers",
-  //     gender: "Unisex",
-  //     artColour: "Drift Grey",
-  //     color: "Grey",
-  //     country: "Bangladesh",
-  //     quantity: 936,
-  //     startDate: "2025-09-07",
-  //     endDate: "2025-09-30",
-  //     deliveryDate: "2025-10-25",
-  //     priority: "Low",
-  //     status: "Ready for Production",
-  //     assignedPlant: "Plant E - Bangladesh",
-  //     assignedTeam: "Team Echo",
-  //     taskInc: "Sneha",
-  //     targetCost: 1280,
-  //     finalCost: 1320,
-  //     poValue: 2376000,
-  //     estimatedCost: 2376000,
-  //     costVariance: {
-  //       amount: 40,
-  //       isOverBudget: true,
-  //       percentage: "3.1",
-  //     },
-  //     materials: [
-  //       { name: "Upper (Synthetic Leather)", required: 80, available: 85 },
-  //       { name: "Sole (Rubber)", required: 1800, available: 1900 },
-  //       { name: "Metallic Paint", required: 270, available: 300 },
-  //       { name: "Thread (Polyester)", required: 3600, available: 3800 },
-  //     ],
-  //     progress: 95,
-  //     remarks: "Sole-180 Balance Sole -74",
-  //     createdDate: "2025-01-01",
-  //     updatedDate: "2025-01-11",
-  //   },
-  // ]);
+  const [productionPlans, setProductionPlans] = useState<ProductionPlan[]>([
+    {
+      id: "PP001",
+      rdProjectId: "rd-001",
+      projectCode: "RND/25-26/09/103",
+      poNumber: "PO-2024-001",
+      planName: "Milange Black Production",
+      productName: "Milange-Black",
+      brand: "UA Sports",
+      brandCode: "UAS01",
+      category: "Formal",
+      type: "Leather",
+      gender: "Men",
+      artColour: "Milange Black",
+      color: "Black",
+      country: "China",
+      quantity: 1200,
+      startDate: "2025-09-01",
+      endDate: "2025-09-30",
+      deliveryDate: "2025-10-15",
+      priority: "High",
+      status: "Planning",
+      assignedPlant: "Plant A - China",
+      assignedTeam: "Team Alpha",
+      taskInc: "Priyanka",
+      targetCost: 1200,
+      finalCost: 1250,
+      poValue: 1875000,
+      estimatedCost: 1875000,
+      costVariance: {
+        amount: 50,
+        isOverBudget: true,
+        percentage: "4.2",
+      },
+      materials: [
+        { name: "Upper (Rexine)", required: 60, available: 55 },
+        { name: "Lining (Skinfit)", required: 65, available: 70 },
+        { name: "Out Sole", required: 1500, available: 1520 },
+        { name: "Velcro & Buckles", required: 3000, available: 2800 },
+      ],
+      progress: 15,
+      remarks: "All Ok",
+      createdDate: "2025-01-11",
+      updatedDate: "2025-01-11",
+    },
+    {
+      id: "PP002",
+      rdProjectId: "rd-002",
+      projectCode: "RND/25-26/09/104",
+      poNumber: "PO-2024-002",
+      planName: "Cityfit Camo Production",
+      productName: "Cityfit-camo",
+      brand: "CityFit",
+      brandCode: "CIF02",
+      category: "Casual",
+      type: "CKD",
+      gender: "Men",
+      artColour: "Camo",
+      color: "Tan",
+      country: "India",
+      quantity: 350,
+      startDate: "2025-09-02",
+      endDate: "2025-09-30",
+      deliveryDate: "2025-10-10",
+      priority: "Medium",
+      status: "Capacity Allocated",
+      assignedPlant: "Plant B - India",
+      assignedTeam: "Team Beta",
+      taskInc: "Priyanka",
+      targetCost: 850,
+      finalCost: 890,
+      poValue: 1780000,
+      estimatedCost: 1780000,
+      costVariance: {
+        amount: 40,
+        isOverBudget: true,
+        percentage: "4.7",
+      },
+      materials: [
+        { name: "Upper (Synthetic)", required: 75, available: 80 },
+        { name: "Lining (Mesh)", required: 70, available: 65 },
+        { name: "Out Sole (Rubber)", required: 2000, available: 2100 },
+        { name: "Thread & Labels", required: 4000, available: 4500 },
+      ],
+      progress: 35,
+      remarks: "All ok",
+      createdDate: "2025-01-08",
+      updatedDate: "2025-01-11",
+    },
+    {
+      id: "PP003",
+      rdProjectId: "rd-003",
+      projectCode: "RND/25-26/09/105",
+      poNumber: "PO-2024-003",
+      planName: "KAPPA Black Production",
+      productName: "KAPPA-Black",
+      brand: "KAPPA",
+      brandCode: "KAP03",
+      category: "Sports",
+      type: "Running",
+      gender: "Men",
+      artColour: "KAPPA Black",
+      color: "Black",
+      country: "India",
+      quantity: 1200,
+      startDate: "2025-09-08",
+      endDate: "2025-09-30",
+      deliveryDate: "2025-10-05",
+      priority: "Medium",
+      status: "Manufacturing Assigned",
+      assignedPlant: "Plant C - India",
+      assignedTeam: "Team Gamma",
+      taskInc: "Priyanka",
+      targetCost: 1050,
+      finalCost: 1100,
+      poValue: 1320000,
+      estimatedCost: 1320000,
+      costVariance: {
+        amount: 50,
+        isOverBudget: true,
+        percentage: "4.8",
+      },
+      materials: [
+        { name: "Upper (Leather)", required: 55, available: 50 },
+        { name: "Lining (Fabric)", required: 60, available: 65 },
+        { name: "Zip & Hardware", required: 1200, available: 1100 },
+        { name: "Thread (Cotton)", required: 2400, available: 2600 },
+      ],
+      progress: 60,
+      remarks: "Size 11-upper issue",
+      createdDate: "2025-01-05",
+      updatedDate: "2025-01-10",
+    },
+    {
+      id: "PP004",
+      rdProjectId: "rd-004",
+      projectCode: "RND/25-26/09/106",
+      poNumber: "PO-2024-004",
+      planName: "Floral Baby P Production",
+      productName: "Floral-Baby-P",
+      brand: "FlexiWalk",
+      brandCode: "FLW01",
+      category: "Kids",
+      type: "Casual",
+      gender: "Kids",
+      artColour: "Floral Baby",
+      color: "Pink",
+      country: "Vietnam",
+      quantity: 1200,
+      startDate: "2025-09-05",
+      endDate: "2025-09-30",
+      deliveryDate: "2025-10-20",
+      priority: "High",
+      status: "Process Defined",
+      assignedPlant: "Plant D - Vietnam",
+      assignedTeam: "Team Delta",
+      taskInc: "Rajesh",
+      targetCost: 1400,
+      finalCost: 1450,
+      poValue: 4350000,
+      estimatedCost: 4350000,
+      costVariance: {
+        amount: 50,
+        isOverBudget: true,
+        percentage: "3.6",
+      },
+      materials: [
+        { name: "Upper (Mesh)", required: 105, available: 110 },
+        { name: "Out Sole (EVA)", required: 3000, available: 3200 },
+        { name: "Laces & Eyelets", required: 6000, available: 6500 },
+        { name: "Thread (Nylon)", required: 9000, available: 8800 },
+      ],
+      progress: 80,
+      remarks: "All ok",
+      createdDate: "2025-01-03",
+      updatedDate: "2025-01-11",
+    },
+    // Additional products to match the calendar image
+    {
+      id: "PP005",
+      rdProjectId: "rd-005",
+      projectCode: "RND/25-26/09/107",
+      poNumber: "PO-2024-005",
+      planName: "Drift Grey Production",
+      productName: "Drift-Grey",
+      brand: "UrbanStep",
+      brandCode: "UST04",
+      category: "Casual",
+      type: "Sneakers",
+      gender: "Unisex",
+      artColour: "Drift Grey",
+      color: "Grey",
+      country: "Bangladesh",
+      quantity: 936,
+      startDate: "2025-09-07",
+      endDate: "2025-09-30",
+      deliveryDate: "2025-10-25",
+      priority: "Low",
+      status: "Ready for Production",
+      assignedPlant: "Plant E - Bangladesh",
+      assignedTeam: "Team Echo",
+      taskInc: "Sneha",
+      targetCost: 1280,
+      finalCost: 1320,
+      poValue: 2376000,
+      estimatedCost: 2376000,
+      costVariance: {
+        amount: 40,
+        isOverBudget: true,
+        percentage: "3.1",
+      },
+      materials: [
+        { name: "Upper (Synthetic Leather)", required: 80, available: 85 },
+        { name: "Sole (Rubber)", required: 1800, available: 1900 },
+        { name: "Metallic Paint", required: 270, available: 300 },
+        { name: "Thread (Polyester)", required: 3600, available: 3800 },
+      ],
+      progress: 95,
+      remarks: "Sole-180 Balance Sole -74",
+      createdDate: "2025-01-01",
+      updatedDate: "2025-01-11",
+    },
+  ]);
 
   const getStatusColor = (status: string) => {
     const colors = {
@@ -414,14 +405,14 @@ export function ProductionPlanning() {
 
   const filteredPlans = productionPlans.filter((plan) => {
     const matchesSearch =
-      plan?.artNameSnapshot.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      plan.autoCodeSnapshot.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      // plan.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      // plan.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      plan.planName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      plan.projectCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      plan.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      plan.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       plan.brand.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter =
       selectedFilter === "all" ||
-      plan?.status?.toLowerCase().replace(" ", "-") === selectedFilter;
+      plan.status.toLowerCase().replace(" ", "-") === selectedFilter;
     return matchesSearch && matchesFilter;
   });
 
@@ -1068,16 +1059,14 @@ export function ProductionPlanning() {
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="font-mono font-medium text-blue-600">
-                            {plan?.autoCodeSnapshot!}
+                            {plan.projectCode}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center justify-center">
-                            {plan.coverImageSnapshot ? (
+                            {plan.profileImage ? (
                               <img
-                                src={`${import.meta.env.VITE_BACKEND_URL}/${
-                                  plan.coverImageSnapshot
-                                }`}
+                                src={plan.profileImage}
                                 alt="Product"
                                 className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
                               />
@@ -1091,25 +1080,25 @@ export function ProductionPlanning() {
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
                             <span className="font-medium text-gray-900">
-                              {plan.artNameSnapshot}
+                              {plan.artColour}
                             </span>
                             <span className="text-xs text-gray-500 mt-0.5">
-                              {plan.colorSnapshot}
+                              {plan.color}
                             </span>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="font-mono font-medium text-green-600">
-                            {plan.po.poNumber}
+                            {plan.poNumber}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <Badge
                             className={`${getPriorityColor(
-                              plan?.project?.priority!
+                              plan.priority
                             )} text-xs px-2 py-1`}
                           >
-                            {plan?.project?.priority!}
+                            {plan.priority}
                           </Badge>
                         </td>
                       </tr>

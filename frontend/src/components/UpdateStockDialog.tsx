@@ -129,7 +129,7 @@ export function UpdateStockDialog({
     if (subtractQuantity) return currentQuantity - subtractQuantity;
     return currentQuantity;
   };
-
+  console.log("Vendors in UpdateStockDialog:", vendors);
   return (
     <Dialog
       open={open}
@@ -301,16 +301,34 @@ export function UpdateStockDialog({
                 >
                   Vendor / Supplier
                 </Label>
-                <Input
+                <Select
                   value={stockUpdate.vendorId}
-                  onChange={(e) =>
-                    setStockUpdate({ ...stockUpdate, vendorId: e.target.value })
+                  onValueChange={(value: string) =>
+                    setStockUpdate({ ...stockUpdate, vendorId: value })
                   }
-                  placeholder="Vendor id or name"
-                  className="h-12 border-2 focus:border-blue-500"
-                />
+                >
+                  <SelectTrigger
+                    id="vendorId"
+                    className="h-12 border-2 focus:border-blue-500"
+                  >
+                    <SelectValue placeholder="Select a vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vendors.length > 0 ? (
+                      vendors.map((vendor) => (
+                        <SelectItem key={vendor._id} value={vendor._id}>
+                          {vendor.vendorName}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="p-2 text-center text-sm text-gray-500">
+                        No vendors available
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
                 <p className="text-sm text-gray-600">
-                  Select or enter the vendor who supplied this stock
+                  Select the vendor who supplied this stock
                 </p>
               </div>
 

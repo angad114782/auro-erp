@@ -73,15 +73,4 @@ export const inventoryService = {
     const res = await api.get(`/inventory/history/${itemId}`);
     return res.data;
   },
-
-  async getVendors() {
-    // optional endpoint - if you have /api/vendors
-    try {
-      const res = await api.get("/vendors");
-      return res.data;
-    } catch (e) {
-      // if vendors endpoint not present, return []
-      return [];
-    }
-  },
 };

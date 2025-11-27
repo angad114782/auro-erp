@@ -32,6 +32,7 @@ import {
 import { Badge } from "./ui/badge";
 import { useERPStore } from "../lib/data-store";
 import { toast } from "sonner";
+import { useVendorStore } from "../hooks/useVendor";
 
 interface VendorEditDialogProps {
   open: boolean;
@@ -44,7 +45,7 @@ export function VendorEditDialog({
   onOpenChange,
   vendor,
 }: VendorEditDialogProps) {
-  const { updateVendor } = useERPStore();
+  const { updateVendor } = useVendorStore();
   const [formData, setFormData] = useState({
     vendorName: "",
     vendorId: "",
@@ -142,7 +143,7 @@ export function VendorEditDialog({
 
     try {
       // Update vendor in the store
-      updateVendor(vendor.id, formData);
+      await updateVendor(vendor._id, formData);
 
       toast.success(`Vendor "${formData.vendorName}" updated successfully!`);
       onOpenChange(false);
