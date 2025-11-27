@@ -9,10 +9,14 @@ import {
 export const listProductionProjects = async (req, res, next) => {
   try {
     // If nested under project id, use req.params.id as projectId; allow query for global listing
-    // const projectId = req.params.id || null;
+    const projectId = req.params.id || null;
     const page = Number(req.query.page || 1);
     const limit = Number(req.query.limit || 20);
-    const result = await listProductionProjectsService({ page, limit });
+    const result = await listProductionProjectsService({
+      projectId,
+      page,
+      limit,
+    });
     return res.json({ message: "production list", data: result });
   } catch (err) {
     next(err);

@@ -1,16 +1,10 @@
-import ProductionProject from "../models/ProductionProject.model.js";
 import mongoose from "mongoose";
+import ProductionProject from "../models/ProductionProject.model.js";
 import { Project } from "../models/Project.model.js";
-
-// --- add this named export to productionProject.service.js ---
 import { PoDetails } from "../models/PoDetails.model.js";
 
 /**
  * createProductionFromProject
- * - ensures project exists & active
- * - checks PO (unless options.force)
- * - idempotent: returns existing production doc if exists
- * - creates ProductionProject, snapshots minimal fields, updates Project.status
  */
 export const createProductionFromProject = async (
   projectId,
@@ -19,27 +13,28 @@ export const createProductionFromProject = async (
 ) => {
   const { initialPlan = {}, force = false, by = null } = options;
 
-  // load project
+  if (!mongoose.Types.ObjectId.isValid(projectId)) {
+    const err = new Error("invalid projectId");
+    err.status = 400;
+    throw err;
+  }
+
   const project = await Project.findById(projectId).session(session);
   if (!project || !project.isActive) return null;
 
-  // idempotency: check if production already exists for this project
+  // idempotent: return existing production if present
   const existing = await ProductionProject.findOne({
     project: project._id,
   }).session(session);
   if (existing) {
-    // optionally update with provided initialPlan (but keep it simple)
     const populatedProject = await Project.findById(project._id)
       .populate("company brand category type country assignPerson")
       .lean()
       .session(session);
-    return {
-      project: populatedProject,
-      production: existing,
-    };
+    return { project: populatedProject, production: existing };
   }
 
-  // check PO
+  // check PO unless forced
   const po = await PoDetails.findOne({ project: project._id }).session(session);
   if (!force) {
     const hasPoApproved = po && (po.poNumber || "").trim().length > 0;
@@ -52,7 +47,6 @@ export const createProductionFromProject = async (
     }
   }
 
-  // build snapshot
   const snapshot = {
     project: project._id,
     autoCodeSnapshot: project.autoCode,
@@ -86,20 +80,17 @@ export const createProductionFromProject = async (
     notes: initialPlan.notes || "",
   };
 
-  // create production doc
-  const productionArr = await ProductionProject.create([snapshot], { session });
-  const production = productionArr[0];
+  const arr = await ProductionProject.create([snapshot], { session });
+  const production = arr[0];
 
-  // update project status and link if you want
+  // update project status & link ref
   const now = new Date();
   const from = project.status || null;
   project.status = "production_planning";
   project.statusHistory.push({ from, to: project.status, by, at: now });
-  // optionally store production ref on project
   project.productionRef = production._id;
   await project.save({ session });
 
-  // return populated project + production
   const populatedProject = await Project.findById(project._id)
     .populate("company brand category type country assignPerson")
     .lean()
@@ -110,25 +101,22 @@ export const createProductionFromProject = async (
 
 /**
  * listProductionProjectsService
- * - if projectId provided, returns production doc for that project (or list containing it)
- * - else returns paginated list of active production docs
  */
 export const listProductionProjectsService = async ({
+  projectId = null,
   page = 1,
   limit = 20,
 } = {}) => {
   const skip = (page - 1) * limit;
   const filter = { isActive: true };
-  // if (projectId && mongoose.Types.ObjectId.isValid(projectId)) {
-  //   filter.project = projectId;
-  // }
+  if (projectId && mongoose.Types.ObjectId.isValid(projectId))
+    filter.project = projectId;
 
   const items = await ProductionProject.find(filter)
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
-    .populate("project") // full project doc
-
+    .populate("project", "autoCode artName color")
     .lean();
 
   const total = await ProductionProject.countDocuments(filter);
@@ -137,7 +125,6 @@ export const listProductionProjectsService = async ({
 
 /**
  * getProductionProjectService
- * - returns single production doc only if isActive true
  */
 export const getProductionProjectService = async (id) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
@@ -149,8 +136,6 @@ export const getProductionProjectService = async (id) => {
 
 /**
  * updateProductionProjectService
- * - allowed updates: status, phases, materials, assignedTeam, startDate, targetCompletionDate, actualCompletionDate, notes, documents
- * - if status changes, push into productionHistory
  */
 export const updateProductionProjectService = async (
   id,
@@ -159,34 +144,46 @@ export const updateProductionProjectService = async (
 ) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
 
-  // Only allow updates on active docs
   const existing = await ProductionProject.findOne({
     _id: id,
     isActive: true,
   }).session(session);
   if (!existing) return null;
 
-  const set = {};
-  // simple scalar fields
-  const scalarFields = [
-    "startDate",
-    "targetCompletionDate",
-    "actualCompletionDate",
-    "notes",
-    "updatedAt",
-  ];
-  scalarFields.forEach((f) => {
-    if (payload[f] !== undefined) {
-      set[f] = payload[f] === null ? null : payload[f];
-    }
-  });
+  const updateObj = {};
+  // handle simple date/text fields
+  if (payload.startDate !== undefined)
+    updateObj.startDate = payload.startDate
+      ? new Date(payload.startDate)
+      : null;
+  if (payload.targetCompletionDate !== undefined)
+    updateObj.targetCompletionDate = payload.targetCompletionDate
+      ? new Date(payload.targetCompletionDate)
+      : null;
+  if (payload.actualCompletionDate !== undefined)
+    updateObj.actualCompletionDate = payload.actualCompletionDate
+      ? new Date(payload.actualCompletionDate)
+      : null;
+  if (payload.notes !== undefined) updateObj.notes = payload.notes;
+  if (payload.phases !== undefined) updateObj.phases = payload.phases;
+  if (payload.materials !== undefined) updateObj.materials = payload.materials;
+  if (payload.assignedTeam !== undefined)
+    updateObj.assignedTeam = payload.assignedTeam;
+  if (payload.documents !== undefined) updateObj.documents = payload.documents;
 
-  // status handling with history
+  // status change -> push history
+  const updateCommand = {
+    $set: {
+      ...updateObj,
+      updatedBy: by || existing.updatedBy,
+      updatedAt: new Date(),
+    },
+  };
   if (payload.status && payload.status !== existing.status) {
     const from = existing.status || null;
     const to = payload.status;
-    // push to productionHistory (preserve existing)
-    set.$push = {
+    updateCommand.$set.status = to;
+    updateCommand.$push = {
       productionHistory: {
         from,
         to,
@@ -195,54 +192,13 @@ export const updateProductionProjectService = async (
         note: payload.statusNote || "",
       },
     };
-    // also update current status
-    set.status = to;
   }
-
-  // arrays / nested updates
-  if (payload.phases) {
-    // Expect full replace of phases array or partial. Here we replace
-    set.phases = payload.phases;
-  }
-  if (payload.materials) set.materials = payload.materials;
-  if (payload.assignedTeam) set.assignedTeam = payload.assignedTeam;
-  if (payload.documents) set.documents = payload.documents;
-
-  // updatedBy / updatedAt
-  set.updatedBy = by || existing.updatedBy;
-  set.updatedAt = new Date();
-
-  // Build final update object (handle $push separately)
-  const updateObj = {};
-  if (set.status !== undefined) updateObj.status = set.status;
-  if (set.phases !== undefined) updateObj.phases = set.phases;
-  if (set.materials !== undefined) updateObj.materials = set.materials;
-  if (set.assignedTeam !== undefined) updateObj.assignedTeam = set.assignedTeam;
-  if (set.documents !== undefined) updateObj.documents = set.documents;
-  if (set.startDate !== undefined)
-    updateObj.startDate = set.startDate ? new Date(set.startDate) : null;
-  if (set.targetCompletionDate !== undefined)
-    updateObj.targetCompletionDate = set.targetCompletionDate
-      ? new Date(set.targetCompletionDate)
-      : null;
-  if (set.actualCompletionDate !== undefined)
-    updateObj.actualCompletionDate = set.actualCompletionDate
-      ? new Date(set.actualCompletionDate)
-      : null;
-  if (set.notes !== undefined) updateObj.notes = set.notes;
-  updateObj.updatedBy = set.updatedBy;
-  updateObj.updatedAt = set.updatedAt;
-
-  // Use findOneAndUpdate; if $push is needed, include it
-  const updateCommand = { $set: updateObj };
-  if (set.$push) updateCommand.$push = set.$push;
 
   const updated = await ProductionProject.findOneAndUpdate(
     { _id: id, isActive: true },
     updateCommand,
     { new: true, session }
   );
-
   return updated;
 };
 
@@ -254,12 +210,10 @@ export const deleteProductionProjectService = async (
   { session, by = null } = {}
 ) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
-
   const doc = await ProductionProject.findOneAndUpdate(
     { _id: id, isActive: true },
     { $set: { isActive: false, updatedBy: by || null, updatedAt: new Date() } },
     { new: true, session }
   );
-
   return doc;
 };
