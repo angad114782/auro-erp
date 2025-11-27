@@ -15,6 +15,7 @@ import {
   getHistory,
   getAllHistory,
 } from "../controllers/inventory.controller.js";
+import { softDeleteItem } from "../controllers/inventory.controller.js";
 
 const router = Router({ mergeParams: true });
 
@@ -35,5 +36,8 @@ router.get("/history/:itemId", getHistory);
 
 // GET ALL HISTORY
 router.get("/history-all", getAllHistory);
+
+// SOFT DELETE ITEM
+router.patch("/:id/soft-delete", softDeleteItem);
 
 export default router;

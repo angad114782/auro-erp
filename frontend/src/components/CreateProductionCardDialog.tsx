@@ -485,10 +485,10 @@ export function CreateProductionCardDialog({
                   <div>
                     <p className="text-sm text-gray-500 mb-2">Product Name</p>
                     <p className="text-base font-semibold text-gray-900">
-                      {selectedProject
+                      {selectedProductionCard
                         ? `${getBrandName(
-                            selectedProject.brandId
-                          )} ${getCategoryName(selectedProject.categoryId)}`
+                            selectedProductionCard.brandId
+                          )} ${getCategoryName(selectedProject?.categoryId)}`
                         : "No Product Selected"}
                     </p>
                   </div>
@@ -569,7 +569,6 @@ export function CreateProductionCardDialog({
                   Create Production Card
                 </Button>
               </div>
-
               {/* Production Cards Display */}
               {displayProductionCards.filter(
                 (card) =>

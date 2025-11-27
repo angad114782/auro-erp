@@ -324,21 +324,21 @@ export function ProductionPlanDetailsDialog({
                 </h4>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">Art</p>
+                    <p className="text-xs text-gray-500 mb-1">Art & Colour</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {plan?.artNameSnapshot! || "N/A"}
+                      {plan.artColour}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Gender</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {plan?.project?.gender}
+                      {plan.gender}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Color</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {plan.colorSnapshot || "N/A"}
+                      {plan.color}
                     </p>
                   </div>
                 </div>
@@ -353,7 +353,7 @@ export function ProductionPlanDetailsDialog({
                   <div>
                     <p className="text-xs text-green-600 mb-1">Quantity</p>
                     <p className="text-sm font-medium text-green-900">
-                      {plan?.quantity?.toLocaleString("en-IN") || "N/A"} units
+                      {plan.quantity.toLocaleString("en-IN")} units
                     </p>
                   </div>
                   <div>
@@ -369,7 +369,7 @@ export function ProductionPlanDetailsDialog({
                       Task Coordinator
                     </p>
                     <p className="text-sm font-medium text-orange-900">
-                      {plan?.taskInc || "N/A"}
+                      {plan.taskInc}
                     </p>
                   </div>
                 </div>

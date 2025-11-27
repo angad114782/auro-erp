@@ -75,7 +75,7 @@ interface ProductionPlan {
 
   category?: string;
   categoryId?: string;
-project?: any;
+  project?: any;
   type?: string;
   typeId?: string;
 
@@ -177,7 +177,8 @@ const normalizePriority = (val: any): "High" | "Medium" | "Low" => {
   if (["medium", "med", "m", "2"].includes(s)) return "Medium";
 
   // fallback heuristics
-  if (s.includes("urgent") || s.includes("priority") && s.includes("high")) return "High";
+  if (s.includes("urgent") || (s.includes("priority") && s.includes("high")))
+    return "High";
   if (s.includes("low")) return "Low";
   if (s.includes("high")) return "High";
   if (s.includes("medium") || s.includes("med")) return "Medium";
@@ -189,6 +190,7 @@ const normalizePriority = (val: any): "High" | "Medium" | "Low" => {
 export function ProductionPlanning() {
   const { rdProjects, brands, categories, types, colors, countries } =
     useERPStore();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -198,117 +200,119 @@ export function ProductionPlanning() {
   const [isDeletingEntryId, setIsDeletingEntryId] = useState<string | null>(
     null
   );
-// Add near other state hooks in ProductionPlanning
-const [isLoadingPlanDetails, setIsLoadingPlanDetails] = useState(false);
+  // Add near other state hooks in ProductionPlanning
+  const [isLoadingPlanDetails, setIsLoadingPlanDetails] = useState(false);
 
-// Helper to fetch full production or project data
-const loadFullPlanDetails = async (plan: any) => {
-  if (!plan) return null;
+  // Helper to fetch full production or project data
+  const loadFullPlanDetails = async (plan: any) => {
+    if (!plan) return null;
 
-  // Try a few candidate ids (production id first, then project id)
-  const tryIds = [
-    plan.id,
-    plan.raw?._id,
-    plan.raw?.id,
-    plan.rdProjectId,
-    plan.projectId,
-    plan.project?._id,
-  ].filter(Boolean);
+    // Try a few candidate ids (production id first, then project id)
+    const tryIds = [
+      plan.id,
+      plan.raw?._id,
+      plan.raw?.id,
+      plan.rdProjectId,
+      plan.projectId,
+      plan.project?._id,
+    ].filter(Boolean);
 
-  setIsLoadingPlanDetails(true);
-  try {
-    // 1) Try fetch production doc by prodId
-    for (const candidate of tryIds) {
-      try {
-        const prodRes = await api.get(`/projects/production/${candidate}`);
-        const prodDoc = prodRes.data?.data ?? prodRes.data;
-        if (prodDoc) {
-          // if project is not populated try to fetch it
-          if (!prodDoc.project || typeof prodDoc.project === "string") {
-            const projectId =
-              prodDoc.project || plan.rdProjectId || prodDoc.projectId;
-            if (projectId) {
-              try {
-                const pRes = await api.get(`/projects/${projectId}`);
-                prodDoc.project = pRes.data?.data ?? pRes.data;
-              } catch (e) {
-                // ignore project fetch error
-                console.debug("project fetch failed for", projectId, e);
+    setIsLoadingPlanDetails(true);
+    try {
+      // 1) Try fetch production doc by prodId
+      for (const candidate of tryIds) {
+        try {
+          const prodRes = await api.get(`/projects/production/${candidate}`);
+          const prodDoc = prodRes.data?.data ?? prodRes.data;
+          if (prodDoc) {
+            // if project is not populated try to fetch it
+            if (!prodDoc.project || typeof prodDoc.project === "string") {
+              const projectId =
+                prodDoc.project || plan.rdProjectId || prodDoc.projectId;
+              if (projectId) {
+                try {
+                  const pRes = await api.get(`/projects/${projectId}`);
+                  prodDoc.project = pRes.data?.data ?? pRes.data;
+                } catch (e) {
+                  // ignore project fetch error
+                  console.debug("project fetch failed for", projectId, e);
+                }
               }
             }
+
+            // compute a safe numeric quantity
+            const quantity =
+              prodDoc.quantity ??
+              prodDoc.quantitySnapshot ??
+              prodDoc.po?.orderQuantity ??
+              prodDoc.project?.po?.orderQuantity ??
+              prodDoc.project?.orderQuantity ??
+              0;
+
+            return {
+              // don't mutate original — return a normalized copy
+              ...prodDoc,
+              quantity,
+              project: prodDoc.project ?? null,
+            };
           }
-
-          // compute a safe numeric quantity
-          const quantity =
-            prodDoc.quantity ??
-            prodDoc.quantitySnapshot ??
-            prodDoc.po?.orderQuantity ??
-            prodDoc.project?.po?.orderQuantity ??
-            prodDoc.project?.orderQuantity ??
-            0;
-
-          return {
-            // don't mutate original — return a normalized copy
-            ...prodDoc,
-            quantity,
-            project: prodDoc.project ?? null,
-          };
+        } catch (e) {
+          // ignore single-prod fetch failures, try next candidate
+          console.debug("prod fetch candidate failed:", candidate, e);
         }
-      } catch (e) {
-        // ignore single-prod fetch failures, try next candidate
-        console.debug("prod fetch candidate failed:", candidate, e);
       }
-    }
 
-    // 2) No production doc — try fetching project directly
-    const projectId =
-      plan.rdProjectId ?? plan.projectId ?? plan.raw?.project ?? null;
-    if (projectId) {
-      try {
-        const pRes = await api.get(`/projects/${projectId}`);
-        const project = pRes.data?.data ?? pRes.data;
-        if (project) {
-          const computedQuantity =
-            plan.quantity ??
-            plan.quantitySnapshot ??
-            project.po?.orderQuantity ??
-            project.orderQuantity ??
-            0;
+      // 2) No production doc — try fetching project directly
+      const projectId =
+        plan.rdProjectId ?? plan.projectId ?? plan.raw?.project ?? null;
+      if (projectId) {
+        try {
+          const pRes = await api.get(`/projects/${projectId}`);
+          const project = pRes.data?.data ?? pRes.data;
+          if (project) {
+            const computedQuantity =
+              plan.quantity ??
+              plan.quantitySnapshot ??
+              project.po?.orderQuantity ??
+              project.orderQuantity ??
+              0;
 
-          return {
-            ...plan,
-            project,
-            artNameSnapshot:
-              plan.artNameSnapshot ?? project.artName ?? plan.productName ?? "",
-            colorSnapshot: plan.colorSnapshot ?? project.color ?? "",
-            coverImageSnapshot:
-              plan.coverImageSnapshot ?? project.coverImage ?? "",
-            priority: plan.priority ?? project.priority ?? "Medium",
-            po: plan.po ?? project.po ?? null,
-            quantity: computedQuantity,
-          };
+            return {
+              ...plan,
+              project,
+              artNameSnapshot:
+                plan.artNameSnapshot ??
+                project.artName ??
+                plan.productName ??
+                "",
+              colorSnapshot: plan.colorSnapshot ?? project.color ?? "",
+              coverImageSnapshot:
+                plan.coverImageSnapshot ?? project.coverImage ?? "",
+              priority: plan.priority ?? project.priority ?? "Medium",
+              po: plan.po ?? project.po ?? null,
+              quantity: computedQuantity,
+            };
+          }
+        } catch (e) {
+          console.debug("project fetch error:", projectId, e);
         }
-      } catch (e) {
-        console.debug("project fetch error:", projectId, e);
       }
+
+      // fallback to original plan but ensure quantity is present
+      return {
+        ...plan,
+        quantity:
+          plan.quantity ??
+          plan.quantitySnapshot ??
+          plan.po?.orderQuantity ??
+          plan.project?.po?.orderQuantity ??
+          0,
+        project: plan.project ?? null,
+      };
+    } finally {
+      setIsLoadingPlanDetails(false);
     }
-
-    // fallback to original plan but ensure quantity is present
-    return {
-      ...plan,
-      quantity:
-        plan.quantity ??
-        plan.quantitySnapshot ??
-        plan.po?.orderQuantity ??
-        plan.project?.po?.orderQuantity ??
-        0,
-      project: plan.project ?? null,
-    };
-  } finally {
-    setIsLoadingPlanDetails(false);
-  }
-};
-
+  };
 
   // Production cards management state
   const [isProductionDialogOpen, setIsProductionDialogOpen] = useState(false);
@@ -318,6 +322,7 @@ const loadFullPlanDetails = async (plan: any) => {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<
     string | null
   >(null);
+
   const [isViewCardDialogOpen, setIsViewCardDialogOpen] = useState(false);
   // keep this flexible because calendar entries shape is not full ProductionPlan
   const [selectedProductionForView, setSelectedProductionForView] = useState<
@@ -417,14 +422,14 @@ const loadFullPlanDetails = async (plan: any) => {
             endDate: safeDate(doc.targetCompletionDate),
             deliveryDate: safeDate(doc.targetCompletionDate),
 
-              priority: normalizePriority(
-    doc.priority ??
-      proj.priority ??
-      doc.projectSnapshot?.priority ??
-      doc.productionDetails?.priority ??
-      doc.priorityLevel ?? // possible alternate field name
-      "Medium"
-  ),
+            priority: normalizePriority(
+              doc.priority ??
+                proj.priority ??
+                doc.projectSnapshot?.priority ??
+                doc.productionDetails?.priority ??
+                doc.priorityLevel ?? // possible alternate field name
+                "Medium"
+            ),
             status: doc.status || "Planning",
 
             assignedPlant: doc.assignedPlant || "",
@@ -742,7 +747,7 @@ const loadFullPlanDetails = async (plan: any) => {
         size: undefined,
         brand: plan.brand,
         category: plan.category,
-        priority:plan.priority,
+        priority: plan.priority,
         type: plan.type,
         company: undefined,
         country: plan.country,
@@ -1578,46 +1583,45 @@ const loadFullPlanDetails = async (plan: any) => {
                       //   }}
                       // >
                       //    {getPaginatedPlans().map((plan) => (
-  <tr
-  key={plan.id}
-  className="hover:bg-blue-50 cursor-pointer transition-colors"
-  onClick={async () => {
-    try {
-      const full = await loadFullPlanDetails(plan);
-      // Ensure we have an object
-      if (!full) {
-        setSelectedPlanForDetails(plan);
-        setIsPlanDetailsDialogOpen(true);
-        return;
-      }
+                      <tr
+                        key={plan.id}
+                        className="hover:bg-blue-50 cursor-pointer transition-colors"
+                        onClick={async () => {
+                          try {
+                            const full = await loadFullPlanDetails(plan);
+                            // Ensure we have an object
+                            if (!full) {
+                              setSelectedPlanForDetails(plan);
+                              setIsPlanDetailsDialogOpen(true);
+                              return;
+                            }
 
-      // Normalized: prefer returned full's fields but keep original plan as fallback
-      const normalized = {
-        ...plan,
-        ...full,
-        project: full.project ?? plan.project ?? null,
-        // ensure numeric quantity
-        quantity:
-          full.quantity ??
-          full.quantitySnapshot ??
-          full.po?.orderQuantity ??
-          full.project?.po?.orderQuantity ??
-          plan.quantity ??
-          0,
-      };
+                            // Normalized: prefer returned full's fields but keep original plan as fallback
+                            const normalized = {
+                              ...plan,
+                              ...full,
+                              project: full.project ?? plan.project ?? null,
+                              // ensure numeric quantity
+                              quantity:
+                                full.quantity ??
+                                full.quantitySnapshot ??
+                                full.po?.orderQuantity ??
+                                full.project?.po?.orderQuantity ??
+                                plan.quantity ??
+                                0,
+                            };
 
-      // debug if you'd like
-      // console.log("Normalized plan for details:", normalized);
+                            // debug if you'd like
+                            // console.log("Normalized plan for details:", normalized);
 
-      setSelectedPlanForDetails(normalized);
-      setIsPlanDetailsDialogOpen(true);
-    } catch (err) {
-      console.error("Failed to load plan details:", err);
-      toast.error("Failed to load plan details");
-    }
-  }}
->
-
+                            setSelectedPlanForDetails(normalized);
+                            setIsPlanDetailsDialogOpen(true);
+                          } catch (err) {
+                            console.error("Failed to load plan details:", err);
+                            toast.error("Failed to load plan details");
+                          }
+                        }}
+                      >
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="font-mono font-medium text-blue-600">
                             {plan.projectCode}
@@ -2332,7 +2336,7 @@ const loadFullPlanDetails = async (plan: any) => {
       <CreateProductionCardDialog
         open={isCreateCardDialogOpen}
         onClose={() => setIsCreateCardDialogOpen(false)}
-        selectedProject={convertPlanToRDProject(selectedPlan)}
+        selectedProductionCard={selectedPlan}
       />
 
       {/* Add Production Card Dialog (from calendar) */}

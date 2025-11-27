@@ -77,4 +77,8 @@ export const inventoryService = {
   getAllHistory: async () => {
     return await api.get("/inventory/history-all");
   },
+  async softDeleteItem(itemId: string) {
+    const res = await api.patch(`/inventory/${itemId}/soft-delete`);
+    return res.data;
+  },
 };

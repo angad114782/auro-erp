@@ -67,8 +67,8 @@ export const useProduction = () => {
     }
   }, []);
 
-  const loadOne = useCallback(async (projectId: string, prodId: string) => {
-    const res = await api.get(`/projects/${projectId}/production/${prodId}`);
+  const loadOne = useCallback(async (prodId: string) => {
+    const res = await api.get(`/projects/production/${prodId}`);
     const doc = res.data?.data ?? res.data;
     setSelected(doc);
     return doc;
