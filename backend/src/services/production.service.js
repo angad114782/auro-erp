@@ -10,7 +10,11 @@ import mongoose from "mongoose";
  * - idempotent: returns existing production doc if exists
  * - creates ProductionProject, snapshots minimal fields, updates Project.status
  */
-export const createProductionFromProject = async (projectId, options = {}, { session } = {}) => {
+export const createProductionFromProject = async (
+  projectId,
+  options = {},
+  { session } = {}
+) => {
   const { initialPlan = {}, force = false, by = null } = options;
 
   // load project
@@ -18,7 +22,9 @@ export const createProductionFromProject = async (projectId, options = {}, { ses
   if (!project || !project.isActive) return null;
 
   // idempotency: check if production already exists for this project
-  const existing = await ProductionProject.findOne({ project: project._id }).session(session);
+  const existing = await ProductionProject.findOne({
+    project: project._id,
+  }).session(session);
   if (existing) {
     // optionally update with provided initialPlan (but keep it simple)
     return {
@@ -35,7 +41,9 @@ export const createProductionFromProject = async (projectId, options = {}, { ses
   if (!force) {
     const hasPoApproved = po && (po.poNumber || "").trim().length > 0;
     if (!hasPoApproved) {
-      const err = new Error("PO not approved — cannot move to production without PO");
+      const err = new Error(
+        "PO not approved — cannot move to production without PO"
+      );
       err.status = 400;
       throw err;
     }
@@ -80,7 +88,7 @@ export const createProductionFromProject = async (projectId, options = {}, { ses
   // update project status and link if you want
   const now = new Date();
   const from = project.status || null;
-  project.status = "production_planning";
+  // project.status = "production_planning";
   project.statusHistory.push({ from, to: project.status, by, at: now });
   // optionally store production ref on project
   project.productionRef = production[0]._id;

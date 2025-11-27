@@ -26,15 +26,37 @@ export async function reserveCode(name = "PRJ") {
 
   // 1) load or create config
   let cfg = await SequenceConfig.findOne({ name });
-  if (!cfg) cfg = await SequenceConfig.create({ name, pattern: "PRJ/{YY}-{MM}/{seq:4}", next: 1 });
+
+  const listofPatterns = [
+    "PRJ/{YY}-{MM}/{seq:4}",
+    "VND/{YY}-{MM}/{seq:4}",
+    "INV/{YY}-{MM}/{seq:4}",
+    "ORD/{YY}-{MM}/{seq:4}",
+  ];
+
+  if (!cfg)
+    cfg = await SequenceConfig.create({
+      name,
+      pattern: listofPatterns.includes(name) ? name : "GEN/{YYYY}/{MM}/{seq:5}",
+      next: 1,
+    });
 
   // 2) take pre-increment value
-  const pre = await SequenceConfig.findOneAndUpdate({ _id: cfg._id }, { $inc: { next: 1 } }, { new: false });
+  const pre = await SequenceConfig.findOneAndUpdate(
+    { _id: cfg._id },
+    { $inc: { next: 1 } },
+    { new: false }
+  );
   const counter = pre.next;
 
   // 3) format code and save reservation
   const code = formatCode(cfg.pattern, counter);
-  const doc = await SequenceCode.create({ name: cfg.name, code, counter, status: "reserved" });
+  const doc = await SequenceCode.create({
+    name: cfg.name,
+    code,
+    counter,
+    status: "reserved",
+  });
   return doc.toObject();
 }
 

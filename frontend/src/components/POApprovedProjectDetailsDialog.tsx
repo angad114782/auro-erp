@@ -469,16 +469,50 @@ export function POApprovedProjectDetailsDialog({
     if (!editedProject) return;
 
     try {
-      await api.patch(`/projects/${editedProject._id}/status`, {
-        status: "production",
-      });
+      // Call move-to-production endpoint instead of status update
+      const initialPlan = {
+        startDate: editedProject.createdAt
+          ? new Date(editedProject.createdAt).toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0],
+        targetCompletionDate: editedProject.redSealTargetDate
+          ? new Date(editedProject.redSealTargetDate)
+              .toISOString()
+              .split("T")[0]
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+              .toISOString()
+              .split("T")[0],
+        quantity: editedProject.po?.orderQuantity || 0,
+        notes:
+          editedProject.productDesc ||
+          editedProject.artName ||
+          "Production from PO Approved",
+      };
 
-      toast.success("Project advanced to Production!");
-      await reloadProjects?.();
-      onOpenChange(false);
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to advance project to production");
+      const response = await api.post(
+        `/projects/${editedProject._id}/move-to-production`,
+        {
+          initialPlan,
+          force: false,
+        }
+      );
+
+      if (response.data?.data?.production) {
+        toast.success("Project moved to production successfully!");
+        // Close dialog first, then reload projects
+        onOpenChange(false);
+        // Wait a bit for dialog to close, then reload
+        setTimeout(() => {
+          reloadProjects?.();
+        }, 300);
+      } else {
+        toast.error("Failed to create production record");
+      }
+    } catch (error: any) {
+      console.error("Move to production error:", error);
+      const message =
+        error?.response?.data?.message ||
+        "Failed to advance to production. Ensure PO is approved.";
+      toast.error(message);
     }
   }, [editedProject, onOpenChange, reloadProjects]);
 
