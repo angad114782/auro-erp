@@ -13,6 +13,14 @@ import {
   removeOne as deleteColorVariant,
 } from "../controllers/colorVariant.controller.js";
 
+import {
+  listProductionProjects,
+  getProductionProject,
+  updateProductionProject,
+  deleteProductionProject,
+} from "../controllers/productionProject.controller.js";
+
+
 import { upload } from "../utils/upload.js";
 
 const router = Router({ mergeParams: true });
@@ -44,5 +52,11 @@ router.delete("/:id/color-variants/:colorId", deleteColorVariant);
 
 
 router.post("/:id/move-to-production", moveToProduction);
+// ProductionProject endpoints (collection-level)
+router.get("/:id/production", listProductionProjects);    // list (by project or global)
+router.get("/:id/production/:prodId", getProductionProject); // get single production (prodId)
+router.put("/:id/production/:prodId", updateProductionProject); // full update / patch-like
+router.delete("/:id/production/:prodId", deleteProductionProject); // soft-delete
+
 
 export default router;
