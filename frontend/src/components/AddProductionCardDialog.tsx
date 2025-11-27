@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface AddProductionCardDialogProps {
   open: boolean;
@@ -58,7 +58,14 @@ export function AddProductionCardDialog({
     remarks: "",
   });
 
-  // Reset form when dialog opens and set the selected date
+  // SEARCH STATES
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isLocked, setIsLocked] = useState(false);
+
+  // --------------------------
+  // RESET FORM ON OPEN
+  // --------------------------
   useEffect(() => {
     if (open && selectedDate) {
       setFormData({
@@ -77,26 +84,62 @@ export function AddProductionCardDialog({
         productionDate: selectedDate,
         remarks: "",
       });
+
+      setIsLocked(false);
+      setSearchQuery("");
+      setSearchResults([]);
     }
   }, [open, selectedDate]);
 
+  // --------------------------
+  // SEARCH API
+  // --------------------------
+  const fetchProductList = async (query: string) => {
+    if (!query.trim()) return setSearchResults([]);
+
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL}/api/projects/search?query=${query}`
+      );
+      const json = await res.json();
+
+      if (json.success) setSearchResults(json.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // --------------------------
+  // SELECT PRODUCT → AUTOFILL
+  // --------------------------
+  const handleSelectProduct = (p: any) => {
+    setFormData({
+      ...formData,
+      productName: p.artName,
+      productCode: p.autoCode,
+      artColour: p.color,
+      company: p.company?.name || "",
+      brand: p.brand?.name || "",
+      category: p.category?.name || "",
+      type: p.type?.name || "",
+      country: p.country?.name || "",
+      gender: p.gender || "",
+    });
+
+    setIsLocked(true);
+    setSearchQuery(p.artName);
+    setSearchResults([]);
+  };
+
+  // --------------------------
+  // SUBMIT
+  // --------------------------
   const handleSubmit = () => {
-    // Validation
-    if (
-      !formData.productName ||
-      !formData.productionQuantity ||
-      !formData.productionUnit
-    ) {
-      toast.error("Please fill in all required fields");
+    if (!formData.productName || !formData.productionQuantity) {
+      toast.error("Please fill all required fields");
       return;
     }
 
-    if (!formData.productionDate) {
-      toast.error("Please select a production date");
-      return;
-    }
-
-    // Create production card data
     const cardData = {
       productName: formData.productName,
       productCode: formData.productCode,
@@ -117,148 +160,163 @@ export function AddProductionCardDialog({
       progress: 0,
     };
 
-    // Call the onSave callback to add the card
     onSave(cardData);
-
-    // Show success message
-    toast.success(
-      `Production card created for ${formData.productName} on ${new Date(
-        formData.productionDate
-      ).toLocaleDateString("en-GB")}`
-    );
-
-    // Close dialog
+    toast.success(`Production card created for ${formData.productName}`);
     onOpenChange(false);
   };
+
+  // --------------------------
+  // UI START
+  // --------------------------
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-5xl !w-5xl max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
-        {/* Sticky Header */}
-        <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b-2 border-blue-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div className="w-14 h-14 bg-linear-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                <Package className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <DialogTitle className="text-3xl font-semibold text-gray-900 mb-1">
-                  Add Production Card
-                </DialogTitle>
-                <DialogDescription className="sr-only">
-                  Create a new production card for the selected date
-                </DialogDescription>
-                <p className="text-lg text-gray-600">
-                  Schedule:{" "}
-                  {formData.productionDate
-                    ? (() => {
-                        const [year, month, day] =
-                          formData.productionDate.split("-");
-                        const date = new Date(
-                          parseInt(year),
-                          parseInt(month) - 1,
-                          parseInt(day)
-                        );
-                        return date.toLocaleDateString("en-GB", {
-                          day: "2-digit",
-                          month: "long",
-                          year: "numeric",
-                        });
-                      })()
-                    : "Not selected"}
-                </p>
-              </div>
+        {/* Header */}
+        <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b shadow-sm flex justify-between">
+          <div className="flex gap-6 items-center">
+            <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+              <Package className="w-7 h-7 text-white" />
             </div>
-            <button
-              onClick={() => onOpenChange(false)}
-              type="button"
-              className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
-            </button>
-          </div>
-        </div>
 
-        {/* Scrollable Main Content */}
-        <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-8 py-8 space-y-8">
-            {/* Product Information Section */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-5">
-                <div className="w-10 h-10 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
-                  <Package className="w-5 h-5 text-white" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900">
-                  Product Information
-                </h3>
+            <div>
+              <DialogTitle className="text-3xl font-semibold">
+                Add Production Card
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Create a new production card
+              </DialogDescription>
+              <p className="text-lg text-gray-600">
+                Schedule: {formData.productionDate || "Not selected"}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onOpenChange(false)}
+            className="h-10 w-10 flex items-center justify-center hover:bg-gray-100 rounded-full"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-8 py-8 space-y-10 scrollbar-hide">
+          {/* ---------------- SEARCH BAR ---------------- */}
+          <div className="space-y-2 relative">
+            <Label className="text-base font-semibold text-gray-700">
+              Search Product
+            </Label>
+
+            <Input
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                fetchProductList(e.target.value);
+              }}
+              placeholder="Search by product name or auto code..."
+              className="h-12 text-base border-2 focus:border-blue-500"
+            />
+
+            {searchResults.length > 0 && (
+              <div className="absolute w-full bg-white border rounded-md shadow-xl max-h-56 overflow-auto z-[999]">
+                {searchResults.map((item) => (
+                  <div
+                    key={item._id}
+                    onClick={() => handleSelectProduct(item)}
+                    className="px-4 py-2 cursor-pointer hover:bg-blue-50 border-b"
+                  >
+                    <p className="font-medium">{item.artName}</p>
+                    <p className="text-sm text-gray-600">{item.autoCode}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* ---------------- PRODUCT INFORMATION ---------------- */}
+          <div className="space-y-6">
+            <div className="flex items-center gap-5">
+              <div className="w-10 h-10 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
+                <Package className="w-5 h-5 text-white" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Product Information
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              {/* Product Name */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Product Name *
+                </Label>
+                <Input
+                  value={formData.productName}
+                  readOnly={isLocked}
+                  onChange={(e) =>
+                    setFormData({ ...formData, productName: e.target.value })
+                  }
+                  placeholder="Product name"
+                  className={`h-12 text-base border-2 ${
+                    isLocked
+                      ? "bg-gray-100 cursor-not-allowed"
+                      : "focus:border-blue-500"
+                  }`}
+                />
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                {/* Product Name */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="productName"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Product Name *
-                  </Label>
-                  <Input
-                    id="productName"
-                    value={formData.productName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, productName: e.target.value })
-                    }
-                    placeholder="e.g., Classic Running Shoes"
-                    className="h-12 text-base border-2 focus:border-blue-500"
-                  />
-                </div>
+              {/* Product Code */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Product Code
+                </Label>
+                <Input
+                  value={formData.productCode}
+                  readOnly={isLocked}
+                  onChange={(e) =>
+                    setFormData({ ...formData, productCode: e.target.value })
+                  }
+                  placeholder="Product code"
+                  className={`h-12 text-base border-2 ${
+                    isLocked
+                      ? "bg-gray-100 cursor-not-allowed"
+                      : "focus:border-blue-500"
+                  }`}
+                />
+              </div>
 
-                {/* Product Code */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="productCode"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Product Code
-                  </Label>
-                  <Input
-                    id="productCode"
-                    value={formData.productCode}
-                    onChange={(e) =>
-                      setFormData({ ...formData, productCode: e.target.value })
-                    }
-                    placeholder="e.g., RND/25-26/09/001"
-                    className="h-12 text-base border-2 focus:border-blue-500"
-                  />
-                </div>
+              {/* Art Colour */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Art / Colour Name
+                </Label>
+                <Input
+                  value={formData.artColour}
+                  readOnly={isLocked}
+                  onChange={(e) =>
+                    setFormData({ ...formData, artColour: e.target.value })
+                  }
+                  placeholder="Art / Colour"
+                  className={`h-12 text-base border-2 ${
+                    isLocked
+                      ? "bg-gray-100 cursor-not-allowed"
+                      : "focus:border-blue-500"
+                  }`}
+                />
+              </div>
 
-                {/* Art/Colour Name */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="artColour"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Art / Colour Name
-                  </Label>
-                  <Input
-                    id="artColour"
-                    value={formData.artColour}
-                    onChange={(e) =>
-                      setFormData({ ...formData, artColour: e.target.value })
-                    }
-                    placeholder="e.g., Milange Black, Chunky Mickey"
-                    className="h-12 text-base border-2 focus:border-blue-500"
-                  />
-                </div>
+              {/* Company */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Company
+                </Label>
 
-                {/* Company */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="company"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Company
-                  </Label>
+                {isLocked ? (
+                  <Input
+                    value={formData.company}
+                    readOnly
+                    className="h-12 border-2 bg-gray-100 cursor-not-allowed"
+                  />
+                ) : (
                   <Select
                     value={formData.company}
                     onValueChange={(value) =>
@@ -279,16 +337,22 @@ export function AddProductionCardDialog({
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                )}
+              </div>
 
-                {/* Brand */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="brand"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Brand
-                  </Label>
+              {/* Brand */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Brand
+                </Label>
+
+                {isLocked ? (
+                  <Input
+                    value={formData.brand}
+                    readOnly
+                    className="h-12 border-2 bg-gray-100 cursor-not-allowed"
+                  />
+                ) : (
                   <Select
                     value={formData.brand}
                     onValueChange={(value) =>
@@ -306,16 +370,22 @@ export function AddProductionCardDialog({
                       <SelectItem value="ZipStyle">ZipStyle</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                )}
+              </div>
 
-                {/* Category */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="category"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Category
-                  </Label>
+              {/* Category */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Category
+                </Label>
+
+                {isLocked ? (
+                  <Input
+                    value={formData.category}
+                    readOnly
+                    className="h-12 border-2 bg-gray-100 cursor-not-allowed"
+                  />
+                ) : (
                   <Select
                     value={formData.category}
                     onValueChange={(value) =>
@@ -332,16 +402,22 @@ export function AddProductionCardDialog({
                       <SelectItem value="Kids">Kids</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                )}
+              </div>
 
-                {/* Type */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="type"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Type
-                  </Label>
+              {/* Type */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Type
+                </Label>
+
+                {isLocked ? (
+                  <Input
+                    value={formData.type}
+                    readOnly
+                    className="h-12 border-2 bg-gray-100 cursor-not-allowed"
+                  />
+                ) : (
                   <Select
                     value={formData.type}
                     onValueChange={(value) =>
@@ -360,16 +436,22 @@ export function AddProductionCardDialog({
                       <SelectItem value="Sandals">Sandals</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                )}
+              </div>
 
-                {/* Country */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="country"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Country
-                  </Label>
+              {/* Country */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Country
+                </Label>
+
+                {isLocked ? (
+                  <Input
+                    value={formData.country}
+                    readOnly
+                    className="h-12 border-2 bg-gray-100 cursor-not-allowed"
+                  />
+                ) : (
                   <Select
                     value={formData.country}
                     onValueChange={(value) =>
@@ -387,16 +469,22 @@ export function AddProductionCardDialog({
                       <SelectItem value="Indonesia">Indonesia</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                )}
+              </div>
 
-                {/* Gender */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="gender"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Gender
-                  </Label>
+              {/* Gender */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Gender
+                </Label>
+
+                {isLocked ? (
+                  <Input
+                    value={formData.gender}
+                    readOnly
+                    className="h-12 border-2 bg-gray-100 cursor-not-allowed"
+                  />
+                ) : (
                   <Select
                     value={formData.gender}
                     onValueChange={(value) =>
@@ -413,202 +501,158 @@ export function AddProductionCardDialog({
                       <SelectItem value="Unisex">Unisex</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                )}
               </div>
             </div>
+          </div>
 
-            {/* Scheduling Information Section */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-5">
-                <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                  <Calendar className="w-5 h-5 text-white" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900">
-                  Scheduling Information
-                </h3>
+          {/* ---------------- SCHEDULING ---------------- */}
+          <div className="space-y-6">
+            <div className="flex items-center gap-5">
+              <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
+                <Calendar className="w-5 h-5 text-white" />
               </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                {/* Schedule On */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="productionDate"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Schedule On *
-                  </Label>
-                  <div className="relative">
-                    <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none z-10" />
-                    <Input
-                      id="productionDate"
-                      type="date"
-                      value={formData.productionDate}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          productionDate: e.target.value,
-                        })
-                      }
-                      className="pl-12 h-12 text-base border-2 focus:border-blue-500"
-                      style={{ colorScheme: "light" }}
-                    />
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    Select the date for production scheduling
-                  </p>
-                </div>
-
-                {/* Assigned Plant */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="assignedPlant"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Assigned Plant
-                  </Label>
-                  <Select
-                    value={formData.assignedPlant}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, assignedPlant: value })
-                    }
-                  >
-                    <SelectTrigger className="h-12 border-2 focus:border-blue-500">
-                      <SelectValue placeholder="Select plant" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Plant A - China">
-                        Plant A - China
-                      </SelectItem>
-                      <SelectItem value="Plant B - Bangladesh">
-                        Plant B - Bangladesh
-                      </SelectItem>
-                      <SelectItem value="Plant C - India">
-                        Plant C - India
-                      </SelectItem>
-                      <SelectItem value="Plant D - Vietnam">
-                        Plant D - Vietnam
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-gray-500">
-                    Assign this production to a manufacturing plant
-                  </p>
-                </div>
-              </div>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Scheduling Information
+              </h3>
             </div>
 
-            {/* Production Details Section */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-5">
-                <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
-                  <Building className="w-5 h-5 text-white" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900">
-                  Production Details
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                {/* Production Quantity */}
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="productionQuantity"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Production Quantity *
-                  </Label>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              {/* Schedule On */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Schedule On *
+                </Label>
+                <div className="relative">
+                  <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none z-10" />
                   <Input
-                    id="productionQuantity"
-                    type="number"
-                    min="0"
-                    value={formData.productionQuantity}
+                    type="date"
+                    value={formData.productionDate}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        productionQuantity: e.target.value,
+                        productionDate: e.target.value,
                       })
                     }
-                    placeholder="e.g., 1200"
-                    className="h-12 text-base border-2 focus:border-blue-500"
+                    className="pl-12 h-12 text-base border-2 focus:border-blue-500"
                   />
                 </div>
+              </div>
 
-                {/* Production Unit */}
-                {/* <div className="space-y-2">
-                  <Label
-                    htmlFor="productionUnit"
-                    className="text-base font-semibold text-gray-700"
-                  >
-                    Production Unit *
-                  </Label>
-                  <Select
-                    value={formData.productionUnit}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, productionUnit: value })
-                    }
-                  >
-                    <SelectTrigger className="h-12 border-2 focus:border-blue-500">
-                      <SelectValue placeholder="Select unit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pairs">Pairs</SelectItem>
-                      <SelectItem value="pieces">Pieces</SelectItem>
-                      <SelectItem value="units">Units</SelectItem>
-                      <SelectItem value="sets">Sets</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div> */}
+              {/* Assigned Plant */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Assigned Plant
+                </Label>
+
+                <Select
+                  value={formData.assignedPlant}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, assignedPlant: value })
+                  }
+                >
+                  <SelectTrigger className="h-12 border-2 focus:border-blue-500">
+                    <SelectValue placeholder="Select plant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Plant A - China">
+                      Plant A - China
+                    </SelectItem>
+                    <SelectItem value="Plant B - Bangladesh">
+                      Plant B - Bangladesh
+                    </SelectItem>
+                    <SelectItem value="Plant C - India">
+                      Plant C - India
+                    </SelectItem>
+                    <SelectItem value="Plant D - Vietnam">
+                      Plant D - Vietnam
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+          </div>
 
-            {/* Remarks Section */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-5">
-                <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
-                  <FileText className="w-5 h-5 text-white" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900">
-                  Additional Information
-                </h3>
+          {/* ---------------- PRODUCTION DETAILS ---------------- */}
+          <div className="space-y-6">
+            <div className="flex items-center gap-5">
+              <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
+                <Building className="w-5 h-5 text-white" />
               </div>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Production Details
+              </h3>
+            </div>
 
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              {/* Production Quantity */}
               <div className="space-y-2">
-                <Label
-                  htmlFor="remarks"
-                  className="text-base font-semibold text-gray-700"
-                >
-                  Remarks
+                <Label className="text-base font-semibold text-gray-700">
+                  Production Quantity *
                 </Label>
-                <Textarea
-                  id="remarks"
-                  value={formData.remarks}
+                <Input
+                  type="number"
+                  value={formData.productionQuantity}
                   onChange={(e) =>
-                    setFormData({ ...formData, remarks: e.target.value })
+                    setFormData({
+                      ...formData,
+                      productionQuantity: e.target.value,
+                    })
                   }
-                  placeholder="Add any special instructions, notes, or requirements for this production card..."
-                  rows={4}
-                  className="resize-none text-base border-2 focus:border-blue-500 leading-relaxed"
+                  placeholder="e.g. 1200"
+                  className="h-12 text-base border-2 focus:border-blue-500"
                 />
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Sticky Footer */}
+          {/* ---------------- REMARKS ---------------- */}
+          <div className="space-y-6">
+            <div className="flex items-center gap-5">
+              <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
+                <FileText className="w-5 h-5 text-white" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Additional Information
+              </h3>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-base font-semibold text-gray-700">
+                Remarks
+              </Label>
+              <Textarea
+                value={formData.remarks}
+                onChange={(e) =>
+                  setFormData({ ...formData, remarks: e.target.value })
+                }
+                placeholder="Add any special instructions…"
+                rows={4}
+                className="resize-none text-base border-2 focus:border-blue-500 leading-relaxed"
+              />
+            </div>
+          </div>
+        </div>
+        {/* end of scroll container */}
+        {/* ---------------- FOOTER (unchanged UI) ---------------- */}
         <div className="sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t-2 border-gray-200 shadow-2xl shadow-gray-900/10 z-50">
           <div className="px-8 py-6 flex justify-end gap-4">
             <Button
               onClick={() => onOpenChange(false)}
               variant="outline"
               size="lg"
-              className="px-8 py-3 h-12 border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+              className="px-8 py-3 h-12 border-2 border-gray-300 text-gray-700 
+              hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
             >
               Cancel
             </Button>
+
             <Button
               onClick={handleSubmit}
               size="lg"
-              className="px-8 py-3 h-12 bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 border-0"
+              className="px-8 py-3 h-12 bg-linear-to-r from-blue-500 to-blue-600 
+              hover:from-blue-600 hover:to-blue-700 text-white shadow-lg 
+              hover:shadow-xl transition-all duration-200 border-0"
             >
               <Save className="w-5 h-5 mr-2" />
               Create Production Card

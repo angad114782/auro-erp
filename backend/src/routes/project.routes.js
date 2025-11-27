@@ -1,7 +1,16 @@
 import { Router } from "express";
 import {
-  create, list, get, update, remove,
-  updateStatus, updateNextUpdate, updateClientCost, updateClientApproval,updatePO,  
+  create,
+  list,
+  get,
+  update,
+  remove,
+  updateStatus,
+  updateNextUpdate,
+  updateClientCost,
+  updateClientApproval,
+  updatePO,
+  searchProjects,
 } from "../controllers/project.controller.js";
 
 import {
@@ -19,6 +28,7 @@ const uploadFields = upload.fields([
   { name: "coverImage", maxCount: 1 },
   { name: "sampleImages", maxCount: 5 },
 ]);
+router.get("/search", searchProjects);
 
 /** CRUD */
 router.post("/", uploadFields, create);
@@ -29,8 +39,8 @@ router.delete("/:id", remove);
 
 /** Atomic project actions */
 router.patch("/:id/status", updateStatus);
-router.patch("/:id/next-update", updateNextUpdate);     // { date, note }
-router.patch("/:id/client-cost", updateClientCost);     // { amount }
+router.patch("/:id/next-update", updateNextUpdate); // { date, note }
+router.patch("/:id/client-cost", updateClientCost); // { amount }
 router.patch("/:id/client-approval", updateClientApproval); // { status }
 router.patch("/:id/po", updatePO);
 

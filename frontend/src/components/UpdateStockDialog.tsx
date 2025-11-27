@@ -133,7 +133,7 @@ export function UpdateStockDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(isOpen) => {
+      onOpenChange={(isOpen: boolean) => {
         if (!isOpen) onOpenChange(false);
       }}
     >

@@ -12,6 +12,7 @@ import {
   setClientApproval,
   setProjectPO,
 } from "../services/project.service.js";
+import { Project } from "../models/Project.model.js";
 
 /** CREATE */
 export const create = async (req, res, next) => {
@@ -406,5 +407,36 @@ export const updatePO = async (req, res, next) => {
     });
   } catch (e) {
     next(e);
+  }
+};
+
+// GET /projects/search?query=abc
+export const searchProjects = async (req, res) => {
+  try {
+    const { query } = req.query;
+
+    if (!query || query.trim() === "") {
+      return res.json({ success: true, data: [] });
+    }
+
+    const projects = await Project.find({
+      isActive: true,
+      $or: [
+        { artName: { $regex: query, $options: "i" } },
+        { autoCode: { $regex: query, $options: "i" } },
+      ],
+    })
+      .limit(25)
+      .populate("company", "name")
+      .populate("brand", "name")
+      .populate("category", "name")
+      .populate("type", "name")
+      .populate("country", "name")
+      .lean();
+
+    res.json({ success: true, data: projects });
+  } catch (err) {
+    console.error("Search error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };

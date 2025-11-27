@@ -56,7 +56,7 @@ import { CreateProductionCardDialog } from "./CreateProductionCardDialog";
 import { AddProductionCardDialog } from "./AddProductionCardDialog";
 import { ViewProductionCardDialog } from "./ViewProductionCardDialog";
 import { ProductionPlanDetailsDialog } from "./ProductionPlanDetailsDialog";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 // Production Plan interface based on R&D project data
 interface ProductionPlan {
