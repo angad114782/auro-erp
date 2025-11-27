@@ -1,37 +1,30 @@
+import ProductionCalendar from "../models/ProductionCalendar.model.js";
 import { Project } from "../models/Project.model.js";
 import { PoDetails } from "../models/PoDetails.model.js";
-import ProductionCalendar from "../models/ProductionCalendar.model.js";
 import Fuse from "fuse.js";
+import mongoose from "mongoose";
 
-/**
- * searchProjectsForCalendarService
- * - if q is short or empty: return recent projects (limit)
- * - else: fetch candidate projects (by name/code) and run Fuse fuzzy search server-side
- */
+// --- existing search service (unchanged) ---
 export const searchProjectsForCalendarService = async (q, { limit = 10 } = {}) => {
   const cleanQ = (q || "").trim();
   if (!cleanQ) {
-    // return most recent active projects limited
     const recent = await Project.find({ isActive: true })
       .sort({ updatedAt: -1 })
       .limit(limit)
-      .select("autoCode artName color brand category")
+      .select("autoCode artName color size brand category")
       .populate("brand", "name")
       .populate("category", "name")
       .lean();
     return recent.map(mapProjectForAutocomplete);
   }
 
-  // 1) quick DB filters: regex on autoCode / artName / color
   const regex = new RegExp(escapeRegExp(cleanQ), "i");
-  // fetch a reasonable candidate set (limit 200) to run Fuse on
   const candidates = await Project.find({
     isActive: true,
     $or: [
       { autoCode: { $regex: regex } },
       { artName: { $regex: regex } },
       { color: { $regex: regex } },
-      // you can add other fields
     ],
   })
     .limit(200)
@@ -40,26 +33,19 @@ export const searchProjectsForCalendarService = async (q, { limit = 10 } = {}) =
     .populate("category", "name")
     .lean();
 
-  // If results are small, return simple mapping
-  if (candidates.length <= limit) {
-    return candidates.map(mapProjectForAutocomplete);
-  }
+  if (candidates.length <= limit) return candidates.map(mapProjectForAutocomplete);
 
-  // 2) use Fuse.js for fuzzy ranking
   const fuse = new Fuse(candidates, {
     keys: [
       { name: "autoCode", weight: 0.6 },
       { name: "artName", weight: 0.9 },
       { name: "color", weight: 0.4 },
     ],
-    threshold: 0.35, // tweak for fuzziness
-    distance: 100,
-    minMatchCharLength: 2,
+    threshold: 0.35,
   });
 
   const fuseResults = fuse.search(cleanQ, { limit });
-  const mapped = fuseResults.map((r) => mapProjectForAutocomplete(r.item));
-  return mapped;
+  return fuseResults.map((r) => mapProjectForAutocomplete(r.item));
 };
 
 function mapProjectForAutocomplete(p) {
@@ -74,21 +60,11 @@ function mapProjectForAutocomplete(p) {
     category: p.category?.name || null,
   };
 }
-
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * createCalendarEntryService
- * payload expected shape:
- * {
- *   projectId,               // required - selected project _id from search
- *   scheduling: { scheduleDate, assignedPlant, soleFrom, soleColor, soleExpectedDate },
- *   productionDetails: { quantity },
- *   additional: { remarks }
- * }
- */
+// --- create calendar entry (as before) ---
 export const createCalendarEntryService = async (payload, { session, by = null } = {}) => {
   const { projectId, scheduling, productionDetails, additional } = payload || {};
   if (!projectId) {
@@ -107,8 +83,7 @@ export const createCalendarEntryService = async (payload, { session, by = null }
     throw err;
   }
 
-  // fetch project & PO summary
-  const project = await Project.findById(projectId).lean().session(session);
+  const project = await Project.findById(projectId).session(session);
   if (!project || !project.isActive) {
     const err = new Error("Project not found or not active");
     err.status = 404;
@@ -147,8 +122,102 @@ export const createCalendarEntryService = async (payload, { session, by = null }
     },
     createdBy: by,
     updatedBy: by,
+    isActive: true,
   };
 
   const created = await ProductionCalendar.create([doc], { session });
   return created[0];
+};
+
+// --- list (only active) with pagination ---
+export const listCalendarEntriesService = async ({ page = 1, limit = 20 } = {}) => {
+  const skip = (page - 1) * limit;
+  const docs = await ProductionCalendar.find({ isActive: true })
+    .sort({ scheduling: 1, createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .populate("project", "autoCode artName color")
+    .lean();
+
+  const total = await ProductionCalendar.countDocuments({ isActive: true });
+  return { items: docs, total, page, limit };
+};
+
+// --- get single (only active) ---
+export const getCalendarEntryService = async (id) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
+  const doc = await ProductionCalendar.findOne({ _id: id, isActive: true })
+    .populate("project projectSnapshot.brand projectSnapshot.category")
+    .lean();
+  return doc;
+};
+
+// --- update (partial replace) ---
+export const updateCalendarEntryService = async (id, payload, { session, by = null } = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
+
+  const update = {};
+
+  if (payload.scheduling) {
+    update["scheduling"] = {
+      scheduleDate: payload.scheduling.scheduleDate ? new Date(payload.scheduling.scheduleDate) : undefined,
+      assignedPlant: payload.scheduling.assignedPlant,
+      soleFrom: payload.scheduling.soleFrom,
+      soleColor: payload.scheduling.soleColor,
+      soleExpectedDate: payload.scheduling.soleExpectedDate ? new Date(payload.scheduling.soleExpectedDate) : null,
+    };
+  }
+
+  if (payload.productionDetails) {
+    update["productionDetails"] = {
+      quantity: payload.productionDetails.quantity != null ? Number(payload.productionDetails.quantity) : undefined,
+    };
+  }
+
+  if (payload.additional) {
+    update["additional"] = {
+      remarks: payload.additional.remarks != null ? payload.additional.remarks : undefined,
+    };
+  }
+
+  // cleaned update: remove undefined keys
+  const setObj = {};
+  Object.keys(update).forEach((k) => {
+    if (update[k] !== undefined) setObj[k] = update[k];
+  });
+  if (Object.keys(setObj).length === 0 && payload.isActive === undefined) {
+    const err = new Error("nothing to update");
+    err.status = 400;
+    throw err;
+  }
+
+  // track who updated
+  setObj.updatedBy = by;
+  setObj.updatedAt = new Date();
+
+  const doc = await ProductionCalendar.findOneAndUpdate(
+    { _id: id, isActive: true },
+    { $set: setObj },
+    { new: true, session }
+  );
+  return doc;
+};
+
+// --- soft delete ---
+export const deleteCalendarEntryService = async (id, { session, by = null } = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
+
+  const doc = await ProductionCalendar.findOneAndUpdate(
+    { _id: id, isActive: true },
+    {
+      $set: {
+        isActive: false,
+        updatedBy: by,
+        updatedAt: new Date(),
+      },
+    },
+    { new: true, session }
+  );
+
+  return doc;
 };

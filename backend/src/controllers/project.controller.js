@@ -13,7 +13,7 @@ import {
   setProjectPO,
 } from "../services/project.service.js";
 import { Project } from "../models/Project.model.js";
-import { createProductionFromProject } from "../services/production.service.js";
+import { createProductionFromProject } from "../services/productionProject.service.js";
 
 /** CREATE */
 export const create = async (req, res, next) => {
@@ -484,3 +484,5 @@ export const moveToProduction = async (req, res, next) => {
     session.endSession();
   }
 };
+
+
