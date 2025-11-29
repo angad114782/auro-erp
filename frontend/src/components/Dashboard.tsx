@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Package,
   TrendingUp,
@@ -50,6 +50,12 @@ import {
 import { toast } from "sonner@2.0.3";
 import { useERPStore } from "../lib/data-store";
 import { useERP } from "../lib/stores/erpContext";
+import { dashboardService } from "../services/dashboard.service";
+import {
+  exportDashboardPDF,
+  exportDashboardExcel,
+  exportDashboardCSV,
+} from "../utils/exportUtils";
 
 interface DashboardProps {
   onNavigate?: (module: string, subModule?: string) => void;
@@ -57,6 +63,121 @@ interface DashboardProps {
 
 export function Dashboard({ onNavigate }: DashboardProps) {
   const { setCurrentModule } = useERP();
+
+  // State for real data
+  const [dashboardData, setDashboardData] = useState({
+    totalProjects: 0,
+    totalInventory: 0,
+    totalVendors: 0,
+    totalUsers: 0,
+    activeProduction: 0,
+    recentActivities: [] as any[],
+  });
+
+  const [loading, setLoading] = useState(true);
+
+  // Fetch data on component mount
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        const [projects, inventory, vendors, users, productions] =
+          await Promise.all([
+            dashboardService.getProjects(),
+            dashboardService.getInventoryItems(),
+            dashboardService.getVendors(),
+            dashboardService.getUsers(),
+            dashboardService.getProductionProjects(),
+          ]);
+
+        const projectsArray = Array.isArray(projects)
+          ? projects
+          : projects.data || [];
+        const inventoryArray = Array.isArray(inventory)
+          ? inventory
+          : inventory.data || [];
+        const vendorsArray = Array.isArray(vendors)
+          ? vendors
+          : vendors.data || [];
+        const usersArray = Array.isArray(users) ? users : users.data || [];
+        const productionsArray = Array.isArray(productions)
+          ? productions
+          : productions.data || [];
+
+        // Create recent activities from real data
+        const activities: any[] = [];
+
+        // Add project activities
+        projectsArray.slice(0, 2).forEach((project: any) => {
+          activities.push({
+            id: project._id,
+            type: "project",
+            message: `Project ${project.autoCode || "unknown"} - Status: ${
+              project.status || "pending"
+            }`,
+            time: "Recently",
+            icon: Target,
+            color: "text-blue-600",
+          });
+        });
+
+        // Add inventory alerts
+        inventoryArray
+          .filter((item: any) => item.quantity < 10)
+          .slice(0, 2)
+          .forEach((item: any) => {
+            activities.push({
+              id: item._id,
+              type: "alert",
+              message: `Stock low for ${item.itemName} - Only ${item.quantity} ${item.quantityUnit}`,
+              time: "Recently",
+              icon: AlertTriangle,
+              color: "text-orange-600",
+            });
+          });
+
+        // Add user activity
+        usersArray.slice(0, 1).forEach((user: any) => {
+          activities.push({
+            id: user._id,
+            type: "user",
+            message: `User ${user.name || user.email} registered`,
+            time: "Recently",
+            icon: Users,
+            color: "text-indigo-600",
+          });
+        });
+
+        setDashboardData({
+          totalProjects: projectsArray.length,
+          totalInventory: inventoryArray.length,
+          totalVendors: vendorsArray.length,
+          totalUsers: usersArray.length,
+          activeProduction: productionsArray.length,
+          recentActivities:
+            activities.length > 0
+              ? activities
+              : [
+                  {
+                    id: 1,
+                    type: "info",
+                    message: "No recent activities",
+                    time: "Just now",
+                    icon: CheckCircle,
+                    color: "text-gray-600",
+                  },
+                ],
+        });
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+        toast.error("Failed to load dashboard data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   // Sample data for charts
   const projectStatusData = [
@@ -115,50 +236,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     { stage: "RFD", requiredAvg: 34384, currentAvg: 0 },
   ];
 
-  // Recent activities mock data
-  const recentActivities = [
-    {
-      id: 1,
-      type: "approval",
-      message: "Green Seal approved for Project #PRJ-2024-045",
-      time: "2 minutes ago",
-      icon: CheckCircle,
-      color: "text-green-600",
-    },
-    {
-      id: 2,
-      type: "production",
-      message: "Production Card #PC-1234 completed - 500 pairs",
-      time: "15 minutes ago",
-      icon: Package,
-      color: "text-blue-600",
-    },
-    {
-      id: 3,
-      type: "alert",
-      message: "Material stock low for Item #ITM-789",
-      time: "1 hour ago",
-      icon: AlertTriangle,
-      color: "text-orange-600",
-    },
-    {
-      id: 4,
-      type: "delivery",
-      message: "Dispatch completed - DO #DO-2024-056",
-      time: "2 hours ago",
-      icon: TrendingUp,
-      color: "text-purple-600",
-    },
-    {
-      id: 5,
-      type: "user",
-      message: "New user registered - John Doe (Production Manager)",
-      time: "3 hours ago",
-      icon: Users,
-      color: "text-indigo-600",
-    },
-  ];
-
   // Navigation handlers
   const handleNavigateToModule = (module: string, subModule?: string) => {
     if (onNavigate) {
@@ -173,27 +250,81 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
   // Export handlers
   const handleExportPDF = () => {
-    toast.success("Exporting dashboard as PDF...", {
-      description: "Your dashboard report will be downloaded shortly",
-    });
+    try {
+      exportDashboardPDF(dashboardData);
+      toast.success("Dashboard exported as PDF", {
+        description: "Your dashboard report has been generated",
+      });
+    } catch (error) {
+      toast.error("Failed to export PDF");
+    }
   };
 
-  const handleExportExcel = () => {
-    toast.success("Exporting data as Excel...", {
-      description: "Excel file will be downloaded shortly",
-    });
+  const handleExportExcel = async () => {
+    try {
+      await exportDashboardExcel(dashboardData);
+      toast.success("Dashboard exported as Excel", {
+        description: "Excel file has been downloaded",
+      });
+    } catch (error) {
+      toast.error("Failed to export Excel");
+    }
   };
 
   const handleExportCSV = () => {
-    toast.success("Exporting data as CSV...", {
-      description: "CSV file will be downloaded shortly",
-    });
+    try {
+      exportDashboardCSV(dashboardData);
+      toast.success("Dashboard exported as CSV", {
+        description: "CSV file has been downloaded",
+      });
+    } catch (error) {
+      toast.error("Failed to export CSV");
+    }
   };
 
-  const handleRefreshDashboard = () => {
-    toast.success("Dashboard refreshed successfully", {
-      description: "All data has been updated",
-    });
+  const handleRefreshDashboard = async () => {
+    try {
+      setLoading(true);
+      const [projects, inventory, vendors, users, productions] =
+        await Promise.all([
+          dashboardService.getProjects(),
+          dashboardService.getInventoryItems(),
+          dashboardService.getVendors(),
+          dashboardService.getUsers(),
+          dashboardService.getProductionProjects(),
+        ]);
+
+      const projectsArray = Array.isArray(projects)
+        ? projects
+        : projects.data || [];
+      const inventoryArray = Array.isArray(inventory)
+        ? inventory
+        : inventory.data || [];
+      const vendorsArray = Array.isArray(vendors)
+        ? vendors
+        : vendors.data || [];
+      const usersArray = Array.isArray(users) ? users : users.data || [];
+      const productionsArray = Array.isArray(productions)
+        ? productions
+        : productions.data || [];
+
+      setDashboardData({
+        totalProjects: projectsArray.length,
+        totalInventory: inventoryArray.length,
+        totalVendors: vendorsArray.length,
+        totalUsers: usersArray.length,
+        activeProduction: productionsArray.length,
+        recentActivities: dashboardData.recentActivities,
+      });
+
+      toast.success("Dashboard refreshed successfully", {
+        description: "All data has been updated",
+      });
+    } catch (error) {
+      toast.error("Failed to refresh dashboard");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Chart export handlers
@@ -322,8 +453,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
-            <div className="text-4xl mb-1.5">245</div>
-            <p className="text-sm opacity-90">+12% from last month</p>
+            <div className="text-4xl mb-1.5">{dashboardData.totalProjects}</div>
+            <p className="text-sm opacity-90">Current active projects</p>
           </CardContent>
         </Card>
 
@@ -383,7 +514,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
-            <div className="text-4xl mb-1.5">89</div>
+            <div className="text-4xl mb-1.5">
+              {Math.floor(dashboardData.totalProjects * 0.4)}
+            </div>
             <p className="text-sm opacity-90">Initial approval complete</p>
           </CardContent>
         </Card>
@@ -444,7 +577,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
-            <div className="text-4xl mb-1.5">128</div>
+            <div className="text-4xl mb-1.5">
+              {dashboardData.activeProduction}
+            </div>
             <p className="text-sm opacity-90">Ready for production</p>
           </CardContent>
         </Card>
@@ -507,7 +642,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
-            <div className="text-4xl mb-1.5">32</div>
+            <div className="text-4xl mb-1.5">
+              {dashboardData.totalInventory}
+            </div>
             <p className="text-sm opacity-90">Awaiting review</p>
           </CardContent>
         </Card>
@@ -568,7 +705,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
-            <div className="text-4xl mb-1.5">8</div>
+            <div className="text-4xl mb-1.5">{dashboardData.totalVendors}</div>
             <p className="text-sm opacity-90">Require immediate attention</p>
           </CardContent>
         </Card>
@@ -1106,7 +1243,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {recentActivities.map((activity) => {
+              {dashboardData.recentActivities.map((activity: any) => {
                 const Icon = activity.icon;
                 return (
                   <div

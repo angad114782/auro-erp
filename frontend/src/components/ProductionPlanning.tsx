@@ -88,6 +88,8 @@ interface ProductionPlan {
   country?: string;
   countryId?: string;
 
+  profileImage?: string; // Add this for displaying product image
+
   quantity: number;
   startDate: string;
   endDate: string;
@@ -102,7 +104,7 @@ interface ProductionPlan {
     | "In Production";
   assignedPlant: string;
   assignedTeam: string;
-  taskInc: string;
+  // taskInc: string;
 
   targetCost: number;
   finalCost: number;
@@ -126,7 +128,13 @@ interface ProductionPlan {
 const resolveNameFromList = (
   value: any,
   list: any[] = [],
-  nameKeys: string[] = ["name", "brandName", "categoryName", "typeName", "countryName"]
+  nameKeys: string[] = [
+    "name",
+    "brandName",
+    "categoryName",
+    "typeName",
+    "countryName",
+  ]
 ): string | undefined => {
   if (!value) return undefined;
 
@@ -140,19 +148,23 @@ const resolveNameFromList = (
   // If it's a string id, try to find in list by id/_id/value
   const foundById = list.find((it) => (it.id ?? it._id ?? it.value) === value);
   if (foundById) {
-    for (const key of nameKeys) if (foundById[key]) return String(foundById[key]);
+    for (const key of nameKeys)
+      if (foundById[key]) return String(foundById[key]);
     if (foundById.name) return String(foundById.name);
     return String(foundById.id ?? foundById._id ?? value);
   }
 
   // If it's already a readable non-ObjectId string, return it
-  if (typeof value === "string" && value.length > 0 && !/^[0-9a-fA-F]{24}$/.test(value)) {
+  if (
+    typeof value === "string" &&
+    value.length > 0 &&
+    !/^[0-9a-fA-F]{24}$/.test(value)
+  ) {
     return value;
   }
 
   return undefined;
 };
-
 
 export function ProductionPlanning() {
   const { rdProjects, brands, categories, types, colors, countries } =
@@ -161,10 +173,11 @@ export function ProductionPlanning() {
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("list");
-const [currentDate, setCurrentDate] = useState<Date>(new Date());
-const [isSavingCalendarChange, setIsSavingCalendarChange] = useState(false);
-const [isDeletingEntryId, setIsDeletingEntryId] = useState<string | null>(null);
-
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const [isSavingCalendarChange, setIsSavingCalendarChange] = useState(false);
+  const [isDeletingEntryId, setIsDeletingEntryId] = useState<string | null>(
+    null
+  );
 
   // Production cards management state
   const [isProductionDialogOpen, setIsProductionDialogOpen] = useState(false);
@@ -176,8 +189,9 @@ const [isDeletingEntryId, setIsDeletingEntryId] = useState<string | null>(null);
   >(null);
   const [isViewCardDialogOpen, setIsViewCardDialogOpen] = useState(false);
   // keep this flexible because calendar entries shape is not full ProductionPlan
-  const [selectedProductionForView, setSelectedProductionForView] =
-    useState<any | null>(null);
+  const [selectedProductionForView, setSelectedProductionForView] = useState<
+    any | null
+  >(null);
   const [isPlanDetailsDialogOpen, setIsPlanDetailsDialogOpen] = useState(false);
   const [selectedPlanForDetails, setSelectedPlanForDetails] =
     useState<ProductionPlan | null>(null);
@@ -203,9 +217,7 @@ const [isDeletingEntryId, setIsDeletingEntryId] = useState<string | null>(null);
     }>
   >([]);
 
-  const [productionPlans, setProductionPlans] = useState<ProductionPlan[]>(
-    []
-  );
+  const [productionPlans, setProductionPlans] = useState<ProductionPlan[]>([]);
 
   React.useEffect(() => {
     // inside ProductionPlanning component:
@@ -232,147 +244,75 @@ const [isDeletingEntryId, setIsDeletingEntryId] = useState<string | null>(null);
           rawItems = raw.items.data;
         } else {
           console.warn("fetchProductionPlans unexpected response shape:", raw);
-          toast.error("Unexpected response from production API — check console.");
+          toast.error(
+            "Unexpected response from production API — check console."
+          );
           rawItems = [];
         }
 
         // Map to ProductionPlan[] — ensure all required fields exist
         const mapped: ProductionPlan[] = rawItems.map((doc: any) => {
-          const safeDate = (d: any) =>
-            d
-              ? typeof d === "string"
-                ? d.split("T")[0]
-                : new Date(d).toISOString().split("T")[0]
-              : "";
+          const proj = doc.project || {};
+          const po = doc.po || {};
 
-          // build status mapping conservatively
-          let status: ProductionPlan["status"] = "Planning";
-          const statusRaw = (
-            doc.status ??
-            doc.productionStatus ??
-            doc.scheduling?.status ??
-            ""
-          )
-            .toString()
-            .toLowerCase();
-          if (statusRaw.includes("capacity")) status = "Capacity Allocated";
-          else if (
-            statusRaw.includes("manufactur") ||
-            statusRaw.includes("assigned")
-          )
-            status = "Manufacturing Assigned";
-          else if (statusRaw.includes("process")) status = "Process Defined";
-          else if (statusRaw.includes("ready")) status = "Ready for Production";
-          else if (statusRaw.includes("in") && statusRaw.includes("production"))
-            status = "In Production";
+          const safeDate = (d: any) =>
+            d ? new Date(d).toISOString().split("T")[0] : "";
 
           return {
-            // required ProductionPlan fields (use fallbacks)
-            id: doc._id ?? doc.id ?? `p-${Math.random().toString(36).slice(2, 9)}`,
-            rdProjectId:
-              doc.project?._id ?? doc.projectId ?? doc.rdProjectId ?? "",
-            projectCode:
-              doc.projectSnapshot?.autoCode ??
-              doc.projectCode ??
-              doc.project?.autoCode ??
-              "-",
-            poNumber:
-              doc.projectSnapshot?.poNumber ?? doc.poNumber ?? "-",
-            planName:
-  doc.planName ??
-  doc.projectSnapshot?.artName ??
-  doc.project?.artName ??
-  doc.projectSnapshot?.productName ??
-  doc.name ??
-  "Untitled Plan",
-productName:
-  doc.projectSnapshot?.artName ??
-  doc.project?.artName ??
-  doc.projectSnapshot?.productName ??
-  doc.productName ??
-  doc.name ??
-  "-",
-brand:
-  // prefer snapshot brandName, then project.brandName, then doc.brand
-  doc.projectSnapshot?.brandName ??
-  (doc.project && (doc.project.brandName || doc.project.brand)) ??
-  doc.brand ??
-  "-",
+            id: doc._id,
+            rdProjectId: proj._id || "",
+            projectCode: proj.autoCode || doc.autoCodeSnapshot || "-",
+            poNumber: po.poNumber || "-",
+            poValue: po.totalAmount || 0,
 
-            brandCode: doc.brandCode ?? "",
-            category:
-              doc.projectSnapshot?.categoryName ?? doc.category ?? "",
-            type: doc.projectSnapshot?.typeName ?? doc.type ?? "",
-            gender: doc.gender ?? "Unisex",
-            artColour:
-              doc.projectSnapshot?.colorName ?? doc.artColour ?? "",
-            color: doc.projectSnapshot?.colorName ?? doc.color ?? "",
-            country:
-              doc.projectSnapshot?.countryName ?? doc.country ?? "",
-            quantity: Number(
-              doc.productionDetails?.quantity ??
-                doc.quantity ??
-                doc.qty ??
-                0
-            ),
+            // Name fields
+            planName: proj.artName || doc.artNameSnapshot || "Untitled",
+            productName: proj.artName || doc.artNameSnapshot || "Untitled",
 
-            startDate: safeDate(
-              doc.scheduling?.startDate ??
-                doc.startDate ??
-                doc.productionDetails?.startDate
-            ),
-            endDate: safeDate(
-              doc.scheduling?.endDate ??
-                doc.endDate ??
-                doc.productionDetails?.endDate
-            ),
-            deliveryDate: safeDate(
-              doc.scheduling?.deliveryDate ?? doc.deliveryDate
-            ),
+            // brand/category/type not available → fallback to "-"
+            brand: proj.brand || "-",
+            category: proj.category || "-",
+            type: proj.type || "-",
 
-            priority: (doc.priority as any) ?? "Medium",
-            status,
+            // color / art colour
+            artColour: proj.color || doc.colorSnapshot || "",
+            color: proj.color || doc.colorSnapshot || "",
 
-            assignedPlant:
-              doc.scheduling?.assignedPlant ?? doc.assignedPlant ?? "",
-            assignedTeam: doc.scheduling?.assignedTeam ?? "",
-            taskInc: doc.taskInc ?? doc.createdBy ?? "",
+            // quantity from PO
+            quantity: po.orderQuantity || 0,
 
-            targetCost: Number(
-              doc.productionDetails?.targetCost ?? doc.targetCost ?? 0
-            ),
-            finalCost: Number(
-              doc.productionDetails?.finalCost ?? doc.finalCost ?? 0
-            ),
-            poValue: Number(
-              doc.productionDetails?.poValue ?? doc.poValue ?? 0
-            ),
-            estimatedCost: Number(
-              doc.productionDetails?.estimatedCost ?? doc.estimatedCost ?? 0
-            ),
-            costVariance:
-              doc.productionDetails?.costVariance ??
-              doc.costVariance ?? {
-                amount: 0,
-                isOverBudget: false,
-                percentage: "0",
-              },
+            // dates
+            startDate: safeDate(doc.startDate),
+            endDate: safeDate(doc.targetCompletionDate),
+            deliveryDate: safeDate(doc.targetCompletionDate),
 
-            materials: Array.isArray(doc.materials)
-              ? doc.materials.map((m: any) => ({
-                  name: m.name ?? m.materialName ?? "-",
-                  required: Number(m.required ?? m.qty ?? 0),
-                  available: Number(m.available ?? m.avail ?? 0),
-                }))
-              : [],
+            priority: doc.priority || "Medium",
+            status: doc.status || "Planning",
 
-            progress: Number(
-              doc.progress ?? doc.productionDetails?.progress ?? 0
-            ),
-            remarks: doc.remarks ?? doc.notes ?? "",
-            createdDate: safeDate(doc.createdAt ?? doc.createdDate),
-            updatedDate: safeDate(doc.updatedAt ?? doc.updatedDate),
-          } as ProductionPlan;
+            assignedPlant: doc.assignedPlant || "",
+            assignedTeam: (doc.assignedTeam || []).join(", ") || "",
+
+            targetCost: doc.targetCost || 0,
+            finalCost: doc.finalCost || 0,
+            estimatedCost: doc.estimatedCost || 0,
+
+            costVariance: {
+              amount: 0,
+              isOverBudget: false,
+              percentage: "0",
+            },
+
+            materials: doc.materials || [],
+            progress: 0,
+
+            remarks: doc.notes || "",
+            createdDate: safeDate(doc.createdAt),
+            updatedDate: safeDate(doc.updatedAt),
+
+            profileImage: doc.coverImageSnapshot || "",
+
+            raw: doc,
+          };
         });
 
         // Set state (replace whole array)
@@ -386,39 +326,38 @@ brand:
     fetchProductionPlans();
   }, []);
 
+  console.log(productionPlans, "pprr");
   // ---------------------- Calendar types & state ----------------------
   type CalendarEntry = {
-  id: string;
-  projectId: string | null;
-  projectCode: string;
+    id: string;
+    projectId: string | null;
+    projectCode: string;
 
-  productName: string;
-  artName: string;
-  color: string;
-  size: string;
+    productName: string;
+    artName: string;
+    color: string;
+    size: string;
 
-  // resolved names + raw ids
-  brand?: string;
-  brandId?: string;
-  category?: string;
-  categoryId?: string;
-  type?: string;
-  typeId?: string;
-  company?: string;
-  companyId?: string;
-  country?: string;
-  countryId?: string;
-  gender?: string;
+    // resolved names + raw ids
+    brand?: string;
+    brandId?: string;
+    category?: string;
+    categoryId?: string;
+    type?: string;
+    typeId?: string;
+    company?: string;
+    companyId?: string;
+    country?: string;
+    countryId?: string;
+    gender?: string;
 
-  assignedPlant: string | null;
-  quantity: number;
-  startDate: string;
-  endDate: string;
-  remarks?: string;
-  raw?: any;
-};
-
-
+    assignedPlant: string | null;
+    quantity: number;
+    startDate: string;
+    endDate: string;
+    remarks?: string;
+    raw?: any;
+  };
 
   const [calendarEntries, setCalendarEntries] = React.useState<CalendarEntry[]>(
     []
@@ -445,21 +384,17 @@ brand:
 
       console.log("Normalized docs length:", docs.length, docs);
 
-// Replace existing toYMD / dateToYMD_Utc with these (use inside the component)
-const toLocalYMD = (input: string | Date | undefined | null): string => {
-  if (!input) return "";
-  const d = typeof input === "string" ? new Date(input) : input;
-  // convert to local date (avoid UTC shift)
-  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const y = local.getFullYear();
-  const m = String(local.getMonth() + 1).padStart(2, "0");
-  const day = String(local.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
-
-
-
-
+      // Replace existing toYMD / dateToYMD_Utc with these (use inside the component)
+      const toLocalYMD = (input: string | Date | undefined | null): string => {
+        if (!input) return "";
+        const d = typeof input === "string" ? new Date(input) : input;
+        // convert to local date (avoid UTC shift)
+        const local = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const y = local.getFullYear();
+        const m = String(local.getMonth() + 1).padStart(2, "0");
+        const day = String(local.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      };
 
       const mapped: CalendarEntry[] = docs.map((doc: any) => {
         const scheduling = doc.scheduling ?? {};
@@ -468,118 +403,117 @@ const toLocalYMD = (input: string | Date | undefined | null): string => {
         const project = doc.project ?? {};
 
         // prefer scheduleDate (your API) and fallback to other fields
-       const start = scheduling.scheduleDate; // THIS IS THE MAIN DATE
-const end = scheduling.soleExpectedDate; // only for details view
-
+        const start = scheduling.scheduleDate; // THIS IS THE MAIN DATE
+        const end = scheduling.soleExpectedDate; // only for details view
 
         const quantity =
           Number(
-            prod.quantity ??
-              doc.quantity ??
-              doc.qty ??
-              scheduling.quantity ??
-              0
+            prod.quantity ?? doc.quantity ?? doc.qty ?? scheduling.quantity ?? 0
           ) || 0;
 
-     const s = toLocalYMD(start);
-const e = toLocalYMD(end);
+        const s = toLocalYMD(start);
+        const e = toLocalYMD(end);
 
-       return {
-  id: doc._id ?? doc.id ?? `cal-${Math.random().toString(36).slice(2, 8)}`,
-  projectId: project._id ?? project.id ?? snapshot.projectId ?? null,
+        return {
+          id:
+            doc._id ??
+            doc.id ??
+            `cal-${Math.random().toString(36).slice(2, 8)}`,
+          projectId: project._id ?? project.id ?? snapshot.projectId ?? null,
 
-  // projectCode / product
-  projectCode:
-    snapshot.autoCode ??
-    project.autoCode ??
-    snapshot.projectCode ??
-    doc.projectCode ??
-    "-",
+          // projectCode / product
+          projectCode:
+            snapshot.autoCode ??
+            project.autoCode ??
+            snapshot.projectCode ??
+            doc.projectCode ??
+            "-",
 
-  // product / art / display name (priority order)
-  artName:
-    snapshot.artName ??
-    project.artName ??
-    snapshot.productName ??
-    prod.productName ??
-    doc.productName ??
-    project.name ??
-    "Untitled",
+          // product / art / display name (priority order)
+          artName:
+            snapshot.artName ??
+            project.artName ??
+            snapshot.productName ??
+            prod.productName ??
+            doc.productName ??
+            project.name ??
+            "Untitled",
 
-  // make productName the human-friendly name (same as artName)
-productName:
-  // prefer explicit artName from snapshot, then project.artName, then snapshot.productName, then prod.productName, then doc.productName, then project.name
-  snapshot.artName ??
-  project.artName ??
-  snapshot.productName ??
-  prod.productName ??
-  doc.productName ??
-  project.name ??
-  "Untitled",
-  // color & size
-  color:
-    snapshot.color ??
-    project.color ??
-    prod.color ??
-    doc.color ??
-    "",
+          // make productName the human-friendly name (same as artName)
+          productName:
+            // prefer explicit artName from snapshot, then project.artName, then snapshot.productName, then prod.productName, then doc.productName, then project.name
+            snapshot.artName ??
+            project.artName ??
+            snapshot.productName ??
+            prod.productName ??
+            doc.productName ??
+            project.name ??
+            "Untitled",
+          // color & size
+          color:
+            snapshot.color ?? project.color ?? prod.color ?? doc.color ?? "",
 
-  size: snapshot.size ?? prod.size ?? doc.size ?? "-",
+          size: snapshot.size ?? prod.size ?? doc.size ?? "-",
 
-  // brand / category / type / company / country / gender
-  brand:
-    // projectSnapshot might contain embedded brand or just a name
-    (snapshot.brand && (snapshot.brand.name ?? snapshot.brand)) ??
-    snapshot.brandName ??
-    (project.brand && (project.brand.name ?? project.brand)) ??
-    project.brandName ??
-    "-",
+          // brand / category / type / company / country / gender
+          brand:
+            // projectSnapshot might contain embedded brand or just a name
+            (snapshot.brand && (snapshot.brand.name ?? snapshot.brand)) ??
+            snapshot.brandName ??
+            (project.brand && (project.brand.name ?? project.brand)) ??
+            project.brandName ??
+            "-",
 
-  category:
-    (snapshot.category && (snapshot.category.name ?? snapshot.category)) ??
-    snapshot.categoryName ??
-    (project.category && (project.category.name ?? project.category)) ??
-    project.categoryName ??
-    "-",
+          category:
+            (snapshot.category &&
+              (snapshot.category.name ?? snapshot.category)) ??
+            snapshot.categoryName ??
+            (project.category && (project.category.name ?? project.category)) ??
+            project.categoryName ??
+            "-",
 
-  type:
-    (snapshot.type && (snapshot.type.name ?? snapshot.type)) ??
-    snapshot.typeName ??
-    (project.type && (project.type.name ?? project.type)) ??
-    project.typeName ??
-    "-",
+          type:
+            (snapshot.type && (snapshot.type.name ?? snapshot.type)) ??
+            snapshot.typeName ??
+            (project.type && (project.type.name ?? project.type)) ??
+            project.typeName ??
+            "-",
 
-  company:
-    snapshot.companyName ??
-    project.companyName ??
-    (project.company && (project.company.name ?? project.company)) ??
-    "-",
+          company:
+            snapshot.companyName ??
+            project.companyName ??
+            (project.company && (project.company.name ?? project.company)) ??
+            "-",
 
-  country:
-    snapshot.countryName ??
-    project.countryName ??
-    (project.country && (project.country.name ?? project.country)) ??
-    "-",
+          country:
+            snapshot.countryName ??
+            project.countryName ??
+            (project.country && (project.country.name ?? project.country)) ??
+            "-",
 
-  gender:
-    snapshot.gender ??
-    project.gender ??
-    prod.gender ??
-    doc.gender ??
-    "-",
+          gender:
+            snapshot.gender ??
+            project.gender ??
+            prod.gender ??
+            doc.gender ??
+            "-",
 
-  // scheduling / production specifics
-  assignedPlant: scheduling.assignedPlant ?? prod.assignedPlant ?? doc.assignedPlant ?? null,
-  quantity,
+          // scheduling / production specifics
+          assignedPlant:
+            scheduling.assignedPlant ??
+            prod.assignedPlant ??
+            doc.assignedPlant ??
+            null,
+          quantity,
 
-  // Use scheduleDate as primary (s) and keep end for details
-  startDate: s,             // always scheduleDate (toLocalYMD result)
-  endDate: e || s,          // used for details, fallback to start
+          // Use scheduleDate as primary (s) and keep end for details
+          startDate: s, // always scheduleDate (toLocalYMD result)
+          endDate: e || s, // used for details, fallback to start
 
-  remarks: doc.remarks ?? doc.notes ?? (doc.additional?.remarks ?? "") ?? "",
-  raw: doc,
-} as CalendarEntry;
-
+          remarks:
+            doc.remarks ?? doc.notes ?? doc.additional?.remarks ?? "" ?? "",
+          raw: doc,
+        } as CalendarEntry;
       });
 
       // dedupe by id (keep first occurrence) and set state
@@ -596,104 +530,108 @@ productName:
     }
   };
 
-const dateToLocalYMD = (date: Date): string => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-};
+  const dateToLocalYMD = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
 
-const getProductionsForDateUniversal = (date: Date): Array<{
-  productName: string;
-  artName?: string;
-  projectCode?: string;
-  color?: string;
-  size?: string;
-  brand?: string;
-  category?: string;
-  type?: string;
-  company?: string;
-  country?: string;
-  gender?: string;
-  quantity: number;
-  assignedPlant?: string | null;
-  remarks?: string;
-  startDate: string;
-  endDate: string;
-  id?: string;
-  raw?: any;
-}> => {
-  const dStr = dateToLocalYMD(date);
+  const getProductionsForDateUniversal = (
+    date: Date
+  ): Array<{
+    productName: string;
+    artName?: string;
+    projectCode?: string;
+    color?: string;
+    size?: string;
+    brand?: string;
+    category?: string;
+    type?: string;
+    company?: string;
+    country?: string;
+    gender?: string;
+    quantity: number;
+    assignedPlant?: string | null;
+    remarks?: string;
+    startDate: string;
+    endDate: string;
+    id?: string;
+    raw?: any;
+  }> => {
+    const dStr = dateToLocalYMD(date);
 
-  if (selectedView === "calendar") {
-    return calendarEntries
-      .filter((e) => {
-        const entryDate = e.startDate || e.endDate || "";
-        return entryDate === dStr;
+    if (selectedView === "calendar") {
+      return calendarEntries
+        .filter((e) => {
+          const entryDate = e.startDate || e.endDate || "";
+          return entryDate === dStr;
+        })
+        .map((e) => ({
+          productName: e.productName,
+          artName: e.artName,
+          projectCode: e.projectCode,
+          color: e.color,
+          size: e.size,
+          brand: e.brand,
+          category: e.category,
+          type: e.type,
+          company: e.company,
+          country: e.country,
+          gender: e.gender,
+          quantity: e.quantity,
+          assignedPlant: e.assignedPlant,
+          remarks: e.remarks,
+          startDate: e.startDate,
+          endDate: e.endDate,
+          id: e.id,
+          raw: e.raw,
+        }));
+    }
+
+    // fallback: match productionPlans by local startDate equality
+    return filteredPlans
+      .filter((plan) => {
+        if (!plan.startDate) return false;
+        const planStart = plan.startDate.split("T")[0];
+        return planStart === dStr;
       })
-      .map((e) => ({
-        productName: e.productName,
-        artName: e.artName,
-        projectCode: e.projectCode,
-        color: e.color,
-        size: e.size,
-        brand: e.brand,
-        category: e.category,
-        type: e.type,
-        company: e.company,
-        country: e.country,
-        gender: e.gender,
-        quantity: e.quantity,
-        assignedPlant: e.assignedPlant,
-        remarks: e.remarks,
-        startDate: e.startDate,
-        endDate: e.endDate,
-        id: e.id,
-        raw: e.raw,
+      .map((plan) => ({
+        productName: plan.productName,
+        artName: plan.artColour || plan.color,
+        projectCode: plan.projectCode,
+        color: plan.color,
+        size: undefined,
+        brand: plan.brand,
+        category: plan.category,
+        type: plan.type,
+        company: undefined,
+        country: plan.country,
+        gender: plan.gender,
+        quantity: plan.quantity,
+        assignedPlant: plan.assignedPlant,
+        remarks: plan.remarks,
+        startDate: plan.startDate,
+        endDate: plan.endDate,
+        id: plan.id,
+        raw: plan,
       }));
-  }
-
-  // fallback: match productionPlans by local startDate equality
-  return filteredPlans
-    .filter((plan) => {
-      if (!plan.startDate) return false;
-      const planStart = plan.startDate.split("T")[0];
-      return planStart === dStr;
-    })
-    .map((plan) => ({
-      productName: plan.productName,
-      artName: plan.artColour || plan.color,
-      projectCode: plan.projectCode,
-      color: plan.color,
-      size: undefined,
-      brand: plan.brand,
-      category: plan.category,
-      type: plan.type,
-      company: undefined,
-      country: plan.country,
-      gender: plan.gender,
-      quantity: plan.quantity,
-      assignedPlant: plan.assignedPlant,
-      remarks: plan.remarks,
-      startDate: plan.startDate,
-      endDate: plan.endDate,
-      id: plan.id,
-      raw: plan,
-    }));
-};
-
-
+  };
 
   // ---------------------- call fetch when calendar tab opens ----------------------
   React.useEffect(() => {
     if (selectedView === "calendar") {
       setCurrentDate(new Date());
-    fetchCalendarEntries();
+      fetchCalendarEntries();
     }
   }, [selectedView]);
 
   React.useEffect(() => {
-    console.log("calendarEntries (count):", calendarEntries.length, calendarEntries);
+    console.log(
+      "calendarEntries (count):",
+      calendarEntries.length,
+      calendarEntries
+    );
   }, [calendarEntries]);
 
   const getStatusColor = (status: string) => {
@@ -719,14 +657,18 @@ const getProductionsForDateUniversal = (date: Date): Array<{
 
   const filteredPlans = productionPlans.filter((plan) => {
     const matchesSearch =
-      plan.planName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      plan.projectCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      plan.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      plan.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      plan.brand.toLowerCase().includes(searchTerm.toLowerCase());
+      (plan.planName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (plan.projectCode || "")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      (plan.poNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (plan.productName || "")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      (plan.brand || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter =
       selectedFilter === "all" ||
-      plan.status.toLowerCase().replace(" ", "-") === selectedFilter;
+      (plan.status || "").toLowerCase().replace(" ", "-") === selectedFilter;
     return matchesSearch && matchesFilter;
   });
 
@@ -914,7 +856,7 @@ const getProductionsForDateUniversal = (date: Date): Array<{
       remarks: plan.remarks,
       clientFeedback: "OK" as const,
       priority: plan.priority,
-      taskInc: plan.taskInc,
+      // taskInc: plan.taskInc,
       updateNotes: "",
       createdDate: plan.createdDate,
       updatedDate: plan.updatedDate,
@@ -950,7 +892,7 @@ const getProductionsForDateUniversal = (date: Date): Array<{
       status: "Planning",
       assignedPlant: cardData.assignedPlant || "-",
       assignedTeam: "-",
-      taskInc: "-",
+      // taskInc: "-",
       targetCost: 0,
       finalCost: 0,
       poValue: 0,
@@ -982,142 +924,165 @@ const getProductionsForDateUniversal = (date: Date): Array<{
     setProductionPlans(updatedPlans);
   };
 
- const handleProductionDateChange = async () => {
-  if (!selectedProductionForDateChange || !newProductionDate) {
-    return;
-  }
+  const handleProductionDateChange = async () => {
+    if (!selectedProductionForDateChange || !newProductionDate) {
+      return;
+    }
 
-  // prepare doc id (calendar entry id)
-  const docId =
-    selectedProductionForDateChange.id ??
-    selectedProductionForDateChange._id ??
-    selectedProductionForDateChange.raw?._id ??
-    selectedProductionForDateChange.raw?.id;
+    // prepare doc id (calendar entry id)
+    const docId =
+      selectedProductionForDateChange.id ??
+      selectedProductionForDateChange._id ??
+      selectedProductionForDateChange.raw?._id ??
+      selectedProductionForDateChange.raw?.id;
 
-  // If there's no docId, fallback to local update (productionPlans)
-  if (!docId) {
-    // local-only plan (fallback)
-    const updatedPlans = productionPlans.map((plan) => {
-      if (plan.id === selectedProductionForDateChange.id) {
-        return {
-          ...plan,
-          startDate: newProductionDate,
-          endDate: newProductionDate,
-          updatedDate: new Date().toISOString().split("T")[0],
-        };
-      }
-      return plan;
-    });
+    // If there's no docId, fallback to local update (productionPlans)
+    if (!docId) {
+      // local-only plan (fallback)
+      const updatedPlans = productionPlans.map((plan) => {
+        if (plan.id === selectedProductionForDateChange.id) {
+          return {
+            ...plan,
+            startDate: newProductionDate,
+            endDate: newProductionDate,
+            updatedDate: new Date().toISOString().split("T")[0],
+          };
+        }
+        return plan;
+      });
 
-    setProductionPlans(updatedPlans);
-    setIsDateChangeDialogOpen(false);
-    setSelectedProductionForDateChange(null);
-    setNewProductionDate("");
-    toast.success("Production date updated locally");
-    return;
-  }
+      setProductionPlans(updatedPlans);
+      setIsDateChangeDialogOpen(false);
+      setSelectedProductionForDateChange(null);
+      setNewProductionDate("");
+      toast.success("Production date updated locally");
+      return;
+    }
 
-  // Build payload shape expected by backend
-  const payload = {
-    scheduling: {
-      scheduleDate: newProductionDate,
-      // keep assignedPlant/sole fields from existing raw if available to avoid accidental overwrites
-      assignedPlant:
-        selectedProductionForDateChange.raw?.scheduling?.assignedPlant ??
-        selectedProductionForDateChange.assignedPlant ??
-        selectedProductionForDateChange.raw?.scheduling?.assignedPlant ??
-        "",
-      soleFrom:
-        selectedProductionForDateChange.raw?.scheduling?.soleFrom ?? "",
-      soleColor:
-        selectedProductionForDateChange.raw?.scheduling?.soleColor ?? "",
-      soleExpectedDate:
-        selectedProductionForDateChange.raw?.scheduling?.soleExpectedDate ??
-        null,
-    },
+    // Build payload shape expected by backend
+    const payload = {
+      scheduling: {
+        scheduleDate: newProductionDate,
+        // keep assignedPlant/sole fields from existing raw if available to avoid accidental overwrites
+        assignedPlant:
+          selectedProductionForDateChange.raw?.scheduling?.assignedPlant ??
+          selectedProductionForDateChange.assignedPlant ??
+          selectedProductionForDateChange.raw?.scheduling?.assignedPlant ??
+          "",
+        soleFrom:
+          selectedProductionForDateChange.raw?.scheduling?.soleFrom ?? "",
+        soleColor:
+          selectedProductionForDateChange.raw?.scheduling?.soleColor ?? "",
+        soleExpectedDate:
+          selectedProductionForDateChange.raw?.scheduling?.soleExpectedDate ??
+          null,
+      },
+    };
+
+    try {
+      setIsSavingCalendarChange(true);
+      const res = await api.put(`/calendar/${docId}`, payload);
+      const updated = res.data?.data ?? res.data;
+
+      // Update local calendarEntries list: replace by id
+      setCalendarEntries((prev) =>
+        prev.map((e) =>
+          e.id === (updated._id ?? updated.id)
+            ? {
+                ...e,
+                startDate: updated.scheduling?.scheduleDate
+                  ? new Date(updated.scheduling.scheduleDate)
+                      .toISOString()
+                      .split("T")[0]
+                  : newProductionDate,
+                endDate: updated.scheduling?.soleExpectedDate
+                  ? new Date(updated.scheduling.soleExpectedDate)
+                      .toISOString()
+                      .split("T")[0]
+                  : updated.endDate || newProductionDate,
+                remarks: updated.additional?.remarks ?? e.remarks,
+                raw: updated,
+              }
+            : e
+        )
+      );
+
+      // If you also keep productionPlans in sync, update there if matching
+      setProductionPlans((prev) =>
+        prev.map((p) =>
+          p.id === (updated._id ?? updated.id) ||
+          p.rdProjectId === updated.project
+            ? {
+                ...p,
+                startDate: updated.scheduling?.scheduleDate
+                  ? new Date(updated.scheduling.scheduleDate)
+                      .toISOString()
+                      .split("T")[0]
+                  : p.startDate,
+                endDate: updated.scheduling?.soleExpectedDate
+                  ? new Date(updated.scheduling.soleExpectedDate)
+                      .toISOString()
+                      .split("T")[0]
+                  : p.endDate,
+              }
+            : p
+        )
+      );
+
+      setIsDateChangeDialogOpen(false);
+      setSelectedProductionForDateChange(null);
+      setNewProductionDate("");
+
+      toast.success("Production date updated");
+    } catch (err: any) {
+      console.error("Error updating calendar entry date:", err);
+      const message =
+        err?.response?.data?.message ?? err.message ?? "Failed to update date";
+      toast.error(message);
+    } finally {
+      setIsSavingCalendarChange(false);
+    }
   };
 
-  try {
-    setIsSavingCalendarChange(true);
-    const res = await api.put(`/calendar/${docId}`, payload);
-    const updated = res.data?.data ?? res.data;
+  const handleDeleteCalendarEntry = async (entry: any) => {
+    const docId = entry.id ?? entry._id ?? entry.raw?._id ?? entry.raw?.id;
+    if (!docId) {
+      // local removal fallback if no id
+      setCalendarEntries((prev) => prev.filter((e) => e.id !== entry.id));
+      setProductionPlans((prev) => prev.filter((p) => p.id !== entry.id));
+      toast.success("Production removed locally");
+      return;
+    }
 
-    // Update local calendarEntries list: replace by id
-    setCalendarEntries((prev) =>
-      prev.map((e) => (e.id === (updated._id ?? updated.id) ? {
-        ...e,
-        startDate: (updated.scheduling?.scheduleDate
-          ? (new Date(updated.scheduling.scheduleDate).toISOString().split("T")[0])
-          : newProductionDate),
-        endDate: (updated.scheduling?.soleExpectedDate
-          ? (new Date(updated.scheduling.soleExpectedDate).toISOString().split("T")[0])
-          : (updated.endDate || newProductionDate)),
-        remarks: updated.additional?.remarks ?? e.remarks,
-        raw: updated,
-      } : e))
-    );
+    if (
+      !confirm("Are you sure you want to remove this production (soft-delete)?")
+    )
+      return;
 
-    // If you also keep productionPlans in sync, update there if matching
-    setProductionPlans((prev) =>
-      prev.map((p) =>
-        p.id === (updated._id ?? updated.id) || p.rdProjectId === updated.project ? {
-          ...p,
-          startDate: (updated.scheduling?.scheduleDate
-            ? new Date(updated.scheduling.scheduleDate).toISOString().split("T")[0]
-            : p.startDate),
-          endDate: (updated.scheduling?.soleExpectedDate
-            ? new Date(updated.scheduling.soleExpectedDate).toISOString().split("T")[0]
-            : p.endDate),
-        } : p
-      )
-    );
+    try {
+      setIsDeletingEntryId(docId);
+      const res = await api.delete(`/calendar/${docId}`);
+      const deleted = res.data?.data ?? res.data;
 
-    setIsDateChangeDialogOpen(false);
-    setSelectedProductionForDateChange(null);
-    setNewProductionDate("");
+      // remove from calendarEntries
+      setCalendarEntries((prev) =>
+        prev.filter((e) => e.id !== (deleted._id ?? deleted.id ?? docId))
+      );
+      // optionally update productionPlans if needed
+      setProductionPlans((prev) =>
+        prev.filter((p) => p.id !== (deleted._id ?? deleted.id ?? docId))
+      );
 
-    toast.success("Production date updated");
-  } catch (err: any) {
-    console.error("Error updating calendar entry date:", err);
-    const message = err?.response?.data?.message ?? err.message ?? "Failed to update date";
-    toast.error(message);
-  } finally {
-    setIsSavingCalendarChange(false);
-  }
-};
-
-const handleDeleteCalendarEntry = async (entry: any) => {
-  const docId = entry.id ?? entry._id ?? entry.raw?._id ?? entry.raw?.id;
-  if (!docId) {
-    // local removal fallback if no id
-    setCalendarEntries((prev) => prev.filter((e) => e.id !== entry.id));
-    setProductionPlans((prev) => prev.filter((p) => p.id !== entry.id));
-    toast.success("Production removed locally");
-    return;
-  }
-
-  if (!confirm("Are you sure you want to remove this production (soft-delete)?")) return;
-
-  try {
-    setIsDeletingEntryId(docId);
-    const res = await api.delete(`/calendar/${docId}`);
-    const deleted = res.data?.data ?? res.data;
-
-    // remove from calendarEntries
-    setCalendarEntries((prev) => prev.filter((e) => e.id !== (deleted._id ?? deleted.id ?? docId)));
-    // optionally update productionPlans if needed
-    setProductionPlans((prev) => prev.filter((p) => p.id !== (deleted._id ?? deleted.id ?? docId)));
-
-    toast.success("Production removed (soft-deleted)");
-  } catch (err: any) {
-    console.error("Error deleting calendar entry:", err);
-    const message = err?.response?.data?.message ?? err.message ?? "Failed to delete";
-    toast.error(message);
-  } finally {
-    setIsDeletingEntryId(null);
-  }
-};
-
+      toast.success("Production removed (soft-deleted)");
+    } catch (err: any) {
+      console.error("Error deleting calendar entry:", err);
+      const message =
+        err?.response?.data?.message ?? err.message ?? "Failed to delete";
+      toast.error(message);
+    } finally {
+      setIsDeletingEntryId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1439,7 +1404,7 @@ const handleDeleteCalendarEntry = async (entry: any) => {
                       </th>
                       <th
                         scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
                       >
                         Image & Profile
                       </th>
@@ -1479,10 +1444,12 @@ const handleDeleteCalendarEntry = async (entry: any) => {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center justify-center">
+                          <div className="flex items-center justify-center ">
                             {plan.profileImage ? (
                               <img
-                                src={plan.profileImage}
+                                src={`${import.meta.env.VITE_BACKEND_URL}/${
+                                  plan.profileImage
+                                }`}
                                 alt="Product"
                                 className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
                               />
@@ -1496,7 +1463,7 @@ const handleDeleteCalendarEntry = async (entry: any) => {
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
                             <span className="font-medium text-gray-900">
-                              {plan.artColour}
+                              {plan?.artColour}
                             </span>
                             <span className="text-xs text-gray-500 mt-0.5">
                               {plan.color}
@@ -1652,14 +1619,14 @@ const handleDeleteCalendarEntry = async (entry: any) => {
                           let monthTotal = 0;
 
                           for (let day = 1; day <= lastDay.getDate(); day++) {
-  const currentDay = new Date(year, month, day);
-  const dayProductions = getProductionsForDateUniversal(currentDay);
-  monthTotal += dayProductions.reduce(
-    (total, plan) => total + (plan.quantity || 0),
-    0
-  );
-}
-
+                            const currentDay = new Date(year, month, day);
+                            const dayProductions =
+                              getProductionsForDateUniversal(currentDay);
+                            monthTotal += dayProductions.reduce(
+                              (total, plan) => total + (plan.quantity || 0),
+                              0
+                            );
+                          }
 
                           return monthTotal.toLocaleString();
                         })()}
@@ -1759,7 +1726,8 @@ const handleDeleteCalendarEntry = async (entry: any) => {
                           const isCurrentMonth =
                             day.getMonth() === currentDate.getMonth();
                           // const dayProductions = getProductionsForDate(day);
-                          const dayProductions = getProductionsForDateUniversal(day);
+                          const dayProductions =
+                            getProductionsForDateUniversal(day);
 
                           const isToday =
                             day.toDateString() === new Date().toDateString();
@@ -1925,24 +1893,40 @@ const handleDeleteCalendarEntry = async (entry: any) => {
 
                                         {/* Trash Button - Bottom Right */}
                                         <button
-  onClick={(e) => {
-    e.stopPropagation();
-    handleDeleteCalendarEntry(production);
-  }}
-  className="absolute bottom-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteCalendarEntry(
+                                              production
+                                            );
+                                          }}
+                                          className="absolute bottom-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 
     rounded-md flex items-center justify-center shadow-sm 
     hover:shadow-md transition-all duration-200 group"
-  title="Delete production"
->
-  {isDeletingEntryId === (production.id ?? production._id ?? production.raw?._id) ? (
-    <svg className="animate-spin w-3.5 h-3.5 text-white" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" strokeDasharray="60" strokeLinecap="round" fill="none"></circle>
-    </svg>
-  ) : (
-    <Trash2 className="w-3.5 h-3.5 text-white" />
-  )}
-</button>
-
+                                          title="Delete production"
+                                        >
+                                          {isDeletingEntryId ===
+                                          (production.id ??
+                                            production._id ??
+                                            production.raw?._id) ? (
+                                            <svg
+                                              className="animate-spin w-3.5 h-3.5 text-white"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <circle
+                                                cx="12"
+                                                cy="12"
+                                                r="10"
+                                                stroke="currentColor"
+                                                strokeWidth="4"
+                                                strokeDasharray="60"
+                                                strokeLinecap="round"
+                                                fill="none"
+                                              ></circle>
+                                            </svg>
+                                          ) : (
+                                            <Trash2 className="w-3.5 h-3.5 text-white" />
+                                          )}
+                                        </button>
                                       </div>
                                     ))}
 
@@ -2240,23 +2224,25 @@ const handleDeleteCalendarEntry = async (entry: any) => {
             <div className="space-y-3">
               <Label>Select New Production Date *</Label>
               <div className="flex items-center justify-center border rounded-lg p-4 bg-linear-to-br from-blue-50 to-indigo-50">
-               <CalendarUI
-  mode="single"
-  selected={newProductionDate ? new Date(newProductionDate) : undefined}
-  onSelect={(date: Date | undefined) => {
-    if (date) {
-      const y = date.getUTCFullYear();
-      const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-      const d = String(date.getUTCDate()).padStart(2, "0");
-      setNewProductionDate(`${y}-${m}-${d}`);
-    }
-  }}
-  className="rounded-md border-0"
-  disabled={(date: Date | undefined) =>
-    Boolean(date) && date < new Date(new Date().setHours(0, 0, 0, 0) - 86400000)
-  }
-/>
-
+                <CalendarUI
+                  mode="single"
+                  selected={
+                    newProductionDate ? new Date(newProductionDate) : undefined
+                  }
+                  onSelect={(date: Date | undefined) => {
+                    if (date) {
+                      const y = date.getUTCFullYear();
+                      const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+                      const d = String(date.getUTCDate()).padStart(2, "0");
+                      setNewProductionDate(`${y}-${m}-${d}`);
+                    }
+                  }}
+                  className="rounded-md border-0"
+                  disabled={(date: Date | undefined) =>
+                    Boolean(date) &&
+                    date < new Date(new Date().setHours(0, 0, 0, 0) - 86400000)
+                  }
+                />
               </div>
               <div className="flex items-start gap-2 bg-blue-50 rounded-lg p-3 border border-blue-200">
                 <div className="w-1 h-1 rounded-full bg-blue-500 mt-1.5"></div>

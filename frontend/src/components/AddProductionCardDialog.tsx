@@ -2,14 +2,7 @@
 // Replace your existing file with this.
 
 import React, { useState, useEffect, useRef } from "react";
-import {
-  X,
-  Package,
-  Calendar,
-  Building,
-  FileText,
-  Save,
-} from "lucide-react";
+import { X, Package, Calendar, Building, FileText, Save } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -62,8 +55,12 @@ export function AddProductionCardDialog({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isLocked, setIsLocked] = useState(false);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedProjectSnapshot, setSelectedProjectSnapshot] = useState<any | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    null
+  );
+  const [selectedProjectSnapshot, setSelectedProjectSnapshot] = useState<
+    any | null
+  >(null);
 
   const [isSearching, setIsSearching] = useState(false);
 
@@ -201,7 +198,11 @@ export function AddProductionCardDialog({
 
   // Submit handler: posts to /calendar (matches backend service keys)
   const handleSubmit = async () => {
-    if (!formData.productName || !formData.productionQuantity || !formData.productionDate) {
+    if (
+      !formData.productName ||
+      !formData.productionQuantity ||
+      !formData.productionDate
+    ) {
       toast.error("Please fill required fields: product, date and quantity");
       return;
     }
@@ -313,35 +314,50 @@ export function AddProductionCardDialog({
               onChange={(e) => {
                 setSearchQuery(e.target.value);
               }}
-              placeholder="Search by product name or auto code (min 2 chars)..."
+              disabled={isLocked}
+              placeholder={
+                isLocked
+                  ? "Project locked - click Clear selection to change"
+                  : "Search by product name or auto code (min 2 chars)..."
+              }
               className="h-12 text-base border-2 focus:border-blue-500"
             />
 
             {/* Dropdown */}
-            <div className="absolute left-0 right-0 z-[999]">
-              {isSearching && searchQuery.trim().length >= 2 && (
-                <div className="bg-white border rounded-md shadow-xl p-3">Searching...</div>
-              )}
+            {!isLocked && (
+              <div className="absolute left-0 right-0 z-999">
+                {isSearching && searchQuery.trim().length >= 2 && (
+                  <div className="bg-white border rounded-md shadow-xl p-3">
+                    Searching...
+                  </div>
+                )}
 
-              {!isSearching && searchQuery.trim().length >= 2 && (
-                <div className="bg-white border rounded-md shadow-xl max-h-56 overflow-auto">
-                  {searchResults.length > 0 ? (
-                    searchResults.map((item) => (
-                      <div
-                        key={item._id ?? item.id}
-                        onClick={() => handleSelectProduct(item)}
-                        className="px-4 py-2 cursor-pointer hover:bg-blue-50 border-b"
-                      >
-                        <p className="font-medium">{item.artName ?? item.productName}</p>
-                        <p className="text-sm text-gray-600">{item.autoCode ?? item.projectCode}</p>
+                {!isSearching && searchQuery.trim().length >= 2 && (
+                  <div className="bg-white border rounded-md shadow-xl max-h-56 overflow-auto">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((item) => (
+                        <div
+                          key={item._id ?? item.id}
+                          onClick={() => handleSelectProduct(item)}
+                          className="px-4 py-2 cursor-pointer hover:bg-blue-50 border-b"
+                        >
+                          <p className="font-medium">
+                            {item.artName ?? item.productName}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {item.autoCode ?? item.projectCode}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-3 text-sm text-gray-500">
+                        No projects found
                       </div>
-                    ))
-                  ) : (
-                    <div className="px-4 py-3 text-sm text-gray-500">No projects found</div>
-                  )}
-                </div>
-              )}
-            </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Product Information (READONLY as requested) */}
@@ -357,48 +373,102 @@ export function AddProductionCardDialog({
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Product Name</Label>
-                <Input value={formData.productName} readOnly className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Product Name
+                </Label>
+                <Input
+                  value={formData.productName}
+                  readOnly
+                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Product Code</Label>
-                <Input value={formData.productCode} readOnly className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Product Code
+                </Label>
+                <Input
+                  value={formData.productCode}
+                  readOnly
+                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Art / Colour</Label>
-                <Input value={formData.artColour} readOnly className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Art / Colour
+                </Label>
+                <Input
+                  value={formData.artColour}
+                  readOnly
+                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Company</Label>
-                <Input value={formData.company} readOnly className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Company
+                </Label>
+                <Input
+                  value={formData.company}
+                  readOnly
+                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Brand</Label>
-                <Input value={formData.brand} readOnly className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Brand
+                </Label>
+                <Input
+                  value={formData.brand}
+                  readOnly
+                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Category</Label>
-                <Input value={formData.category} readOnly className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Category
+                </Label>
+                <Input
+                  value={formData.category}
+                  readOnly
+                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Type</Label>
-                <Input value={formData.type} readOnly className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Type
+                </Label>
+                <Input
+                  value={formData.type}
+                  readOnly
+                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Country</Label>
-                <Input value={formData.country} readOnly className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Country
+                </Label>
+                <Input
+                  value={formData.country}
+                  readOnly
+                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Gender</Label>
-                <Input value={formData.gender} readOnly className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Gender
+                </Label>
+                <Input
+                  value={formData.gender}
+                  readOnly
+                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
+                />
               </div>
             </div>
           </div>
@@ -409,42 +479,87 @@ export function AddProductionCardDialog({
               <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
                 <Calendar className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900">Scheduling Information</h3>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Scheduling Information
+              </h3>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Schedule On *</Label>
+                <Label className="text-base font-semibold text-gray-700">
+                  Schedule On *
+                </Label>
                 <div className="relative">
                   <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none z-10" />
                   <Input
                     type="date"
                     value={formData.productionDate}
-                    onChange={(e) => setFormData({ ...formData, productionDate: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        productionDate: e.target.value,
+                      })
+                    }
                     className="pl-12 h-12 text-base border-2 focus:border-blue-500"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Assigned Plant</Label>
-                <Input value={formData.assignedPlant} onChange={(e) => setFormData({ ...formData, assignedPlant: e.target.value })} className="h-12 text-base border-2 focus:border-blue-500" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Assigned Plant
+                </Label>
+                <Input
+                  value={formData.assignedPlant}
+                  onChange={(e) =>
+                    setFormData({ ...formData, assignedPlant: e.target.value })
+                  }
+                  className="h-12 text-base border-2 focus:border-blue-500"
+                />
               </div>
 
               {/* NEW sole inputs */}
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Sole From</Label>
-                <Input value={formData.soleFrom} onChange={(e) => setFormData({ ...formData, soleFrom: e.target.value })} className="h-12 text-base border-2 focus:border-blue-500" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Sole From
+                </Label>
+                <Input
+                  value={formData.soleFrom}
+                  onChange={(e) =>
+                    setFormData({ ...formData, soleFrom: e.target.value })
+                  }
+                  className="h-12 text-base border-2 focus:border-blue-500"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Sole Color</Label>
-                <Input value={formData.soleColor} onChange={(e) => setFormData({ ...formData, soleColor: e.target.value })} className="h-12 text-base border-2 focus:border-blue-500" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Sole Color
+                </Label>
+                <Input
+                  value={formData.soleColor}
+                  onChange={(e) =>
+                    setFormData({ ...formData, soleColor: e.target.value })
+                  }
+                  className="h-12 text-base border-2 focus:border-blue-500"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Sole Expected Date</Label>
-                <Input type="date" value={formData.soleExpectedDate} onChange={(e) => setFormData({ ...formData, soleExpectedDate: e.target.value })} className="h-12 text-base border-2 focus:border-blue-500" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Sole Expected Date
+                </Label>
+                <Input
+                  type="date"
+                  value={formData.soleExpectedDate}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      soleExpectedDate: e.target.value,
+                    })
+                  }
+                  className="h-12 text-base border-2 focus:border-blue-500"
+                />
               </div>
             </div>
           </div>
@@ -455,13 +570,28 @@ export function AddProductionCardDialog({
               <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
                 <Building className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900">Production Details</h3>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Production Details
+              </h3>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">Production Quantity *</Label>
-                <Input type="number" value={formData.productionQuantity} onChange={(e) => setFormData({ ...formData, productionQuantity: e.target.value })} placeholder="e.g. 1200" className="h-12 text-base border-2 focus:border-blue-500" />
+                <Label className="text-base font-semibold text-gray-700">
+                  Production Quantity *
+                </Label>
+                <Input
+                  type="number"
+                  value={formData.productionQuantity}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      productionQuantity: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. 1200"
+                  className="h-12 text-base border-2 focus:border-blue-500"
+                />
               </div>
             </div>
           </div>
@@ -472,12 +602,24 @@ export function AddProductionCardDialog({
               <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
                 <FileText className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900">Additional Information</h3>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Additional Information
+              </h3>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-base font-semibold text-gray-700">Remarks</Label>
-              <Textarea value={formData.remarks} onChange={(e) => setFormData({ ...formData, remarks: e.target.value })} placeholder="Add any special instructions…" rows={4} className="resize-none text-base border-2 focus:border-blue-500 leading-relaxed" />
+              <Label className="text-base font-semibold text-gray-700">
+                Remarks
+              </Label>
+              <Textarea
+                value={formData.remarks}
+                onChange={(e) =>
+                  setFormData({ ...formData, remarks: e.target.value })
+                }
+                placeholder="Add any special instructions…"
+                rows={4}
+                className="resize-none text-base border-2 focus:border-blue-500 leading-relaxed"
+              />
             </div>
           </div>
         </div>
@@ -485,11 +627,20 @@ export function AddProductionCardDialog({
         {/* Footer */}
         <div className="sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t-2 border-gray-200 shadow-2xl shadow-gray-900/10 z-50">
           <div className="px-8 py-6 flex justify-end gap-4">
-            <Button onClick={() => onOpenChange(false)} variant="outline" size="lg" className="px-8 py-3 h-12 border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200">
+            <Button
+              onClick={() => onOpenChange(false)}
+              variant="outline"
+              size="lg"
+              className="px-8 py-3 h-12 border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+            >
               Cancel
             </Button>
 
-            <Button onClick={handleSubmit} size="lg" className="px-8 py-3 h-12 bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 border-0">
+            <Button
+              onClick={handleSubmit}
+              size="lg"
+              className="px-8 py-3 h-12 bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 border-0"
+            >
               <Save className="w-5 h-5 mr-2" />
               Create Production Card
             </Button>
