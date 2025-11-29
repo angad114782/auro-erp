@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 // services/productionProject.service.js
+=======
+>>>>>>> e2ec107 (Add ProductionProject model + productionProject service; tidy up routes/controllers)
 import mongoose from "mongoose";
 import ProductionProject from "../models/ProductionProject.model.js";
 import { Project } from "../models/Project.model.js";
@@ -24,19 +27,26 @@ export const createProductionFromProject = async (
   if (!project || !project.isActive) return null;
 
   // idempotent: return existing production if present
+<<<<<<< HEAD
   const existing = await ProductionProject.findOne({
     project: project._id,
   }).session(session);
+=======
+  const existing = await ProductionProject.findOne({ project: project._id }).session(session);
+>>>>>>> e2ec107 (Add ProductionProject model + productionProject service; tidy up routes/controllers)
   if (existing) {
     const populatedProject = await Project.findById(project._id)
       .populate("company brand category type country assignPerson")
       .lean()
       .session(session);
+<<<<<<< HEAD
     // normalize priority on existing production (if missing)
     if (!existing.priority && populatedProject?.priority) {
       existing.priority = populatedProject.priority;
       await existing.save({ session });
     }
+=======
+>>>>>>> e2ec107 (Add ProductionProject model + productionProject service; tidy up routes/controllers)
     return { project: populatedProject, production: existing };
   }
 
@@ -53,7 +63,10 @@ export const createProductionFromProject = async (
     }
   }
 
+<<<<<<< HEAD
   // build production snapshot — include priority from project (snapshot)
+=======
+>>>>>>> e2ec107 (Add ProductionProject model + productionProject service; tidy up routes/controllers)
   const snapshot = {
     project: project._id,
     autoCodeSnapshot: project.autoCode,
@@ -83,9 +96,7 @@ export const createProductionFromProject = async (
     materials: [],
     assignedTeam: [],
     startDate: initialPlan.startDate ? new Date(initialPlan.startDate) : null,
-    targetCompletionDate: initialPlan.targetCompletionDate
-      ? new Date(initialPlan.targetCompletionDate)
-      : null,
+    targetCompletionDate: initialPlan.targetCompletionDate ? new Date(initialPlan.targetCompletionDate) : null,
     createdBy: by,
     notes: initialPlan.notes || "",
   };
@@ -119,8 +130,12 @@ export const listProductionProjectsService = async ({
 } = {}) => {
   const skip = (page - 1) * limit;
   const filter = { isActive: true };
+<<<<<<< HEAD
   if (projectId && mongoose.Types.ObjectId.isValid(projectId))
     filter.project = projectId;
+=======
+  if (projectId && mongoose.Types.ObjectId.isValid(projectId)) filter.project = projectId;
+>>>>>>> e2ec107 (Add ProductionProject model + productionProject service; tidy up routes/controllers)
 
   // fetch with project populated (include priority)
   let items = await ProductionProject.find(filter)
@@ -153,6 +168,7 @@ export const listProductionProjectsService = async ({
  */
 export const getProductionProjectService = async (id) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
+<<<<<<< HEAD
   const doc = await ProductionProject.findOne({ _id: id, isActive: true })
     .populate("project")
     .lean();
@@ -166,6 +182,10 @@ export const getProductionProjectService = async (id) => {
   };
 
   return normalized;
+=======
+  const doc = await ProductionProject.findOne({ _id: id, isActive: true }).populate("project").lean();
+  return doc;
+>>>>>>> e2ec107 (Add ProductionProject model + productionProject service; tidy up routes/controllers)
 };
 
 /**
@@ -178,14 +198,19 @@ export const updateProductionProjectService = async (
 ) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
 
+<<<<<<< HEAD
   const existing = await ProductionProject.findOne({
     _id: id,
     isActive: true,
   }).session(session);
+=======
+  const existing = await ProductionProject.findOne({ _id: id, isActive: true }).session(session);
+>>>>>>> e2ec107 (Add ProductionProject model + productionProject service; tidy up routes/controllers)
   if (!existing) return null;
 
   const updateObj = {};
   // handle simple date/text fields
+<<<<<<< HEAD
   if (payload.startDate !== undefined)
     updateObj.startDate = payload.startDate
       ? new Date(payload.startDate)
@@ -216,10 +241,24 @@ export const updateProductionProjectService = async (
       updatedAt: new Date(),
     },
   };
+=======
+  if (payload.startDate !== undefined) updateObj.startDate = payload.startDate ? new Date(payload.startDate) : null;
+  if (payload.targetCompletionDate !== undefined) updateObj.targetCompletionDate = payload.targetCompletionDate ? new Date(payload.targetCompletionDate) : null;
+  if (payload.actualCompletionDate !== undefined) updateObj.actualCompletionDate = payload.actualCompletionDate ? new Date(payload.actualCompletionDate) : null;
+  if (payload.notes !== undefined) updateObj.notes = payload.notes;
+  if (payload.phases !== undefined) updateObj.phases = payload.phases;
+  if (payload.materials !== undefined) updateObj.materials = payload.materials;
+  if (payload.assignedTeam !== undefined) updateObj.assignedTeam = payload.assignedTeam;
+  if (payload.documents !== undefined) updateObj.documents = payload.documents;
+
+  // status change -> push history
+  const updateCommand = { $set: { ...updateObj, updatedBy: by || existing.updatedBy, updatedAt: new Date() } };
+>>>>>>> e2ec107 (Add ProductionProject model + productionProject service; tidy up routes/controllers)
   if (payload.status && payload.status !== existing.status) {
     const from = existing.status || null;
     const to = payload.status;
     updateCommand.$set.status = to;
+<<<<<<< HEAD
     updateCommand.$push = {
       productionHistory: {
         from,
@@ -246,6 +285,12 @@ export const updateProductionProjectService = async (
     return populated;
   }
 
+=======
+    updateCommand.$push = { productionHistory: { from, to, by: by || null, at: new Date(), note: payload.statusNote || "" } };
+  }
+
+  const updated = await ProductionProject.findOneAndUpdate({ _id: id, isActive: true }, updateCommand, { new: true, session });
+>>>>>>> e2ec107 (Add ProductionProject model + productionProject service; tidy up routes/controllers)
   return updated;
 };
 
