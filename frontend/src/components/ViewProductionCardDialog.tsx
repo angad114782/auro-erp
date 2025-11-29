@@ -30,24 +30,26 @@ import {
 } from "./ui/select";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner@2.0.3";
-
+import api from "../lib/api"; 
 interface ProductionPlan {
-  id: string;
-  productName: string;
-  projectCode: string;
-  brand: string;
-  category: string;
-  type: string;
-  gender: string;
-  artColour: string;
-  country: string;
-  quantity: number;
-  assignedPlant: string;
-  startDate: string;
-  endDate: string;
-  remarks: string;
-  status: string;
-  priority: string;
+  _id?: string; // Mongo id (optional)
+  id?: string;  // possible alternative id
+  productName?: string;
+  projectCode?: string;
+  brand?: string;
+  category?: string;
+  type?: string;
+  gender?: string;
+  artColour?: string;
+  country?: string;
+  quantity?: number;
+  assignedPlant?: string;
+  startDate?: string;
+  endDate?: string;
+  remarks?: string;
+  status?: string;
+  priority?: string;
+  raw?: any;
 }
 
 interface ViewProductionCardDialogProps {
@@ -67,8 +69,12 @@ export function ViewProductionCardDialog({
     scheduleDate: "",
     assignedPlant: "",
     quantity: "",
-    unit: "Pairs",
     remarks: "",
+    // removed unit
+    // sole fields
+    soleFrom: "",
+    soleColor: "",
+    soleExpectedDate: "",
   });
 
   // Plants list and dialog state
@@ -82,27 +88,30 @@ export function ViewProductionCardDialog({
   const [addPlantDialogOpen, setAddPlantDialogOpen] = useState(false);
   const [newPlantName, setNewPlantName] = useState("");
 
-  // Units list and dialog state
-  const [unitsList, setUnitsList] = useState<string[]>([
-    "Pairs",
-    "Pieces",
-    "Sets",
-    "Units",
-    "Dozens",
-    "Cartons",
-  ]);
-  const [addUnitDialogOpen, setAddUnitDialogOpen] = useState(false);
-  const [newUnitName, setNewUnitName] = useState("");
-
   // Initialize form data when dialog opens
   useEffect(() => {
     if (open && productionData) {
+      // try multiple fallbacks: productionData fields, then productionData.raw.scheduling
+      const scheduling = productionData.raw?.scheduling ?? {};
       setFormData({
-        scheduleDate: productionData.startDate || "",
-        assignedPlant: productionData.assignedPlant || "",
-        quantity: productionData.quantity?.toString() || "",
-        unit: "Pairs",
-        remarks: productionData.remarks || "",
+        scheduleDate:
+          productionData.startDate ??
+          scheduling.scheduleDate ??
+          productionData.startDate ??
+          "",
+        assignedPlant:
+          productionData.assignedPlant ??
+          scheduling.assignedPlant ??
+          "",
+        quantity: (productionData.quantity ?? "").toString(),
+        remarks: productionData.remarks ?? productionData.raw?.additional?.remarks ?? "",
+        soleFrom: scheduling.soleFrom ?? "",
+        soleColor: scheduling.soleColor ?? "",
+        soleExpectedDate:
+          scheduling.soleExpectedDate
+            ? // normalize to yyyy-mm-dd
+              new Date(scheduling.soleExpectedDate).toISOString().split("T")[0]
+            : "",
       });
     }
   }, [open, productionData]);
@@ -136,57 +145,70 @@ export function ViewProductionCardDialog({
     setAddPlantDialogOpen(false);
     toast.success("Plant added successfully");
   };
+// assume: import api from '~/lib/api'  // your axios instance
+// or const api = axios.create({ baseURL: process.env.NEXT_PUBLIC_API_BASE });
 
-  // Handler to save new unit
-  const saveNewUnit = () => {
-    if (!newUnitName.trim()) {
-      toast.error("Please enter unit name");
-      return;
-    }
+const handleSave = async () => {
+  if (!formData.scheduleDate) {
+    toast.error("Please select a schedule date");
+    return;
+  }
+  if (!formData.quantity || Number(formData.quantity) <= 0) {
+    toast.error("Please enter a valid quantity");
+    return;
+  }
 
-    if (unitsList.includes(newUnitName)) {
-      toast.error("Unit already exists");
-      return;
-    }
+  const docId = productionData?._id ?? productionData?.id;
+  if (!docId) {
+    toast.error("Missing id for this production card — cannot update.");
+    console.error("Missing id for productionData:", productionData);
+    return;
+  }
 
-    setUnitsList([...unitsList, newUnitName]);
-    setFormData({ ...formData, unit: newUnitName });
-    setNewUnitName("");
-    setAddUnitDialogOpen(false);
-    toast.success("Unit added successfully");
+  const payload = {
+    scheduling: {
+      scheduleDate: formData.scheduleDate,
+      assignedPlant: formData.assignedPlant || "",
+      soleFrom: formData.soleFrom || "",
+      soleColor: formData.soleColor || "",
+      soleExpectedDate: formData.soleExpectedDate ? formData.soleExpectedDate : null,
+    },
+    productionDetails: { quantity: Number(formData.quantity) },
+    additional: { remarks: formData.remarks ?? "" },
   };
 
-  const handleSave = () => {
-    // Validation
-    if (!formData.scheduleDate) {
-      toast.error("Please select a schedule date");
-      return;
-    }
+  // optional saving flag
+  // setIsSaving(true);
 
-    if (!formData.quantity || parseInt(formData.quantity) <= 0) {
-      toast.error("Please enter a valid quantity");
-      return;
-    }
+  try {
+    // If your `api` instance already attaches Authorization header (via interceptor),
+    // you can simply call:
+    const res = await api.put(`/calendar/${docId}`, payload);
+    // If you need to pass headers explicitly (not usual), use:
+    // const token = localStorage.getItem("token");
+    // const res = await api.put(`/calendar/${docId}`, payload, {
+    //   headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    // });
 
-    // Create updated data
-    const updatedData = {
-      ...productionData,
-      startDate: formData.scheduleDate,
-      endDate: formData.scheduleDate,
-      assignedPlant: formData.assignedPlant,
-      quantity: parseInt(formData.quantity),
-      remarks: formData.remarks,
-    };
+    // axios response shape: res.data -> { message, data }
+    const updated = res.data?.data ?? res.data;
+    console.log("calendar update response:", res.data);
 
-    // Call the onSave callback
-    onSave(updatedData);
+    // call parent to update local list/state
+    onSave(updated);
 
-    // Show success message
-    toast.success(`Production card updated successfully`);
-
-    // Close dialog
+    toast.success("Production card updated successfully");
     onOpenChange(false);
-  };
+  } catch (err: any) {
+    console.error("update calendar error:", err);
+    // prefer server error message if present
+    const serverMessage = err?.response?.data?.message || err?.message;
+    toast.error(serverMessage || "Unable to update production card. Try again.");
+  } finally {
+    // setIsSaving(false);
+  }
+};
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -204,9 +226,7 @@ export function ViewProductionCardDialog({
                 </DialogTitle>
                 <DialogDescription className="text-base text-gray-600">
                   Scheduled for{" "}
-                  {productionData.startDate
-                    ? formatDate(productionData.startDate)
-                    : "-"}
+                  {formData.scheduleDate ? formatDate(formData.scheduleDate) : "-"}
                 </DialogDescription>
               </div>
             </div>
@@ -223,7 +243,7 @@ export function ViewProductionCardDialog({
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-8">
-          {/* Scheduling Information Section - MOVED TO TOP */}
+          {/* Scheduling Information Section */}
           <div className="space-y-6">
             <div className="flex items-center gap-5">
               <div className="w-10 h-10 bg-violet-500 rounded-xl flex items-center justify-center shadow-md">
@@ -235,7 +255,7 @@ export function ViewProductionCardDialog({
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              {/* Schedule On - EDITABLE */}
+              {/* Schedule On */}
               <div className="space-y-2">
                 <Label
                   htmlFor="scheduleDate"
@@ -261,7 +281,7 @@ export function ViewProductionCardDialog({
                 </p>
               </div>
 
-              {/* Assigned Plant - EDITABLE */}
+              {/* Assigned Plant */}
               <div className="space-y-2">
                 <Label
                   htmlFor="assignedPlant"
@@ -269,43 +289,56 @@ export function ViewProductionCardDialog({
                 >
                   Assigned Plant *
                 </Label>
-                <Select
+                 <Input
                   value={formData.assignedPlant}
-                  onValueChange={(value) => {
-                    if (value === "__add_new__") {
-                      setAddPlantDialogOpen(true);
-                    } else {
-                      setFormData({ ...formData, assignedPlant: value });
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-12 border-2 focus:border-blue-500">
-                    <SelectValue placeholder="Select plant" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {plantsList.map((plant) => (
-                      <SelectItem key={plant} value={plant}>
-                        {plant}
-                      </SelectItem>
-                    ))}
-                    <Separator className="my-1" />
-                    <div
-                      className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                      onClick={() => setAddPlantDialogOpen(true)}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add New Plant
-                    </div>
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => setFormData({ ...formData, assignedPlant: e.target.value })}
+                  className="h-12 text-base border-2 focus:border-blue-500"
+                />
                 <p className="text-sm text-gray-500">
                   Assign this production to a manufacturing plant
                 </p>
               </div>
+
+              {/* Sole From */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Sole From
+                </Label>
+                <Input
+                  value={formData.soleFrom}
+                  onChange={(e) => setFormData({ ...formData, soleFrom: e.target.value })}
+                  className="h-12 text-base border-2 focus:border-blue-500"
+                />
+              </div>
+
+              {/* Sole Color */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Sole Color
+                </Label>
+                <Input
+                  value={formData.soleColor}
+                  onChange={(e) => setFormData({ ...formData, soleColor: e.target.value })}
+                  className="h-12 text-base border-2 focus:border-blue-500"
+                />
+              </div>
+
+              {/* Sole Expected Date */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold text-gray-700">
+                  Sole Expected Date
+                </Label>
+                <Input
+                  type="date"
+                  value={formData.soleExpectedDate}
+                  onChange={(e) => setFormData({ ...formData, soleExpectedDate: e.target.value })}
+                  className="h-12 text-base border-2 focus:border-blue-500"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Product Information Section - READ ONLY, 6 COLUMNS */}
+          {/* Product Information Section - READ ONLY */}
           <div className="space-y-4">
             <div className="flex items-center gap-5">
               <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
@@ -318,13 +351,20 @@ export function ViewProductionCardDialog({
 
             {/* Compact Table Layout */}
             <div className="bg-white rounded-lg">
-              {/* 3x3 Grid - 9 Fields Only */}
+              {/* 3x3 Grid */}
               <div className="grid grid-cols-3 gap-6">
                 {/* Product Name */}
                 <div className="space-y-2">
                   <div className="text-xs text-gray-600">Product Name</div>
                   <div className="text-sm text-gray-900">
-                    {productionData.productName || "-"}
+                   {
+  productionData.productName ||
+  productionData.raw?.projectSnapshot?.artName ||
+  productionData.raw?.project?.artName ||
+  productionData.raw?.projectSnapshot?.productName ||
+  "-"
+}
+
                   </div>
                 </div>
 
@@ -332,63 +372,65 @@ export function ViewProductionCardDialog({
                 <div className="space-y-2">
                   <div className="text-xs text-gray-600">Product Code</div>
                   <div className="text-sm text-gray-900">
-                    {productionData.projectCode || "-"}
+                    {productionData.projectCode || 
+  productionData.raw?.projectSnapshot?.autoCode ||
+  productionData.raw?.project?.autoCode ||
+  productionData.raw?.projectSnapshot?.projectCode ||"-"}
                   </div>
                 </div>
 
                 {/* Art/Colour Name */}
                 <div className="space-y-2">
-                  <div className="text-xs text-gray-600">Art/Colour Name</div>
+                  <div className="text-xs text-gray-600">Colour</div>
                   <div className="text-sm text-gray-900">
-                    {productionData.artColour || "-"}
+                    {productionData.artColour ||
+  productionData.raw?.projectSnapshot?.color ||
+  productionData.raw?.project?.color ||
+  productionData.raw?.projectSnapshot?.color || "-"}
                   </div>
                 </div>
 
-                {/* Company */}
-                <div className="space-y-2">
-                  <div className="text-xs text-gray-600">Company</div>
-                  <div className="text-sm text-gray-900">-</div>
-                </div>
+               {/* Company */}
+<div className="space-y-2">
+  <div className="text-xs text-gray-600">Company</div>
+  <div className="text-sm text-gray-900">
+    {
+      productionData.raw?.projectSnapshot?.companyName ||
+      productionData.raw?.project?.company?.name ||
+      productionData.raw?.project?.company ||
+      "-"
+    }
+  </div>
+</div>
 
-                {/* Brand */}
-                <div className="space-y-2">
-                  <div className="text-xs text-gray-600">Brand</div>
-                  <div className="text-sm text-gray-900">
-                    {productionData.brand || "-"}
-                  </div>
-                </div>
 
-                {/* Category */}
                 <div className="space-y-2">
-                  <div className="text-xs text-gray-600">Category</div>
-                  <div className="text-sm text-gray-900">
-                    {productionData.category || "-"}
-                  </div>
-                </div>
+  <div className="text-xs text-gray-600">Brand</div>
+  <div className="text-sm text-gray-900">
+    {
+      productionData.brand ||
+      productionData.raw?.projectSnapshot?.brandName ||
+      productionData.raw?.project?.brand?.name ||
+      productionData.raw?.project?.brand ||
+      "-"
+    }
+  </div>
+</div>
 
-                {/* Type */}
-                <div className="space-y-2">
-                  <div className="text-xs text-gray-600">Type</div>
-                  <div className="text-sm text-gray-900">
-                    {productionData.type || "-"}
-                  </div>
-                </div>
 
-                {/* Country */}
-                <div className="space-y-2">
-                  <div className="text-xs text-gray-600">Country</div>
-                  <div className="text-sm text-gray-900">
-                    {productionData.country || "-"}
-                  </div>
-                </div>
+              <div className="space-y-2">
+  <div className="text-xs text-gray-600">Category</div>
+  <div className="text-sm text-gray-900">
+    {
+      productionData.category ||
+      productionData.raw?.projectSnapshot?.categoryName ||
+      productionData.raw?.project?.category?.name ||
+      productionData.raw?.project?.category ||
+      "-"
+    }
+  </div>
+</div>
 
-                {/* Gender */}
-                <div className="space-y-2">
-                  <div className="text-xs text-gray-600">Gender</div>
-                  <div className="text-sm text-gray-900">
-                    {productionData.gender || "-"}
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -425,49 +467,10 @@ export function ViewProductionCardDialog({
                   className="h-12 text-base border-2 focus:border-blue-500"
                 />
               </div>
-
-              {/* Production Unit - EDITABLE */}
-              <div className="space-y-2">
-                <Label
-                  htmlFor="unit"
-                  className="text-base font-semibold text-gray-700"
-                >
-                  Production Unit *
-                </Label>
-                <Select
-                  value={formData.unit}
-                  onValueChange={(value) => {
-                    if (value === "__add_new__") {
-                      setAddUnitDialogOpen(true);
-                    } else {
-                      setFormData({ ...formData, unit: value });
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-12 border-2 focus:border-blue-500">
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {unitsList.map((unit) => (
-                      <SelectItem key={unit} value={unit}>
-                        {unit}
-                      </SelectItem>
-                    ))}
-                    <Separator className="my-1" />
-                    <div
-                      className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                      onClick={() => setAddUnitDialogOpen(true)}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add New Unit
-                    </div>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
           </div>
 
-          {/* Additional Information Section - EDITABLE */}
+          {/* Additional Information */}
           <div className="space-y-6">
             <div className="flex items-center gap-5">
               <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center shadow-md">
@@ -479,10 +482,7 @@ export function ViewProductionCardDialog({
             </div>
 
             <div className="space-y-2">
-              <Label
-                htmlFor="remarks"
-                className="text-base font-semibold text-gray-700"
-              >
+              <Label htmlFor="remarks" className="text-base font-semibold text-gray-700">
                 Remarks
               </Label>
               <Textarea
@@ -522,18 +522,12 @@ export function ViewProductionCardDialog({
       {/* Add New Plant Dialog */}
       <Dialog open={addPlantDialogOpen} onOpenChange={setAddPlantDialogOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-2">
               <Factory className="w-5 h-5 text-blue-600" />
-              Add New Plant
-            </DialogTitle>
-            <DialogDescription>
-              Enter the name of the new manufacturing plant
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
+              <DialogTitle className="text-xl">Add New Plant</DialogTitle>
+            </div>
+            <div className="space-y-4 py-2">
               <Label htmlFor="plantName">Plant Name *</Label>
               <Input
                 id="plantName"
@@ -549,81 +543,27 @@ export function ViewProductionCardDialog({
                 }}
               />
             </div>
-          </div>
 
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAddPlantDialogOpen(false);
-                setNewPlantName("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={saveNewPlant}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Add Plant
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add New Unit Dialog */}
-      <Dialog open={addUnitDialogOpen} onOpenChange={setAddUnitDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <Package className="w-5 h-5 text-blue-600" />
-              Add New Unit
-            </DialogTitle>
-            <DialogDescription>
-              Enter the name of the new production unit
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="unitName">Unit Name *</Label>
-              <Input
-                id="unitName"
-                value={newUnitName}
-                onChange={(e) => setNewUnitName(e.target.value)}
-                placeholder="e.g., Boxes, Pallets, Containers"
-                className="w-full"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    saveNewUnit();
-                  }
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAddPlantDialogOpen(false);
+                  setNewPlantName("");
                 }}
-              />
+              >
+                Cancel
+              </Button>
+              <Button onClick={saveNewPlant} className="bg-blue-600 hover:bg-blue-700">
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Add Plant
+              </Button>
             </div>
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAddUnitDialogOpen(false);
-                setNewUnitName("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={saveNewUnit}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Add Unit
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
     </Dialog>
   );
 }
+
+export default ViewProductionCardDialog;

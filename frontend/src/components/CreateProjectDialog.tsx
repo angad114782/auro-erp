@@ -638,17 +638,16 @@ export function CreateProjectDialog({
 
   // --------- UI (unchanged except sources now use API state) ---------
   return (
-    <Dialog
-      open={open}
-      onOpenChange={async (isOpen: boolean) => {
-        if (!isOpen) {
-          if (sequenceId) {
-            await api.post(`/sequences/${sequenceId}/cancel`).catch(() => {});
-          }
-          onClose();
-        }
-      }}
-    >
+   <Dialog
+  open={open}
+  onOpenChange={(isOpen: boolean) => {
+    if (!isOpen) {
+      // Don't cancel the reserved sequence on modal close.
+      onClose();
+    }
+  }}
+>
+
       <DialogContent className="max-w-[96vw]! w-[96vw]! max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
         {/* Sticky Header */}
         <div className="sticky top-0 z-50 px-12 py-8 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
@@ -682,21 +681,17 @@ export function CreateProjectDialog({
                 </div>
               </div>
               <Button
-                onClick={async () => {
-                  // cancel sequence here
-                  if (sequenceId) {
-                    await api
-                      .post(`/sequences/${sequenceId}/cancel`)
-                      .catch(() => {});
-                  }
-                  onClose();
-                }}
-                variant="ghost"
-                size="sm"
-                className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full"
-              >
-                <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
-              </Button>
+  onClick={() => {
+    // simply close the modal locally — keep the reserved sequence
+    onClose();
+  }}
+  variant="ghost"
+  size="sm"
+  className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full"
+>
+  <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
+</Button>
+
             </div>
           </div>
         </div>
@@ -1973,22 +1968,18 @@ export function CreateProjectDialog({
 
           <div className="flex items-center gap-4">
             <Button
-              variant="outline"
-              size="lg"
-              className="px-8 py-3 text-base border-2 hover:bg-gray-50"
-              onClick={async () => {
-                // cancel sequence here
-                if (sequenceId) {
-                  await api
-                    .post(`/sequences/${sequenceId}/cancel`)
-                    .catch(() => {});
-                }
-                onClose();
-              }}
-              type="button"
-            >
-              Cancel
-            </Button>
+  variant="outline"
+  size="lg"
+  className="px-8 py-3 text-base border-2 hover:bg-gray-50"
+  onClick={() => {
+    // just close locally and keep the reserved sequence on server
+    onClose();
+  }}
+  type="button"
+>
+  Cancel
+</Button>
+
             <Button
               onClick={handleCreateProject}
               size="lg"

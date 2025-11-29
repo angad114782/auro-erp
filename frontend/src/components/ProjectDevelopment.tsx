@@ -167,14 +167,14 @@ export default function ProjectDevelopment() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button
+              {/* <Button
                 variant="outline"
                 size="sm"
                 onClick={() => toast.info("Import functionality coming soon")}
               >
                 <Upload className="w-4 h-4 mr-2" />
                 Import
-              </Button>
+              </Button> */}
               <Button
                 className="bg-[#0c9dcb] hover:bg-[#0c9dcb]/90"
                 onClick={() => setNewProjectOpen(true)}

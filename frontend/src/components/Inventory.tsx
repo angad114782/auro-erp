@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Search, Edit, Settings, FileText, Package } from "lucide-react";
+import { Plus, Search, Edit, Settings, FileText, Package, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
@@ -40,6 +40,9 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
     };
     loadData();
   }, []);
+
+  const [selectedItemForDelete, setSelectedItemForDelete] = useState(null);
+const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const itemsList = items || [];
   const drafts = itemsList.filter((i) => i.isDraft);
@@ -341,34 +344,47 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
                       {item.isDraft ? "Draft" : "Available"}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    {item.isDraft ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-green-200 text-green-600 hover:bg-green-50"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditItem(item);
-                        }}
-                      >
-                        <Edit className="w-4 h-4 mr-1" /> Edit Item
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-blue-200 text-blue-600 hover:bg-blue-50"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedItemForStock(item);
-                          setShowUpdateStockDialog(true);
-                        }}
-                      >
-                        <Settings className="w-4 h-4 mr-1" /> Update Stock
-                      </Button>
-                    )}
-                  </td>
+                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex items-center justify-end space-x-2">
+  {item.isDraft ? (
+    <Button
+      variant="outline"
+      size="sm"
+      className="border-green-200 text-green-600 hover:bg-green-50"
+      onClick={(e) => {
+        e.stopPropagation();
+        handleEditItem(item);
+      }}
+    >
+      <Edit className="w-4 h-4 mr-1" /> Edit Item
+    </Button>
+  ) : (
+    <Button
+      variant="outline"
+      size="sm"
+      className="border-blue-200 text-blue-600 hover:bg-blue-50"
+      onClick={(e) => {
+        e.stopPropagation();
+        setSelectedItemForStock(item);
+        setShowUpdateStockDialog(true);
+      }}
+    >
+      <Settings className="w-4 h-4 mr-1" /> Update Stock
+    </Button>
+  )}
+
+  {/* Small delete icon button */}
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      setSelectedItemForDelete(item);      // select current item for delete
+      setIsDeleteDialogOpen(true);         // open your confirmation modal
+    }}
+    title="Delete item"
+    className="ml-2 w-8 h-8 flex items-center justify-center rounded-md bg-red-500 hover:bg-red-600 shadow-sm hover:shadow-md transition-all duration-150"
+  >
+    <Trash2 className="w-4 h-4 text-white" />
+  </button>
+</td>
                 </tr>
               ))}
             </tbody>

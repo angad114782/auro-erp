@@ -64,7 +64,7 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// --- create calendar entry (as before) ---
+// --- create calendar entry (improved: populate project & denormalize names) ---
 export const createCalendarEntryService = async (payload, { session, by = null } = {}) => {
   const { projectId, scheduling, productionDetails, additional } = payload || {};
   if (!projectId) {
@@ -83,23 +83,42 @@ export const createCalendarEntryService = async (payload, { session, by = null }
     throw err;
   }
 
-  const project = await Project.findById(projectId).session(session);
-  if (!project || !project.isActive) {
+  // populate project with brand/category names so snapshot can store readable names
+  const project = await Project.findById(projectId)
+    .populate("brand", "name")
+    .populate("category", "name")
+    .populate("company", "name") // if you have company as ref
+    .lean()
+    .session ? await Project.findById(projectId).populate("brand", "name").populate("category", "name").populate("company", "name").session(session) : await Project.findById(projectId).populate("brand", "name").populate("category", "name").populate("company", "name");
+
+  // Note: some mongoose builds may not allow chaining .lean() with session easily;
+  // Above code uses session-aware find then populates. If your mongoose version supports chaining session(...).lean(), adapt accordingly.
+
+  // if Project.findById returned a Document (not lean), ensure we still have project object
+  if (!project || (!project.isActive && project.isActive !== undefined)) {
     const err = new Error("Project not found or not active");
     err.status = 404;
     throw err;
   }
 
-  const po = await PoDetails.findOne({ project: project._id }).lean().session(session);
+  // fetch PO details if any
+  const po = await PoDetails.findOne({ project: project._id }).lean().session ? await PoDetails.findOne({ project: project._id }).lean().session(session) : await PoDetails.findOne({ project: project._id }).lean();
 
+  // build snapshot storing both id and readable names
   const snapshot = {
     autoCode: project.autoCode,
     artName: project.artName,
     productDesc: project.productDesc,
     color: project.color,
     size: project.size,
-    brand: project.brand || null,
-    category: project.category || null,
+    // store ids if present
+    brand: project.brand?._id ?? project.brand ?? null,
+    brandName: project.brand?.name ?? (typeof project.brand === "string" ? project.brand : null),
+    category: project.category?._id ?? project.category ?? null,
+    categoryName: project.category?.name ?? (typeof project.category === "string" ? project.category : null),
+    company: project.company?._id ?? project.company ?? null,
+    companyName: project.company?.name ?? (typeof project.company === "string" ? project.company : null),
+    countryName: project.countryName ?? project.country ?? null,
     poNumber: po?.poNumber || "",
     poRef: po?._id || null,
   };
@@ -130,13 +149,25 @@ export const createCalendarEntryService = async (payload, { session, by = null }
 };
 
 // --- list (only active) with pagination ---
+// improved: populate project fully (brand/category names) and projectSnapshot.brand/category if stored as refs
 export const listCalendarEntriesService = async ({ page = 1, limit = 20 } = {}) => {
   const skip = (page - 1) * limit;
   const docs = await ProductionCalendar.find({ isActive: true })
-    .sort({ scheduling: 1, createdAt: -1 })
+    .sort({ "scheduling.scheduleDate": 1, createdAt: -1 })
     .skip(skip)
     .limit(limit)
-    .populate("project", "autoCode artName color")
+    .populate({
+      path: "project",
+      select: "autoCode artName color size brand category company country gender",
+      populate: [
+        { path: "brand", select: "name" },
+        { path: "category", select: "name" },
+        { path: "company", select: "name" },
+      ],
+    })
+    // populate snapshot nested refs if snapshot saved refs instead of names
+    .populate("projectSnapshot.brand", "name")
+    .populate("projectSnapshot.category", "name")
     .lean();
 
   const total = await ProductionCalendar.countDocuments({ isActive: true });
@@ -147,12 +178,24 @@ export const listCalendarEntriesService = async ({ page = 1, limit = 20 } = {}) 
 export const getCalendarEntryService = async (id) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
   const doc = await ProductionCalendar.findOne({ _id: id, isActive: true })
-    .populate("project projectSnapshot.brand projectSnapshot.category")
+    .populate({
+      path: "project",
+      select: "autoCode artName color size brand category company country gender",
+      populate: [
+        { path: "brand", select: "name" },
+        { path: "category", select: "name" },
+        { path: "company", select: "name" },
+      ],
+    })
+    .populate("projectSnapshot.brand", "name")
+    .populate("projectSnapshot.category", "name")
     .lean();
   return doc;
 };
 
 // --- update (partial replace) ---
+// Note: If you want to update projectSnapshot when project changes, you can add logic to refresh snapshot here.
+// For now we update only scheduling/productionDetails/additional as before.
 export const updateCalendarEntryService = async (id, payload, { session, by = null } = {}) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
 

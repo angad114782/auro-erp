@@ -17,16 +17,20 @@ const productionCalendarSchema = new mongoose.Schema({
   project: { type: mongoose.Schema.Types.ObjectId, ref: "Project", required: true, index: true },
   // snapshot of project fields for autofill:
   projectSnapshot: {
-    autoCode: String,
-    artName: String,
-    productDesc: String,
-    color: String,
-    size: String,
-    brand: { type: mongoose.Schema.Types.ObjectId, ref: "Brand", default: null },
-    category: { type: mongoose.Schema.Types.ObjectId, ref: "Category", default: null },
-    poNumber: { type: String, default: "" },
-    poRef: { type: mongoose.Schema.Types.ObjectId, ref: "PoDetails", default: null }
-  },
+  autoCode: String,
+  artName: String,
+  productDesc: String,
+  color: String,
+  size: String,
+  brand: { type: mongoose.Schema.Types.ObjectId, ref: "Brand" },   // keep id if stored
+  brandName: String,   // <-- add
+  category: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
+  categoryName: String, // <-- add
+  company: { type: mongoose.Schema.Types.ObjectId, ref: "Company" },
+  companyName: String,  // <-- add
+  poNumber: String,
+  poRef: { type: mongoose.Schema.Types.ObjectId, ref: "PoDetails" }
+},
 
   // Card 2: scheduling
   scheduling: { type: schedulingSchema, required: true },

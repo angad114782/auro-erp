@@ -162,8 +162,6 @@ export function ProductionPlanning() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("list");
 const [currentDate, setCurrentDate] = useState<Date>(new Date());
-const [isSavingCalendarChange, setIsSavingCalendarChange] = useState(false);
-const [isDeletingEntryId, setIsDeletingEntryId] = useState<string | null>(null);
 
 
   // Production cards management state
@@ -982,21 +980,13 @@ const getProductionsForDateUniversal = (date: Date): Array<{
     setProductionPlans(updatedPlans);
   };
 
- const handleProductionDateChange = async () => {
-  if (!selectedProductionForDateChange || !newProductionDate) {
-    return;
-  }
+  // Handle production date change
+  const handleProductionDateChange = () => {
+    if (!selectedProductionForDateChange || !newProductionDate) {
+      return;
+    }
 
-  // prepare doc id (calendar entry id)
-  const docId =
-    selectedProductionForDateChange.id ??
-    selectedProductionForDateChange._id ??
-    selectedProductionForDateChange.raw?._id ??
-    selectedProductionForDateChange.raw?.id;
-
-  // If there's no docId, fallback to local update (productionPlans)
-  if (!docId) {
-    // local-only plan (fallback)
+    // Update the production plan with new date
     const updatedPlans = productionPlans.map((plan) => {
       if (plan.id === selectedProductionForDateChange.id) {
         return {
@@ -1010,115 +1000,23 @@ const getProductionsForDateUniversal = (date: Date): Array<{
     });
 
     setProductionPlans(updatedPlans);
+
+    // Close dialog and reset state
     setIsDateChangeDialogOpen(false);
     setSelectedProductionForDateChange(null);
     setNewProductionDate("");
-    toast.success("Production date updated locally");
-    return;
-  }
 
-  // Build payload shape expected by backend
-  const payload = {
-    scheduling: {
-      scheduleDate: newProductionDate,
-      // keep assignedPlant/sole fields from existing raw if available to avoid accidental overwrites
-      assignedPlant:
-        selectedProductionForDateChange.raw?.scheduling?.assignedPlant ??
-        selectedProductionForDateChange.assignedPlant ??
-        selectedProductionForDateChange.raw?.scheduling?.assignedPlant ??
-        "",
-      soleFrom:
-        selectedProductionForDateChange.raw?.scheduling?.soleFrom ?? "",
-      soleColor:
-        selectedProductionForDateChange.raw?.scheduling?.soleColor ?? "",
-      soleExpectedDate:
-        selectedProductionForDateChange.raw?.scheduling?.soleExpectedDate ??
-        null,
-    },
+    // Show success toast
+    toast.success("Production date updated successfully", {
+      description: `Card moved to ${new Date(
+        newProductionDate
+      ).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })}`,
+    });
   };
-
-  try {
-    setIsSavingCalendarChange(true);
-    const res = await api.put(`/calendar/${docId}`, payload);
-    const updated = res.data?.data ?? res.data;
-
-    // Update local calendarEntries list: replace by id
-    setCalendarEntries((prev) =>
-      prev.map((e) => (e.id === (updated._id ?? updated.id) ? {
-        ...e,
-        startDate: (updated.scheduling?.scheduleDate
-          ? (new Date(updated.scheduling.scheduleDate).toISOString().split("T")[0])
-          : newProductionDate),
-        endDate: (updated.scheduling?.soleExpectedDate
-          ? (new Date(updated.scheduling.soleExpectedDate).toISOString().split("T")[0])
-          : (updated.endDate || newProductionDate)),
-        remarks: updated.additional?.remarks ?? e.remarks,
-        raw: updated,
-      } : e))
-    );
-
-    // If you also keep productionPlans in sync, update there if matching
-    setProductionPlans((prev) =>
-      prev.map((p) =>
-        p.id === (updated._id ?? updated.id) || p.rdProjectId === updated.project ? {
-          ...p,
-          startDate: (updated.scheduling?.scheduleDate
-            ? new Date(updated.scheduling.scheduleDate).toISOString().split("T")[0]
-            : p.startDate),
-          endDate: (updated.scheduling?.soleExpectedDate
-            ? new Date(updated.scheduling.soleExpectedDate).toISOString().split("T")[0]
-            : p.endDate),
-        } : p
-      )
-    );
-
-    setIsDateChangeDialogOpen(false);
-    setSelectedProductionForDateChange(null);
-    setNewProductionDate("");
-
-    toast.success("Production date updated");
-  } catch (err: any) {
-    console.error("Error updating calendar entry date:", err);
-    const message = err?.response?.data?.message ?? err.message ?? "Failed to update date";
-    toast.error(message);
-  } finally {
-    setIsSavingCalendarChange(false);
-  }
-};
-
-const handleDeleteCalendarEntry = async (entry: any) => {
-  const docId = entry.id ?? entry._id ?? entry.raw?._id ?? entry.raw?.id;
-  if (!docId) {
-    // local removal fallback if no id
-    setCalendarEntries((prev) => prev.filter((e) => e.id !== entry.id));
-    setProductionPlans((prev) => prev.filter((p) => p.id !== entry.id));
-    toast.success("Production removed locally");
-    return;
-  }
-
-  if (!confirm("Are you sure you want to remove this production (soft-delete)?")) return;
-
-  try {
-    setIsDeletingEntryId(docId);
-    const res = await api.delete(`/calendar/${docId}`);
-    const deleted = res.data?.data ?? res.data;
-
-    // remove from calendarEntries
-    setCalendarEntries((prev) => prev.filter((e) => e.id !== (deleted._id ?? deleted.id ?? docId)));
-    // optionally update productionPlans if needed
-    setProductionPlans((prev) => prev.filter((p) => p.id !== (deleted._id ?? deleted.id ?? docId)));
-
-    toast.success("Production removed (soft-deleted)");
-  } catch (err: any) {
-    console.error("Error deleting calendar entry:", err);
-    const message = err?.response?.data?.message ?? err.message ?? "Failed to delete";
-    toast.error(message);
-  } finally {
-    setIsDeletingEntryId(null);
-  }
-};
-
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1925,24 +1823,20 @@ const handleDeleteCalendarEntry = async (entry: any) => {
 
                                         {/* Trash Button - Bottom Right */}
                                         <button
-  onClick={(e) => {
-    e.stopPropagation();
-    handleDeleteCalendarEntry(production);
-  }}
-  className="absolute bottom-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 
-    rounded-md flex items-center justify-center shadow-sm 
-    hover:shadow-md transition-all duration-200 group"
-  title="Delete production"
->
-  {isDeletingEntryId === (production.id ?? production._id ?? production.raw?._id) ? (
-    <svg className="animate-spin w-3.5 h-3.5 text-white" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" strokeDasharray="60" strokeLinecap="round" fill="none"></circle>
-    </svg>
-  ) : (
-    <Trash2 className="w-3.5 h-3.5 text-white" />
-  )}
-</button>
-
+                                          // onClick={(e) => {
+                                          //   e.stopPropagation();
+                                          //   setSelectedProductionForDelete(
+                                          //     production
+                                          //   ); // <-- you should define this
+                                          //   setIsDeleteDialogOpen(true); // <-- also define this modal
+                                          // }}
+                                          className="absolute bottom-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 
+             rounded-md flex items-center justify-center shadow-sm 
+             hover:shadow-md transition-all duration-200 group"
+                                          title="Delete production"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 text-white" />
+                                        </button>
                                       </div>
                                     ))}
 
