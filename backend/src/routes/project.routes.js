@@ -143,12 +143,5 @@ router.patch("/:id/client-cost", updateClientCost); // { amount }
 router.patch("/:id/client-approval", updateClientApproval); // { status }
 router.patch("/:id/po", updatePO);
 
-/** Color Variant APIs (colorId is an ID like 'c_black') */
-router.post("/:id/color-variants/clone-default", cloneDefaultVariants);
-router.get("/:id/color-variants/:colorId", getColorVariant);
-router.put("/:id/color-variants/:colorId", upsertColorVariant);
-router.delete("/:id/color-variants/:colorId", deleteColorVariant);
-
-router.post("/:id/move-to-production", moveToProduction);
 
 export default router;

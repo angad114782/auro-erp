@@ -31,29 +31,37 @@ import {
 } from "./ui/select";
 import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface ProductionPlan {
   id: string;
   planName: string;
-  projectCode: string;
-  poNumber: string;
-  productName: string;
-  brand: string;
-  category: string;
-  type: string;
-  gender: string;
-  artColour: string;
-  color: string;
-  country: string;
-  quantity: number;
-  assignedPlant: string;
-  assignedTeam: string;
-  taskInc: string;
-  status: string;
-  priority: string;
+  projectCode?: string;
+  poNumber?: string;
+  productName?: string;
+  brand?: string;
+  category?: string;
+  type?: string;
+  gender?: string;
+  artColour?: string;
+  color?: string;
+  country?: string;
+  quantity?: number;
+  assignedPlant?: string;
+  assignedTeam?: string;
+  taskInc?: string;
+  status?: string;
+  priority?: string;
   remarks?: string;
+
+  // allow either direct id or nested object
+  project?: { _id?: string; id?: string; gender?: string; [k: string]: any };
+  projectId?: string;    // <-- ADD THIS
+
+  artNameSnapshot?: string;
+  colorSnapshot?: string;
 }
+
 
 interface ProductionPlanDetailsDialogProps {
   open: boolean;
@@ -218,6 +226,48 @@ export function ProductionPlanDetailsDialog({
         return "bg-gray-100 text-gray-800";
     }
   };
+
+  const handleStartProductionClick = (p: ProductionPlan) => {
+  // safe candidate extraction from multiple shapes
+  const candidates = [
+    p?.project?.id,
+    p?.project?._id,
+    (p as any)?.projectId,
+    p.projectCode,
+    p.poNumber,
+  ].filter(Boolean) as string[];
+
+  const projectId = candidates.length > 0 ? String(candidates[0]) : undefined;
+
+  console.log("[handleStartProductionClick] plan:", p);
+  console.log("[handleStartProductionClick] project id candidates:", candidates);
+
+  if (!projectId) {
+    toast.error("Project ID not found — please attach project to plan or provide projectId");
+    console.warn("[handleStartProductionClick] no projectId available for plan:", p);
+    // still inform parent (optional) with undefined id so parent can handle
+    if (onStartProduction) onStartProduction({ ...p, projectId });
+    onOpenChange(false);
+    return;
+  }
+
+  toast.success(`Starting production for project ${projectId}`);
+  console.log(`[handleStartProductionClick] calling onStartProduction with projectId=${projectId}`);
+
+  if (onStartProduction) {
+    try {
+      onStartProduction({ ...p, projectId });
+    } catch (err) {
+      console.error("[handleStartProductionClick] onStartProduction threw:", err);
+    }
+  } else {
+    console.warn("[handleStartProductionClick] onStartProduction not provided — no action dispatched");
+  }
+
+  onOpenChange(false);
+};
+
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -614,7 +664,7 @@ export function ProductionPlanDetailsDialog({
               </div>
             )}
 
-            {/* Action Buttons */}
+             {/* Action Buttons */}
             <div className="flex items-center justify-end pt-4 border-t border-gray-200">
               <div className="flex items-center gap-2">
                 {(plan.status === "Planning" ||
@@ -626,10 +676,7 @@ export function ProductionPlanDetailsDialog({
                     <Button
                       size="sm"
                       className="bg-green-500 hover:bg-green-600 text-white"
-                      onClick={() => {
-                        onStartProduction(plan);
-                        onOpenChange(false);
-                      }}
+                      onClick={() => handleStartProductionClick(plan)}
                     >
                       <Play className="w-4 h-4 mr-1" />
                       Start Production
@@ -640,6 +687,10 @@ export function ProductionPlanDetailsDialog({
                     size="sm"
                     variant="outline"
                     className="border-red-300 text-red-600 hover:bg-red-50"
+                    onClick={() => {
+                      toast("Pause not implemented yet");
+                      console.log("[ProductionPlanDetailsDialog] Pause pressed for", plan);
+                    }}
                   >
                     <Pause className="w-4 h-4 mr-1" />
                     Pause Production
