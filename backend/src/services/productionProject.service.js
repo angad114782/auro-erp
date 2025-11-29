@@ -1,3 +1,4 @@
+// services/productionProject.service.js
 import mongoose from "mongoose";
 import ProductionProject from "../models/ProductionProject.model.js";
 import { Project } from "../models/Project.model.js";
@@ -31,6 +32,11 @@ export const createProductionFromProject = async (
       .populate("company brand category type country assignPerson")
       .lean()
       .session(session);
+    // normalize priority on existing production (if missing)
+    if (!existing.priority && populatedProject?.priority) {
+      existing.priority = populatedProject.priority;
+      await existing.save({ session });
+    }
     return { project: populatedProject, production: existing };
   }
 
@@ -47,6 +53,7 @@ export const createProductionFromProject = async (
     }
   }
 
+  // build production snapshot — include priority from project (snapshot)
   const snapshot = {
     project: project._id,
     autoCodeSnapshot: project.autoCode,
@@ -58,6 +65,7 @@ export const createProductionFromProject = async (
       productDesc: project.productDesc,
       redSealTargetDate: project.redSealTargetDate,
     },
+    // copy PO summary if present
     po: po
       ? {
           _id: po._id,
@@ -68,6 +76,8 @@ export const createProductionFromProject = async (
           status: po.status,
         }
       : null,
+    // important: snapshot priority copied from project
+    priority: project.priority ?? "Medium",
     status: "Planning",
     phases: [],
     materials: [],
@@ -112,12 +122,27 @@ export const listProductionProjectsService = async ({
   if (projectId && mongoose.Types.ObjectId.isValid(projectId))
     filter.project = projectId;
 
-  const items = await ProductionProject.find(filter)
+  // fetch with project populated (include priority)
+  let items = await ProductionProject.find(filter)
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
-    .populate("project", "autoCode artName color")
+    .populate("project", "priority autoCode artName brand category")
     .lean();
+
+  // Normalize: ensure every item has a top-level priority
+  items = items.map((doc) => {
+    const normalizedPriority =
+      doc.priority ?? doc.project?.priority ?? "Medium";
+
+    // Keep other fields intact, but ensure priority exists
+    return {
+      ...doc,
+      priority: normalizedPriority,
+      // keep project populated object as-is (useful for front-end)
+      project: doc.project ?? null,
+    };
+  });
 
   const total = await ProductionProject.countDocuments(filter);
   return { items, total, page, limit };
@@ -131,7 +156,16 @@ export const getProductionProjectService = async (id) => {
   const doc = await ProductionProject.findOne({ _id: id, isActive: true })
     .populate("project")
     .lean();
-  return doc;
+
+  if (!doc) return null;
+
+  // ensure priority normalized in returned doc
+  const normalized = {
+    ...doc,
+    priority: doc.priority ?? doc.project?.priority ?? "Medium",
+  };
+
+  return normalized;
 };
 
 /**
@@ -171,6 +205,9 @@ export const updateProductionProjectService = async (
     updateObj.assignedTeam = payload.assignedTeam;
   if (payload.documents !== undefined) updateObj.documents = payload.documents;
 
+  // allow updating priority explicitly (optional)
+  if (payload.priority !== undefined) updateObj.priority = payload.priority;
+
   // status change -> push history
   const updateCommand = {
     $set: {
@@ -199,6 +236,16 @@ export const updateProductionProjectService = async (
     updateCommand,
     { new: true, session }
   );
+
+  // Normalize priority before returning
+  if (updated) {
+    const populated = await ProductionProject.findById(updated._id)
+      .populate("project", "priority")
+      .lean();
+    populated.priority = populated.priority ?? populated.project?.priority ?? "Medium";
+    return populated;
+  }
+
   return updated;
 };
 

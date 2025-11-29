@@ -165,6 +165,26 @@ const resolveNameFromList = (
 
   return undefined;
 };
+// normalize various priority values from DB into High|Medium|Low
+const normalizePriority = (val: any): "High" | "Medium" | "Low" => {
+  if (!val && val !== 0) return "Medium";
+  const s = String(val).trim().toLowerCase();
+
+  // common explicit labels
+  if (["high", "hi", "h", "urgent", "critical", "1"].includes(s)) return "High";
+  if (["low", "lo", "l", "minor", "3"].includes(s)) return "Low";
+  // treat numeric 2 or 'medium' as medium
+  if (["medium", "med", "m", "2"].includes(s)) return "Medium";
+
+  // fallback heuristics
+  if (s.includes("urgent") || s.includes("priority") && s.includes("high")) return "High";
+  if (s.includes("low")) return "Low";
+  if (s.includes("high")) return "High";
+  if (s.includes("medium") || s.includes("med")) return "Medium";
+
+  // default
+  return "Medium";
+};
 
 export function ProductionPlanning() {
   const { rdProjects, brands, categories, types, colors, countries } =
@@ -178,6 +198,89 @@ export function ProductionPlanning() {
   const [isDeletingEntryId, setIsDeletingEntryId] = useState<string | null>(
     null
   );
+// Add near other state hooks in ProductionPlanning
+const [isLoadingPlanDetails, setIsLoadingPlanDetails] = useState(false);
+
+// Helper to fetch full production or project data
+const loadFullPlanDetails = async (plan: any) => {
+  if (!plan) return null;
+
+  // Try a few candidate ids (production id first, then project id)
+  const tryIds = [
+    plan.id,
+    plan.raw?._id,
+    plan.raw?.id,
+    plan.rdProjectId,
+    plan.projectId,
+    plan.project?._id,
+  ].filter(Boolean);
+
+  setIsLoadingPlanDetails(true);
+  try {
+    // 1) Try fetch production doc by prodId
+    for (const candidate of tryIds) {
+      try {
+        const prodRes = await api.get(`/projects/production/${candidate}`);
+        const prodDoc = prodRes.data?.data ?? prodRes.data;
+        if (prodDoc) {
+          // if project is not populated try to fetch it
+          if (!prodDoc.project || typeof prodDoc.project === "string") {
+            const projectId =
+              prodDoc.project || plan.rdProjectId || prodDoc.projectId;
+            if (projectId) {
+              try {
+                const pRes = await api.get(`/projects/${projectId}`);
+                prodDoc.project = pRes.data?.data ?? pRes.data;
+              } catch (e) {
+                // ignore project fetch error
+              }
+            }
+          }
+          return prodDoc;
+        }
+      } catch (e) {
+        // ignore single-prod fetch failures, try next candidate
+      }
+    }
+
+    // 2) No production doc — try fetching project directly
+    const projectId =
+      plan.rdProjectId ?? plan.projectId ?? plan.raw?.project ?? null;
+    if (projectId) {
+      try {
+        const pRes = await api.get(`/projects/${projectId}`);
+        const project = pRes.data?.data ?? pRes.data;
+        if (project) {
+          return {
+            ...plan,
+            project,
+            // copy snapshot defaults
+            artNameSnapshot:
+              plan.artNameSnapshot ?? project.artName ?? plan.productName ?? "",
+            colorSnapshot: plan.colorSnapshot ?? project.color ?? "",
+            coverImageSnapshot:
+              plan.coverImageSnapshot ?? project.coverImage ?? "",
+            priority: plan.priority ?? project.priority ?? "Medium",
+            // attach PO/quantity if available
+            po: plan.po ?? project.po ?? null,
+            quantity:
+              plan.quantity ??
+              project.po?.orderQuantity ??
+              project.orderQuantity ??
+              0,
+          };
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // fallback to original plan
+    return plan;
+  } finally {
+    setIsLoadingPlanDetails(false);
+  }
+};
 
   // Production cards management state
   const [isProductionDialogOpen, setIsProductionDialogOpen] = useState(false);
@@ -286,7 +389,14 @@ export function ProductionPlanning() {
             endDate: safeDate(doc.targetCompletionDate),
             deliveryDate: safeDate(doc.targetCompletionDate),
 
-            priority: doc.priority || "Medium",
+              priority: normalizePriority(
+    doc.priority ??
+      proj.priority ??
+      doc.projectSnapshot?.priority ??
+      doc.productionDetails?.priority ??
+      doc.priorityLevel ?? // possible alternate field name
+      "Medium"
+  ),
             status: doc.status || "Planning",
 
             assignedPlant: doc.assignedPlant || "",
@@ -604,6 +714,7 @@ export function ProductionPlanning() {
         size: undefined,
         brand: plan.brand,
         category: plan.category,
+        priority:plan.priority,
         type: plan.type,
         company: undefined,
         country: plan.country,
@@ -1429,15 +1540,24 @@ export function ProductionPlanning() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {getPaginatedPlans().map((plan) => (
-                      <tr
-                        key={plan.id}
-                        className="hover:bg-blue-50 cursor-pointer transition-colors"
-                        onClick={() => {
-                          setSelectedPlanForDetails(plan);
-                          setIsPlanDetailsDialogOpen(true);
-                        }}
-                      >
+  {getPaginatedPlans().map((plan) => (
+    <tr
+      key={plan.id}
+      className="hover:bg-blue-50 cursor-pointer transition-colors"
+      onClick={async () => {
+        try {
+          const full = await loadFullPlanDetails(plan);
+          // normalize: put project under `project` (if returned doc is production it may already have .project)
+          const normalized =
+            full && full.project ? full : { ...plan, ...full };
+          setSelectedPlanForDetails(normalized);
+          setIsPlanDetailsDialogOpen(true);
+        } catch (err) {
+          console.error("Failed to load plan details:", err);
+          toast.error("Failed to load plan details");
+        }
+      }}
+    >
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="font-mono font-medium text-blue-600">
                             {plan.projectCode}
@@ -1463,7 +1583,7 @@ export function ProductionPlanning() {
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
                             <span className="font-medium text-gray-900">
-                              {plan?.artColour}
+                              {plan?.productName}
                             </span>
                             <span className="text-xs text-gray-500 mt-0.5">
                               {plan.color}
