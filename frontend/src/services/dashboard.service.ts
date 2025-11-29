@@ -48,7 +48,7 @@ export const dashboardService = {
   // Production Projects
   async getProductionProjects() {
     try {
-      const response = await api.get("/productionProject");
+      const response = await api.get("/production");
       return response.data;
     } catch (error) {
       console.error("Error fetching production projects:", error);

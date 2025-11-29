@@ -134,3 +134,19 @@ export const getAllHistory = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// Soft delete an item (mark isDeleted = true)
+export const softDeleteItem = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await inventoryService.softDeleteItem(id);
+    if (!updated)
+      return res
+        .status(404)
+        .json({ success: false, message: "Item not found" });
+    return res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error("SOFT DELETE ERROR:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

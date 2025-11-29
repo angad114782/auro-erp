@@ -27,6 +27,10 @@ const inventoryItemSchema = new mongoose.Schema(
 
     isDraft: { type: Boolean, default: true },
 
+    // Soft delete flag
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date },
+
     lastUpdate: { type: String },
     lastUpdateTime: { type: String },
   },

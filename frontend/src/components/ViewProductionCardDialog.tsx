@@ -30,10 +30,10 @@ import {
 } from "./ui/select";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner@2.0.3";
-import api from "../lib/api"; 
+import api from "../lib/api";
 interface ProductionPlan {
   _id?: string; // Mongo id (optional)
-  id?: string;  // possible alternative id
+  id?: string; // possible alternative id
   productName?: string;
   projectCode?: string;
   brand?: string;
@@ -100,18 +100,18 @@ export function ViewProductionCardDialog({
           productionData.startDate ??
           "",
         assignedPlant:
-          productionData.assignedPlant ??
-          scheduling.assignedPlant ??
-          "",
+          productionData.assignedPlant ?? scheduling.assignedPlant ?? "",
         quantity: (productionData.quantity ?? "").toString(),
-        remarks: productionData.remarks ?? productionData.raw?.additional?.remarks ?? "",
+        remarks:
+          productionData.remarks ??
+          productionData.raw?.additional?.remarks ??
+          "",
         soleFrom: scheduling.soleFrom ?? "",
         soleColor: scheduling.soleColor ?? "",
-        soleExpectedDate:
-          scheduling.soleExpectedDate
-            ? // normalize to yyyy-mm-dd
-              new Date(scheduling.soleExpectedDate).toISOString().split("T")[0]
-            : "",
+        soleExpectedDate: scheduling.soleExpectedDate
+          ? // normalize to yyyy-mm-dd
+            new Date(scheduling.soleExpectedDate).toISOString().split("T")[0]
+          : "",
       });
     }
   }, [open, productionData]);
@@ -145,70 +145,73 @@ export function ViewProductionCardDialog({
     setAddPlantDialogOpen(false);
     toast.success("Plant added successfully");
   };
-// assume: import api from '~/lib/api'  // your axios instance
-// or const api = axios.create({ baseURL: process.env.NEXT_PUBLIC_API_BASE });
+  // assume: import api from '~/lib/api'  // your axios instance
+  // or const api = axios.create({ baseURL: process.env.NEXT_PUBLIC_API_BASE });
 
-const handleSave = async () => {
-  if (!formData.scheduleDate) {
-    toast.error("Please select a schedule date");
-    return;
-  }
-  if (!formData.quantity || Number(formData.quantity) <= 0) {
-    toast.error("Please enter a valid quantity");
-    return;
-  }
+  const handleSave = async () => {
+    if (!formData.scheduleDate) {
+      toast.error("Please select a schedule date");
+      return;
+    }
+    if (!formData.quantity || Number(formData.quantity) <= 0) {
+      toast.error("Please enter a valid quantity");
+      return;
+    }
 
-  const docId = productionData?._id ?? productionData?.id;
-  if (!docId) {
-    toast.error("Missing id for this production card — cannot update.");
-    console.error("Missing id for productionData:", productionData);
-    return;
-  }
+    const docId = productionData?._id ?? productionData?.id;
+    if (!docId) {
+      toast.error("Missing id for this production card — cannot update.");
+      console.error("Missing id for productionData:", productionData);
+      return;
+    }
 
-  const payload = {
-    scheduling: {
-      scheduleDate: formData.scheduleDate,
-      assignedPlant: formData.assignedPlant || "",
-      soleFrom: formData.soleFrom || "",
-      soleColor: formData.soleColor || "",
-      soleExpectedDate: formData.soleExpectedDate ? formData.soleExpectedDate : null,
-    },
-    productionDetails: { quantity: Number(formData.quantity) },
-    additional: { remarks: formData.remarks ?? "" },
+    const payload = {
+      scheduling: {
+        scheduleDate: formData.scheduleDate,
+        assignedPlant: formData.assignedPlant || "",
+        soleFrom: formData.soleFrom || "",
+        soleColor: formData.soleColor || "",
+        soleExpectedDate: formData.soleExpectedDate
+          ? formData.soleExpectedDate
+          : null,
+      },
+      productionDetails: { quantity: Number(formData.quantity) },
+      additional: { remarks: formData.remarks ?? "" },
+    };
+
+    // optional saving flag
+    // setIsSaving(true);
+
+    try {
+      // If your `api` instance already attaches Authorization header (via interceptor),
+      // you can simply call:
+      const res = await api.put(`/calendar/${docId}`, payload);
+      // If you need to pass headers explicitly (not usual), use:
+      // const token = localStorage.getItem("token");
+      // const res = await api.put(`/calendar/${docId}`, payload, {
+      //   headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      // });
+
+      // axios response shape: res.data -> { message, data }
+      const updated = res.data?.data ?? res.data;
+      console.log("calendar update response:", res.data);
+
+      // call parent to update local list/state
+      onSave(updated);
+
+      toast.success("Production card updated successfully");
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error("update calendar error:", err);
+      // prefer server error message if present
+      const serverMessage = err?.response?.data?.message || err?.message;
+      toast.error(
+        serverMessage || "Unable to update production card. Try again."
+      );
+    } finally {
+      // setIsSaving(false);
+    }
   };
-
-  // optional saving flag
-  // setIsSaving(true);
-
-  try {
-    // If your `api` instance already attaches Authorization header (via interceptor),
-    // you can simply call:
-    const res = await api.put(`/calendar/${docId}`, payload);
-    // If you need to pass headers explicitly (not usual), use:
-    // const token = localStorage.getItem("token");
-    // const res = await api.put(`/calendar/${docId}`, payload, {
-    //   headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-    // });
-
-    // axios response shape: res.data -> { message, data }
-    const updated = res.data?.data ?? res.data;
-    console.log("calendar update response:", res.data);
-
-    // call parent to update local list/state
-    onSave(updated);
-
-    toast.success("Production card updated successfully");
-    onOpenChange(false);
-  } catch (err: any) {
-    console.error("update calendar error:", err);
-    // prefer server error message if present
-    const serverMessage = err?.response?.data?.message || err?.message;
-    toast.error(serverMessage || "Unable to update production card. Try again.");
-  } finally {
-    // setIsSaving(false);
-  }
-};
-
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -226,7 +229,9 @@ const handleSave = async () => {
                 </DialogTitle>
                 <DialogDescription className="text-base text-gray-600">
                   Scheduled for{" "}
-                  {formData.scheduleDate ? formatDate(formData.scheduleDate) : "-"}
+                  {formData.scheduleDate
+                    ? formatDate(formData.scheduleDate)
+                    : "-"}
                 </DialogDescription>
               </div>
             </div>
@@ -289,9 +294,11 @@ const handleSave = async () => {
                 >
                   Assigned Plant *
                 </Label>
-                 <Input
+                <Input
                   value={formData.assignedPlant}
-                  onChange={(e) => setFormData({ ...formData, assignedPlant: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, assignedPlant: e.target.value })
+                  }
                   className="h-12 text-base border-2 focus:border-blue-500"
                 />
                 <p className="text-sm text-gray-500">
@@ -306,7 +313,9 @@ const handleSave = async () => {
                 </Label>
                 <Input
                   value={formData.soleFrom}
-                  onChange={(e) => setFormData({ ...formData, soleFrom: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, soleFrom: e.target.value })
+                  }
                   className="h-12 text-base border-2 focus:border-blue-500"
                 />
               </div>
@@ -318,7 +327,9 @@ const handleSave = async () => {
                 </Label>
                 <Input
                   value={formData.soleColor}
-                  onChange={(e) => setFormData({ ...formData, soleColor: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, soleColor: e.target.value })
+                  }
                   className="h-12 text-base border-2 focus:border-blue-500"
                 />
               </div>
@@ -331,7 +342,12 @@ const handleSave = async () => {
                 <Input
                   type="date"
                   value={formData.soleExpectedDate}
-                  onChange={(e) => setFormData({ ...formData, soleExpectedDate: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      soleExpectedDate: e.target.value,
+                    })
+                  }
                   className="h-12 text-base border-2 focus:border-blue-500"
                 />
               </div>
@@ -357,14 +373,11 @@ const handleSave = async () => {
                 <div className="space-y-2">
                   <div className="text-xs text-gray-600">Product Name</div>
                   <div className="text-sm text-gray-900">
-                   {
-  productionData.productName ||
-  productionData.raw?.projectSnapshot?.artName ||
-  productionData.raw?.project?.artName ||
-  productionData.raw?.projectSnapshot?.productName ||
-  "-"
-}
-
+                    {productionData.productName ||
+                      productionData.raw?.projectSnapshot?.artName ||
+                      productionData.raw?.project?.artName ||
+                      productionData.raw?.projectSnapshot?.productName ||
+                      "-"}
                   </div>
                 </div>
 
@@ -372,10 +385,11 @@ const handleSave = async () => {
                 <div className="space-y-2">
                   <div className="text-xs text-gray-600">Product Code</div>
                   <div className="text-sm text-gray-900">
-                    {productionData.projectCode || 
-  productionData.raw?.projectSnapshot?.autoCode ||
-  productionData.raw?.project?.autoCode ||
-  productionData.raw?.projectSnapshot?.projectCode ||"-"}
+                    {productionData.projectCode ||
+                      productionData.raw?.projectSnapshot?.autoCode ||
+                      productionData.raw?.project?.autoCode ||
+                      productionData.raw?.projectSnapshot?.projectCode ||
+                      "-"}
                   </div>
                 </div>
 
@@ -384,53 +398,45 @@ const handleSave = async () => {
                   <div className="text-xs text-gray-600">Colour</div>
                   <div className="text-sm text-gray-900">
                     {productionData.artColour ||
-  productionData.raw?.projectSnapshot?.color ||
-  productionData.raw?.project?.color ||
-  productionData.raw?.projectSnapshot?.color || "-"}
+                      productionData.raw?.projectSnapshot?.color ||
+                      productionData.raw?.project?.color ||
+                      productionData.raw?.projectSnapshot?.color ||
+                      "-"}
                   </div>
                 </div>
 
-               {/* Company */}
-<div className="space-y-2">
-  <div className="text-xs text-gray-600">Company</div>
-  <div className="text-sm text-gray-900">
-    {
-      productionData.raw?.projectSnapshot?.companyName ||
-      productionData.raw?.project?.company?.name ||
-      productionData.raw?.project?.company ||
-      "-"
-    }
-  </div>
-</div>
-
+                {/* Company */}
+                <div className="space-y-2">
+                  <div className="text-xs text-gray-600">Company</div>
+                  <div className="text-sm text-gray-900">
+                    {productionData.raw?.projectSnapshot?.companyName ||
+                      productionData.raw?.project?.company?.name ||
+                      productionData.raw?.project?.company ||
+                      "-"}
+                  </div>
+                </div>
 
                 <div className="space-y-2">
-  <div className="text-xs text-gray-600">Brand</div>
-  <div className="text-sm text-gray-900">
-    {
-      productionData.brand ||
-      productionData.raw?.projectSnapshot?.brandName ||
-      productionData.raw?.project?.brand?.name ||
-      productionData.raw?.project?.brand ||
-      "-"
-    }
-  </div>
-</div>
+                  <div className="text-xs text-gray-600">Brand</div>
+                  <div className="text-sm text-gray-900">
+                    {productionData.brand ||
+                      productionData.raw?.projectSnapshot?.brandName ||
+                      productionData.raw?.project?.brand?.name ||
+                      productionData.raw?.project?.brand ||
+                      "-"}
+                  </div>
+                </div>
 
-
-              <div className="space-y-2">
-  <div className="text-xs text-gray-600">Category</div>
-  <div className="text-sm text-gray-900">
-    {
-      productionData.category ||
-      productionData.raw?.projectSnapshot?.categoryName ||
-      productionData.raw?.project?.category?.name ||
-      productionData.raw?.project?.category ||
-      "-"
-    }
-  </div>
-</div>
-
+                <div className="space-y-2">
+                  <div className="text-xs text-gray-600">Category</div>
+                  <div className="text-sm text-gray-900">
+                    {productionData.category ||
+                      productionData.raw?.projectSnapshot?.categoryName ||
+                      productionData.raw?.project?.category?.name ||
+                      productionData.raw?.project?.category ||
+                      "-"}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -482,7 +488,10 @@ const handleSave = async () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="remarks" className="text-base font-semibold text-gray-700">
+              <Label
+                htmlFor="remarks"
+                className="text-base font-semibold text-gray-700"
+              >
                 Remarks
               </Label>
               <Textarea
@@ -554,7 +563,10 @@ const handleSave = async () => {
               >
                 Cancel
               </Button>
-              <Button onClick={saveNewPlant} className="bg-blue-600 hover:bg-blue-700">
+              <Button
+                onClick={saveNewPlant}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
                 <CheckCircle className="w-4 h-4 mr-2" />
                 Add Plant
               </Button>

@@ -66,12 +66,6 @@ export default function ProjectDetailsDialog(props: any) {
   } = props;
 
   const { updateProject, updateProjectStatus } = useProjects();
-  const {
-    setCurrentModule,
-    setCurrentSubModule,
-    setSidebarCollapsed,
-    handleModuleChange,
-  } = useERP();
 
   const { goTo } = useRedirect();
   const [isEditing, setIsEditing] = useState(false);

@@ -9,7 +9,9 @@ import {
   Calendar,
   Plus,
   CheckCircle,
+  Calculator,
 } from "lucide-react";
+
 import {
   Dialog,
   DialogContent,
@@ -17,6 +19,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "./ui/dialog";
+
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
@@ -29,9 +32,92 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+
 import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
 import { toast } from "sonner@2.0.3";
+import api from "../lib/api"; // REQUIRED
+
+// ============================================
+// READ-ONLY COST CATEGORY COMPONENT (6 tables)
+// ============================================
+interface CostItem {
+  _id: string;
+  item: string;
+  description: string;
+  consumption: string;
+  cost: number;
+}
+
+interface readOnlyCostCategoryProps {
+  title: string;
+  color: "orange" | "purple" | "teal" | "rose" | "gray" | "amber";
+  items: CostItem[];
+}
+
+const ReadOnlyCostCategory = ({
+  title,
+  color,
+  items,
+}: readOnlyCostCategoryProps) => {
+  const total = items.reduce((s, i) => s + (Number(i.cost) || 0), 0);
+
+  const colorClasses = {
+    orange: "border-orange-300 bg-orange-50 text-orange-900",
+    purple: "border-purple-300 bg-purple-50 text-purple-900",
+    teal: "border-teal-300 bg-teal-50 text-teal-900",
+    rose: "border-rose-300 bg-rose-50 text-rose-900",
+    gray: "border-gray-300 bg-gray-50 text-gray-900",
+    amber: "border-amber-300 bg-amber-50 text-amber-900",
+  };
+
+  return (
+    <Card className={`rounded-lg border ${colorClasses[color]}`}>
+      <CardContent className="p-0">
+        {/* Header */}
+        <div className="p-3 flex items-center gap-2 font-semibold">
+          <Calculator className="w-4 h-4" />
+          {title}
+        </div>
+
+        {/* Table header */}
+        <div className="grid grid-cols-12 p-2 bg-gray-100 text-xs font-medium border-b">
+          <div className="col-span-3 text-center">ITEM</div>
+          <div className="col-span-4 text-center">DESCRIPTION</div>
+          <div className="col-span-2 text-center">CONSUMPTION</div>
+          <div className="col-span-3 text-center">COST</div>
+        </div>
+
+        {/* Rows */}
+        <div className="max-h-56 overflow-y-auto">
+          {items.map((row) => (
+            <div
+              key={row._id}
+              className="grid grid-cols-12 text-xs p-2 border-b"
+            >
+              <div className="col-span-3 text-center">{row.item}</div>
+              <div className="col-span-4 text-center">{row.description}</div>
+              <div className="col-span-2 text-center">{row.consumption}</div>
+              <div className="col-span-3 text-center font-semibold">
+                ₹{Number(row.cost || 0).toFixed(2)}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 font-semibold flex justify-between">
+          <span>Total</span>
+          <span>₹{total.toFixed(2)}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// ==========================================
+// MAIN COMPONENT START
+// ==========================================
 
 interface ProductionPlan {
   id: string;
@@ -53,9 +139,10 @@ interface ProductionPlan {
   status: string;
   priority: string;
   remarks?: string;
+  project: { _id: string }; // IMPORTANT
 }
 
-interface ProductionPlanDetailsDialogProps {
+interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   plan: ProductionPlan | null;
@@ -67,7 +154,70 @@ export function ProductionPlanDetailsDialog({
   onOpenChange,
   plan,
   onStartProduction,
-}: ProductionPlanDetailsDialogProps) {
+}: Props) {
+  // Tentative Cost States
+  const [costData, setCostData] = useState({
+    upper: [],
+    component: [],
+    material: [],
+    packaging: [],
+    miscellaneous: [],
+    labour: [],
+  });
+
+  const [summary, setSummary] = useState({
+    tentativeCost: 0,
+  });
+
+  // Load Tentative Cost API
+  const loadTentativeCost = async () => {
+    try {
+      const id = plan?.project?._id;
+      if (!id) return;
+
+      const sumRes = await api.get(`/projects/${id}/costs`);
+      const s = sumRes.data.summary;
+
+      const sections = [
+        "upper",
+        "component",
+        "material",
+        "packaging",
+        "miscellaneous",
+      ];
+      const results = await Promise.all(
+        sections.map((sec) => api.get(`/projects/${id}/costs/${sec}`))
+      );
+
+      const labourRes = await api.get(`/projects/${id}/costs/labour`);
+
+      setCostData({
+        upper: results[0].data.rows,
+        component: results[1].data.rows,
+        material: results[2].data.rows,
+        packaging: results[3].data.rows,
+        miscellaneous: results[4].data.rows,
+        labour: labourRes.data.items,
+      });
+
+      setSummary({
+        tentativeCost: s.tentativeCost || 0,
+      });
+    } catch (err) {
+      console.error("Failed to load tentative cost:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (open && plan?.project?._id) {
+      loadTentativeCost();
+    }
+  }, [open]);
+
+  // -----------------------------------------
+  // Your existing component state continues…
+  // -----------------------------------------
+
   const [productionPlanningData, setProductionPlanningData] = useState({
     assignedPlant: "Plant A - Main Factory",
     sendDate: "2025-01-15",
@@ -77,7 +227,6 @@ export function ProductionPlanDetailsDialog({
     soleReceivedDate: "2025-01-20",
   });
 
-  // Lists for dropdowns
   const [plantsList, setPlantsList] = useState<string[]>([
     "Plant A - Main Factory",
     "Plant B - North Unit",
@@ -92,98 +241,18 @@ export function ProductionPlanDetailsDialog({
     "Global Sole Suppliers",
   ]);
 
-  // Dialog states for adding new items
   const [addPlantDialogOpen, setAddPlantDialogOpen] = useState(false);
   const [addVendorDialogOpen, setAddVendorDialogOpen] = useState(false);
 
-  // Form fields
   const [newPlantName, setNewPlantName] = useState("");
   const [newVendorName, setNewVendorName] = useState("");
 
-  // Remarks editing state
   const [isEditingRemarks, setIsEditingRemarks] = useState(false);
   const [editedRemarks, setEditedRemarks] = useState("");
 
-  useEffect(() => {
-    // Reset state when dialog opens with new plan
-    if (open && plan) {
-      setProductionPlanningData({
-        assignedPlant: "Plant A - Main Factory",
-        sendDate: "2025-01-15",
-        receivedDate: "2025-01-18",
-        soleVendor: "Rubber Solutions Ltd.",
-        soleColor: "Black",
-        soleReceivedDate: "2025-01-20",
-      });
-    }
-  }, [open, plan]);
-
-  // Handler to save new plant
-  const saveNewPlant = () => {
-    if (!newPlantName.trim()) {
-      toast.error("Please enter plant name");
-      return;
-    }
-
-    if (plantsList.includes(newPlantName)) {
-      toast.error("Plant already exists");
-      return;
-    }
-
-    setPlantsList([...plantsList, newPlantName]);
-    setProductionPlanningData({
-      ...productionPlanningData,
-      assignedPlant: newPlantName,
-    });
-    setNewPlantName("");
-    setAddPlantDialogOpen(false);
-    toast.success("Plant added successfully");
-  };
-
-  // Handler to save new vendor
-  const saveNewVendor = () => {
-    if (!newVendorName.trim()) {
-      toast.error("Please enter vendor name");
-      return;
-    }
-
-    if (vendorsList.includes(newVendorName)) {
-      toast.error("Vendor already exists");
-      return;
-    }
-
-    setVendorsList([...vendorsList, newVendorName]);
-    setProductionPlanningData({
-      ...productionPlanningData,
-      soleVendor: newVendorName,
-    });
-    setNewVendorName("");
-    setAddVendorDialogOpen(false);
-    toast.success("Vendor added successfully");
-  };
-
-  // Handler to start editing remarks
-  const handleEditRemarks = () => {
-    setEditedRemarks(plan?.remarks || "");
-    setIsEditingRemarks(true);
-  };
-
-  // Handler to save edited remarks
-  const handleSaveRemarks = () => {
-    if (!plan) return;
-
-    // Here you would typically update the plan in your store/database
-    // For now, we'll just show a success message
-    plan.remarks = editedRemarks;
-    setIsEditingRemarks(false);
-    toast.success("Remarks updated successfully");
-  };
-
-  // Handler to cancel editing remarks
-  const handleCancelEditRemarks = () => {
-    setIsEditingRemarks(false);
-    setEditedRemarks("");
-  };
+  // -----------------------------------------
+  // MAIN JSX BEGINS
+  // -----------------------------------------
 
   if (!plan) return null;
 
@@ -222,24 +291,24 @@ export function ProductionPlanDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
-        {/* Sticky Header */}
+        {/* HEADER */}
         <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b-2 border-blue-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <div className="w-14 h-14 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
                 <Factory className="w-7 h-7 text-white" />
               </div>
+
               <div>
                 <DialogTitle className="text-3xl font-semibold text-gray-900 mb-1">
                   {plan.planName}
                 </DialogTitle>
-                <DialogDescription className="sr-only">
-                  View detailed production plan information
-                </DialogDescription>
+
                 <div className="flex items-center gap-4">
                   <span className="text-lg font-mono text-blue-600">
                     {plan.projectCode}
                   </span>
+
                   <Badge
                     className={`${getPriorityColor(
                       plan.priority
@@ -250,33 +319,32 @@ export function ProductionPlanDetailsDialog({
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => onOpenChange(false)}
-                type="button"
-                className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
-              </button>
-            </div>
+
+            <button
+              onClick={() => onOpenChange(false)}
+              className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-gray-100"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
           </div>
         </div>
 
-        {/* Scrollable Main Content */}
+        {/* BODY SCROLL */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-8 py-8 space-y-5">
-            {/* Product Information & Manufacturing Assignment */}
+          <div className="px-8 py-8 space-y-6">
+            {/* PRODUCT INFORMATION + MANUFACTURING */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Product Information */}
               <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <h4 className="text-sm font-semibold text-gray-800 mb-3">
                   Product Information
                 </h4>
+
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Art</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {plan?.artNameSnapshot! || "N/A"}
+                      {plan?.artNameSnapshot || "N/A"}
                     </p>
                   </div>
                   <div>
@@ -288,7 +356,7 @@ export function ProductionPlanDetailsDialog({
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Color</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {plan.colorSnapshot || "N/A"}
+                      {plan.color || "N/A"}
                     </p>
                   </div>
                 </div>
@@ -299,13 +367,15 @@ export function ProductionPlanDetailsDialog({
                 <h4 className="text-sm font-semibold text-orange-800 mb-3">
                   Manufacturing Assignment
                 </h4>
+
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <p className="text-xs text-green-600 mb-1">Quantity</p>
                     <p className="text-sm font-medium text-green-900">
-                      {plan?.quantity?.toLocaleString("en-IN") || "N/A"} units
+                      {plan?.quantity?.toLocaleString("en-IN")} units
                     </p>
                   </div>
+
                   <div>
                     <p className="text-xs text-orange-600 mb-1">
                       Production Team
@@ -314,63 +384,69 @@ export function ProductionPlanDetailsDialog({
                       {plan.assignedTeam}
                     </p>
                   </div>
+
                   <div>
                     <p className="text-xs text-orange-600 mb-1">
                       Task Coordinator
                     </p>
                     <p className="text-sm font-medium text-orange-900">
-                      {plan?.taskInc || "N/A"}
+                      {plan.taskInc}
                     </p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Production Planning */}
+            {/* PRODUCTION PLANNING */}
             <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
               <h4 className="text-sm font-semibold text-blue-800 mb-3">
                 Production Planning
               </h4>
+
               <div className="grid grid-cols-3 gap-4">
+                {/* Assigned Plant */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Assigned Plant</p>
+
                   <Select
                     value={productionPlanningData.assignedPlant}
                     onValueChange={(value) => {
-                      if (value === "__add_new__") {
-                        setAddPlantDialogOpen(true);
-                      } else {
-                        setProductionPlanningData({
-                          ...productionPlanningData,
-                          assignedPlant: value,
-                        });
-                      }
+                      if (value === "__add_new__")
+                        return setAddPlantDialogOpen(true);
+                      setProductionPlanningData({
+                        ...productionPlanningData,
+                        assignedPlant: value,
+                      });
                     }}
                   >
-                    <SelectTrigger className="h-9 text-sm border-blue-200 focus:border-blue-500 bg-white">
+                    <SelectTrigger className="h-9 text-sm border-blue-200 bg-white">
                       <SelectValue placeholder="Select plant" />
                     </SelectTrigger>
+
                     <SelectContent>
                       {plantsList.map((plant) => (
                         <SelectItem key={plant} value={plant}>
                           {plant}
                         </SelectItem>
                       ))}
+
                       <Separator className="my-1" />
+
                       <div
-                        className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                        className="px-2 py-1.5 text-sm cursor-pointer flex items-center gap-2 hover:bg-blue-50"
                         onClick={() => setAddPlantDialogOpen(true)}
                       >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add New Plant
+                        <Plus className="w-4 h-4" /> Add New Plant
                       </div>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Send Date */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Send Date</p>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none z-10" />
+                    <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                     <Input
                       type="date"
                       value={productionPlanningData.sendDate}
@@ -380,15 +456,17 @@ export function ProductionPlanDetailsDialog({
                           sendDate: e.target.value,
                         })
                       }
-                      className="h-9 text-sm border-blue-200 focus:border-blue-500 bg-white pl-9"
+                      className="h-9 pl-9 text-sm border-blue-200 bg-white"
                       style={{ colorScheme: "light" }}
                     />
                   </div>
                 </div>
+
+                {/* Received Date */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Received Date</p>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none z-10" />
+                    <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                     <Input
                       type="date"
                       value={productionPlanningData.receivedDate}
@@ -398,60 +476,69 @@ export function ProductionPlanDetailsDialog({
                           receivedDate: e.target.value,
                         })
                       }
-                      className="h-9 text-sm border-blue-200 focus:border-blue-500 bg-white pl-9"
+                      className="h-9 pl-9 text-sm border-blue-200 bg-white"
                       style={{ colorScheme: "light" }}
                     />
                   </div>
                 </div>
+
+                {/* Sole Vendor */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Sole Vendor</p>
+
                   <Select
                     value={productionPlanningData.soleVendor}
                     onValueChange={(value) => {
-                      if (value === "__add_new__") {
-                        setAddVendorDialogOpen(true);
-                      } else {
-                        setProductionPlanningData({
-                          ...productionPlanningData,
-                          soleVendor: value,
-                        });
-                      }
+                      if (value === "__add_new__")
+                        return setAddVendorDialogOpen(true);
+                      setProductionPlanningData({
+                        ...productionPlanningData,
+                        soleVendor: value,
+                      });
                     }}
                   >
-                    <SelectTrigger className="h-9 text-sm border-blue-200 focus:border-blue-500 bg-white">
-                      <SelectValue placeholder="Select vendor" />
+                    <SelectTrigger className="h-9 text-sm border-blue-200 bg-white">
+                      <SelectValue placeholder="Select Vendor" />
                     </SelectTrigger>
+
                     <SelectContent>
-                      {vendorsList.map((vendor) => (
-                        <SelectItem key={vendor} value={vendor}>
-                          {vendor}
+                      {vendorsList.map((v) => (
+                        <SelectItem key={v} value={v}>
+                          {v}
                         </SelectItem>
                       ))}
+
                       <Separator className="my-1" />
+
                       <div
-                        className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                        className="px-2 py-1.5 text-sm cursor-pointer flex items-center gap-2 hover:bg-blue-50"
                         onClick={() => setAddVendorDialogOpen(true)}
                       >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add New Vendor
+                        <Plus className="w-4 h-4" /> Add New Vendor
                       </div>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Sole Color */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Sole Color</p>
                   <Input
                     value={productionPlanningData.soleColor}
                     readOnly
-                    className="h-9 text-sm border-0 bg-transparent cursor-not-allowed"
+                    className="h-9 text-sm bg-transparent border-0 text-gray-700"
                   />
                 </div>
+
+                {/* Sole Received Date */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">
                     Sole Received Date
                   </p>
+
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none z-10" />
+                    <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+
                     <Input
                       type="date"
                       value={productionPlanningData.soleReceivedDate}
@@ -461,7 +548,7 @@ export function ProductionPlanDetailsDialog({
                           soleReceivedDate: e.target.value,
                         })
                       }
-                      className="h-9 text-sm border-blue-200 focus:border-blue-500 bg-white pl-9"
+                      className="h-9 pl-9 text-sm border-blue-200 bg-white"
                       style={{ colorScheme: "light" }}
                     />
                   </div>
@@ -469,94 +556,68 @@ export function ProductionPlanDetailsDialog({
               </div>
             </div>
 
-            {/* Material Availability */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Components Used */}
-              <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                <h4 className="text-sm font-semibold text-purple-800 mb-4">
-                  Components Used
-                </h4>
-                <div className="space-y-1">
-                  <div className="grid grid-cols-12 gap-2 text-xs font-medium text-purple-700 border-b border-purple-200 pb-2">
-                    <div className="col-span-4">COMPONENT</div>
-                    <div className="col-span-4">DESCRIPTION</div>
-                    <div className="col-span-4">CONSUMPTION</div>
-                  </div>
+            {/* ================================
+                 TENTATIVE COST BREAKDOWN (API)
+               ================================ */}
+            <div className="bg-green-50 border border-green-300 rounded-lg p-4 space-y-6">
+              <h4 className="text-lg font-semibold text-green-800 flex items-center gap-2">
+                <Calculator className="w-5 h-5" /> Tentative Cost Breakdown
+              </h4>
 
-                  <div className="grid grid-cols-12 gap-2 text-xs py-1">
-                    <div className="col-span-4 text-gray-800">Foam</div>
-                    <div className="col-span-4 text-gray-600">-</div>
-                    <div className="col-span-4 text-gray-800">7.5grm</div>
-                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <ReadOnlyCostCategory
+                  title="Upper Cost"
+                  color="orange"
+                  items={costData.upper}
+                />
 
-                  <div className="grid grid-cols-12 gap-2 text-xs py-1">
-                    <div className="col-span-4 text-gray-800">Velcro</div>
-                    <div className="col-span-4 text-gray-600">75mm</div>
-                    <div className="col-span-4 text-gray-800">1.25 pair</div>
-                  </div>
+                <ReadOnlyCostCategory
+                  title="Component Cost"
+                  color="purple"
+                  items={costData.component}
+                />
 
-                  <div className="grid grid-cols-12 gap-2 text-xs py-1">
-                    <div className="col-span-4 text-gray-800">Buckle</div>
-                    <div className="col-span-4 text-gray-600">-</div>
-                    <div className="col-span-4 text-gray-800">2pcs</div>
-                  </div>
+                <ReadOnlyCostCategory
+                  title="Material Cost"
+                  color="teal"
+                  items={costData.material}
+                />
 
-                  <div className="grid grid-cols-12 gap-2 text-xs py-1">
-                    <div className="col-span-4 text-gray-800">Trim</div>
-                    <div className="col-span-4 text-gray-600">sticker</div>
-                    <div className="col-span-4 text-gray-800">10 pcs</div>
-                  </div>
-                </div>
-                <div className="mt-3 pt-2 border-t border-purple-200">
-                  <p className="text-xs text-purple-700 font-medium">
-                    Total Components: 4 different components used in production
-                  </p>
-                </div>
+                <ReadOnlyCostCategory
+                  title="Packaging Cost"
+                  color="rose"
+                  items={costData.packaging}
+                />
+
+                <ReadOnlyCostCategory
+                  title="Miscellaneous Cost"
+                  color="gray"
+                  items={costData.miscellaneous}
+                />
+
+                {/* <ReadOnlyCostCategory
+                  title="Labour Cost"
+                  color="amber"
+                  items={costData?.labour?.map((l) => ({
+                    _id: l._id,
+                    item: l.name,
+                    description: "",
+                    consumption: "",
+                    cost: Number(l.cost || 0),
+                  }))}
+                /> */}
               </div>
 
-              {/* Materials Used */}
-              <div className="bg-cyan-50 rounded-lg p-4 border border-cyan-200">
-                <h4 className="text-sm font-semibold text-cyan-800 mb-4">
-                  Materials Used
-                </h4>
-                <div className="space-y-1">
-                  <div className="grid grid-cols-12 gap-2 text-xs font-medium text-cyan-700 border-b border-cyan-200 pb-2">
-                    <div className="col-span-4">MATERIAL</div>
-                    <div className="col-span-4">DESCRIPTION</div>
-                    <div className="col-span-4">CONSUMPTION</div>
-                  </div>
-
-                  <div className="grid grid-cols-12 gap-2 text-xs py-1">
-                    <div className="col-span-4 text-gray-800">Upper</div>
-                    <div className="col-span-4 text-gray-600">Rexine</div>
-                    <div className="col-span-4 text-gray-800">26 pairs/mtr</div>
-                  </div>
-
-                  <div className="grid grid-cols-12 gap-2 text-xs py-1">
-                    <div className="col-span-4 text-gray-800">Lining</div>
-                    <div className="col-span-4 text-gray-600">Skinfit</div>
-                    <div className="col-span-4 text-gray-800">
-                      25 pair @ 15/-
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-12 gap-2 text-xs py-1">
-                    <div className="col-span-4 text-gray-800">Lining</div>
-                    <div className="col-span-4 text-gray-600">EVA</div>
-                    <div className="col-span-4 text-gray-800">
-                      33/70 - 1.5mm 35pair
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 pt-2 border-t border-cyan-200">
-                  <p className="text-xs text-cyan-700 font-medium">
-                    Total Materials: 3 different materials used in production
-                  </p>
-                </div>
+              <div className="p-4 bg-white rounded-lg border border-green-400 flex justify-between font-semibold text-green-900">
+                <span>Total Tentative Cost</span>
+                <span>₹{summary.tentativeCost?.toFixed(2)}</span>
               </div>
             </div>
 
-            {/* Remarks */}
+            {/* =====================================
+                 REMARKS SECTION (unchanged)
+               ===================================== */}
+            {/* REMARKS */}
             {plan.remarks && (
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                 {!isEditingRemarks ? (
@@ -565,10 +626,13 @@ export function ProductionPlanDetailsDialog({
                       <span className="font-medium">Remarks: </span>
                       {plan.remarks || "No remarks added"}
                     </p>
+
                     <button
-                      onClick={handleEditRemarks}
-                      className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors"
-                      title="Edit remarks"
+                      onClick={() => {
+                        setEditedRemarks(plan.remarks || "");
+                        setIsEditingRemarks(true);
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded-md bg-green-600 hover:bg-green-700 text-white"
                     >
                       <Edit className="w-3.5 h-3.5" />
                     </button>
@@ -576,14 +640,11 @@ export function ProductionPlanDetailsDialog({
                 ) : (
                   <div className="space-y-3">
                     <div>
-                      <Label
-                        htmlFor="remarks-edit"
-                        className="text-sm font-medium text-green-800 mb-2 block"
-                      >
+                      <Label className="text-sm font-medium text-green-800 mb-2 block">
                         Edit Remarks
                       </Label>
+
                       <Textarea
-                        id="remarks-edit"
                         value={editedRemarks}
                         onChange={(e) => setEditedRemarks(e.target.value)}
                         placeholder="Enter remarks..."
@@ -591,18 +652,27 @@ export function ProductionPlanDetailsDialog({
                         autoFocus
                       />
                     </div>
+
                     <div className="flex justify-end gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={handleCancelEditRemarks}
+                        onClick={() => {
+                          setIsEditingRemarks(false);
+                          setEditedRemarks("");
+                        }}
                         className="h-8 px-3 text-xs"
                       >
                         Cancel
                       </Button>
+
                       <Button
                         size="sm"
-                        onClick={handleSaveRemarks}
+                        onClick={() => {
+                          plan.remarks = editedRemarks;
+                          setIsEditingRemarks(false);
+                          toast.success("Remarks updated successfully");
+                        }}
                         className="h-8 px-3 text-xs bg-green-600 hover:bg-green-700"
                       >
                         <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
@@ -614,7 +684,7 @@ export function ProductionPlanDetailsDialog({
               </div>
             )}
 
-            {/* Action Buttons */}
+            {/* ACTION BUTTONS */}
             <div className="flex items-center justify-end pt-4 border-t border-gray-200">
               <div className="flex items-center gap-2">
                 {(plan.status === "Planning" ||
@@ -635,6 +705,7 @@ export function ProductionPlanDetailsDialog({
                       Start Production
                     </Button>
                   )}
+
                 {plan.status === "In Production" && (
                   <Button
                     size="sm"
@@ -651,7 +722,7 @@ export function ProductionPlanDetailsDialog({
         </div>
       </DialogContent>
 
-      {/* Add New Plant Dialog */}
+      {/* ADD PLANT DIALOG */}
       <Dialog open={addPlantDialogOpen} onOpenChange={setAddPlantDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -665,22 +736,27 @@ export function ProductionPlanDetailsDialog({
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="plantName">Plant Name *</Label>
-              <Input
-                id="plantName"
-                value={newPlantName}
-                onChange={(e) => setNewPlantName(e.target.value)}
-                placeholder="e.g., Plant E - Western Unit"
-                className="w-full"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    saveNewPlant();
+            <Label>Plant Name *</Label>
+            <Input
+              value={newPlantName}
+              onChange={(e) => setNewPlantName(e.target.value)}
+              placeholder="e.g., Plant E - Western Unit"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (newPlantName.trim()) {
+                    setPlantsList([...plantsList, newPlantName]);
+                    setProductionPlanningData({
+                      ...productionPlanningData,
+                      assignedPlant: newPlantName,
+                    });
+                    setAddPlantDialogOpen(false);
+                    setNewPlantName("");
+                    toast.success("Plant added successfully");
                   }
-                }}
-              />
-            </div>
+                }
+              }}
+            />
           </div>
 
           <div className="flex justify-end gap-3">
@@ -693,8 +769,19 @@ export function ProductionPlanDetailsDialog({
             >
               Cancel
             </Button>
+
             <Button
-              onClick={saveNewPlant}
+              onClick={() => {
+                if (!newPlantName.trim()) return toast.error("Enter name");
+                setPlantsList([...plantsList, newPlantName]);
+                setProductionPlanningData({
+                  ...productionPlanningData,
+                  assignedPlant: newPlantName,
+                });
+                setNewPlantName("");
+                setAddPlantDialogOpen(false);
+                toast.success("Plant added");
+              }}
               className="bg-blue-600 hover:bg-blue-700"
             >
               <CheckCircle className="w-4 h-4 mr-2" />
@@ -704,7 +791,7 @@ export function ProductionPlanDetailsDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Add New Vendor Dialog */}
+      {/* ADD VENDOR DIALOG */}
       <Dialog open={addVendorDialogOpen} onOpenChange={setAddVendorDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -718,22 +805,27 @@ export function ProductionPlanDetailsDialog({
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="vendorName">Vendor Name *</Label>
-              <Input
-                id="vendorName"
-                value={newVendorName}
-                onChange={(e) => setNewVendorName(e.target.value)}
-                placeholder="e.g., Advanced Sole Technologies"
-                className="w-full"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    saveNewVendor();
+            <Label>Vendor Name *</Label>
+            <Input
+              value={newVendorName}
+              onChange={(e) => setNewVendorName(e.target.value)}
+              placeholder="e.g., Advanced Sole Technologies"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (newVendorName.trim()) {
+                    setVendorsList([...vendorsList, newVendorName]);
+                    setProductionPlanningData({
+                      ...productionPlanningData,
+                      soleVendor: newVendorName,
+                    });
+                    setAddVendorDialogOpen(false);
+                    setNewVendorName("");
+                    toast.success("Vendor added successfully");
                   }
-                }}
-              />
-            </div>
+                }
+              }}
+            />
           </div>
 
           <div className="flex justify-end gap-3">
@@ -746,8 +838,19 @@ export function ProductionPlanDetailsDialog({
             >
               Cancel
             </Button>
+
             <Button
-              onClick={saveNewVendor}
+              onClick={() => {
+                if (!newVendorName.trim()) return toast.error("Enter name");
+                setVendorsList([...vendorsList, newVendorName]);
+                setProductionPlanningData({
+                  ...productionPlanningData,
+                  soleVendor: newVendorName,
+                });
+                setNewVendorName("");
+                setAddVendorDialogOpen(false);
+                toast.success("Vendor added successfully");
+              }}
               className="bg-blue-600 hover:bg-blue-700"
             >
               <CheckCircle className="w-4 h-4 mr-2" />
@@ -759,3 +862,5 @@ export function ProductionPlanDetailsDialog({
     </Dialog>
   );
 }
+
+export default ProductionPlanDetailsDialog;

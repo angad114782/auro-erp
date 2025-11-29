@@ -15,7 +15,10 @@ export const updateItem = async (id, data) => {
 };
 
 export const getItems = async () => {
-  return await InventoryItem.find().populate("vendorId");
+  // return only non-deleted items by default
+  return await InventoryItem.find({ isDeleted: { $ne: true } }).populate(
+    "vendorId"
+  );
 };
 
 export const getItemById = async (id) => {
@@ -24,4 +27,12 @@ export const getItemById = async (id) => {
 
 export const deleteItem = async (id) => {
   return await InventoryItem.findByIdAndDelete(id);
+};
+
+export const softDeleteItem = async (id) => {
+  return await InventoryItem.findByIdAndUpdate(
+    id,
+    { isDeleted: true, deletedAt: new Date() },
+    { new: true }
+  );
 };

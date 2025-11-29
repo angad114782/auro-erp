@@ -1,7 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Search, Edit, Settings, FileText, Package, Trash2 } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit,
+  Settings,
+  FileText,
+  Package,
+  Trash2,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "./ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Badge } from "./ui/badge";
 import { UpdateStockDialog } from "./UpdateStockDialog";
@@ -9,6 +24,7 @@ import { ItemHistoryDialog } from "./ItemHistoryDialog";
 import { useInventory } from "../hooks/useInventory";
 import { AddItemDialog } from "./AddProductDialog";
 import { useVendorStore } from "../hooks/useVendor";
+import { inventoryService } from "../services/inventoryService";
 
 interface InventoryProps {
   searchTerm?: string;
@@ -41,8 +57,8 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
     loadData();
   }, []);
 
-  const [selectedItemForDelete, setSelectedItemForDelete] = useState(null);
-const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedItemForDelete, setSelectedItemForDelete] = useState<any>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const itemsList = items || [];
   const drafts = itemsList.filter((i) => i.isDraft);
@@ -50,8 +66,9 @@ const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const currentData = currentTab === "items" ? itemsOnly : drafts;
 
   // Helper function to get vendor name consistently
-  const getVendorName = (vendorId: string) => {
-    const vendor = vendors.find((v) => v._id === vendorId?._id);
+  const getVendorName = (vendorId: any) => {
+    const idToMatch = vendorId?._id ?? vendorId;
+    const vendor = vendors.find((v) => v._id === idToMatch);
     return vendor?.vendorName || "No Vendor";
   };
 
@@ -74,29 +91,6 @@ const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
     return matchesCategory && matchesSearch;
   });
-
-  // const categories = [
-  //   { name: "All", count: currentData.length },
-  //   {
-  //     name: "Raw Materials",
-  //     count: currentData.filter((i) => i.category === "Raw Materials").length,
-  //   },
-  //   {
-  //     name: "Components & Parts",
-  //     count: currentData.filter((i) => i.category === "Components & Parts")
-  //       .length,
-  //   },
-  //   {
-  //     name: "Finished Footwear",
-  //     count: currentData.filter((i) => i.category === "Finished Footwear")
-  //       .length,
-  //   },
-  //   {
-  //     name: "Accessories & Hardware",
-  //     count: currentData.filter((i) => i.category === "Accessories & Hardware")
-  //       .length,
-  //   },
-  // ];
 
   const categoryMap: Record<string, number> = {};
 
@@ -146,6 +140,31 @@ const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     setShowAddDialog(open);
   };
 
+  const handleSoftDelete = async (item: any) => {
+    if (!item || !item._id) return;
+    // open confirmation dialog
+    setSelectedItemForDelete(item);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const performSoftDelete = async () => {
+    const item = selectedItemForDelete;
+    if (!item || !item._id) return;
+    try {
+      await inventoryService.softDeleteItem(item._id);
+      setIsDeleteDialogOpen(false);
+      setSelectedItemForDelete(null);
+      // refresh data
+      await loadItems();
+      await loadVendors();
+    } catch (err) {
+      console.error("Soft delete failed:", err);
+      setIsDeleteDialogOpen(false);
+      setSelectedItemForDelete(null);
+      await loadItems();
+    }
+  };
+
   const handleUpdateStockClose = async (open: boolean) => {
     if (!open) {
       // Refresh data when update stock dialog closes
@@ -163,7 +182,7 @@ const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
           <Tabs
             defaultValue="items"
             className="flex-1"
-            onValueChange={(v) => setCurrentTab(v)}
+            onValueChange={(v: string) => setCurrentTab(v)}
           >
             <TabsList className="inline-flex h-9 items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground">
               <TabsTrigger
@@ -344,47 +363,46 @@ const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
                       {item.isDraft ? "Draft" : "Available"}
                     </div>
                   </td>
-                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex items-center justify-end space-x-2">
-  {item.isDraft ? (
-    <Button
-      variant="outline"
-      size="sm"
-      className="border-green-200 text-green-600 hover:bg-green-50"
-      onClick={(e) => {
-        e.stopPropagation();
-        handleEditItem(item);
-      }}
-    >
-      <Edit className="w-4 h-4 mr-1" /> Edit Item
-    </Button>
-  ) : (
-    <Button
-      variant="outline"
-      size="sm"
-      className="border-blue-200 text-blue-600 hover:bg-blue-50"
-      onClick={(e) => {
-        e.stopPropagation();
-        setSelectedItemForStock(item);
-        setShowUpdateStockDialog(true);
-      }}
-    >
-      <Settings className="w-4 h-4 mr-1" /> Update Stock
-    </Button>
-  )}
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex items-center justify-end space-x-2">
+                    {item.isDraft ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-green-200 text-green-600 hover:bg-green-50"
+                        onClick={(e: any) => {
+                          e.stopPropagation();
+                          handleEditItem(item);
+                        }}
+                      >
+                        <Edit className="w-4 h-4 mr-1" /> Edit Item
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-blue-200 text-blue-600 hover:bg-blue-50"
+                        onClick={(e: any) => {
+                          e.stopPropagation();
+                          setSelectedItemForStock(item);
+                          setShowUpdateStockDialog(true);
+                        }}
+                      >
+                        <Settings className="w-4 h-4 mr-1" /> Update Stock
+                      </Button>
+                    )}
 
-  {/* Small delete icon button */}
-  <button
-    onClick={(e) => {
-      e.stopPropagation();
-      setSelectedItemForDelete(item);      // select current item for delete
-      setIsDeleteDialogOpen(true);         // open your confirmation modal
-    }}
-    title="Delete item"
-    className="ml-2 w-8 h-8 flex items-center justify-center rounded-md bg-red-500 hover:bg-red-600 shadow-sm hover:shadow-md transition-all duration-150"
-  >
-    <Trash2 className="w-4 h-4 text-white" />
-  </button>
-</td>
+                    {/* Small delete icon button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSoftDelete(item);
+                      }}
+                      title="Delete item"
+                      className="ml-2 w-8 h-8 flex items-center justify-center rounded-md bg-red-500 hover:bg-red-600 shadow-sm hover:shadow-md transition-all duration-150"
+                    >
+                      <Trash2 className="w-4 h-4 text-white" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -445,6 +463,43 @@ const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
         onOpenChange={setShowHistoryDialog}
         item={selectedItemForHistory}
       />
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={isDeleteDialogOpen}
+        onOpenChange={(open: boolean) => {
+          setIsDeleteDialogOpen(open);
+          if (!open) setSelectedItemForDelete(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm delete</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "
+              {selectedItemForDelete?.itemName || selectedItemForDelete?.code}"?
+              This will soft-delete the item.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-6 flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteDialogOpen(false);
+                setSelectedItemForDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={performSoftDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
