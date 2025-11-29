@@ -75,7 +75,7 @@ interface ProductionPlan {
 
   category?: string;
   categoryId?: string;
-
+project?: any;
   type?: string;
   typeId?: string;
 
@@ -233,13 +233,30 @@ const loadFullPlanDetails = async (plan: any) => {
                 prodDoc.project = pRes.data?.data ?? pRes.data;
               } catch (e) {
                 // ignore project fetch error
+                console.debug("project fetch failed for", projectId, e);
               }
             }
           }
-          return prodDoc;
+
+          // compute a safe numeric quantity
+          const quantity =
+            prodDoc.quantity ??
+            prodDoc.quantitySnapshot ??
+            prodDoc.po?.orderQuantity ??
+            prodDoc.project?.po?.orderQuantity ??
+            prodDoc.project?.orderQuantity ??
+            0;
+
+          return {
+            // don't mutate original — return a normalized copy
+            ...prodDoc,
+            quantity,
+            project: prodDoc.project ?? null,
+          };
         }
       } catch (e) {
         // ignore single-prod fetch failures, try next candidate
+        console.debug("prod fetch candidate failed:", candidate, e);
       }
     }
 
@@ -251,36 +268,47 @@ const loadFullPlanDetails = async (plan: any) => {
         const pRes = await api.get(`/projects/${projectId}`);
         const project = pRes.data?.data ?? pRes.data;
         if (project) {
+          const computedQuantity =
+            plan.quantity ??
+            plan.quantitySnapshot ??
+            project.po?.orderQuantity ??
+            project.orderQuantity ??
+            0;
+
           return {
             ...plan,
             project,
-            // copy snapshot defaults
             artNameSnapshot:
               plan.artNameSnapshot ?? project.artName ?? plan.productName ?? "",
             colorSnapshot: plan.colorSnapshot ?? project.color ?? "",
             coverImageSnapshot:
               plan.coverImageSnapshot ?? project.coverImage ?? "",
             priority: plan.priority ?? project.priority ?? "Medium",
-            // attach PO/quantity if available
             po: plan.po ?? project.po ?? null,
-            quantity:
-              plan.quantity ??
-              project.po?.orderQuantity ??
-              project.orderQuantity ??
-              0,
+            quantity: computedQuantity,
           };
         }
       } catch (e) {
-        // ignore
+        console.debug("project fetch error:", projectId, e);
       }
     }
 
-    // fallback to original plan
-    return plan;
+    // fallback to original plan but ensure quantity is present
+    return {
+      ...plan,
+      quantity:
+        plan.quantity ??
+        plan.quantitySnapshot ??
+        plan.po?.orderQuantity ??
+        plan.project?.po?.orderQuantity ??
+        0,
+      project: plan.project ?? null,
+    };
   } finally {
     setIsLoadingPlanDetails(false);
   }
 };
+
 
   // Production cards management state
   const [isProductionDialogOpen, setIsProductionDialogOpen] = useState(false);
@@ -1540,24 +1568,56 @@ const loadFullPlanDetails = async (plan: any) => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-  {getPaginatedPlans().map((plan) => (
-    <tr
-      key={plan.id}
-      className="hover:bg-blue-50 cursor-pointer transition-colors"
-      onClick={async () => {
-        try {
-          const full = await loadFullPlanDetails(plan);
-          // normalize: put project under `project` (if returned doc is production it may already have .project)
-          const normalized =
-            full && full.project ? full : { ...plan, ...full };
-          setSelectedPlanForDetails(normalized);
-          setIsPlanDetailsDialogOpen(true);
-        } catch (err) {
-          console.error("Failed to load plan details:", err);
-          toast.error("Failed to load plan details");
-        }
-      }}
-    >
+                    {getPaginatedPlans().map((plan) => (
+                      // <tr
+                      //   key={plan.id}
+                      //   className="hover:bg-blue-50 cursor-pointer transition-colors"
+                      //   onClick={() => {
+                      //     setSelectedPlanForDetails(plan);
+                      //     setIsPlanDetailsDialogOpen(true);
+                      //   }}
+                      // >
+                      //    {getPaginatedPlans().map((plan) => (
+  <tr
+  key={plan.id}
+  className="hover:bg-blue-50 cursor-pointer transition-colors"
+  onClick={async () => {
+    try {
+      const full = await loadFullPlanDetails(plan);
+      // Ensure we have an object
+      if (!full) {
+        setSelectedPlanForDetails(plan);
+        setIsPlanDetailsDialogOpen(true);
+        return;
+      }
+
+      // Normalized: prefer returned full's fields but keep original plan as fallback
+      const normalized = {
+        ...plan,
+        ...full,
+        project: full.project ?? plan.project ?? null,
+        // ensure numeric quantity
+        quantity:
+          full.quantity ??
+          full.quantitySnapshot ??
+          full.po?.orderQuantity ??
+          full.project?.po?.orderQuantity ??
+          plan.quantity ??
+          0,
+      };
+
+      // debug if you'd like
+      // console.log("Normalized plan for details:", normalized);
+
+      setSelectedPlanForDetails(normalized);
+      setIsPlanDetailsDialogOpen(true);
+    } catch (err) {
+      console.error("Failed to load plan details:", err);
+      toast.error("Failed to load plan details");
+    }
+  }}
+>
+
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="font-mono font-medium text-blue-600">
                             {plan.projectCode}
