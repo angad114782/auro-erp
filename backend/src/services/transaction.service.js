@@ -9,3 +9,10 @@ export const getTransactionsByItem = async (itemId) => {
     .populate("vendorId")
     .sort({ createdAt: -1 });
 };
+
+export const getAllTransactions = async () => {
+  return await InventoryTransaction.find()
+    .populate("vendorId")
+    .populate("itemId")
+    .sort({ createdAt: -1 });
+};

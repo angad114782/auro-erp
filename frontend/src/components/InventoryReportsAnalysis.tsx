@@ -1,46 +1,35 @@
-import React, { useState, useMemo } from "react";
 import {
-  BarChart4,
-  Calendar,
-  Download,
-  FileText,
-  Filter,
-  RefreshCw,
-  Search,
-  TrendingUp,
-  Package,
-  IndianRupee,
-  Building,
-  User,
-  ShoppingCart,
-  FileDown,
-  ArrowUpDown,
-  Eye,
-  MoreHorizontal,
-  CalendarRange,
-  PieChart,
   Activity,
-  Warehouse,
-  TrendingDown,
   AlertCircle,
-  Clock,
-  CheckCircle,
-  Target,
+  BarChart4,
+  CalendarRange,
+  Download,
+  Eye,
+  FileDown,
   FileSpreadsheet,
-  FileX,
+  FileText,
+  IndianRupee,
+  MoreHorizontal,
+  Package,
+  Search,
+  TrendingDown,
+  TrendingUp,
+  Warehouse,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useInventory } from "../hooks/useInventory";
+import { useVendorStore } from "../hooks/useVendor";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Badge } from "./ui/badge";
+import { Calendar as CalendarComponent } from "./ui/calendar";
+import { Card, CardContent } from "./ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { Input } from "./ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import {
   Select,
   SelectContent,
@@ -48,31 +37,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-import { Progress } from "./ui/progress";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Calendar as CalendarComponent } from "./ui/calendar";
-import { useERPStore } from "../lib/data-store";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart as RechartsPieChart,
-  Cell,
-  LineChart,
-  Line,
-  Pie,
-} from "recharts";
 
 interface DateRange {
   from: Date;
@@ -80,8 +44,16 @@ interface DateRange {
 }
 
 export function InventoryReportsAnalysis() {
-  const { inventoryItems, inventoryTransactions, vendors, users } =
-    useERPStore();
+  const {
+    items: inventoryItems,
+    transactions: inventoryTransactions,
+    loadItems,
+    loadTransactions,
+    loading: loadingInventory,
+  } = useInventory();
+
+  const { vendors, loadVendors, loading: loadingVendors } = useVendorStore();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>({
     from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -93,30 +65,70 @@ export function InventoryReportsAnalysis() {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [tempDateRange, setTempDateRange] = useState<DateRange>(dateRange);
 
-  // Helper functions
-  const getVendorName = (vendorId: string) =>
-    vendors.find((v) => v.id === vendorId)?.vendorName || "Unknown";
-  const getItemName = (itemId: string) =>
-    inventoryItems.find((i) => i.id === itemId)?.itemName || "Unknown";
-  const getItemDetails = (itemId: string) =>
-    inventoryItems.find((i) => i.id === itemId);
+  useEffect(() => {
+    loadItems();
+    loadTransactions();
+    loadVendors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Helper to normalize id or populated object for vendor/item references
+  const normalizeRefId = (ref: any) => {
+    if (!ref) return "";
+    if (typeof ref === "string") return ref;
+    if (typeof ref === "object" && (ref._id || ref.$oid)) {
+      return ref._id ? String(ref._id) : String(ref.$oid);
+    }
+    return "";
+  };
+
+  const getVendor = (vendorRef: any) => {
+    const id = normalizeRefId(vendorRef);
+    return vendors.find((v) => String(v._id) === id) || null;
+  };
+
+  const getVendorName = (vendorRefOrId: any) =>
+    getVendor(vendorRefOrId)?.vendorName || "Unknown";
+
+  const getItem = (itemRef: any) => {
+    const id = normalizeRefId(itemRef);
+    return inventoryItems.find((i) => String(i._id) === id) || null;
+  };
+
+  const getItemName = (itemRefOrId: any) =>
+    getItem(itemRefOrId)?.itemName || "Unknown";
+
+  const getItemDetails = (itemRefOrId: any) => getItem(itemRefOrId);
 
   // Filter transactions based on date range and report type
   const filteredTransactions = useMemo(() => {
-    let transactions = inventoryTransactions.filter((transaction) => {
-      const transactionDate = new Date(transaction.transactionDate);
+    if (!Array.isArray(inventoryTransactions)) return [];
+
+    let transactions = inventoryTransactions.filter((transaction: any) => {
+      // transaction.transactionDate may be ISO string; fallback to createdAt if missing
+      const dateStr =
+        transaction.transactionDate ||
+        transaction.createdAt ||
+        transaction.updatedAt;
+      const transactionDate = dateStr ? new Date(dateStr) : null;
       const matchesDateRange =
-        transactionDate >= dateRange.from && transactionDate <= dateRange.to;
+        transactionDate &&
+        transactionDate >= dateRange.from &&
+        transactionDate <= dateRange.to;
 
       if (!matchesDateRange) return false;
 
       const item = getItemDetails(transaction.itemId);
+      const vendorName = getVendorName(
+        transaction.vendorId || transaction.vendor
+      );
+
       const matchesSearch =
         !searchTerm ||
         getItemName(transaction.itemId)
           .toLowerCase()
           .includes(searchTerm.toLowerCase()) ||
-        getVendorName(transaction.vendorId || "")
+        (vendorName || "unknown")
           .toLowerCase()
           .includes(searchTerm.toLowerCase()) ||
         (transaction.billNumber &&
@@ -127,8 +139,8 @@ export function InventoryReportsAnalysis() {
       return matchesSearch;
     });
 
-    // Apply report type filtering
-    if (reportType !== "daily") {
+    // Apply report type filtering (further narrow by relative date)
+    if (reportType && reportType !== "daily") {
       const now = new Date();
       let filterDate = new Date();
 
@@ -150,44 +162,57 @@ export function InventoryReportsAnalysis() {
           );
       }
 
-      transactions = transactions.filter(
-        (transaction) => new Date(transaction.transactionDate) >= filterDate
-      );
+      transactions = transactions.filter((transaction: any) => {
+        const dateStr =
+          transaction.transactionDate ||
+          transaction.createdAt ||
+          transaction.updatedAt;
+        const transactionDate = dateStr ? new Date(dateStr) : null;
+        return transactionDate && transactionDate >= filterDate;
+      });
     }
 
     return transactions;
-  }, [inventoryTransactions, dateRange, searchTerm, reportType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    inventoryTransactions,
+    dateRange,
+    searchTerm,
+    reportType,
+    inventoryItems,
+    vendors,
+  ]);
 
   // Calculate statistics
   const statistics = useMemo(() => {
     const totalTransactions = filteredTransactions.length;
+
     const stockInTransactions = filteredTransactions.filter(
-      (t) => t.transactionType === "Stock In"
+      (t: any) => t.transactionType === "Stock In"
     );
     const stockOutTransactions = filteredTransactions.filter(
-      (t) => t.transactionType === "Stock Out"
+      (t: any) => t.transactionType === "Stock Out"
     );
 
     const totalStockIn = stockInTransactions.reduce(
-      (sum, t) => sum + t.quantity,
+      (sum: number, t: any) => sum + (Number(t.quantity) || 0),
       0
     );
     const totalStockOut = stockOutTransactions.reduce(
-      (sum, t) => sum + t.quantity,
+      (sum: number, t: any) => sum + (Number(t.quantity) || 0),
       0
     );
     const totalOrderValue = stockInTransactions.reduce(
-      (sum, t) => sum + (t.orderValue || 0),
+      (sum: number, t: any) => sum + (Number(t.orderValue) || 0),
       0
     );
 
-    const currentTotalStock = inventoryItems.reduce(
-      (sum, item) => sum + item.quantity,
-      0
-    );
-    const lowStockItems = inventoryItems.filter(
-      (item) => item.quantity < 50
-    ).length;
+    const currentTotalStock = (
+      Array.isArray(inventoryItems) ? inventoryItems : []
+    ).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
+    const lowStockItems = (
+      Array.isArray(inventoryItems) ? inventoryItems : []
+    ).filter((item: any) => Number(item.quantity) < 50).length;
 
     return {
       totalTransactions,
@@ -201,7 +226,7 @@ export function InventoryReportsAnalysis() {
     };
   }, [filteredTransactions, inventoryItems]);
 
-  // Chart data
+  // Chart data (placeholder random data; keep or replace with real aggregation)
   const monthlyData = useMemo(() => {
     const months = [
       "Jan",
@@ -234,14 +259,19 @@ export function InventoryReportsAnalysis() {
       "Accessories & Hardware",
     ];
     return categories.map((category) => {
-      const items = inventoryItems.filter((item) => item.category === category);
-      const totalStock = items.reduce((sum, item) => sum + item.quantity, 0);
-      const transactions = filteredTransactions.filter((t) => {
+      const items = (
+        Array.isArray(inventoryItems) ? inventoryItems : []
+      ).filter((item: any) => item.category === category);
+      const totalStock = items.reduce(
+        (sum: number, item: any) => sum + (Number(item.quantity) || 0),
+        0
+      );
+      const transactions = filteredTransactions.filter((t: any) => {
         const item = getItemDetails(t.itemId);
         return item?.category === category;
       });
       const totalValue = transactions.reduce(
-        (sum, t) => sum + (t.orderValue || 0),
+        (sum: number, t: any) => sum + (Number(t.orderValue) || 0),
         0
       );
 
@@ -256,7 +286,7 @@ export function InventoryReportsAnalysis() {
 
   const handleExportData = (format: string) => {
     // Create dummy data when no transactions exist
-    const dummyTransactions = [
+    const dummyTransactions: any[] = [
       {
         id: "dummy-1",
         transactionDate: new Date("2024-12-18T09:30:00"),
@@ -285,17 +315,14 @@ export function InventoryReportsAnalysis() {
           email: "rajesh@delhileather.com",
         },
       },
-      // ... other dummy transactions would be here
     ];
 
-    // Get current data to export
     const dataToExport =
       filteredTransactions.length > 0
         ? filteredTransactions
         : dummyTransactions;
 
     if (format === "excel" || format === "csv") {
-      // Convert data to CSV format
       const headers = [
         "Item Name",
         "Category",
@@ -311,29 +338,34 @@ export function InventoryReportsAnalysis() {
         "Time",
       ];
 
-      const csvData = dataToExport.map((transaction) => {
-        const item = transaction.item || getItemDetails(transaction.itemId);
-        const vendor =
-          transaction.vendor ||
-          vendors.find((v) => v.id === transaction.vendorId);
+      const csvData = dataToExport.map((transaction: any) => {
+        const item =
+          transaction.item || getItemDetails(transaction.itemId) || {};
+        const vendorObj =
+          transaction.vendor || getVendor(transaction.vendorId) || {};
+        const vendorName = vendorObj.vendorName || "";
 
         return [
           item?.itemName || "",
           item?.category || "",
           item?.brand || "",
           item?.color || "",
-          vendor?.vendorName || "",
-          `${transaction.newStock} ${item?.quantityUnit || ""}`,
+          vendorName,
+          `${transaction.newStock || ""} ${item?.quantityUnit || ""}`,
           `${transaction.transactionType === "Stock In" ? "+" : "-"}${
-            transaction.quantity
+            transaction.quantity || ""
           } ${item?.quantityUnit || ""}`,
-          transaction.transactionType,
+          transaction.transactionType || "",
           transaction.billNumber || "",
           transaction.orderValue
-            ? `₹${transaction.orderValue.toLocaleString()}`
+            ? `₹${Number(transaction.orderValue).toLocaleString()}`
             : "N/A",
-          new Date(transaction.transactionDate).toLocaleDateString(),
-          new Date(transaction.transactionDate).toLocaleTimeString(),
+          transaction.transactionDate
+            ? new Date(transaction.transactionDate).toLocaleDateString()
+            : "",
+          transaction.transactionDate
+            ? new Date(transaction.transactionDate).toLocaleTimeString()
+            : "",
         ];
       });
 
@@ -341,7 +373,6 @@ export function InventoryReportsAnalysis() {
         .map((row) => row.map((cell) => `"${cell}"`).join(","))
         .join("\n");
 
-      // Create and download file
       const blob = new Blob([csvContent], {
         type: format === "excel" ? "application/vnd.ms-excel" : "text/csv",
       });
@@ -350,7 +381,7 @@ export function InventoryReportsAnalysis() {
       a.href = url;
       a.download = `inventory-report-${
         new Date().toISOString().split("T")[0]
-      }.${format === "excel" ? "csv" : "csv"}`;
+      }.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -362,7 +393,6 @@ export function InventoryReportsAnalysis() {
         } records as ${format.toUpperCase()}`
       );
     } else if (format === "pdf") {
-      // For PDF, we'll create a simple text-based export
       const reportContent = `
 INVENTORY REPORTS & ANALYSIS
 Generated on: ${new Date().toLocaleString()}
@@ -371,29 +401,32 @@ Date Range: ${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDate
 Total Transactions: ${dataToExport.length}
 
 ${dataToExport
-  .map((transaction, index) => {
-    const item = transaction.item || getItemDetails(transaction.itemId);
-    const vendor =
-      transaction.vendor || vendors.find((v) => v.id === transaction.vendorId);
-
+  .map((transaction: any, index: number) => {
+    const item = transaction.item || getItemDetails(transaction.itemId) || {};
+    const vendorObj =
+      transaction.vendor || getVendor(transaction.vendorId) || {};
     return `
 Transaction ${index + 1}:
-- Item: ${item?.itemName} (${item?.code})
-- Category: ${item?.category}
-- Brand: ${item?.brand} | Color: ${item?.color}
-- Vendor: ${vendor?.vendorName}
-- Current Stock: ${transaction.newStock} ${item?.quantityUnit}
+- Item: ${item?.itemName || ""} (${item?.code || ""})
+- Category: ${item?.category || ""}
+- Brand: ${item?.brand || ""} | Color: ${item?.color || ""}
+- Vendor: ${vendorObj.vendorName || ""}
+- Current Stock: ${transaction.newStock || ""} ${item?.quantityUnit || ""}
 - Quantity Updated: ${transaction.transactionType === "Stock In" ? "+" : "-"}${
-      transaction.quantity
-    } ${item?.quantityUnit}
-- Stock Movement: ${transaction.transactionType}
+      transaction.quantity || ""
+    } ${item?.quantityUnit || ""}
+- Stock Movement: ${transaction.transactionType || ""}
 - Bill Number: ${transaction.billNumber || "N/A"}
 - Order Value: ${
       transaction.orderValue
-        ? `₹${transaction.orderValue.toLocaleString()}`
+        ? `₹${Number(transaction.orderValue).toLocaleString()}`
         : "N/A"
     }
-- Date: ${new Date(transaction.transactionDate).toLocaleString()}
+- Date: ${
+      transaction.transactionDate
+        ? new Date(transaction.transactionDate).toLocaleString()
+        : ""
+    }
 `;
   })
   .join("\n")}
@@ -418,7 +451,6 @@ Transaction ${index + 1}:
   };
 
   const handleGenerateReport = () => {
-    // Generate detailed report
     console.log("Generating detailed report");
   };
 
@@ -428,10 +460,8 @@ Transaction ${index + 1}:
     if (!date) return;
 
     if (!tempDateRange.from || (tempDateRange.from && tempDateRange.to)) {
-      // Start new range
       setTempDateRange({ from: date, to: date });
     } else if (tempDateRange.from && !tempDateRange.to) {
-      // Complete the range
       const from = tempDateRange.from;
       const to = date;
 
@@ -460,7 +490,6 @@ Transaction ${index + 1}:
     setTempDateRange(newRange);
   };
 
-  // Update temp date range when date picker opens
   const handleDatePickerOpen = (open: boolean) => {
     if (open) {
       setTempDateRange(dateRange);
@@ -789,7 +818,6 @@ Transaction ${index + 1}:
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {(() => {
-                // Create dummy data when no transactions exist
                 const dummyTransactions = [
                   {
                     id: "dummy-1",
@@ -819,275 +847,33 @@ Transaction ${index + 1}:
                       email: "rajesh@delhileather.com",
                     },
                   },
-                  {
-                    id: "dummy-2",
-                    transactionDate: new Date("2024-12-18T11:15:00"),
-                    itemId: "dummy-item-2",
-                    vendorId: "dummy-vendor-2",
-                    transactionType: "Stock Out",
-                    quantity: 150,
-                    previousStock: 800,
-                    newStock: 650,
-                    billNumber: "OUT-2024-012",
-                    reason: "Production Allocation",
-                    remarks: "Allocated to Production Line A",
-                    orderValue: null,
-                    item: {
-                      itemName: "Metal Eyelets - 6mm",
-                      code: "ME-6MM-001",
-                      category: "Components & Parts",
-                      brand: "MetalWorks",
-                      color: "Silver",
-                      iconColor: "blue",
-                      quantityUnit: "Pieces",
-                    },
-                    vendor: {
-                      vendorName: "Mumbai Metal Works",
-                      contactPerson: "Suresh Patel",
-                      email: "suresh@mumbaimetals.com",
-                    },
-                  },
-                  {
-                    id: "dummy-3",
-                    transactionDate: new Date("2024-12-18T14:20:00"),
-                    itemId: "dummy-item-3",
-                    vendorId: "dummy-vendor-3",
-                    transactionType: "Stock In",
-                    quantity: 200,
-                    previousStock: 350,
-                    newStock: 550,
-                    billNumber: "INV-2024-089",
-                    reason: "Replenishment Stock",
-                    remarks: "Emergency order processed",
-                    orderValue: 28500,
-                    item: {
-                      itemName: "Canvas Upper Material",
-                      code: "CUM-001",
-                      category: "Raw Materials",
-                      brand: "TextilePlus",
-                      color: "Navy Blue",
-                      iconColor: "green",
-                      quantityUnit: "Meters",
-                    },
-                    vendor: {
-                      vendorName: "Gujarat Textile Mills",
-                      contactPerson: "Priya Shah",
-                      email: "priya@gujarattextiles.com",
-                    },
-                  },
-                  {
-                    id: "dummy-4",
-                    transactionDate: new Date("2024-12-17T16:45:00"),
-                    itemId: "dummy-item-4",
-                    vendorId: "dummy-vendor-4",
-                    transactionType: "Stock In",
-                    quantity: 1000,
-                    previousStock: 2500,
-                    newStock: 3500,
-                    billNumber: "INV-2024-076",
-                    reason: "Bulk Purchase",
-                    remarks: "Volume discount applied",
-                    orderValue: 85000,
-                    item: {
-                      itemName: "Rubber Sole - Sports",
-                      code: "RSS-001",
-                      category: "Components & Parts",
-                      brand: "RubberTech",
-                      color: "White",
-                      iconColor: "purple",
-                      quantityUnit: "Pairs",
-                    },
-                    vendor: {
-                      vendorName: "Chennai Rubber Co.",
-                      contactPerson: "Arjun Nair",
-                      email: "arjun@chennairubber.com",
-                    },
-                  },
-                  {
-                    id: "dummy-5",
-                    transactionDate: new Date("2024-12-17T10:30:00"),
-                    itemId: "dummy-item-5",
-                    vendorId: "dummy-vendor-5",
-                    transactionType: "Stock Out",
-                    quantity: 75,
-                    previousStock: 420,
-                    newStock: 345,
-                    billNumber: "OUT-2024-087",
-                    reason: "Quality Control Testing",
-                    remarks: "Sample taken for lab testing",
-                    orderValue: null,
-                    item: {
-                      itemName: "Shoe Laces - Cotton",
-                      code: "SLC-001",
-                      category: "Accessories & Hardware",
-                      brand: "LaceMaster",
-                      color: "Black",
-                      iconColor: "orange",
-                      quantityUnit: "Pairs",
-                    },
-                    vendor: {
-                      vendorName: "Karnataka Accessories",
-                      contactPerson: "Deepika Reddy",
-                      email: "deepika@karnatakaacc.com",
-                    },
-                  },
-                  {
-                    id: "dummy-6",
-                    transactionDate: new Date("2024-12-16T13:15:00"),
-                    itemId: "dummy-item-6",
-                    vendorId: "dummy-vendor-6",
-                    transactionType: "Stock In",
-                    quantity: 300,
-                    previousStock: 180,
-                    newStock: 480,
-                    billNumber: "INV-2024-064",
-                    reason: "New Stock Arrival",
-                    remarks: "Premium quality batch",
-                    orderValue: 52000,
-                    item: {
-                      itemName: "Leather Polish & Care Kit",
-                      code: "LPCK-001",
-                      category: "Finished Footwear",
-                      brand: "CareMax",
-                      color: "Clear",
-                      iconColor: "red",
-                      quantityUnit: "Kits",
-                    },
-                    vendor: {
-                      vendorName: "Pune Care Products",
-                      contactPerson: "Vikash Singh",
-                      email: "vikash@punecare.com",
-                    },
-                  },
-                  {
-                    id: "dummy-7",
-                    transactionDate: new Date("2024-12-16T08:45:00"),
-                    itemId: "dummy-item-7",
-                    vendorId: "dummy-vendor-7",
-                    transactionType: "Stock Out",
-                    quantity: 250,
-                    previousStock: 900,
-                    newStock: 650,
-                    billNumber: "OUT-2024-093",
-                    reason: "Production Line B",
-                    remarks: "Rush order processing",
-                    orderValue: null,
-                    item: {
-                      itemName: "Adhesive Glue - Industrial",
-                      code: "AGI-001",
-                      category: "Raw Materials",
-                      brand: "StickFast",
-                      color: "Transparent",
-                      iconColor: "indigo",
-                      quantityUnit: "Liters",
-                    },
-                    vendor: {
-                      vendorName: "Hyderabad Chemicals",
-                      contactPerson: "Ravi Teja",
-                      email: "ravi@hyderabadchem.com",
-                    },
-                  },
-                  {
-                    id: "dummy-8",
-                    transactionDate: new Date("2024-12-15T15:30:00"),
-                    itemId: "dummy-item-8",
-                    vendorId: "dummy-vendor-8",
-                    transactionType: "Stock In",
-                    quantity: 800,
-                    previousStock: 1500,
-                    newStock: 2300,
-                    billNumber: "INV-2024-048",
-                    reason: "Weekly Replenishment",
-                    remarks: "Standard order cycle",
-                    orderValue: 96000,
-                    item: {
-                      itemName: "Foam Padding - Comfort",
-                      code: "FPC-001",
-                      category: "Components & Parts",
-                      brand: "ComfortFoam",
-                      color: "White",
-                      iconColor: "pink",
-                      quantityUnit: "Sheets",
-                    },
-                    vendor: {
-                      vendorName: "Kolkata Foam Industries",
-                      contactPerson: "Ananya Banerjee",
-                      email: "ananya@kolkatafoam.com",
-                    },
-                  },
-                  {
-                    id: "dummy-9",
-                    transactionDate: new Date("2024-12-15T12:00:00"),
-                    itemId: "dummy-item-9",
-                    vendorId: "dummy-vendor-9",
-                    transactionType: "Stock In",
-                    quantity: 450,
-                    previousStock: 320,
-                    newStock: 770,
-                    billNumber: "INV-2024-035",
-                    reason: "Special Order",
-                    remarks: "Custom specification met",
-                    orderValue: 67500,
-                    item: {
-                      itemName: "Thread - Polyester Strong",
-                      code: "TPS-001",
-                      category: "Raw Materials",
-                      brand: "ThreadMax",
-                      color: "Multi-Color",
-                      iconColor: "cyan",
-                      quantityUnit: "Spools",
-                    },
-                    vendor: {
-                      vendorName: "Ahmedabad Thread Co.",
-                      contactPerson: "Kiran Modi",
-                      email: "kiran@ahmedabadthread.com",
-                    },
-                  },
-                  {
-                    id: "dummy-10",
-                    transactionDate: new Date("2024-12-14T14:15:00"),
-                    itemId: "dummy-item-10",
-                    vendorId: "dummy-vendor-10",
-                    transactionType: "Stock Out",
-                    quantity: 120,
-                    previousStock: 560,
-                    newStock: 440,
-                    billNumber: "OUT-2024-102",
-                    reason: "Customer Return Processing",
-                    remarks: "Defective items segregated",
-                    orderValue: null,
-                    item: {
-                      itemName: "Buckles & Straps Kit",
-                      code: "BSK-001",
-                      category: "Accessories & Hardware",
-                      brand: "BuckleWorks",
-                      color: "Brass",
-                      iconColor: "gray",
-                      quantityUnit: "Sets",
-                    },
-                    vendor: {
-                      vendorName: "Rajasthan Hardware",
-                      contactPerson: "Mahesh Agarwal",
-                      email: "mahesh@rajasthanhw.com",
-                    },
-                  },
                 ];
 
                 const displayTransactions =
                   filteredTransactions.length > 0
                     ? filteredTransactions
-                    : dummyTransactions;
+                    : !loadingInventory &&
+                      !loadingVendors &&
+                      inventoryTransactions.length === 0 && // no real data exists
+                      searchTerm === "" // user is not searching
+                    ? dummyTransactions
+                    : [];
 
-                return displayTransactions.map((transaction) => {
+                return displayTransactions.map((transaction: any) => {
                   const item =
-                    transaction.item || getItemDetails(transaction.itemId);
-                  const vendor =
+                    transaction.item ||
+                    getItemDetails(transaction.itemId) ||
+                    {};
+                  const vendorObj =
                     transaction.vendor ||
-                    vendors.find((v) => v.id === transaction.vendorId);
+                    getVendor(transaction.vendorId) ||
+                    null;
+                  const key =
+                    transaction._id || transaction.id || Math.random();
 
                   return (
                     <tr
-                      key={transaction.id}
+                      key={key}
                       className="hover:bg-gray-50 transition-colors"
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -1148,16 +934,16 @@ Transaction ${index + 1}:
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {vendor ? (
+                        {vendorObj ? (
                           <div className="space-y-1">
                             <div className="text-sm font-medium text-gray-900">
-                              {vendor.vendorName}
+                              {vendorObj.vendorName}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {vendor.contactPerson}
+                              {vendorObj.contactPerson}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {vendor.email}
+                              {vendorObj.email}
                             </div>
                           </div>
                         ) : (
@@ -1168,19 +954,25 @@ Transaction ${index + 1}:
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="space-y-1">
                           <div className="text-sm font-medium text-gray-900">
-                            {transaction.newStock.toLocaleString()}{" "}
+                            {(transaction.newStock || "").toLocaleString
+                              ? transaction.newStock.toLocaleString()
+                              : transaction.newStock}{" "}
                             {item?.quantityUnit}
                           </div>
                           <div className="text-sm text-gray-500">
                             on{" "}
-                            {new Date(
-                              transaction.transactionDate
-                            ).toLocaleDateString()}
+                            {transaction.transactionDate
+                              ? new Date(
+                                  transaction.transactionDate
+                                ).toLocaleDateString()
+                              : ""}
                           </div>
                           <div className="text-xs text-gray-400">
-                            {new Date(
-                              transaction.transactionDate
-                            ).toLocaleTimeString()}
+                            {transaction.transactionDate
+                              ? new Date(
+                                  transaction.transactionDate
+                                ).toLocaleTimeString()
+                              : ""}
                           </div>
                         </div>
                       </td>
@@ -1197,12 +989,16 @@ Transaction ${index + 1}:
                             {transaction.transactionType === "Stock In"
                               ? "+"
                               : "-"}
-                            {transaction.quantity.toLocaleString()}{" "}
+                            {(transaction.quantity || "").toLocaleString
+                              ? transaction.quantity.toLocaleString()
+                              : transaction.quantity}{" "}
                             {item?.quantityUnit}
                           </div>
                           <div className="text-xs text-gray-500">
                             Previous:{" "}
-                            {transaction.previousStock.toLocaleString()}
+                            {(transaction.previousStock || "").toLocaleString
+                              ? transaction.previousStock.toLocaleString()
+                              : transaction.previousStock}
                           </div>
                         </div>
                       </td>
@@ -1240,7 +1036,9 @@ Transaction ${index + 1}:
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-semibold text-green-600">
                           {transaction.orderValue
-                            ? `₹${transaction.orderValue.toLocaleString()}`
+                            ? `₹${Number(
+                                transaction.orderValue
+                              ).toLocaleString()}`
                             : "N/A"}
                         </div>
                       </td>

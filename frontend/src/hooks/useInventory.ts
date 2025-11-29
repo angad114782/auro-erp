@@ -4,6 +4,8 @@ import { inventoryService } from "../services/inventoryService";
 
 export const useInventory = () => {
   const [items, setItems] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState([]);
+
   const [loading, setLoading] = useState(false);
 
   const loadItems = useCallback(async () => {
@@ -16,6 +18,15 @@ export const useInventory = () => {
       setItems([]);
     } finally {
       setLoading(false);
+    }
+  }, []);
+  const loadTransactions = useCallback(async () => {
+    try {
+      const res = await inventoryService.getAllHistory();
+      setTransactions(res.data.data || []);
+    } catch (err) {
+      console.error("loadTransactions failed:", err);
+      setTransactions([]);
     }
   }, []);
 
@@ -89,5 +100,7 @@ export const useInventory = () => {
     updateStock,
     getHistory,
     setItems,
+    loadTransactions,
+    transactions,
   };
 };

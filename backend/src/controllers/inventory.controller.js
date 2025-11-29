@@ -125,3 +125,12 @@ export const getHistory = async (req, res) => {
   const history = await transactionService.getTransactionsByItem(itemId);
   res.json(history);
 };
+
+export const getAllHistory = async (req, res) => {
+  try {
+    const list = await transactionService.getAllTransactions();
+    res.json({ success: true, data: list });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

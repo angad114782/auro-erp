@@ -1,4 +1,3 @@
-// src/components/Inventory.tsx
 import React, { useEffect, useState } from "react";
 import { Plus, Search, Edit, Settings, FileText, Package } from "lucide-react";
 import { Button } from "./ui/button";
@@ -33,26 +32,31 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
   const [selectedItemForHistory, setSelectedItemForHistory] =
     useState<any>(null);
 
+  // Load data when component mounts
   useEffect(() => {
-    loadItems();
-    loadVendors();
-  }, [loadItems, loadVendors]);
+    const loadData = async () => {
+      await loadItems();
+      await loadVendors();
+    };
+    loadData();
+  }, []);
 
   const itemsList = items || [];
   const drafts = itemsList.filter((i) => i.isDraft);
   const itemsOnly = itemsList.filter((i) => !i.isDraft);
   const currentData = currentTab === "items" ? itemsOnly : drafts;
 
-  console.log("Inventory currentData:", currentData);
-  console.log("Inventory vendors:", vendors);
-  console.log("Inventory itemsOnly:", itemsOnly);
+  // Helper function to get vendor name consistently
+  const getVendorName = (vendorId: string) => {
+    const vendor = vendors.find((v) => v._id === vendorId?._id);
+    return vendor?.vendorName || "No Vendor";
+  };
 
   const filteredData = currentData.filter((item) => {
     const matchesCategory =
       activeCategory === "All" || item.category === activeCategory;
 
-    const vendor = vendors.find((v) => v._id === item.vendorId);
-    const vendorName = vendor?.vendorName || "";
+    const vendorName = item.vendorName;
 
     const q = searchQuery || searchTerm || "";
     const matchesSearch =
@@ -63,34 +67,50 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
       (item.subCategory || "").toLowerCase().includes(q.toLowerCase()) ||
       (item.brand || "").toLowerCase().includes(q.toLowerCase()) ||
       (item.color || "").toLowerCase().includes(q.toLowerCase()) ||
-      vendorName.toLowerCase().includes(q.toLowerCase());
+      vendorName?.toLowerCase()?.includes(q.toLowerCase());
 
     return matchesCategory && matchesSearch;
   });
 
-  console.log("Inventory filteredData:", filteredData);
+  // const categories = [
+  //   { name: "All", count: currentData.length },
+  //   {
+  //     name: "Raw Materials",
+  //     count: currentData.filter((i) => i.category === "Raw Materials").length,
+  //   },
+  //   {
+  //     name: "Components & Parts",
+  //     count: currentData.filter((i) => i.category === "Components & Parts")
+  //       .length,
+  //   },
+  //   {
+  //     name: "Finished Footwear",
+  //     count: currentData.filter((i) => i.category === "Finished Footwear")
+  //       .length,
+  //   },
+  //   {
+  //     name: "Accessories & Hardware",
+  //     count: currentData.filter((i) => i.category === "Accessories & Hardware")
+  //       .length,
+  //   },
+  // ];
+
+  const categoryMap: Record<string, number> = {};
+
+  currentData.forEach((item) => {
+    if (!categoryMap[item.category]) {
+      categoryMap[item.category] = 1;
+    } else {
+      categoryMap[item.category]++;
+    }
+  });
 
   const categories = [
     { name: "All", count: currentData.length },
-    {
-      name: "Raw Materials",
-      count: currentData.filter((i) => i.category === "Raw Materials").length,
-    },
-    {
-      name: "Components & Parts",
-      count: currentData.filter((i) => i.category === "Components & Parts")
-        .length,
-    },
-    {
-      name: "Finished Footwear",
-      count: currentData.filter((i) => i.category === "Finished Footwear")
-        .length,
-    },
-    {
-      name: "Accessories & Hardware",
-      count: currentData.filter((i) => i.category === "Accessories & Hardware")
-        .length,
-    },
+    ...Object.keys(categoryMap).map((cat) => ({
+      name: cat,
+      count: categoryMap[cat],
+    })),
   ];
 
   const getIconColorClasses = (color: string) => {
@@ -106,23 +126,30 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
     return colorMap[color] || "bg-gray-100 text-gray-600";
   };
 
-  // const getVendorName = (vendorId: string) => {
-  //   const vendor = vendors.find((v) => v._id === vendorId);
-  //   return vendor?.vendorName || "No Vendor";
-  // };
-
   const handleEditItem = (item: any) => {
     setEditingItem(item);
     setIsEditMode(true);
     setShowAddDialog(true);
   };
 
-  const handleDialogClose = (open: boolean) => {
+  const handleDialogClose = async (open: boolean) => {
     if (!open) {
+      // Refresh data when dialog closes
+      await loadItems();
+      await loadVendors();
       setEditingItem(null);
       setIsEditMode(false);
     }
     setShowAddDialog(open);
+  };
+
+  const handleUpdateStockClose = async (open: boolean) => {
+    if (!open) {
+      // Refresh data when update stock dialog closes
+      await loadItems();
+      await loadVendors();
+    }
+    setShowUpdateStockDialog(open);
   };
 
   return (
@@ -295,9 +322,8 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
-                      {/* {getVendorName(item.vendorId)} */}
-
-                      {item?.vendorId?.vendorName || "No Vendor"}
+                      {/* {item?.vendorId?.vendorName} */}
+                      {getVendorName(item?.vendorId)}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -393,7 +419,7 @@ export function Inventory({ searchTerm = "" }: InventoryProps) {
       />
       <UpdateStockDialog
         open={showUpdateStockDialog}
-        onOpenChange={() => setShowUpdateStockDialog(false)}
+        onOpenChange={handleUpdateStockClose}
         selectedItem={selectedItemForStock}
         updateStock={updateStock}
         vendors={vendors}

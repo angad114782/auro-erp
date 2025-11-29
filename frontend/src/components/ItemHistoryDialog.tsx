@@ -35,7 +35,6 @@ export function ItemHistoryDialog({
   onOpenChange,
   item,
 }: ItemHistoryDialogProps) {
-  // const { getInventoryTransactionsByItem } = useERPStore();
   const { vendors, loadVendors } = useVendorStore();
   const { getHistory } = useInventory();
 
@@ -44,28 +43,54 @@ export function ItemHistoryDialog({
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(
     null
   );
-
-  console.log("Vendors in ItemHistoryDialogeee:", transactions);
-
+  console.log("Vendors in ItemHistoryDialog:", transactions);
+  // Load vendors when component mounts or opens
   useEffect(() => {
-    loadVendors();
-  }, [loadVendors]);
+    if (open) {
+      loadVendors();
+    }
+  }, [open]);
 
-  console.log("ItemHistoryDialog item:", item);
-
+  // Fetch transactions when item changes
   useEffect(() => {
     const fetchTransactions = async () => {
-      const history = await getHistory(item?._id);
-      setTransactions(history);
+      if (!item?._id) return;
+
+      try {
+        const history = await getHistory(item._id);
+        // Ensure transactions have proper vendor data
+        const transactionsWithVendors = history.map((transaction) => ({
+          ...transaction,
+          // Add vendor name to transaction for easy access
+          vendorName:
+            vendors.find((v) => v._id === transaction.vendorId)?.vendorName ||
+            "-",
+        }));
+        setTransactions(transactionsWithVendors);
+      } catch (error) {
+        console.error("Error fetching transactions:", error);
+        setTransactions([]);
+      }
     };
-    fetchTransactions();
-  }, [item, getHistory]);
+
+    if (open && item) {
+      fetchTransactions();
+    }
+  }, [item, getHistory, open, vendors]);
 
   if (!item) return null;
-  // const transactions =   getHistory(item?._id!);
-  const vendor = vendors.find((v) => v._id === item.vendorId);
+
+  // Get current item's vendor name consistently
+  const getVendorName = (vendorId: string) => {
+    if (!vendorId) return "N/A";
+    const vendor = vendors.find((v) => v._id === vendorId?._id);
+    return vendor?.vendorName || "N/A";
+  };
+
+  const currentVendorName = getVendorName(item.vendorId);
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return "N/A";
     const date = new Date(dateString);
     return date.toLocaleDateString("en-IN", {
       day: "2-digit",
@@ -75,6 +100,7 @@ export function ItemHistoryDialog({
   };
 
   const formatTime = (dateString: string) => {
+    if (!dateString) return "N/A";
     const date = new Date(dateString);
     return date.toLocaleTimeString("en-IN", {
       hour: "2-digit",
@@ -224,7 +250,7 @@ export function ItemHistoryDialog({
                       Vendor
                     </Label>
                     <div className="mt-1 text-base text-gray-900">
-                      {item?.vendorId?.vendorName || "N/A"}
+                      {currentVendorName}
                     </div>
                   </div>
 
@@ -301,108 +327,98 @@ export function ItemHistoryDialog({
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {transactions.map((transaction, index) => {
-                          const transactionVendor = vendors.find(
-                            (v) => v.id === transaction.vendorId
-                          );
-                          return (
-                            <tr
-                              key={transaction.id}
-                              className="hover:bg-gray-50 transition-colors"
-                            >
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="w-4 h-4 text-gray-400" />
-                                  <div>
-                                    <div className="text-sm font-medium text-gray-900">
-                                      {formatDate(transaction.transactionDate)}
-                                    </div>
-                                    <div className="text-xs text-gray-500 flex items-center gap-1">
-                                      <Clock className="w-3 h-3" />
-                                      {formatTime(transaction.transactionDate)}
-                                    </div>
+                        {transactions.map((transaction) => (
+                          <tr
+                            key={transaction.id}
+                            className="hover:bg-gray-50 transition-colors"
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-gray-400" />
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {formatDate(transaction.transactionDate)}
+                                  </div>
+                                  <div className="text-xs text-gray-500 flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {formatTime(transaction.transactionDate)}
                                   </div>
                                 </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <Badge
-                                  className={`${getStockBadgeColor(
-                                    transaction.transactionType
-                                  )} flex items-center gap-1 w-fit`}
-                                >
-                                  {getStockIcon(transaction.transactionType)}
-                                  {transaction.transactionType}
-                                </Badge>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div
-                                  className={`text-sm font-bold ${
-                                    transaction.transactionType === "Stock In"
-                                      ? "text-green-600"
-                                      : transaction.transactionType ===
-                                        "Stock Out"
-                                      ? "text-red-600"
-                                      : "text-blue-600"
-                                  }`}
-                                >
-                                  {transaction.transactionType === "Stock In"
-                                    ? "+"
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <Badge
+                                className={`${getStockBadgeColor(
+                                  transaction.transactionType
+                                )} flex items-center gap-1 w-fit`}
+                              >
+                                {getStockIcon(transaction.transactionType)}
+                                {transaction.transactionType}
+                              </Badge>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div
+                                className={`text-sm font-bold ${
+                                  transaction.transactionType === "Stock In"
+                                    ? "text-green-600"
                                     : transaction.transactionType ===
                                       "Stock Out"
-                                    ? "-"
-                                    : "±"}
-                                  {transaction.quantity} {item.quantityUnit}
+                                    ? "text-red-600"
+                                    : "text-blue-600"
+                                }`}
+                              >
+                                {transaction.transactionType === "Stock In"
+                                  ? "+"
+                                  : transaction.transactionType === "Stock Out"
+                                  ? "-"
+                                  : "±"}
+                                {transaction.quantity} {item.quantityUnit}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-semibold text-gray-900">
+                                {transaction.newStock} {item.quantityUnit}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {transaction.billNumber ? (
+                                <div className="text-sm font-mono text-gray-900">
+                                  {transaction.billNumber}
                                 </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-semibold text-gray-900">
-                                  {transaction.newStock} {item.quantityUnit}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                {transaction.billNumber ? (
-                                  <div className="text-sm font-mono text-gray-900">
-                                    {transaction.billNumber}
-                                  </div>
-                                ) : (
-                                  <span className="text-sm text-gray-400">
-                                    -
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">
-                                  {transaction?.vendorId?.vendorName || "-"}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                {transaction.billNumber &&
-                                (transaction.billAttachmentUrl ||
-                                  transaction.attachment) ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8 text-xs border-blue-200 text-blue-600 hover:bg-blue-50"
-                                    onClick={() => {
-                                      setSelectedAttachment(
-                                        transaction.billAttachmentUrl ||
-                                          transaction.attachment
-                                      );
-                                      setAttachmentDialogOpen(true);
-                                    }}
-                                  >
-                                    <FileText className="w-3.5 h-3.5 mr-1.5" />
-                                    View
-                                  </Button>
-                                ) : (
-                                  <span className="text-sm text-gray-400">
-                                    -
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                              ) : (
+                                <span className="text-sm text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {getVendorName(transaction.vendorId)}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {transaction.billNumber &&
+                              (transaction.billAttachmentUrl ||
+                                transaction.attachment) ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-xs border-blue-200 text-blue-600 hover:bg-blue-50"
+                                  onClick={() => {
+                                    setSelectedAttachment(
+                                      transaction.billAttachmentUrl ||
+                                        transaction.attachment
+                                    );
+                                    setAttachmentDialogOpen(true);
+                                  }}
+                                >
+                                  <FileText className="w-3.5 h-3.5 mr-1.5" />
+                                  View
+                                </Button>
+                              ) : (
+                                <span className="text-sm text-gray-400">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>

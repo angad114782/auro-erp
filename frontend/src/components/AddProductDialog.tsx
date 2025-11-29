@@ -1,4 +1,3 @@
-// src/components/AddItemDialog.tsx
 import React from "react";
 import {
   Plus,
@@ -37,7 +36,7 @@ interface NewItem {
   category: string;
   brand: string;
   color: string;
-  vendorId: string; // now free-text (id or name)
+  vendorId: string;
   expiryDate: string;
   quantity: string;
   quantityUnit: string;
@@ -54,7 +53,7 @@ interface Props {
   isEditMode?: boolean;
   createItem: (args: { formData: FormData }) => Promise<any>;
   updateItem: (id: string, formData: FormData) => Promise<any>;
-  vendors?: any[]; // provided but we use free text
+  vendors?: any[];
 }
 
 export function AddItemDialog({
@@ -80,6 +79,8 @@ export function AddItemDialog({
     billDate: "",
     billAttachment: null,
   });
+
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
@@ -132,6 +133,9 @@ export function AddItemDialog({
       return;
     }
 
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     // Build FormData for file upload
     const formData = new FormData();
     formData.append("itemName", newItem.itemName);
@@ -139,7 +143,7 @@ export function AddItemDialog({
     formData.append("subCategory", "General");
     formData.append("brand", newItem.brand || "N/A");
     formData.append("color", newItem.color || "N/A");
-    formData.append("vendorId", newItem.vendorId || "N/A");
+    formData.append("vendorId", newItem.vendorId || "");
     formData.append("expiryDate", newItem.expiryDate || "");
     formData.append(
       "quantity",
@@ -169,7 +173,7 @@ export function AddItemDialog({
           draft ? "Item saved as draft!" : "Item added successfully!"
         );
       }
-      // reset & close
+      // Reset form
       setNewItem({
         itemName: "",
         category: "",
@@ -188,6 +192,8 @@ export function AddItemDialog({
     } catch (err) {
       console.error(err);
       toast.error("Save failed");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -275,7 +281,6 @@ export function AddItemDialog({
                   </div>
                 </div>
 
-                {/* CATEGORY as text input (requested) */}
                 <div className="xl:col-span-2 space-y-4">
                   <Label
                     htmlFor="category"
@@ -330,7 +335,6 @@ export function AddItemDialog({
                   />
                 </div>
 
-                {/* VENDOR as shadcn select */}
                 <div className="xl:col-span-2 space-y-4">
                   <Label className="text-base font-semibold text-gray-700">
                     Vendor / Supplier
@@ -373,7 +377,6 @@ export function AddItemDialog({
                   />
                 </div>
 
-                {/* QUANTITY & QUANTITY UNIT (unit as input, requested) */}
                 <div className="xl:col-span-2 space-y-4">
                   <Label
                     htmlFor="quantity"
@@ -435,7 +438,6 @@ export function AddItemDialog({
               </div>
             </div>
 
-            {/* Billing Info */}
             <div className="space-y-8 mt-10">
               <div className="flex items-center gap-6">
                 <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
@@ -581,6 +583,7 @@ export function AddItemDialog({
               className="px-8 py-3 text-base border-gray-300 text-gray-700 hover:bg-gray-50"
               onClick={() => handleSubmit(true)}
               type="button"
+              disabled={isSubmitting}
             >
               <Package className="w-5 h-5 mr-3" />
               {isEditMode ? "Save Changes" : "Save as Draft"}
@@ -590,6 +593,7 @@ export function AddItemDialog({
               size="lg"
               className="px-8 py-3 text-base bg-[#0c9dcb] hover:bg-[#0c9dcb]/90"
               type="button"
+              disabled={isSubmitting}
             >
               <Plus className="w-5 h-5 mr-3" />
               {isEditMode ? "Update Item" : "Add Item"}

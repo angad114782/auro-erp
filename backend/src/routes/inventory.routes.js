@@ -13,6 +13,7 @@ import {
   updateStock,
   listItems,
   getHistory,
+  getAllHistory,
 } from "../controllers/inventory.controller.js";
 
 const router = Router({ mergeParams: true });
@@ -31,5 +32,8 @@ router.post("/stock/:itemId", updateStock);
 
 // GET ITEM HISTORY
 router.get("/history/:itemId", getHistory);
+
+// GET ALL HISTORY
+router.get("/history-all", getAllHistory);
 
 export default router;

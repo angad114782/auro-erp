@@ -54,6 +54,8 @@ export function UpdateStockDialog({
     billAttachment: null as File | null,
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   useEffect(() => {
     if (open && selectedItem) {
       setStockUpdate({
@@ -76,14 +78,19 @@ export function UpdateStockDialog({
       return;
     }
 
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     const currentQuantity = selectedItem.quantity || 0;
     let type: "add" | "reduce" = "add";
     let quantity = 0;
+
     if (stockUpdate.additionalQuantity) {
       type = "add";
       quantity = parseInt(stockUpdate.additionalQuantity);
       if (isNaN(quantity) || quantity < 0) {
         toast.error("Enter valid quantity to add");
+        setIsSubmitting(false);
         return;
       }
     } else {
@@ -91,10 +98,12 @@ export function UpdateStockDialog({
       quantity = parseInt(stockUpdate.subtractQuantity);
       if (isNaN(quantity) || quantity < 0) {
         toast.error("Enter valid quantity to reduce");
+        setIsSubmitting(false);
         return;
       }
       if (quantity > currentQuantity) {
         toast.error("Reduction cannot exceed current stock");
+        setIsSubmitting(false);
         return;
       }
     }
@@ -118,6 +127,8 @@ export function UpdateStockDialog({
     } catch (err) {
       console.error(err);
       toast.error("Stock update failed");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -129,7 +140,7 @@ export function UpdateStockDialog({
     if (subtractQuantity) return currentQuantity - subtractQuantity;
     return currentQuantity;
   };
-  console.log("Vendors in UpdateStockDialog:", vendors);
+
   return (
     <Dialog
       open={open}

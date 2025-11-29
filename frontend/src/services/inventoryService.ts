@@ -73,4 +73,8 @@ export const inventoryService = {
     const res = await api.get(`/inventory/history/${itemId}`);
     return res.data;
   },
+
+  getAllHistory: async () => {
+    return await api.get("/inventory/history-all");
+  },
 };
