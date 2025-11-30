@@ -14,7 +14,8 @@ import authRoutes from "./auth.routes.js";
 import inventoryRoutes from "./inventory.routes.js";
 import productionCalendarRouter from "./productionCalendar.routes.js";
 import vendorRoutes from "./vendor.route.js";
-
+import pcProdRoutes from "./pc_productionCard.routes.js";
+import pcMrRoutes from "./pc_materialRequest.routes.js";
 const router = Router();
 
 router.get("/health", (req, res) => {
@@ -55,5 +56,6 @@ router.use("/auth", authRoutes);
 router.use("/inventory", inventoryRoutes);
 router.use("/vendors", vendorRoutes);
 router.use("/", productionCalendarRouter);
-
+router.use("/projects/:projectId/production-cards", pcProdRoutes);
+router.use("/projects/:projectId/material-requests", pcMrRoutes);
 export default router;

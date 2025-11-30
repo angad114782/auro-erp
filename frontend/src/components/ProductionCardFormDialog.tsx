@@ -329,132 +329,222 @@ export function ProductionCardFormDialog({
     return `PC-${timestamp}-${random}`;
   };
 
-  const handleSave = async () => {
-    if (
-      !formData.cardQuantity ||
-      !formData.startDate ||
-      !formData.assignPlant
-    ) {
-      toast.error(
-        "Please fill in all required fields (Allocation, Start Date, and Plant)"
+ const handleSave = async () => {
+  if (
+    !formData.cardQuantity ||
+    !formData.startDate ||
+    !formData.assignPlant
+  ) {
+    toast.error(
+      "Please fill in all required fields (Allocation, Start Date, and Plant)"
+    );
+    return;
+  }
+
+  if (!selectedProject) {
+    toast.error("No project selected for production card");
+    return;
+  }
+
+  const cardId = generateCardId();
+  const cardNumber = generateProductionCardNumber();
+
+  // Create production card payload for server
+  const projectId =
+    (selectedProject as any)?.project?._id ||
+    (selectedProject as any)?.id ||
+    (selectedProject as any)?._id ||
+    (selectedProject as any)?.projectId;
+
+  const payload = {
+    cardNumber,
+    projectId,
+    productName: getProductName(),
+    cardQuantity: parseInt(formData.cardQuantity, 10),
+    startDate: formData.startDate,
+    assignedPlant: formData.assignPlant,
+    description: formData.description,
+    specialInstructions: formData.specialInstructions,
+    status: "Draft",
+    materialRequestStatus: requestStatus,
+    materials: (selectedProject as any)?.materials || [],
+    components: (selectedProject as any)?.components || [],
+  };
+
+  let created: any = null;
+  try {
+    const res = await api.post(`/production-cards`, payload);
+    created = res?.data?.data;
+  } catch (err) {
+    console.error("Failed to save production card to server:", err);
+  }
+
+  // Update local store with created doc (or fallback)
+  if (created) {
+    addProductionCard({
+      id: created._id || created.id || cardId,
+      cardNumber: created.cardNumber || cardNumber,
+      projectId: created.project || projectId,
+      productName: created.productName || getProductName(),
+      cardQuantity:
+        created.cardQuantity || parseInt(formData.cardQuantity, 10),
+      startDate: created.startDate || formData.startDate,
+      assignedPlant: created.assignedPlant || formData.assignPlant,
+      description: created.description || formData.description,
+      specialInstructions:
+        created.specialInstructions || formData.specialInstructions,
+      status: created.status || "Draft",
+      materialRequestStatus: created.materialRequestStatus || requestStatus,
+      createdBy: created.createdBy || "Production Manager",
+      createdDate: created.createdAt || new Date().toISOString(),
+      updatedDate: created.updatedAt || new Date().toISOString(),
+      materials: created.materials || payload.materials,
+      components: created.components || payload.components,
+    } as any);
+  } else {
+    // fallback to local store so user flow isn't blocked
+    addProductionCard(payload as any);
+  }
+
+  // Prepare the card data to pass to onSave (backwards compat)
+  const cardData: ProductionCardData = {
+    id: created?._id || created?.id || cardId,
+    cardName: created?.cardNumber || cardNumber,
+    productionType: "Production Card",
+    priority: "Medium",
+    targetQuantity: formData.cardQuantity,
+    cardQuantity: formData.cardQuantity,
+    startDate: formData.startDate,
+    endDate: "",
+    supervisor: "",
+    workShift: "",
+    description: formData.description,
+    specialInstructions: formData.specialInstructions,
+    status: "Active",
+    createdAt: new Date().toISOString(),
+  };
+
+  // --- NEW: Auto-send material request when saving (same logic as old button) ---
+  try {
+    const allocationQty = parseInt(formData.cardQuantity, 10);
+    if (allocationQty > 0) {
+      const extractNumericValue = (value: any): number => {
+        if (typeof value === "number") return value;
+        if (typeof value === "string") {
+          const match = value.match(/\d+\.?\d*/);
+          return match ? parseFloat(match[0]) : 0;
+        }
+        return 0;
+      };
+
+      const materials: any[] = [];
+      const components: any[] = [];
+
+      const materialSections = ["upper", "material"];
+      materialSections.forEach((section) => {
+        (costData[section as keyof typeof costData] as any[])?.forEach(
+          (row: any) => {
+            const itemName = row.item;
+            const consumptionNum = extractNumericValue(row.consumption);
+            const actualReq = consumptionNum * allocationQty;
+            materials.push({
+              id: row._id || `${section}-${itemName}`,
+              name: itemName,
+              specification: row.description,
+              requirement: actualReq,
+              unit: row.unit || "unit",
+              available: materialData[itemName]?.available || 0,
+              issued: 0,
+              balance: 0,
+            });
+          }
+        );
+      });
+
+      const componentSections = ["component", "packaging", "miscellaneous"];
+      componentSections.forEach((section) => {
+        (costData[section as keyof typeof costData] as any[])?.forEach(
+          (row: any) => {
+            const itemName = row.item;
+            const consumptionNum = extractNumericValue(row.consumption);
+            const actualReq = consumptionNum * allocationQty;
+            components.push({
+              id: row._id || `${section}-${itemName}`,
+              name: itemName,
+              specification: row.description,
+              requirement: actualReq,
+              unit: row.unit || "unit",
+              available: materialData[itemName]?.available || 0,
+              issued: 0,
+              balance: 0,
+            });
+          }
+        );
+      });
+
+      const productionCardIdForRequest =
+        created?._id || created?.id || cardId || generateCardId();
+
+      const materialRequestData = {
+        productionCardId: productionCardIdForRequest,
+        requestedBy: "Production Manager",
+        status: "Pending to Store" as const,
+        materials,
+        components,
+      };
+
+      // Add to store (local)
+      addMaterialRequest(materialRequestData);
+      setMaterialRequestId(materialRequestData.productionCardId);
+      setRequestStatus("Pending to Store");
+
+      // Optionally: if you want to POST material request to server, do it here (api.post)
+      // await api.post(`/material-requests`, materialRequestData);
+
+      toast.success("Production card and material request saved successfully!");
+    } else {
+      toast.success(
+        editingCard
+          ? "Production card updated successfully!"
+          : "Production card created successfully!"
       );
-      return;
     }
-
-    if (!selectedProject) {
-      toast.error("No project selected for production card");
-      return;
-    }
-
-    const cardId = generateCardId();
-    const cardNumber = generateProductionCardNumber();
-
-    // Create production card data
-    const projectId =
-      (selectedProject as any)?.project?._id ||
-      (selectedProject as any)?.id ||
-      (selectedProject as any)?._id ||
-      (selectedProject as any)?.projectId;
-
-    const payload = {
-      cardNumber,
-      projectId,
-      productName: getProductName(),
-      cardQuantity: parseInt(formData.cardQuantity, 10),
-      startDate: formData.startDate,
-      assignedPlant: formData.assignPlant,
-      description: formData.description,
-      specialInstructions: formData.specialInstructions,
-      status: "Draft",
-      materialRequestStatus: requestStatus,
-      materials: (selectedProject as any)?.materials || [],
-      components: (selectedProject as any)?.components || [],
-    };
-
-    try {
-      const res = await api.post(`/production-cards`, payload);
-      const created = res?.data?.data;
-
-      // Update local store with created doc (map to store shape)
-      if (created) {
-        addProductionCard({
-          id: created._id || created.id || cardId,
-          cardNumber: created.cardNumber || cardNumber,
-          projectId: created.project || projectId,
-          productName: created.productName || getProductName(),
-          cardQuantity:
-            created.cardQuantity || parseInt(formData.cardQuantity, 10),
-          startDate: created.startDate || formData.startDate,
-          assignedPlant: created.assignedPlant || formData.assignPlant,
-          description: created.description || formData.description,
-          specialInstructions:
-            created.specialInstructions || formData.specialInstructions,
-          status: created.status || "Draft",
-          materialRequestStatus: created.materialRequestStatus || requestStatus,
-          createdBy: created.createdBy || "Production Manager",
-          createdDate: created.createdAt || new Date().toISOString(),
-          updatedDate: created.updatedAt || new Date().toISOString(),
-          materials: created.materials || payload.materials,
-          components: created.components || payload.components,
-        } as any);
-      } else {
-        // fallback to local store if server didn't return created object
-        addProductionCard(payload as any);
-      }
-    } catch (err) {
-      console.error("Failed to save production card to server:", err);
-      // fallback to local store so user flow isn't blocked
-      addProductionCard(payload as any);
-    }
-
-    // Also call the original onSave for compatibility
-    const cardData: ProductionCardData = {
-      id: cardId,
-      cardName: cardNumber,
-      productionType: "Production Card",
-      priority: "Medium",
-      targetQuantity: formData.cardQuantity,
-      cardQuantity: formData.cardQuantity,
-      startDate: formData.startDate,
-      endDate: "",
-      supervisor: "",
-      workShift: "",
-      description: formData.description,
-      specialInstructions: formData.specialInstructions,
-      status: "Active",
-      createdAt: new Date().toISOString(),
-    };
-
-    onSave(cardData);
+  } catch (err) {
+    console.error("Failed to create material request:", err);
     toast.success(
       editingCard
         ? "Production card updated successfully!"
         : "Production card created successfully!"
     );
+  }
 
-    // Call the callback to refresh parent
-    if (onCardCreated) {
-      onCardCreated();
-    }
+  // Call original onSave
+  onSave(cardData);
 
-    // Reset form
-    setFormData({
-      cardName: "",
-      productionType: "",
-      priority: "",
-      targetQuantity: "",
-      startDate: "",
-      endDate: "",
-      supervisor: "",
-      workShift: "",
-      description: "",
-      specialInstructions: "",
-      cardQuantity: "",
-      assignPlant: "",
-    });
+  // Call parent refresh callback if present
+  if (onCardCreated) {
+    onCardCreated();
+  }
 
-    onClose();
-  };
+  // Reset form
+  setFormData({
+    cardName: "",
+    productionType: "",
+    priority: "",
+    targetQuantity: "",
+    startDate: "",
+    endDate: "",
+    supervisor: "",
+    workShift: "",
+    description: "",
+    specialInstructions: "",
+    cardQuantity: "",
+    assignPlant: "",
+  });
+
+  onClose();
+};
+
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
@@ -777,130 +867,7 @@ export function ProductionCardFormDialog({
                       </div>
                     </div>
 
-                    {/* Right side - Send to Store Manager Button */}
-                    <div className="flex items-center gap-4">
-                      <Button
-                        onClick={() => {
-                          if (
-                            !formData.cardQuantity ||
-                            parseInt(formData.cardQuantity) === 0
-                          ) {
-                            toast.error(
-                              "Please enter production allocation quantity first"
-                            );
-                            return;
-                          }
-
-                          const allocationQty = parseInt(
-                            formData.cardQuantity,
-                            10
-                          );
-
-                          // Helper to extract numeric value from consumption
-                          const extractNumericValue = (value: any): number => {
-                            if (typeof value === "number") return value;
-                            if (typeof value === "string") {
-                              const match = value.match(/\d+\.?\d*/);
-                              return match ? parseFloat(match[0]) : 0;
-                            }
-                            return 0;
-                          };
-
-                          // Build materials and components from actual costData with multiplied requirements
-                          const materials: any[] = [];
-                          const components: any[] = [];
-
-                          // Process materials
-                          const materialSections = ["upper", "material"];
-                          materialSections.forEach((section) => {
-                            (
-                              costData[
-                                section as keyof typeof costData
-                              ] as any[]
-                            )?.forEach((row: any) => {
-                              const itemName = row.item;
-                              const consumptionNum = extractNumericValue(
-                                row.consumption
-                              );
-                              const actualReq = consumptionNum * allocationQty;
-                              materials.push({
-                                id: row._id || `${section}-${itemName}`,
-                                name: itemName,
-                                specification: row.description,
-                                requirement: actualReq,
-                                unit: row.unit || "unit",
-                                available:
-                                  materialData[itemName]?.available || 0,
-                                issued: 0,
-                                balance: 0,
-                              });
-                            });
-                          });
-
-                          // Process components and packaging
-                          const componentSections = [
-                            "component",
-                            "packaging",
-                            "miscellaneous",
-                          ];
-                          componentSections.forEach((section) => {
-                            (
-                              costData[
-                                section as keyof typeof costData
-                              ] as any[]
-                            )?.forEach((row: any) => {
-                              const itemName = row.item;
-                              const consumptionNum = extractNumericValue(
-                                row.consumption
-                              );
-                              const actualReq = consumptionNum * allocationQty;
-                              components.push({
-                                id: row._id || `${section}-${itemName}`,
-                                name: itemName,
-                                specification: row.description,
-                                requirement: actualReq,
-                                unit: row.unit || "unit",
-                                available:
-                                  materialData[itemName]?.available || 0,
-                                issued: 0,
-                                balance: 0,
-                              });
-                            });
-                          });
-
-                          // Create material request
-                          const materialRequestData = {
-                            productionCardId: generateCardId(),
-                            requestedBy: "Production Manager",
-                            status: "Pending to Store" as const,
-                            materials,
-                            components,
-                          };
-
-                          // Add to store
-                          addMaterialRequest(materialRequestData);
-                          setMaterialRequestId(
-                            materialRequestData.productionCardId
-                          );
-                          setRequestStatus("Pending to Store");
-
-                          toast.success(
-                            "Material request sent to Store Manager successfully!"
-                          );
-                        }}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2"
-                        disabled={
-                          !formData.cardQuantity ||
-                          parseInt(formData.cardQuantity) === 0 ||
-                          requestStatus !== "Pending Availability Check"
-                        }
-                      >
-                        <Package className="w-4 h-4" />
-                        {requestStatus === "Pending Availability Check"
-                          ? "Send to Store Manager"
-                          : "Request Sent"}
-                      </Button>
-                    </div>
+                  
                   </div>
                 </div>
               </div>
