@@ -135,6 +135,7 @@ interface ProductionPlan {
   quantity: number;
   assignedPlant: string;
   assignedTeam: string;
+  assignPerson: string;
   taskInc: string;
   status: string;
   priority: string;
@@ -368,7 +369,7 @@ export function ProductionPlanDetailsDialog({
                   Manufacturing Assignment
                 </h4>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-green-600 mb-1">Quantity</p>
                     <p className="text-sm font-medium text-green-900">
@@ -378,19 +379,10 @@ export function ProductionPlanDetailsDialog({
 
                   <div>
                     <p className="text-xs text-orange-600 mb-1">
-                      Production Team
-                    </p>
-                    <p className="text-sm font-medium text-orange-900">
-                      {plan.assignedTeam}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-orange-600 mb-1">
                       Task Coordinator
                     </p>
                     <p className="text-sm font-medium text-orange-900">
-                      {plan.taskInc}
+                      {plan?.assignPerson}
                     </p>
                   </div>
                 </div>

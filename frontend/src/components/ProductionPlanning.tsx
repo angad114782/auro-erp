@@ -86,6 +86,7 @@ interface ProductionPlan {
   artColour?: string;
   color?: string;
   country?: string;
+  assignPerson?: string;
   countryId?: string;
 
   profileImage?: string; // Add this for displaying product image
@@ -412,6 +413,7 @@ export function ProductionPlanning() {
 
             // color / art colour
             artColour: proj.color || doc.colorSnapshot || "",
+            assignPerson: proj.assignPerson|| "",
             color: proj.color || doc.colorSnapshot || "",
 
             // quantity from PO
@@ -742,6 +744,7 @@ export function ProductionPlanning() {
       .map((plan) => ({
         productName: plan.productName,
         artName: plan.artColour || plan.color,
+        assignPerson: plan.assignPerson,
         projectCode: plan.projectCode,
         color: plan.color,
         size: undefined,
@@ -1026,6 +1029,7 @@ export function ProductionPlanning() {
       type: cardData.type || "-",
       gender: cardData.gender || "-",
       artColour: cardData.artColour || "-",
+      assignPerson: cardData.assignPerson || "-",
       color: cardData.artColour || "-",
       country: cardData.country || "-",
       quantity: cardData.quantity,
