@@ -6,6 +6,7 @@ import {
   getCalendarEntryService,
   updateCalendarEntryService,
   deleteCalendarEntryService,
+  getScheduleByProjectService,
 } from "../services/productionCalendar.service.js";
 
 export const searchProjectsForCalendar = async (req, res, next) => {
@@ -88,5 +89,17 @@ export const deleteCalendarEntry = async (req, res, next) => {
     next(err);
   } finally {
     session.endSession();
+  }
+};
+
+export const getProjectSchedule = async (req, res, next) => {
+  try {
+    const projectId = req.params.id;
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 50);
+    const data = await getScheduleByProjectService(projectId, { page, limit });
+    return res.json({ message: "project schedule", data });
+  } catch (err) {
+    next(err);
   }
 };

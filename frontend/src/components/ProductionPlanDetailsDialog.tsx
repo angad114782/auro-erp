@@ -38,6 +38,9 @@ import { Textarea } from "./ui/textarea";
 import { toast } from "sonner@2.0.3";
 import api from "../lib/api"; // REQUIRED
 
+// <-- NEW: import create dialog -->
+import { CreateProductionCardDialog } from "./CreateProductionCardDialog";
+
 // ============================================
 // READ-ONLY COST CATEGORY COMPONENT (6 tables)
 // ============================================
@@ -219,6 +222,63 @@ export function ProductionPlanDetailsDialog({
   // Your existing component state continues…
   // -----------------------------------------
 
+  // open state for CreateProductionCardDialog
+  const [openCreateCardDialog, setOpenCreateCardDialog] = useState(false);
+  // store which production plan (or plan.raw) we're using to prefill the create dialog
+  const [selectedProductionCardForCreate, setSelectedProductionCardForCreate] =
+    useState<any | null>(null);
+
+  // inside ProductionPlanDetailsDialog - example (useEffect)
+  const [isScheduleLoading, setIsScheduleLoading] = useState(false);
+
+  useEffect(() => {
+    const loadSchedule = async () => {
+      try {
+        if (!plan?.project?._id) return;
+        setIsScheduleLoading(true);
+
+        // call new endpoint
+        const res = await api.get(`/projects/${plan.project._id}/schedule`);
+        const payload = res.data?.data ?? res.data;
+        // payload.items is an array of calendar docs
+        const first =
+          Array.isArray(payload.items) && payload.items.length > 0
+            ? payload.items[0]
+            : null;
+
+        if (first) {
+          const sched = first.scheduling ?? {};
+          setProductionPlanningData((prev) => ({
+            ...prev,
+            assignedPlant: sched.assignedPlant || prev.assignedPlant,
+            sendDate: sched.scheduleDate
+              ? new Date(sched.scheduleDate).toISOString().slice(0, 10)
+              : prev.sendDate,
+            receivedDate: sched.receivedDate
+              ? new Date(sched.receivedDate).toISOString().slice(0, 10)
+              : prev.receivedDate,
+            soleVendor: sched.soleFrom || prev.soleVendor,
+            soleColor: sched.soleColor || prev.soleColor,
+            soleReceivedDate: sched.soleExpectedDate
+              ? new Date(sched.soleExpectedDate).toISOString().slice(0, 10)
+              : prev.soleReceivedDate,
+          }));
+        } else {
+          // no schedule found — keep defaults or set to empty values
+        }
+      } catch (err) {
+        console.error("Failed to load project schedule:", err);
+        toast.error("Failed to load production schedule");
+      } finally {
+        setIsScheduleLoading(false);
+      }
+    };
+
+    if (open && plan?.project?._id) {
+      loadSchedule();
+    }
+  }, [open, plan?.project?._id]);
+
   const [productionPlanningData, setProductionPlanningData] = useState({
     assignedPlant: "Plant A - Main Factory",
     sendDate: "2025-01-15",
@@ -311,9 +371,7 @@ export function ProductionPlanDetailsDialog({
                   </span>
 
                   <Badge
-                    className={`${getPriorityColor(
-                      plan.priority
-                    )} text-sm px-3 py-1`}
+                    className={`${getPriorityColor(plan.priority)} text-sm px-3 py-1`}
                   >
                     {plan.priority}
                   </Badge>
@@ -378,9 +436,7 @@ export function ProductionPlanDetailsDialog({
                   </div>
 
                   <div>
-                    <p className="text-xs text-orange-600 mb-1">
-                      Task Coordinator
-                    </p>
+                    <p className="text-xs text-orange-600 mb-1">Task Coordinator</p>
                     <p className="text-sm font-medium text-orange-900">
                       {plan?.assignPerson}
                     </p>
@@ -389,52 +445,28 @@ export function ProductionPlanDetailsDialog({
               </div>
             </div>
 
-            {/* PRODUCTION PLANNING */}
+            {/* PRODUCTION PLANNING (READ-ONLY) */}
             <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
               <h4 className="text-sm font-semibold text-blue-800 mb-3">
                 Production Planning
               </h4>
 
               <div className="grid grid-cols-3 gap-4">
-                {/* Assigned Plant */}
+                {/* Assigned Plant (readonly) */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Assigned Plant</p>
 
-                  <Select
-                    value={productionPlanningData.assignedPlant}
-                    onValueChange={(value) => {
-                      if (value === "__add_new__")
-                        return setAddPlantDialogOpen(true);
-                      setProductionPlanningData({
-                        ...productionPlanningData,
-                        assignedPlant: value,
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-sm border-blue-200 bg-white">
-                      <SelectValue placeholder="Select plant" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      {plantsList.map((plant) => (
-                        <SelectItem key={plant} value={plant}>
-                          {plant}
-                        </SelectItem>
-                      ))}
-
-                      <Separator className="my-1" />
-
-                      <div
-                        className="px-2 py-1.5 text-sm cursor-pointer flex items-center gap-2 hover:bg-blue-50"
-                        onClick={() => setAddPlantDialogOpen(true)}
-                      >
-                        <Plus className="w-4 h-4" /> Add New Plant
-                      </div>
-                    </SelectContent>
-                  </Select>
+                  <div className="relative">
+                    <Input
+                      value={productionPlanningData.assignedPlant}
+                      readOnly
+                      className="h-9 pl-3 pr-3 text-sm border-blue-200 bg-white cursor-default"
+                      aria-readonly="true"
+                    />
+                  </div>
                 </div>
 
-                {/* Send Date */}
+                {/* Send Date (readonly) */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Send Date</p>
                   <div className="relative">
@@ -442,19 +474,15 @@ export function ProductionPlanDetailsDialog({
                     <Input
                       type="date"
                       value={productionPlanningData.sendDate}
-                      onChange={(e) =>
-                        setProductionPlanningData({
-                          ...productionPlanningData,
-                          sendDate: e.target.value,
-                        })
-                      }
-                      className="h-9 pl-9 text-sm border-blue-200 bg-white"
+                      readOnly
+                      className="h-9 pl-9 text-sm border-blue-200 bg-white cursor-default"
                       style={{ colorScheme: "light" }}
+                      aria-readonly="true"
                     />
                   </div>
                 </div>
 
-                {/* Received Date */}
+                {/* Received Date (readonly) */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Received Date</p>
                   <div className="relative">
@@ -462,71 +490,43 @@ export function ProductionPlanDetailsDialog({
                     <Input
                       type="date"
                       value={productionPlanningData.receivedDate}
-                      onChange={(e) =>
-                        setProductionPlanningData({
-                          ...productionPlanningData,
-                          receivedDate: e.target.value,
-                        })
-                      }
-                      className="h-9 pl-9 text-sm border-blue-200 bg-white"
+                      readOnly
+                      className="h-9 pl-9 text-sm border-blue-200 bg-white cursor-default"
                       style={{ colorScheme: "light" }}
+                      aria-readonly="true"
                     />
                   </div>
                 </div>
 
-                {/* Sole Vendor */}
+                {/* Sole Vendor (readonly) */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Sole Vendor</p>
-
-                  <Select
-                    value={productionPlanningData.soleVendor}
-                    onValueChange={(value) => {
-                      if (value === "__add_new__")
-                        return setAddVendorDialogOpen(true);
-                      setProductionPlanningData({
-                        ...productionPlanningData,
-                        soleVendor: value,
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-sm border-blue-200 bg-white">
-                      <SelectValue placeholder="Select Vendor" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      {vendorsList.map((v) => (
-                        <SelectItem key={v} value={v}>
-                          {v}
-                        </SelectItem>
-                      ))}
-
-                      <Separator className="my-1" />
-
-                      <div
-                        className="px-2 py-1.5 text-sm cursor-pointer flex items-center gap-2 hover:bg-blue-50"
-                        onClick={() => setAddVendorDialogOpen(true)}
-                      >
-                        <Plus className="w-4 h-4" /> Add New Vendor
-                      </div>
-                    </SelectContent>
-                  </Select>
+                  <div className="relative">
+                    <Input
+                      value={productionPlanningData.soleVendor}
+                      readOnly
+                      className="h-9 pl-3 pr-3 text-sm border-blue-200 bg-white cursor-default"
+                      aria-readonly="true"
+                    />
+                  </div>
                 </div>
 
-                {/* Sole Color */}
+                {/* Sole Color (already readonly) */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Sole Color</p>
-                  <Input
-                    value={productionPlanningData.soleColor}
-                    readOnly
-                    className="h-9 text-sm bg-transparent border-0 text-gray-700"
-                  />
+                  <div className="relative">
+                    <Input
+                      value={productionPlanningData.soleColor}
+                      readOnly
+                      className="h-9 pl-3 pr-3 text-sm border-blue-200 bg-white cursor-default"
+                      aria-readonly="true"
+                    />
+                  </div>
                 </div>
 
-                {/* Sole Received Date */}
+                {/* Sole Received Date (readonly) */}
                 <div>
-                  <p className="text-xs text-blue-600 mb-1">
-                    Sole Received Date
-                  </p>
+                  <p className="text-xs text-blue-600 mb-1">Sole Received Date</p>
 
                   <div className="relative">
                     <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
@@ -534,14 +534,10 @@ export function ProductionPlanDetailsDialog({
                     <Input
                       type="date"
                       value={productionPlanningData.soleReceivedDate}
-                      onChange={(e) =>
-                        setProductionPlanningData({
-                          ...productionPlanningData,
-                          soleReceivedDate: e.target.value,
-                        })
-                      }
-                      className="h-9 pl-9 text-sm border-blue-200 bg-white"
+                      readOnly
+                      className="h-9 pl-9 text-sm border-blue-200 bg-white cursor-default"
                       style={{ colorScheme: "light" }}
+                      aria-readonly="true"
                     />
                   </div>
                 </div>
@@ -557,47 +553,15 @@ export function ProductionPlanDetailsDialog({
               </h4>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <ReadOnlyCostCategory
-                  title="Upper Cost"
-                  color="orange"
-                  items={costData.upper}
-                />
+                <ReadOnlyCostCategory title="Upper Cost" color="orange" items={costData.upper} />
 
-                <ReadOnlyCostCategory
-                  title="Component Cost"
-                  color="purple"
-                  items={costData.component}
-                />
+                <ReadOnlyCostCategory title="Component Cost" color="purple" items={costData.component} />
 
-                <ReadOnlyCostCategory
-                  title="Material Cost"
-                  color="teal"
-                  items={costData.material}
-                />
+                <ReadOnlyCostCategory title="Material Cost" color="teal" items={costData.material} />
 
-                <ReadOnlyCostCategory
-                  title="Packaging Cost"
-                  color="rose"
-                  items={costData.packaging}
-                />
+                <ReadOnlyCostCategory title="Packaging Cost" color="rose" items={costData.packaging} />
 
-                <ReadOnlyCostCategory
-                  title="Miscellaneous Cost"
-                  color="gray"
-                  items={costData.miscellaneous}
-                />
-
-                {/* <ReadOnlyCostCategory
-                  title="Labour Cost"
-                  color="amber"
-                  items={costData?.labour?.map((l) => ({
-                    _id: l._id,
-                    item: l.name,
-                    description: "",
-                    consumption: "",
-                    cost: Number(l.cost || 0),
-                  }))}
-                /> */}
+                <ReadOnlyCostCategory title="Miscellaneous Cost" color="gray" items={costData.miscellaneous} />
               </div>
 
               <div className="p-4 bg-white rounded-lg border border-green-400 flex justify-between font-semibold text-green-900">
@@ -632,9 +596,7 @@ export function ProductionPlanDetailsDialog({
                 ) : (
                   <div className="space-y-3">
                     <div>
-                      <Label className="text-sm font-medium text-green-800 mb-2 block">
-                        Edit Remarks
-                      </Label>
+                      <Label className="text-sm font-medium text-green-800 mb-2 block">Edit Remarks</Label>
 
                       <Textarea
                         value={editedRemarks}
@@ -646,27 +608,11 @@ export function ProductionPlanDetailsDialog({
                     </div>
 
                     <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setIsEditingRemarks(false);
-                          setEditedRemarks("");
-                        }}
-                        className="h-8 px-3 text-xs"
-                      >
+                      <Button variant="outline" size="sm" onClick={() => { setIsEditingRemarks(false); setEditedRemarks(""); }} className="h-8 px-3 text-xs">
                         Cancel
                       </Button>
 
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          plan.remarks = editedRemarks;
-                          setIsEditingRemarks(false);
-                          toast.success("Remarks updated successfully");
-                        }}
-                        className="h-8 px-3 text-xs bg-green-600 hover:bg-green-700"
-                      >
+                      <Button size="sm" onClick={() => { plan.remarks = editedRemarks; setIsEditingRemarks(false); toast.success("Remarks updated successfully"); }} className="h-8 px-3 text-xs bg-green-600 hover:bg-green-700">
                         <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
                         Save
                       </Button>
@@ -689,8 +635,9 @@ export function ProductionPlanDetailsDialog({
                       size="sm"
                       className="bg-green-500 hover:bg-green-600 text-white"
                       onClick={() => {
-                        onStartProduction(plan);
-                        onOpenChange(false);
+                        // open create dialog and pass plan.raw if available (contains PO/project snapshot)
+                        setSelectedProductionCardForCreate(plan.raw || plan);
+                        setOpenCreateCardDialog(true);
                       }}
                     >
                       <Play className="w-4 h-4 mr-1" />
@@ -699,11 +646,7 @@ export function ProductionPlanDetailsDialog({
                   )}
 
                 {plan.status === "In Production" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-red-300 text-red-600 hover:bg-red-50"
-                  >
+                  <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50">
                     <Pause className="w-4 h-4 mr-1" />
                     Pause Production
                   </Button>
@@ -714,143 +657,37 @@ export function ProductionPlanDetailsDialog({
         </div>
       </DialogContent>
 
-      {/* ADD PLANT DIALOG */}
-      <Dialog open={addPlantDialogOpen} onOpenChange={setAddPlantDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <Factory className="w-5 h-5 text-blue-600" />
-              Add New Plant
-            </DialogTitle>
-            <DialogDescription>
-              Enter the name of the new manufacturing plant
-            </DialogDescription>
-          </DialogHeader>
+      {/* ---------------------------
+          CREATE PRODUCTION DIALOG
+          --------------------------- */}
+      <CreateProductionCardDialog
+        open={openCreateCardDialog}
+        onClose={() => {
+          setOpenCreateCardDialog(false);
+          setSelectedProductionCardForCreate(null);
+        }}
+        selectedProductionCard={selectedProductionCardForCreate}
+        // when user creates the production card we optionally start production (keeps previous behavior)
+        onProductionCardCreated={(createdCard) => {
+          // close create dialog
+          setOpenCreateCardDialog(false);
+          setSelectedProductionCardForCreate(null);
 
-          <div className="space-y-4 py-4">
-            <Label>Plant Name *</Label>
-            <Input
-              value={newPlantName}
-              onChange={(e) => setNewPlantName(e.target.value)}
-              placeholder="e.g., Plant E - Western Unit"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  if (newPlantName.trim()) {
-                    setPlantsList([...plantsList, newPlantName]);
-                    setProductionPlanningData({
-                      ...productionPlanningData,
-                      assignedPlant: newPlantName,
-                    });
-                    setAddPlantDialogOpen(false);
-                    setNewPlantName("");
-                    toast.success("Plant added successfully");
-                  }
-                }
-              }}
-            />
-          </div>
+          // close plan details dialog (optional, but matches previous behaviour)
+          onOpenChange(false);
 
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAddPlantDialogOpen(false);
-                setNewPlantName("");
-              }}
-            >
-              Cancel
-            </Button>
+          // call parent's start production callback if provided
+          if (onStartProduction) {
+            try {
+              onStartProduction(plan);
+            } catch (e) {
+              console.error("onStartProduction callback failed:", e);
+            }
+          }
 
-            <Button
-              onClick={() => {
-                if (!newPlantName.trim()) return toast.error("Enter name");
-                setPlantsList([...plantsList, newPlantName]);
-                setProductionPlanningData({
-                  ...productionPlanningData,
-                  assignedPlant: newPlantName,
-                });
-                setNewPlantName("");
-                setAddPlantDialogOpen(false);
-                toast.success("Plant added");
-              }}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Add Plant
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ADD VENDOR DIALOG */}
-      <Dialog open={addVendorDialogOpen} onOpenChange={setAddVendorDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <Factory className="w-5 h-5 text-blue-600" />
-              Add New Sole Vendor
-            </DialogTitle>
-            <DialogDescription>
-              Enter the name of the new sole vendor
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <Label>Vendor Name *</Label>
-            <Input
-              value={newVendorName}
-              onChange={(e) => setNewVendorName(e.target.value)}
-              placeholder="e.g., Advanced Sole Technologies"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  if (newVendorName.trim()) {
-                    setVendorsList([...vendorsList, newVendorName]);
-                    setProductionPlanningData({
-                      ...productionPlanningData,
-                      soleVendor: newVendorName,
-                    });
-                    setAddVendorDialogOpen(false);
-                    setNewVendorName("");
-                    toast.success("Vendor added successfully");
-                  }
-                }
-              }}
-            />
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAddVendorDialogOpen(false);
-                setNewVendorName("");
-              }}
-            >
-              Cancel
-            </Button>
-
-            <Button
-              onClick={() => {
-                if (!newVendorName.trim()) return toast.error("Enter name");
-                setVendorsList([...vendorsList, newVendorName]);
-                setProductionPlanningData({
-                  ...productionPlanningData,
-                  soleVendor: newVendorName,
-                });
-                setNewVendorName("");
-                setAddVendorDialogOpen(false);
-                toast.success("Vendor added successfully");
-              }}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Add Vendor
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          toast.success("Production card created & production started");
+        }}
+      />
     </Dialog>
   );
 }

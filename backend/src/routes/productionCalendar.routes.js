@@ -6,6 +6,7 @@ import {
   getCalendarEntry,
   updateCalendarEntry,
   deleteCalendarEntry,
+  getProjectSchedule,
 } from "../controllers/productionCalendar.controller.js";
 
 const router = Router();
@@ -19,5 +20,6 @@ router.get("/calendar", listCalendarEntries);         // list (only active)
 router.get("/calendar/:id", getCalendarEntry);        // get single (only active)
 router.put("/calendar/:id", updateCalendarEntry);     // update (partial/put)
 router.delete("/calendar/:id", deleteCalendarEntry);  // soft-delete -> isActive = false
+router.get("/projects/:id/schedule", getProjectSchedule);
 
 export default router;

@@ -64,7 +64,7 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// --- create calendar entry (improved: populate project & denormalize names) ---
+// --- create calendar entry (fixed session/lean usage) ---
 export const createCalendarEntryService = async (payload, { session, by = null } = {}) => {
   const { projectId, scheduling, productionDetails, additional } = payload || {};
   if (!projectId) {
@@ -83,26 +83,24 @@ export const createCalendarEntryService = async (payload, { session, by = null }
     throw err;
   }
 
-  // populate project with brand/category names so snapshot can store readable names
-  const project = await Project.findById(projectId)
+  // fetch project — attach session to the query when provided
+  let projectQuery = Project.findById(projectId)
     .populate("brand", "name")
     .populate("category", "name")
-    .populate("company", "name") // if you have company as ref
-    .lean()
-    .session ? await Project.findById(projectId).populate("brand", "name").populate("category", "name").populate("company", "name").session(session) : await Project.findById(projectId).populate("brand", "name").populate("category", "name").populate("company", "name");
+    .populate("company", "name");
+  if (session) projectQuery = projectQuery.session(session);
+  const project = await projectQuery.lean();
 
-  // Note: some mongoose builds may not allow chaining .lean() with session easily;
-  // Above code uses session-aware find then populates. If your mongoose version supports chaining session(...).lean(), adapt accordingly.
-
-  // if Project.findById returned a Document (not lean), ensure we still have project object
-  if (!project || (!project.isActive && project.isActive !== undefined)) {
+  if (!project || project.isActive === false) {
     const err = new Error("Project not found or not active");
     err.status = 404;
     throw err;
   }
 
-  // fetch PO details if any
-  const po = await PoDetails.findOne({ project: project._id }).lean().session ? await PoDetails.findOne({ project: project._id }).lean().session(session) : await PoDetails.findOne({ project: project._id }).lean();
+  // fetch PO details if present (session-aware)
+  let poQuery = PoDetails.findOne({ project: project._id });
+  if (session) poQuery = poQuery.session(session);
+  const po = await poQuery.lean();
 
   // build snapshot storing both id and readable names
   const snapshot = {
@@ -144,15 +142,18 @@ export const createCalendarEntryService = async (payload, { session, by = null }
     isActive: true,
   };
 
-  const created = await ProductionCalendar.create([doc], { session });
-  return created[0];
+  const createdArr = await ProductionCalendar.create([doc], { session });
+  return createdArr[0];
 };
 
 // --- list (only active) with pagination ---
-// improved: populate project fully (brand/category names) and projectSnapshot.brand/category if stored as refs
-export const listCalendarEntriesService = async ({ page = 1, limit = 20 } = {}) => {
+// added optional projectId filter support by passing options if needed
+export const listCalendarEntriesService = async ({ page = 1, limit = 20, projectId = null } = {}) => {
   const skip = (page - 1) * limit;
-  const docs = await ProductionCalendar.find({ isActive: true })
+  const filter = { isActive: true };
+  if (projectId && mongoose.Types.ObjectId.isValid(projectId)) filter.project = projectId;
+
+  const docs = await ProductionCalendar.find(filter)
     .sort({ "scheduling.scheduleDate": 1, createdAt: -1 })
     .skip(skip)
     .limit(limit)
@@ -165,12 +166,12 @@ export const listCalendarEntriesService = async ({ page = 1, limit = 20 } = {}) 
         { path: "company", select: "name" },
       ],
     })
-    // populate snapshot nested refs if snapshot saved refs instead of names
+    // populate snapshot nested refs only if they are ObjectId refs (safe to call)
     .populate("projectSnapshot.brand", "name")
     .populate("projectSnapshot.category", "name")
     .lean();
 
-  const total = await ProductionCalendar.countDocuments({ isActive: true });
+  const total = await ProductionCalendar.countDocuments(filter);
   return { items: docs, total, page, limit };
 };
 
@@ -194,55 +195,51 @@ export const getCalendarEntryService = async (id) => {
 };
 
 // --- update (partial replace) ---
-// Note: If you want to update projectSnapshot when project changes, you can add logic to refresh snapshot here.
-// For now we update only scheduling/productionDetails/additional as before.
+// simpler approach: build $set only for provided values
 export const updateCalendarEntryService = async (id, payload, { session, by = null } = {}) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
 
-  const update = {};
+  const setObj = {};
 
   if (payload.scheduling) {
-    update["scheduling"] = {
-      scheduleDate: payload.scheduling.scheduleDate ? new Date(payload.scheduling.scheduleDate) : undefined,
-      assignedPlant: payload.scheduling.assignedPlant,
-      soleFrom: payload.scheduling.soleFrom,
-      soleColor: payload.scheduling.soleColor,
-      soleExpectedDate: payload.scheduling.soleExpectedDate ? new Date(payload.scheduling.soleExpectedDate) : null,
-    };
+    if (payload.scheduling.scheduleDate !== undefined)
+      setObj["scheduling.scheduleDate"] = payload.scheduling.scheduleDate ? new Date(payload.scheduling.scheduleDate) : null;
+    if (payload.scheduling.assignedPlant !== undefined)
+      setObj["scheduling.assignedPlant"] = payload.scheduling.assignedPlant;
+    if (payload.scheduling.soleFrom !== undefined)
+      setObj["scheduling.soleFrom"] = payload.scheduling.soleFrom;
+    if (payload.scheduling.soleColor !== undefined)
+      setObj["scheduling.soleColor"] = payload.scheduling.soleColor;
+    if (payload.scheduling.soleExpectedDate !== undefined)
+      setObj["scheduling.soleExpectedDate"] = payload.scheduling.soleExpectedDate ? new Date(payload.scheduling.soleExpectedDate) : null;
   }
 
   if (payload.productionDetails) {
-    update["productionDetails"] = {
-      quantity: payload.productionDetails.quantity != null ? Number(payload.productionDetails.quantity) : undefined,
-    };
+    if (payload.productionDetails.quantity !== undefined)
+      setObj["productionDetails.quantity"] = Number(payload.productionDetails.quantity);
   }
 
   if (payload.additional) {
-    update["additional"] = {
-      remarks: payload.additional.remarks != null ? payload.additional.remarks : undefined,
-    };
+    if (payload.additional.remarks !== undefined)
+      setObj["additional.remarks"] = payload.additional.remarks;
   }
 
-  // cleaned update: remove undefined keys
-  const setObj = {};
-  Object.keys(update).forEach((k) => {
-    if (update[k] !== undefined) setObj[k] = update[k];
-  });
   if (Object.keys(setObj).length === 0 && payload.isActive === undefined) {
     const err = new Error("nothing to update");
     err.status = 400;
     throw err;
   }
 
-  // track who updated
   setObj.updatedBy = by;
   setObj.updatedAt = new Date();
 
-  const doc = await ProductionCalendar.findOneAndUpdate(
+  const query = ProductionCalendar.findOneAndUpdate(
     { _id: id, isActive: true },
     { $set: setObj },
     { new: true, session }
   );
+
+  const doc = await query.lean();
   return doc;
 };
 
@@ -263,4 +260,17 @@ export const deleteCalendarEntryService = async (id, { session, by = null } = {}
   );
 
   return doc;
+};
+
+// --- NEW: get schedules for a given projectId (useful for frontend) ---
+export const getScheduleByProjectService = async (projectId, { page = 1, limit = 50 } = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(projectId)) return { items: [], total: 0, page: Number(page), limit: Number(limit) };
+  const skip = (page - 1) * limit;
+  const docs = await ProductionCalendar.find({ isActive: true, project: projectId })
+    .sort({ "scheduling.scheduleDate": 1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+  const total = await ProductionCalendar.countDocuments({ isActive: true, project: projectId });
+  return { items: docs, total, page, limit };
 };

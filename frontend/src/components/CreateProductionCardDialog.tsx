@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Factory,
   Target,
@@ -120,8 +120,41 @@ export function CreateProductionCardDialog({
     null
   );
 
+  // new: order quantity state
+  const [orderQuantity, setOrderQuantity] = useState<number | null>(null);
+
+  // helper to extract order/po quantity from different shapes of selectedProductionCard
+  const extractOrderQuantity = (src: any): number | null => {
+    if (!src) return null;
+
+    // direct PO object
+    if (src.po && src.po.orderQuantity != null)
+      return Number(src.po.orderQuantity);
+
+    // project.po
+    if (src.project && src.project.po && src.project.po.orderQuantity != null)
+      return Number(src.project.po.orderQuantity);
+
+    // common top-level fields
+    if (src.orderQuantity != null) return Number(src.orderQuantity);
+    if (src.quantity != null) return Number(src.quantity);
+    if (src.targetQuantity != null) return Number(src.targetQuantity);
+
+    // sometimes in raw snapshot
+    if (src.raw && src.raw.po && src.raw.po.orderQuantity != null)
+      return Number(src.raw.po.orderQuantity);
+    if (src.raw && src.raw.orderQuantity != null)
+      return Number(src.raw.orderQuantity);
+
+    // sometimes inside nested 'po' under different keys
+    if (src.poDetails && src.poDetails.orderQuantity != null)
+      return Number(src.poDetails.orderQuantity);
+
+    return null;
+  };
+
   // Effect to set selectedProject when selectedProductionCard changes
-  React.useEffect(() => {
+  useEffect(() => {
     console.log("CreateProductionCardDialog useEffect triggered");
     console.log("selectedProductionCard:", selectedProductionCard);
     console.log("rdProjects:", rdProjects);
@@ -138,11 +171,20 @@ export function CreateProductionCardDialog({
       cardToUse = storeProductionCards[0];
     }
 
-    if (cardToUse && rdProjects.length > 0) {
-      console.log("Looking for project with ID:", cardToUse.projectId);
-      // Find the RD project associated with this production card
+    // extract project id from multiple possible fields
+    const projectIdFromCard =
+      cardToUse?.projectId ||
+      cardToUse?.rdProjectId ||
+      (cardToUse?.project && (cardToUse.project._id || cardToUse.project.id));
+
+    if (cardToUse && rdProjects && rdProjects.length > 0 && projectIdFromCard) {
+      console.log("Looking for project with ID:", projectIdFromCard);
+      // Find the RD project associated with this production card - try multiple matching keys
       const associatedProject = rdProjects.find(
-        (project) => project.id === cardToUse.projectId
+        (project: any) =>
+          project.id === projectIdFromCard ||
+          project._id === projectIdFromCard ||
+          String(project._id) === String(projectIdFromCard)
       );
       console.log("Found associatedProject:", associatedProject);
       if (associatedProject) {
@@ -156,6 +198,16 @@ export function CreateProductionCardDialog({
       console.log("Setting selectedProject to null - missing data");
       setSelectedProject(null);
     }
+
+    // set order quantity from the card payload (handles many shapes)
+    const qty = extractOrderQuantity(cardToUse);
+    if (qty != null && !Number.isNaN(qty)) {
+      setOrderQuantity(Number(qty));
+      console.log("Extracted orderQuantity:", qty);
+    } else {
+      setOrderQuantity(null);
+      console.log("No order quantity found on cardToUse");
+    }
   }, [selectedProductionCard, rdProjects, storeProductionCards]);
 
   // Convert store production cards to the format expected by this component
@@ -165,7 +217,7 @@ export function CreateProductionCardDialog({
       cardName: card.cardNumber,
       productionType: card.description || "Standard Production",
       priority: "Medium", // Default priority
-      targetQuantity: card.cardQuantity.toString(),
+      targetQuantity: card.cardQuantity?.toString?.() ?? String(card.cardQuantity || ""),
       startDate: card.startDate,
       endDate: "", // Not available in store format
       supervisor: card.createdBy,
@@ -177,9 +229,6 @@ export function CreateProductionCardDialog({
       assignedPlant: card.assignedPlant,
     })
   );
-
-  // Remove duplicate local state since we're using the store data
-  // const [productionCards, setProductionCards] = useState<ProductionCardData[]>([]);
 
   // Production card form state (missing state that was causing the error)
   const [productionCard, setProductionCard] = useState<ProductionCard>({
@@ -447,7 +496,9 @@ export function CreateProductionCardDialog({
                       Order Quantity
                     </p>
                     <p className="text-2xl font-mono font-bold text-green-800">
-                      {selectedProject ? "1,200 Units" : "No Order"}
+                      {orderQuantity
+                        ? `${Number(orderQuantity).toLocaleString("en-IN")} Units`
+                        : "No Order"}
                     </p>
                   </div>
                 </div>
@@ -468,88 +519,7 @@ export function CreateProductionCardDialog({
         {/* Scrollable Main Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-12 py-10 space-y-8">
-            {/* Basic Product Details Section */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-6">
-                <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                  <Package className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-2xl font-semibold text-gray-900">
-                  Product Details
-                </h3>
-                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Product Name</p>
-                    <p className="text-base font-semibold text-gray-900">
-                      {selectedProductionCard
-                        ? `${getBrandName(
-                            selectedProductionCard.brandId
-                          )} ${getCategoryName(selectedProject?.categoryId)}`
-                        : "No Product Selected"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Brand</p>
-                    <p className="text-base font-semibold text-gray-900">
-                      {selectedProject
-                        ? getBrandName(selectedProject.brandId)
-                        : "No Brand"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Category</p>
-                    <p className="text-base font-semibold text-gray-900">
-                      {selectedProject
-                        ? getCategoryName(selectedProject.categoryId)
-                        : "No Category"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Project Code</p>
-                    <p className="text-base font-semibold text-blue-600">
-                      {selectedProject
-                        ? selectedProject.autoCode
-                        : "No Project"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Type & Gender</p>
-                    <p className="text-base font-semibold text-gray-900">
-                      {selectedProject
-                        ? `${getTypeName(selectedProject.typeId)} • Men`
-                        : "No Type"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Art & Colour</p>
-                    <p className="text-base font-semibold text-gray-900">
-                      {selectedProject
-                        ? getColorName(selectedProject.colorId)
-                        : "No Color"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Country</p>
-                    <p className="text-base font-semibold text-gray-900">
-                      {selectedProject
-                        ? getCountryName(selectedProject.countryId)
-                        : "No Country"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Order Quantity</p>
-                    <p className="text-base font-semibold text-green-600">
-                      {selectedProject ? "1,200 units" : "No Quantity"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+          
             {/* Production Cards Section */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -653,9 +623,7 @@ export function CreateProductionCardDialog({
                               </span>
                               <span className="text-sm font-medium text-gray-900">
                                 {card.startDate
-                                  ? new Date(
-                                      card.startDate
-                                    ).toLocaleDateString()
+                                  ? new Date(card.startDate).toLocaleDateString()
                                   : "Not set"}
                               </span>
                             </div>
@@ -763,3 +731,5 @@ export function CreateProductionCardDialog({
     </Dialog>
   );
 }
+
+export default CreateProductionCardDialog;

@@ -461,67 +461,6 @@ export function ProductionCardFormDialog({
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-10 py-8 space-y-10">
-            {/* Product Information */}
-            <div className="space-y-8">
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-4">
-                <FileText className="w-6 h-6 text-blue-500" />
-                Product Information
-              </h3>
-
-              {/* Product Information Display */}
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                  {/* Auto-Generated Card Number */}
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-gray-600">
-                      Card Number
-                    </Label>
-                    <p className="font-semibold text-blue-600">
-                      {editingCard
-                        ? editingCard.cardName
-                        : generateProductionCardNumber()}
-                    </p>
-                  </div>
-
-                  {/* Product Name */}
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-gray-600">
-                      Product Name
-                    </Label>
-                    <p className="font-semibold text-gray-900">
-                      {getProductName()}
-                    </p>
-                  </div>
-
-                  {/* Article Section */}
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-gray-600">
-                      Article Section
-                    </Label>
-                    <p className="font-semibold text-gray-900">Art and Color</p>
-                  </div>
-
-                  {/* Article Size Range */}
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-gray-600">
-                      Size Range
-                    </Label>
-                    <p className="font-semibold text-gray-900">6-12</p>
-                  </div>
-
-                  {/* Creation Date */}
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-gray-600">
-                      Date
-                    </Label>
-                    <p className="font-semibold text-gray-900">
-                      {new Date().toLocaleDateString("en-IN")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Tentative Cost Breakdown */}
             <div className="space-y-8">
               <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-4">
