@@ -1141,35 +1141,18 @@ export function ProductionCardFormDialog({
                   >
                     Assign Plant
                   </Label>
-                  <Select
+
+                  <input
+                    id="assignPlant"
+                    type="text"
                     value={formData.assignPlant || ""}
-                    onValueChange={(value) => {
-                      if (value === "__add_new__") {
-                        setAddPlantDialogOpen(true);
-                      } else {
-                        handleInputChange("assignPlant", value);
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-12 border-2 focus:border-blue-500 text-base">
-                      <SelectValue placeholder="Select manufacturing plant" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {plantsList.map((plant) => (
-                        <SelectItem key={plant} value={plant}>
-                          {plant}
-                        </SelectItem>
-                      ))}
-                      <Separator className="my-1" />
-                      <div
-                        className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                        onClick={() => setAddPlantDialogOpen(true)}
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add New Plant
-                      </div>
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) =>
+                      handleInputChange("assignPlant", e.target.value)
+                    }
+                    placeholder="Enter manufacturing plant"
+                    className="h-12 w-full border-2 focus:border-blue-500 text-base pl-3 rounded-md"
+                    autoComplete="off"
+                  />
                 </div>
               </div>
             </div>
