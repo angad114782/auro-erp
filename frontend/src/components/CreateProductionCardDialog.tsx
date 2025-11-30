@@ -117,32 +117,6 @@ export function CreateProductionCardDialog({
   const [selectedProject, setSelectedProject] = useState<RDProject | null>(
     null
   );
-  const [serverProductionCards, setServerProductionCards] = useState<any[]>([]);
-  const [loadingCards, setLoadingCards] = useState(false);
-
-  // Load production cards from server
-  const loadServerProductionCards = async (projId?: string) => {
-    try {
-      setLoadingCards(true);
-      const url = projId
-        ? `/production-cards?projectId=${projId}`
-        : "/production-cards";
-      const res = await api.get(url);
-      setServerProductionCards(res?.data?.data?.items || []);
-    } catch (err) {
-      console.error("Failed to load production cards from server:", err);
-      setServerProductionCards([]);
-    } finally {
-      setLoadingCards(false);
-    }
-  };
-
-  // Load cards when dialog opens
-  useEffect(() => {
-    if (open) {
-      loadServerProductionCards();
-    }
-  }, [open]);
 
   const [showProductionCardForm, setShowProductionCardForm] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -245,33 +219,25 @@ export function CreateProductionCardDialog({
   }, [selectedProductionCard, rdProjects, storeProductionCards]);
 
   // Convert store production cards to the format expected by this component
-  const mapCardToDisplay = (card: any): ProductionCardData => ({
-    id: card.id || card._id,
-    cardName: card.cardNumber,
-    productionType: card.description || "Standard Production",
-    priority: "Medium", // Default priority
-    targetQuantity:
-      card.cardQuantity?.toString?.() ?? String(card.cardQuantity || ""),
-    startDate: card.startDate,
-    endDate: "", // Not available
-    supervisor: card.createdBy,
-    workShift: "Day Shift", // Default shift
-    description: card.description,
-    specialInstructions: card.specialInstructions,
-    status: card.status,
-    createdAt: card.createdDate || card.createdAt,
-    assignPlant: card.assignedPlant || "",
-  });
-
-  // Combine server and store cards (server takes precedence)
-  const allProductionCards = [
-    ...(serverProductionCards.length > 0
-      ? serverProductionCards
-      : storeProductionCards),
-  ];
-  const displayProductionCards: ProductionCardData[] =
-    allProductionCards.map(mapCardToDisplay);
-
+  const displayProductionCards: ProductionCardData[] = storeProductionCards.map(
+    (card) => ({
+      id: card.id,
+      cardName: card.cardNumber,
+      productionType: card.description || "Standard Production",
+      priority: "Medium", // Default priority
+      targetQuantity:
+        card.cardQuantity?.toString?.() ?? String(card.cardQuantity || ""),
+      startDate: card.startDate,
+      endDate: "", // Not available in store format
+      supervisor: card.createdBy,
+      workShift: "Day Shift", // Default shift
+      description: card.description,
+      specialInstructions: card.specialInstructions,
+      status: card.status,
+      createdAt: card.createdDate,
+      assignedPlant: card.assignedPlant,
+    })
+  );
   // Production card form state (missing state that was causing the error)
   const [productionCard, setProductionCard] = useState<ProductionCard>({
     productionName: "",
@@ -353,7 +319,7 @@ export function CreateProductionCardDialog({
     }
 
     // Reload production cards from server after successful save
-    loadServerProductionCards();
+    // loadServerProductionCards();
   };
 
   const handleEditCard = (card: ProductionCardData) => {
@@ -749,7 +715,7 @@ export function CreateProductionCardDialog({
         onSave={handleSaveProductionCard}
         selectedProject={selectedProductionCard}
         editingCard={editingCard}
-        onCardCreated={loadServerProductionCards}
+        // onCardCreated={loadServerProductionCards}
       />
     </Dialog>
   );
