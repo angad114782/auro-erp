@@ -509,23 +509,43 @@ export function ProductionCardFormDialog({
                       id="cardQuantity"
                       type="number"
                       value={formData.cardQuantity || ""}
-                      onChange={(e) =>
-                        handleInputChange("cardQuantity", e.target.value)
-                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const maxQty =
+                          (selectedProject as any)?.po?.orderQuantity ||
+                          (selectedProject as any)?.poTarget ||
+                          1200;
+                        const numVal = parseInt(val, 10);
+
+                        // Prevent exceeding max quantity
+                        if (numVal > maxQty) {
+                          toast.error(
+                            `Allocation cannot exceed maximum quantity of ${maxQty}`
+                          );
+                          handleInputChange("cardQuantity", String(maxQty));
+                        } else {
+                          handleInputChange("cardQuantity", val);
+                        }
+                      }}
                       placeholder=""
                       className="w-20 h-9 text-center border-2 border-gray-300 rounded-md bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 font-semibold text-gray-900 text-base hover:border-gray-400 transition-all duration-200"
                       min="1"
-                      max="1200"
                     />
                     <div className="text-sm text-gray-500">
-                      <span className="font-medium">
-                        / {selectedProject?.po?.orderQuantity}
+                      <span className="font-medium text-blue-600">
+                        /{" "}
+                        {(selectedProject as any)?.po?.orderQuantity ||
+                          (selectedProject as any)?.poTarget ||
+                          "N/A"}
                       </span>
                     </div>
                   </div>
                 </div>
                 <div className="mt-3 text-xs text-gray-500">
-                  Units for this production card
+                  Max units available:{" "}
+                  {(selectedProject as any)?.po?.orderQuantity ||
+                    (selectedProject as any)?.poTarget ||
+                    "Not specified"}
                 </div>
               </div>
               <Button
@@ -566,9 +586,9 @@ export function ProductionCardFormDialog({
                           <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
                             REQUIREMENT
                           </th>
-                          <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
+                          {/* <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
                             COST
-                          </th>
+                          </th> */}
                           <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
                             AVAILABLE
                           </th>
@@ -623,12 +643,34 @@ export function ProductionCardFormDialog({
                             </tr>
 
                             {/* SECTION ROWS */}
-                            {costData[section.key]?.map((row) => {
+                            {costData[section.key]?.map((row: any) => {
                               const itemName = row.item;
                               const available =
                                 materialData[itemName]?.available || 0;
                               const issued =
                                 materialData[itemName]?.issued || 0;
+
+                              // Extract numeric value from consumption (handles "test cons 1" → 1)
+                              const extractNumericValue = (
+                                value: any
+                              ): number => {
+                                if (typeof value === "number") return value;
+                                if (typeof value === "string") {
+                                  const match = value.match(/\d+\.?\d*/);
+                                  return match ? parseFloat(match[0]) : 0;
+                                }
+                                return 0;
+                              };
+
+                              const consumptionNum = extractNumericValue(
+                                row.consumption
+                              );
+                              const allocationQty =
+                                parseInt(formData.cardQuantity, 10) || 0;
+                              const actualRequirement =
+                                allocationQty > 0 && consumptionNum > 0
+                                  ? (consumptionNum * allocationQty).toFixed(2)
+                                  : consumptionNum.toFixed(2);
 
                               return (
                                 <tr
@@ -644,35 +686,48 @@ export function ProductionCardFormDialog({
                                     {row.description}
                                   </td>
 
-                                  {/* REQUIREMENT */}
-                                  <td className="px-6 py-4 text-center border-r">
-                                    {row.consumption}
+                                  {/* REQUIREMENT - Multiplied by Allocation */}
+                                  <td className="px-6 py-4 text-center border-r font-medium bg-blue-50">
+                                    <div className="text-sm">
+                                      <span className="text-gray-600">
+                                        {consumptionNum}
+                                      </span>
+                                      <span className="mx-1 text-gray-400">
+                                        ×
+                                      </span>
+                                      <span className="font-semibold text-blue-600">
+                                        {allocationQty || 0}
+                                      </span>
+                                      <span className="mx-1 text-gray-400">
+                                        =
+                                      </span>
+                                      <span className="font-bold text-blue-700">
+                                        {actualRequirement}
+                                      </span>
+                                    </div>
                                   </td>
 
                                   {/* COST COLUMN (NEW) */}
-                                  <td className="px-6 py-4 text-center border-r font-semibold text-blue-600">
+                                  {/* <td className="px-6 py-4 text-center border-r font-semibold text-blue-600">
                                     {row.cost ?? "-"}
-                                  </td>
+                                  </td> */}
 
-                                  {/* AVAILABLE (editable only in pending state) */}
+                                  {/* AVAILABLE (Always editable) */}
                                   <td className="px-6 py-4 text-center border-r">
-                                    {requestStatus ===
-                                    "Pending Availability Check" ? (
-                                      <Input
-                                        type="number"
-                                        className="w-20 h-8 text-center"
-                                        value={available}
-                                        onChange={(e) =>
-                                          handleMaterialDataChange(
-                                            itemName,
-                                            "available",
-                                            parseFloat(e.target.value)
-                                          )
-                                        }
-                                      />
-                                    ) : (
-                                      available
-                                    )}
+                                    <Input
+                                      type="number"
+                                      className="w-20 h-8 text-center border border-gray-300 rounded"
+                                      value={available}
+                                      onChange={(e) =>
+                                        handleMaterialDataChange(
+                                          itemName,
+                                          "available",
+                                          parseFloat(e.target.value) || 0
+                                        )
+                                      }
+                                      placeholder="0"
+                                      step="0.1"
+                                    />
                                   </td>
 
                                   {/* ISSUED */}
@@ -689,8 +744,12 @@ export function ProductionCardFormDialog({
                                     requestStatus === "Partially Issued"
                                       ? Math.max(
                                           0,
-                                          row.consumption - available - issued
-                                        )
+                                          parseFloat(
+                                            actualRequirement.toString()
+                                          ) -
+                                            available -
+                                            issued
+                                        ).toFixed(2)
                                       : "-"}
                                   </td>
                                 </tr>
@@ -732,96 +791,90 @@ export function ProductionCardFormDialog({
                             return;
                           }
 
+                          const allocationQty = parseInt(
+                            formData.cardQuantity,
+                            10
+                          );
+
+                          // Helper to extract numeric value from consumption
+                          const extractNumericValue = (value: any): number => {
+                            if (typeof value === "number") return value;
+                            if (typeof value === "string") {
+                              const match = value.match(/\d+\.?\d*/);
+                              return match ? parseFloat(match[0]) : 0;
+                            }
+                            return 0;
+                          };
+
+                          // Build materials and components from actual costData with multiplied requirements
+                          const materials: any[] = [];
+                          const components: any[] = [];
+
+                          // Process materials
+                          const materialSections = ["upper", "material"];
+                          materialSections.forEach((section) => {
+                            (
+                              costData[
+                                section as keyof typeof costData
+                              ] as any[]
+                            )?.forEach((row: any) => {
+                              const itemName = row.item;
+                              const consumptionNum = extractNumericValue(
+                                row.consumption
+                              );
+                              const actualReq = consumptionNum * allocationQty;
+                              materials.push({
+                                id: row._id || `${section}-${itemName}`,
+                                name: itemName,
+                                specification: row.description,
+                                requirement: actualReq,
+                                unit: row.unit || "unit",
+                                available:
+                                  materialData[itemName]?.available || 0,
+                                issued: 0,
+                                balance: 0,
+                              });
+                            });
+                          });
+
+                          // Process components and packaging
+                          const componentSections = [
+                            "component",
+                            "packaging",
+                            "miscellaneous",
+                          ];
+                          componentSections.forEach((section) => {
+                            (
+                              costData[
+                                section as keyof typeof costData
+                              ] as any[]
+                            )?.forEach((row: any) => {
+                              const itemName = row.item;
+                              const consumptionNum = extractNumericValue(
+                                row.consumption
+                              );
+                              const actualReq = consumptionNum * allocationQty;
+                              components.push({
+                                id: row._id || `${section}-${itemName}`,
+                                name: itemName,
+                                specification: row.description,
+                                requirement: actualReq,
+                                unit: row.unit || "unit",
+                                available:
+                                  materialData[itemName]?.available || 0,
+                                issued: 0,
+                                balance: 0,
+                              });
+                            });
+                          });
+
                           // Create material request
                           const materialRequestData = {
                             productionCardId: generateCardId(),
-                            requestedBy: "Production Manager", // This would be current user
+                            requestedBy: "Production Manager",
                             status: "Pending to Store" as const,
-                            materials: [
-                              {
-                                id: "1",
-                                name: "Upper",
-                                specification: "Rexine",
-                                requirement:
-                                  parseInt(formData.cardQuantity) * 25,
-                                unit: "pair/vth",
-                                available:
-                                  materialData["Upper"]?.available || 0,
-                                issued: 0,
-                                balance: 0,
-                              },
-                              {
-                                id: "2",
-                                name: "Lining",
-                                specification: "Skimh",
-                                requirement:
-                                  parseInt(formData.cardQuantity) * 25,
-                                unit: "pair @ 15/-",
-                                available:
-                                  materialData["Lining_Skimh"]?.available || 0,
-                                issued: 0,
-                                balance: 0,
-                              },
-                              {
-                                id: "3",
-                                name: "Lining",
-                                specification: "EVA",
-                                requirement: 35,
-                                unit: "3370 - 1.5mm pair",
-                                available:
-                                  materialData["Lining_EVA"]?.available || 0,
-                                issued: 0,
-                                balance: 0,
-                              },
-                            ],
-                            components: [
-                              {
-                                id: "1",
-                                name: "Foam",
-                                specification: "-",
-                                requirement:
-                                  parseFloat(formData.cardQuantity) * 7.5,
-                                unit: "gm",
-                                available: materialData["Foam"]?.available || 0,
-                                issued: 0,
-                                balance: 0,
-                              },
-                              {
-                                id: "2",
-                                name: "Velcro",
-                                specification: "75mm",
-                                requirement:
-                                  parseFloat(formData.cardQuantity) * 1.25,
-                                unit: "pair",
-                                available:
-                                  materialData["Velcro"]?.available || 0,
-                                issued: 0,
-                                balance: 0,
-                              },
-                              {
-                                id: "3",
-                                name: "Buckle",
-                                specification: "-",
-                                requirement:
-                                  parseInt(formData.cardQuantity) * 2,
-                                unit: "pcs",
-                                available:
-                                  materialData["Buckle"]?.available || 0,
-                                issued: 0,
-                                balance: 0,
-                              },
-                              {
-                                id: "4",
-                                name: "Trim",
-                                specification: "sticker",
-                                requirement:
-                                  parseInt(formData.cardQuantity) * 10,
-                                unit: "pcs",
-                                available: materialData["Trim"]?.available || 0,
-                                issued: 0,
-                                balance: 0,
-                              },
-                            ],
+                            materials,
+                            components,
                           };
 
                           // Add to store
