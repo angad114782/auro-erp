@@ -45,7 +45,8 @@ import { Badge } from "./ui/badge";
 import { toast } from "sonner@2.0.3";
 import { useERPStore, RDProject } from "../lib/data-store";
 import { ProductionCardFormDialog } from "./ProductionCardFormDialog";
-
+import { useProjects } from "../hooks/useProjects";
+import api from "../lib/api";
 interface ProductionCard {
   productionName: string;
   rdProject: string;
@@ -76,7 +77,7 @@ interface ProductionCardData {
   specialInstructions: string;
   status: string;
   createdAt: string;
-  assignedPlant: string;
+  assignPlant: string;
 }
 
 interface CreateProductionCardDialogProps {
@@ -96,20 +97,53 @@ export function CreateProductionCardDialog({
   });
 
   const {
-    rdProjects,
-    updateProject,
-    brands,
-    categories,
-    types,
-    colors,
-    countries,
+    //   rdProjects,
+    //   updateProject,
+    //   brands,
+    //   categories,
+    //   types,
+    //   colors,
+    //   countries,
     productionCards: storeProductionCards,
-    updateProductionCard,
+    //   updateProductionCard,
   } = useERPStore();
+  const { projects, loadProjects } = useProjects();
 
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const rdProjects = projects;
   const [selectedProject, setSelectedProject] = useState<RDProject | null>(
     null
   );
+  const [serverProductionCards, setServerProductionCards] = useState<any[]>([]);
+  const [loadingCards, setLoadingCards] = useState(false);
+
+  // Load production cards from server
+  const loadServerProductionCards = async (projId?: string) => {
+    try {
+      setLoadingCards(true);
+      const url = projId
+        ? `/production-cards?projectId=${projId}`
+        : "/production-cards";
+      const res = await api.get(url);
+      setServerProductionCards(res?.data?.data?.items || []);
+    } catch (err) {
+      console.error("Failed to load production cards from server:", err);
+      setServerProductionCards([]);
+    } finally {
+      setLoadingCards(false);
+    }
+  };
+
+  // Load cards when dialog opens
+  useEffect(() => {
+    if (open) {
+      loadServerProductionCards();
+    }
+  }, [open]);
+
   const [showProductionCardForm, setShowProductionCardForm] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<ProductionCardData | null>(
@@ -211,24 +245,32 @@ export function CreateProductionCardDialog({
   }, [selectedProductionCard, rdProjects, storeProductionCards]);
 
   // Convert store production cards to the format expected by this component
-  const displayProductionCards: ProductionCardData[] = storeProductionCards.map(
-    (card) => ({
-      id: card.id,
-      cardName: card.cardNumber,
-      productionType: card.description || "Standard Production",
-      priority: "Medium", // Default priority
-      targetQuantity: card.cardQuantity?.toString?.() ?? String(card.cardQuantity || ""),
-      startDate: card.startDate,
-      endDate: "", // Not available in store format
-      supervisor: card.createdBy,
-      workShift: "Day Shift", // Default shift
-      description: card.description,
-      specialInstructions: card.specialInstructions,
-      status: card.status,
-      createdAt: card.createdDate,
-      assignedPlant: card.assignedPlant,
-    })
-  );
+  const mapCardToDisplay = (card: any): ProductionCardData => ({
+    id: card.id || card._id,
+    cardName: card.cardNumber,
+    productionType: card.description || "Standard Production",
+    priority: "Medium", // Default priority
+    targetQuantity:
+      card.cardQuantity?.toString?.() ?? String(card.cardQuantity || ""),
+    startDate: card.startDate,
+    endDate: "", // Not available
+    supervisor: card.createdBy,
+    workShift: "Day Shift", // Default shift
+    description: card.description,
+    specialInstructions: card.specialInstructions,
+    status: card.status,
+    createdAt: card.createdDate || card.createdAt,
+    assignPlant: card.assignedPlant || "",
+  });
+
+  // Combine server and store cards (server takes precedence)
+  const allProductionCards = [
+    ...(serverProductionCards.length > 0
+      ? serverProductionCards
+      : storeProductionCards),
+  ];
+  const displayProductionCards: ProductionCardData[] =
+    allProductionCards.map(mapCardToDisplay);
 
   // Production card form state (missing state that was causing the error)
   const [productionCard, setProductionCard] = useState<ProductionCard>({
@@ -246,32 +288,6 @@ export function CreateProductionCardDialog({
     budgetAllocation: "",
     workShift: "",
   });
-
-  // Helper functions to get names from IDs
-  const getBrandName = (brandId: string) => {
-    const brand = brands.find((b) => b.id === brandId);
-    return brand ? brand.brandName : "Unknown Brand";
-  };
-
-  const getCategoryName = (categoryId: string) => {
-    const category = categories.find((c) => c.id === categoryId);
-    return category ? category.categoryName : "Unknown Category";
-  };
-
-  const getTypeName = (typeId: string) => {
-    const type = types.find((t) => t.id === typeId);
-    return type ? type.typeName : "Unknown Type";
-  };
-
-  const getColorName = (colorId: string) => {
-    const color = colors.find((c) => c.id === colorId);
-    return color ? color.colorName : "Unknown Color";
-  };
-
-  const getCountryName = (countryId: string) => {
-    const country = countries.find((c) => c.id === countryId);
-    return country ? country.countryName : "Unknown Country";
-  };
 
   const generateProductionCode = () => {
     const now = new Date();
@@ -335,6 +351,9 @@ export function CreateProductionCardDialog({
     if (editingCard) {
       setEditingCard(null);
     }
+
+    // Reload production cards from server after successful save
+    loadServerProductionCards();
   };
 
   const handleEditCard = (card: ProductionCardData) => {
@@ -350,13 +369,13 @@ export function CreateProductionCardDialog({
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Update the production card status to "In Progress"
-      if (updateProductionCard) {
-        updateProductionCard(card.id, {
-          ...card,
-          status: "In Progress",
-          startDate: new Date().toISOString(),
-        });
-      }
+      // if (updateProductionCard) {
+      //   updateProductionCard(card.id, {
+      //     ...card,
+      //     status: "In Progress",
+      //     startDate: new Date().toISOString(),
+      //   });
+      // }
 
       toast.success(`Production started for ${card.cardName}!`);
       console.log("Production started for card:", card.cardName);
@@ -379,12 +398,12 @@ export function CreateProductionCardDialog({
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Update the production card status back to "Ready to Start"
-      if (updateProductionCard) {
-        updateProductionCard(card.id, {
-          ...card,
-          status: "Ready to Start",
-        });
-      }
+      // if (updateProductionCard) {
+      //   updateProductionCard(card.id, {
+      //     ...card,
+      //     status: "Ready to Start",
+      //   });
+      // }
 
       toast.success(`Production stopped for ${card.cardName}`);
       console.log("Production stopped for card:", card.cardName);
@@ -497,7 +516,9 @@ export function CreateProductionCardDialog({
                     </p>
                     <p className="text-2xl font-mono font-bold text-green-800">
                       {orderQuantity
-                        ? `${Number(orderQuantity).toLocaleString("en-IN")} Units`
+                        ? `${Number(orderQuantity).toLocaleString(
+                            "en-IN"
+                          )} Units`
                         : "No Order"}
                     </p>
                   </div>
@@ -519,7 +540,6 @@ export function CreateProductionCardDialog({
         {/* Scrollable Main Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-12 py-10 space-y-8">
-          
             {/* Production Cards Section */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -613,7 +633,7 @@ export function CreateProductionCardDialog({
                                 Plant Assignment
                               </span>
                               <span className="text-sm font-medium text-gray-900">
-                                {card.assignedPlant || "Not assigned"}
+                                {card.assignPlant || "Not assigned"}
                               </span>
                             </div>
 
@@ -623,7 +643,9 @@ export function CreateProductionCardDialog({
                               </span>
                               <span className="text-sm font-medium text-gray-900">
                                 {card.startDate
-                                  ? new Date(card.startDate).toLocaleDateString()
+                                  ? new Date(
+                                      card.startDate
+                                    ).toLocaleDateString()
                                   : "Not set"}
                               </span>
                             </div>
@@ -725,8 +747,9 @@ export function CreateProductionCardDialog({
           setEditingCard(null);
         }}
         onSave={handleSaveProductionCard}
-        selectedProject={selectedProject}
+        selectedProject={selectedProductionCard}
         editingCard={editingCard}
+        onCardCreated={loadServerProductionCards}
       />
     </Dialog>
   );

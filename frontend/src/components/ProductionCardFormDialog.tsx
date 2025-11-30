@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   X,
   Save,
@@ -31,8 +31,10 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Separator } from "./ui/separator";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { useERPStore, RDProject } from "../lib/data-store";
+import { useCostManagement } from "../hooks/useCostManagement";
+import api from "../lib/api";
 
 interface ProductionCardData {
   id: string;
@@ -57,6 +59,7 @@ interface ProductionCardFormDialogProps {
   onSave: (cardData: ProductionCardData) => void;
   selectedProject?: RDProject | null;
   editingCard?: ProductionCardData | null;
+  onCardCreated?: () => void; // Callback to refresh parent after card creation
 }
 
 export function ProductionCardFormDialog({
@@ -65,6 +68,7 @@ export function ProductionCardFormDialog({
   onSave,
   selectedProject,
   editingCard,
+  onCardCreated,
 }: ProductionCardFormDialogProps) {
   const {
     brands,
@@ -77,7 +81,68 @@ export function ProductionCardFormDialog({
     getMaterialRequestByCardId,
     addProductionCard,
   } = useERPStore();
+  const [costData, setCostData] = useState({
+    upper: [],
+    component: [],
+    material: [],
+    packaging: [],
+    miscellaneous: [],
+    labour: [],
+  });
 
+  const [summary, setSummary] = useState({
+    tentativeCost: 0,
+  });
+
+  // Load Tentative Cost API
+  const loadTentativeCost = async () => {
+    try {
+      const projectId =
+        (selectedProject as any)?.project?._id ||
+        (selectedProject as any)?.id ||
+        (selectedProject as any)?._id ||
+        (selectedProject as any)?.projectId;
+
+      if (!projectId) return;
+
+      const sumRes = await api.get(`/projects/${projectId}/costs`);
+      const s = sumRes.data.summary || {};
+
+      const sections = [
+        "upper",
+        "component",
+        "material",
+        "packaging",
+        "miscellaneous",
+      ];
+      const results = await Promise.all(
+        sections.map((sec) => api.get(`/projects/${projectId}/costs/${sec}`))
+      );
+
+      const labourRes = await api.get(`/projects/${projectId}/costs/labour`);
+
+      setCostData({
+        upper: results[0]?.data?.rows || [],
+        component: results[1]?.data?.rows || [],
+        material: results[2]?.data?.rows || [],
+        packaging: results[3]?.data?.rows || [],
+        miscellaneous: results[4]?.data?.rows || [],
+        labour: labourRes?.data?.items || [],
+      });
+
+      setSummary({
+        tentativeCost: s.tentativeCost || 0,
+      });
+    } catch (err) {
+      console.error("Failed to load tentative cost:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (open && (selectedProject as any)) {
+      loadTentativeCost();
+    }
+  }, [open, selectedProject]);
   const [formData, setFormData] = useState({
     cardName: "",
     productionType: "",
@@ -105,13 +170,13 @@ export function ProductionCardFormDialog({
   }>({});
 
   // Plants list and dialog state
-  const [plantsList, setPlantsList] = useState<string[]>([
-    "Aura",
-    "Prime",
-    "Smith",
-    "Plant A - Main Factory",
-    "Plant B - North Unit",
-  ]);
+  // const [plantsList, setPlantsList] = useState<string[]>([
+  //   "Aura",
+  //   "Prime",
+  //   "Smith",
+  //   "Plant A - Main Factory",
+  //   "Plant B - North Unit",
+  // ]);
   const [addPlantDialogOpen, setAddPlantDialogOpen] = useState(false);
   const [newPlantName, setNewPlantName] = useState("");
 
@@ -157,7 +222,7 @@ export function ProductionCardFormDialog({
         description: editingCard.description,
         specialInstructions: editingCard.specialInstructions,
         cardQuantity: editingCard.cardQuantity,
-        assignPlant: editingCard.assignedPlant || "",
+        assignPlant: editingCard.assignPlant || "",
       });
     } else if (open && !editingCard) {
       // Reset form for new card
@@ -199,12 +264,12 @@ export function ProductionCardFormDialog({
       return;
     }
 
-    if (plantsList.includes(newPlantName)) {
-      toast.error("Plant already exists");
-      return;
-    }
+    // if (plantsList.includes(newPlantName)) {
+    //   toast.error("Plant already exists");
+    //   return;
+    // }
 
-    setPlantsList([...plantsList, newPlantName]);
+    // setPlantsList([...plantsList, newPlantName]);
     setFormData({ ...formData, assignPlant: newPlantName });
     setNewPlantName("");
     setAddPlantDialogOpen(false);
@@ -258,41 +323,13 @@ export function ProductionCardFormDialog({
     return `PC-${year}-${month}-${randomNum}`;
   };
 
-  const productionTypes = [
-    "Pre-Production Setup",
-    "Material Preparation",
-    "Cutting & Sizing",
-    "Assembly & Stitching",
-    "Quality Control",
-    "Finishing & Packaging",
-    "Final Inspection",
-  ];
-
-  const priorities = ["High", "Medium", "Low"];
-
-  const supervisors = [
-    "John Smith",
-    "Sarah Wilson",
-    "Mike Chen",
-    "Emma Davis",
-    "David Kumar",
-    "Lisa Anderson",
-  ];
-
-  const workShifts = [
-    "Day Shift (6 AM - 2 PM)",
-    "Evening Shift (2 PM - 10 PM)",
-    "Night Shift (10 PM - 6 AM)",
-    "Double Shift (6 AM - 10 PM)",
-  ];
-
   const generateCardId = () => {
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 1000);
     return `PC-${timestamp}-${random}`;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (
       !formData.cardQuantity ||
       !formData.startDate ||
@@ -313,24 +350,62 @@ export function ProductionCardFormDialog({
     const cardNumber = generateProductionCardNumber();
 
     // Create production card data
-    const productionCardData = {
+    const projectId =
+      (selectedProject as any)?.project?._id ||
+      (selectedProject as any)?.id ||
+      (selectedProject as any)?._id ||
+      (selectedProject as any)?.projectId;
+
+    const payload = {
       cardNumber,
-      projectId: selectedProject.id,
+      projectId,
       productName: getProductName(),
-      cardQuantity: parseInt(formData.cardQuantity),
+      cardQuantity: parseInt(formData.cardQuantity, 10),
       startDate: formData.startDate,
       assignedPlant: formData.assignPlant,
       description: formData.description,
       specialInstructions: formData.specialInstructions,
-      status: "Draft" as const,
+      status: "Draft",
       materialRequestStatus: requestStatus,
-      createdBy: "Production Manager", // This would be current user
-      materials: selectedProject.materials || [],
-      components: selectedProject.components || [],
+      materials: (selectedProject as any)?.materials || [],
+      components: (selectedProject as any)?.components || [],
     };
 
-    // Save to production cards store
-    addProductionCard(productionCardData);
+    try {
+      const res = await api.post(`/production-cards`, payload);
+      const created = res?.data?.data;
+
+      // Update local store with created doc (map to store shape)
+      if (created) {
+        addProductionCard({
+          id: created._id || created.id || cardId,
+          cardNumber: created.cardNumber || cardNumber,
+          projectId: created.project || projectId,
+          productName: created.productName || getProductName(),
+          cardQuantity:
+            created.cardQuantity || parseInt(formData.cardQuantity, 10),
+          startDate: created.startDate || formData.startDate,
+          assignedPlant: created.assignedPlant || formData.assignPlant,
+          description: created.description || formData.description,
+          specialInstructions:
+            created.specialInstructions || formData.specialInstructions,
+          status: created.status || "Draft",
+          materialRequestStatus: created.materialRequestStatus || requestStatus,
+          createdBy: created.createdBy || "Production Manager",
+          createdDate: created.createdAt || new Date().toISOString(),
+          updatedDate: created.updatedAt || new Date().toISOString(),
+          materials: created.materials || payload.materials,
+          components: created.components || payload.components,
+        } as any);
+      } else {
+        // fallback to local store if server didn't return created object
+        addProductionCard(payload as any);
+      }
+    } catch (err) {
+      console.error("Failed to save production card to server:", err);
+      // fallback to local store so user flow isn't blocked
+      addProductionCard(payload as any);
+    }
 
     // Also call the original onSave for compatibility
     const cardData: ProductionCardData = {
@@ -356,6 +431,11 @@ export function ProductionCardFormDialog({
         ? "Production card updated successfully!"
         : "Production card created successfully!"
     );
+
+    // Call the callback to refresh parent
+    if (onCardCreated) {
+      onCardCreated();
+    }
 
     // Reset form
     setFormData({
@@ -438,7 +518,9 @@ export function ProductionCardFormDialog({
                       max="1200"
                     />
                     <div className="text-sm text-gray-500">
-                      <span className="font-medium">/ 1,200</span>
+                      <span className="font-medium">
+                        / {selectedProject?.po?.orderQuantity}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -485,6 +567,9 @@ export function ProductionCardFormDialog({
                             REQUIREMENT
                           </th>
                           <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
+                            COST
+                          </th>
+                          <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
                             AVAILABLE
                           </th>
                           <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[100px]">
@@ -496,460 +581,123 @@ export function ProductionCardFormDialog({
                         </tr>
                       </thead>
                       <tbody>
-                        {/* Materials Section */}
-                        <tr className="border-b border-gray-200 bg-cyan-100">
-                          <td
-                            className="px-6 py-3 font-semibold text-cyan-800 border-r border-gray-300"
-                            colSpan={6}
-                          >
-                            MATERIALS USED
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 hover:bg-gray-50">
-                          <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                            Upper
-                          </td>
-                          <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                            Rexine
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                            {formData.cardQuantity
-                              ? `${
-                                  parseInt(formData.cardQuantity) * 25
-                                } pair/vth`
-                              : "25 pair/vth"}
-                          </td>
-                          <td className="px-6 py-4 text-center border-r border-gray-300">
-                            {requestStatus === "Pending Availability Check" ? (
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={materialData["Upper"]?.available || ""}
-                                onChange={(e) =>
-                                  handleMaterialDataChange(
-                                    "Upper",
-                                    "available",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            ) : (
-                              <span className="text-center">
-                                {materialData["Upper"]?.available || 0}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400 border-r border-gray-300">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? materialData["Upper"]?.issued || 0
-                              : "-"}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? Math.max(
-                                  0,
-                                  (formData.cardQuantity
-                                    ? parseInt(formData.cardQuantity) * 25
-                                    : 25) -
-                                    (materialData["Upper"]?.available || 0) -
-                                    (materialData["Upper"]?.issued || 0)
-                                )
-                              : "-"}
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 hover:bg-gray-50">
-                          <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                            Lining
-                          </td>
-                          <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                            Skimh
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                            {formData.cardQuantity
-                              ? `${
-                                  parseInt(formData.cardQuantity) * 25
-                                } pair @ 15/-`
-                              : "25 pair @ 15/-"}
-                          </td>
-                          <td className="px-6 py-4 text-center border-r border-gray-300">
-                            {requestStatus === "Pending Availability Check" ? (
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={
-                                  materialData["Lining_Skimh"]?.available || ""
-                                }
-                                onChange={(e) =>
-                                  handleMaterialDataChange(
-                                    "Lining_Skimh",
-                                    "available",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            ) : (
-                              <span className="text-center">
-                                {materialData["Lining_Skimh"]?.available || 0}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400 border-r border-gray-300">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? materialData["Lining_Skimh"]?.issued || 0
-                              : "-"}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? Math.max(
-                                  0,
-                                  (formData.cardQuantity
-                                    ? parseInt(formData.cardQuantity) * 25
-                                    : 25) -
-                                    (materialData["Lining_Skimh"]?.available ||
-                                      0) -
-                                    (materialData["Lining_Skimh"]?.issued || 0)
-                                )
-                              : "-"}
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 hover:bg-gray-50">
-                          <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                            Lining
-                          </td>
-                          <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                            EVA
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                            3370 - 1.5mm 35pair
-                          </td>
-                          <td className="px-6 py-4 text-center border-r border-gray-300">
-                            {requestStatus === "Pending Availability Check" ? (
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={
-                                  materialData["Lining_EVA"]?.available || ""
-                                }
-                                onChange={(e) =>
-                                  handleMaterialDataChange(
-                                    "Lining_EVA",
-                                    "available",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            ) : (
-                              <span className="text-center">
-                                {materialData["Lining_EVA"]?.available || 0}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400 border-r border-gray-300">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? materialData["Lining_EVA"]?.issued || 0
-                              : "-"}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? Math.max(
-                                  0,
-                                  35 -
-                                    (materialData["Lining_EVA"]?.available ||
-                                      0) -
-                                    (materialData["Lining_EVA"]?.issued || 0)
-                                )
-                              : "-"}
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 bg-cyan-50">
-                          <td
-                            className="px-6 py-3 text-sm text-cyan-700 border-r border-gray-300 italic"
-                            colSpan={6}
-                          >
-                            Total Materials: 3 different materials used in
-                            production
-                          </td>
-                        </tr>
+                        {/* LOOP SECTIONS */}
+                        {[
+                          {
+                            label: "UPPER MATERIAL",
+                            key: "upper",
+                            color: "bg-cyan-100 text-cyan-800",
+                          },
+                          {
+                            label: "MATERIAL USED",
+                            key: "material",
+                            color: "bg-cyan-200 text-cyan-900",
+                          },
+                          {
+                            label: "COMPONENTS USED",
+                            key: "component",
+                            color: "bg-purple-100 text-purple-800",
+                          },
+                          {
+                            label: "PACKAGING USED",
+                            key: "packaging",
+                            color: "bg-yellow-100 text-yellow-800",
+                          },
+                          {
+                            label: "MISCELLANEOUS USED",
+                            key: "miscellaneous",
+                            color: "bg-rose-100 text-rose-800",
+                          },
+                        ].map((section) => (
+                          <>
+                            {/* SECTION HEADER */}
+                            <tr
+                              className={`border-b border-gray-300 ${section.color}`}
+                            >
+                              <td
+                                colSpan={7}
+                                className="px-6 py-3 font-semibold"
+                              >
+                                {section.label}
+                              </td>
+                            </tr>
 
-                        {/* Components Section */}
-                        <tr className="border-b border-gray-200 bg-purple-100">
-                          <td
-                            className="px-6 py-3 font-semibold text-purple-800 border-r border-gray-300"
-                            colSpan={6}
-                          >
-                            COMPONENTS USED
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 hover:bg-gray-50">
-                          <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                            Foam
-                          </td>
-                          <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                            -
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                            {formData.cardQuantity
-                              ? `${(
-                                  parseFloat(formData.cardQuantity) * 7.5
-                                ).toFixed(1)} gm`
-                              : "7.5 gm"}
-                          </td>
-                          <td className="px-6 py-4 text-center border-r border-gray-300">
-                            {requestStatus === "Pending Availability Check" ? (
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="0.1"
-                                value={materialData["Foam"]?.available || ""}
-                                onChange={(e) =>
-                                  handleMaterialDataChange(
-                                    "Foam",
-                                    "available",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            ) : (
-                              <span className="text-center">
-                                {materialData["Foam"]?.available || 0}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400 border-r border-gray-300">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? materialData["Foam"]?.issued || 0
-                              : "-"}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? Math.max(
-                                  0,
-                                  (formData.cardQuantity
-                                    ? parseFloat(formData.cardQuantity) * 7.5
-                                    : 7.5) -
-                                    (materialData["Foam"]?.available || 0) -
-                                    (materialData["Foam"]?.issued || 0)
-                                ).toFixed(1)
-                              : "-"}
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 hover:bg-gray-50">
-                          <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                            Velcro
-                          </td>
-                          <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                            75mm
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                            {formData.cardQuantity
-                              ? `${(
-                                  parseFloat(formData.cardQuantity) * 1.25
-                                ).toFixed(2)} pair`
-                              : "1.25 pair"}
-                          </td>
-                          <td className="px-6 py-4 text-center border-r border-gray-300">
-                            {requestStatus === "Pending Availability Check" ? (
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="0.1"
-                                value={materialData["Velcro"]?.available || ""}
-                                onChange={(e) =>
-                                  handleMaterialDataChange(
-                                    "Velcro",
-                                    "available",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            ) : (
-                              <span className="text-center">
-                                {materialData["Velcro"]?.available || 0}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400 border-r border-gray-300">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? materialData["Velcro"]?.issued || 0
-                              : "-"}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? Math.max(
-                                  0,
-                                  (formData.cardQuantity
-                                    ? parseFloat(formData.cardQuantity) * 1.25
-                                    : 1.25) -
-                                    (materialData["Velcro"]?.available || 0) -
-                                    (materialData["Velcro"]?.issued || 0)
-                                ).toFixed(2)
-                              : "-"}
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 hover:bg-gray-50">
-                          <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                            Buckle
-                          </td>
-                          <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                            -
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                            {formData.cardQuantity
-                              ? `${parseInt(formData.cardQuantity) * 2} pcs`
-                              : "2 pcs"}
-                          </td>
-                          <td className="px-6 py-4 text-center border-r border-gray-300">
-                            {requestStatus === "Pending Availability Check" ? (
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={materialData["Buckle"]?.available || ""}
-                                onChange={(e) =>
-                                  handleMaterialDataChange(
-                                    "Buckle",
-                                    "available",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            ) : (
-                              <span className="text-center">
-                                {materialData["Buckle"]?.available || 0}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400 border-r border-gray-300">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? materialData["Buckle"]?.issued || 0
-                              : "-"}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? Math.max(
-                                  0,
-                                  (formData.cardQuantity
-                                    ? parseInt(formData.cardQuantity) * 2
-                                    : 2) -
-                                    (materialData["Buckle"]?.available || 0) -
-                                    (materialData["Buckle"]?.issued || 0)
-                                )
-                              : "-"}
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 hover:bg-gray-50">
-                          <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                            Trim
-                          </td>
-                          <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                            sticker
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                            {formData.cardQuantity
-                              ? `${parseInt(formData.cardQuantity) * 10} pcs`
-                              : "10 pcs"}
-                          </td>
-                          <td className="px-6 py-4 text-center border-r border-gray-300">
-                            {requestStatus === "Pending Availability Check" ? (
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={materialData["Trim"]?.available || ""}
-                                onChange={(e) =>
-                                  handleMaterialDataChange(
-                                    "Trim",
-                                    "available",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            ) : (
-                              <span className="text-center">
-                                {materialData["Trim"]?.available || 0}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400 border-r border-gray-300">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? materialData["Trim"]?.issued || 0
-                              : "-"}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-400">
-                            {requestStatus === "Issued" ||
-                            requestStatus === "Partially Issued"
-                              ? Math.max(
-                                  0,
-                                  (formData.cardQuantity
-                                    ? parseInt(formData.cardQuantity) * 10
-                                    : 10) -
-                                    (materialData["Trim"]?.available || 0) -
-                                    (materialData["Trim"]?.issued || 0)
-                                )
-                              : "-"}
-                          </td>
-                        </tr>
-                        <tr className="border-b border-gray-200 bg-purple-50">
-                          <td
-                            className="px-6 py-3 text-sm text-purple-700 border-r border-gray-300 italic"
-                            colSpan={6}
-                          >
-                            Total Components: 4 different components used in
-                            production
-                          </td>
-                        </tr>
+                            {/* SECTION ROWS */}
+                            {costData[section.key]?.map((row) => {
+                              const itemName = row.item;
+                              const available =
+                                materialData[itemName]?.available || 0;
+                              const issued =
+                                materialData[itemName]?.issued || 0;
 
-                        {/* Summary Row */}
-                        <tr className="border-t-2 border-gray-300 bg-blue-100">
-                          <td
-                            className="px-6 py-4 font-bold text-blue-900 border-r border-gray-300"
-                            colSpan={2}
-                          >
-                            TOTAL ITEMS FOR PRODUCTION
-                          </td>
-                          <td className="px-6 py-4 text-center font-bold text-blue-900 border-r border-gray-300">
-                            {formData.cardQuantity || "0"} units
-                          </td>
-                          <td className="px-6 py-4 text-center font-semibold text-blue-700 border-r border-gray-300">
-                            Available
-                          </td>
-                          <td className="px-6 py-4 text-center font-semibold text-blue-700 border-r border-gray-300">
-                            Pending
-                          </td>
-                          <td className="px-6 py-4 text-center font-semibold text-blue-700">
-                            Remaining
-                          </td>
-                        </tr>
+                              return (
+                                <tr
+                                  key={row._id}
+                                  className="border-b hover:bg-gray-50"
+                                >
+                                  <td className="px-6 py-4 border-r font-medium">
+                                    {row.item}
+                                  </td>
+
+                                  {/* SPECIFICATION */}
+                                  <td className="px-6 py-4 border-r">
+                                    {row.description}
+                                  </td>
+
+                                  {/* REQUIREMENT */}
+                                  <td className="px-6 py-4 text-center border-r">
+                                    {row.consumption}
+                                  </td>
+
+                                  {/* COST COLUMN (NEW) */}
+                                  <td className="px-6 py-4 text-center border-r font-semibold text-blue-600">
+                                    {row.cost ?? "-"}
+                                  </td>
+
+                                  {/* AVAILABLE (editable only in pending state) */}
+                                  <td className="px-6 py-4 text-center border-r">
+                                    {requestStatus ===
+                                    "Pending Availability Check" ? (
+                                      <Input
+                                        type="number"
+                                        className="w-20 h-8 text-center"
+                                        value={available}
+                                        onChange={(e) =>
+                                          handleMaterialDataChange(
+                                            itemName,
+                                            "available",
+                                            parseFloat(e.target.value)
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      available
+                                    )}
+                                  </td>
+
+                                  {/* ISSUED */}
+                                  <td className="px-6 py-4 text-center border-r">
+                                    {requestStatus === "Issued" ||
+                                    requestStatus === "Partially Issued"
+                                      ? issued
+                                      : "-"}
+                                  </td>
+
+                                  {/* BALANCE */}
+                                  <td className="px-6 py-4 text-center">
+                                    {requestStatus === "Issued" ||
+                                    requestStatus === "Partially Issued"
+                                      ? Math.max(
+                                          0,
+                                          row.consumption - available - issued
+                                        )
+                                      : "-"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -1141,35 +889,15 @@ export function ProductionCardFormDialog({
                   >
                     Assign Plant
                   </Label>
-                  <Select
-                    value={formData.assignPlant || ""}
-                    onValueChange={(value) => {
-                      if (value === "__add_new__") {
-                        setAddPlantDialogOpen(true);
-                      } else {
-                        handleInputChange("assignPlant", value);
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-12 border-2 focus:border-blue-500 text-base">
-                      <SelectValue placeholder="Select manufacturing plant" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {plantsList.map((plant) => (
-                        <SelectItem key={plant} value={plant}>
-                          {plant}
-                        </SelectItem>
-                      ))}
-                      <Separator className="my-1" />
-                      <div
-                        className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                        onClick={() => setAddPlantDialogOpen(true)}
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add New Plant
-                      </div>
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    id="assignPlant"
+                    type="text"
+                    value={formData.assignPlant}
+                    onChange={(e) =>
+                      handleInputChange("assignPlant", e.target.value)
+                    }
+                    className="h-12 border-2 focus:border-blue-500 text-base pl-12 cursor-pointer"
+                  />
                 </div>
               </div>
             </div>
