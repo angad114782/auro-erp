@@ -1178,11 +1178,15 @@ export function TentativeCostDialog({
     if (!project) return;
 
     try {
+      // 1️⃣ Save the latest cost summary first
+      await handleSaveSummary();
+
+      // 2️⃣ THEN approve the cost
       await api.post(`/projects/${project._id}/costs/approve`);
 
-      toast.success("Tentative cost approved! Ready to advance to Red Seal.");
+      toast.success("Tentative cost saved and approved! Moving to Red Seal.");
 
-      // Update local project state
+      // 3️⃣ Update local store
       const updatedProject = {
         ...project,
         finalCost: costSummary.tentativeCost,
@@ -1191,14 +1195,15 @@ export function TentativeCostDialog({
 
       updateRDProject(project._id, updatedProject as any);
 
-      // Call the onApproved callback to advance the stage
+      // 4️⃣ Call parent callback + close dialog
       setTimeout(() => {
         onApproved();
         onOpenChange(false);
-      }, 1000);
+      }, 500);
+
       goTo("rd-management", "red-seal");
     } catch (error) {
-      console.error("Failed to approve cost:", error);
+      console.error("❌ Failed to approve:", error);
       toast.error("Failed to approve cost");
     }
   };

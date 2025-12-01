@@ -12,6 +12,7 @@ import {
   X,
   Package,
   Plus,
+  Trash2,
 } from "lucide-react";
 import {
   Dialog,
@@ -118,25 +119,46 @@ export function CreateProductionCardDialog({
     null
   );
 
+  const handleDeleteCard = async (card: any) => {
+    const projectId = card.projectId;
+
+    if (!projectId) {
+      console.error("❌ Cannot delete: projectId missing", card);
+      toast.error("Project ID missing for this card. Cannot delete.");
+      return;
+    }
+
+    try {
+      await api.delete(`/projects/${projectId}/production-cards/${card.id}`);
+      toast.success("Production card deleted");
+      fetchProductionCardsForProject(projectId);
+    } catch (err) {
+      toast.error("Failed to delete card");
+      console.error(err);
+    }
+  };
+
   // ---------------------- State (place this BEFORE any useEffect or derived vars) ----------------------
-const [showProductionCardForm, setShowProductionCardForm] = useState(false);
-const [editDialogOpen, setEditDialogOpen] = useState(false);
-const [editingCard, setEditingCard] = useState<ProductionCardData | null>(null);
-const [loadingCardId, setLoadingCardId] = useState<string | null>(null);
-const [startingProduction, setStartingProduction] = useState<string | null>(null);
+  const [showProductionCardForm, setShowProductionCardForm] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingCard, setEditingCard] = useState<ProductionCardData | null>(
+    null
+  );
+  const [loadingCardId, setLoadingCardId] = useState<string | null>(null);
+  const [startingProduction, setStartingProduction] = useState<string | null>(
+    null
+  );
 
-// Toggle to show all cards vs only cards for selected project
-const [showAllCards, setShowAllCards] = useState<boolean>(false);
+  // Toggle to show all cards vs only cards for selected project
+  const [showAllCards, setShowAllCards] = useState<boolean>(false);
 
-// API-loaded cards (for selected project)
-const [apiCards, setApiCards] = useState<any[]>([]);
-const [apiLoading, setApiLoading] = useState(false);
-const [apiError, setApiError] = useState<string | null>(null);
+  // API-loaded cards (for selected project)
+  const [apiCards, setApiCards] = useState<any[]>([]);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-// orderQuantity and others already in your file...
-const [orderQuantity, setOrderQuantity] = useState<number | null>(null);
-
-
+  // orderQuantity and others already in your file...
+  const [orderQuantity, setOrderQuantity] = useState<number | null>(null);
 
   // helper to extract order/po quantity from different shapes of selectedProductionCard
   const extractOrderQuantity = (src: any): number | null => {
@@ -168,50 +190,56 @@ const [orderQuantity, setOrderQuantity] = useState<number | null>(null);
     return null;
   };
 
-// Fetch production cards from backend for a project
-const fetchProductionCardsForProject = async (projectId: string) => {
-  if (!projectId) {
-    setApiCards([]);
-    return;
-  }
-  setApiLoading(true);
-  setApiError(null);
-  try {
-    const res = await api.get(`/projects/${projectId}/production-cards`);
-    // response shape: { success: true, data: { items: [...], total } }
-    const items = res?.data?.data?.items ?? res?.data?.items ?? res?.data?.data ?? [];
-    // normalize: if items is object with items property, try that
-    const normalized = Array.isArray(items) ? items : (Array.isArray(res?.data) ? res.data : []);
-    setApiCards(normalized);
-    console.log("Fetched API cards:", normalized);
-  } catch (err: any) {
-    console.error("Failed to fetch production cards:", err);
-    setApiError(err?.response?.data?.error || err?.message || "Unknown error");
-    setApiCards([]);
-    // optional user feedback:
-    // toast.error("Failed to load production cards from server");
-  } finally {
-    setApiLoading(false);
-  }
-};
-
-// Trigger fetch when selectedProject changes (and only when not showing all cards)
-useEffect(() => {
-  const projId =
-    (selectedProject as any)?.project?._id ||
-    (selectedProject as any)?.id ||
-    (selectedProject as any)?._id ||
-    (selectedProject as any)?.projectId;
-  if (!showAllCards && projId) {
-    fetchProductionCardsForProject(String(projId));
-  } else {
-    // when showing all cards or no project, clear API cards
-    setApiCards([]);
+  // Fetch production cards from backend for a project
+  const fetchProductionCardsForProject = async (projectId: string) => {
+    if (!projectId) {
+      setApiCards([]);
+      return;
+    }
+    setApiLoading(true);
     setApiError(null);
-    setApiLoading(false);
-  }
-}, [selectedProject, showAllCards]);
+    try {
+      const res = await api.get(`/projects/${projectId}/production-cards`);
+      // response shape: { success: true, data: { items: [...], total } }
+      const items =
+        res?.data?.data?.items ?? res?.data?.items ?? res?.data?.data ?? [];
+      // normalize: if items is object with items property, try that
+      const normalized = Array.isArray(items)
+        ? items
+        : Array.isArray(res?.data)
+        ? res.data
+        : [];
+      setApiCards(normalized);
+      console.log("Fetched API cards:", normalized);
+    } catch (err: any) {
+      console.error("Failed to fetch production cards:", err);
+      setApiError(
+        err?.response?.data?.error || err?.message || "Unknown error"
+      );
+      setApiCards([]);
+      // optional user feedback:
+      // toast.error("Failed to load production cards from server");
+    } finally {
+      setApiLoading(false);
+    }
+  };
 
+  // Trigger fetch when selectedProject changes (and only when not showing all cards)
+  useEffect(() => {
+    const projId =
+      (selectedProject as any)?.project?._id ||
+      (selectedProject as any)?.id ||
+      (selectedProject as any)?._id ||
+      (selectedProject as any)?.projectId;
+    if (!showAllCards && projId) {
+      fetchProductionCardsForProject(String(projId));
+    } else {
+      // when showing all cards or no project, clear API cards
+      setApiCards([]);
+      setApiError(null);
+      setApiLoading(false);
+    }
+  }, [selectedProject, showAllCards]);
 
   // Effect to set selectedProject when selectedProductionCard changes
   useEffect(() => {
@@ -270,54 +298,56 @@ useEffect(() => {
     }
   }, [selectedProductionCard, rdProjects, storeProductionCards]);
   // Convert store production cards to the format expected by this component
- // Normalize helper to get projectId string from various card shapes
-const normalizeCardProjectId = (card: any) => {
-  return (
-    card.projectId ||
-    card.project ||
-    card.rdProjectId ||
-    card.rdProject ||
-    (card.project && (card.project._id || card.project.id)) ||
-    null
+  // Normalize helper to get projectId string from various card shapes
+  const normalizeCardProjectId = (card: any) => {
+    return (
+      card.projectId ||
+      card.project ||
+      card.rdProjectId ||
+      card.rdProject ||
+      (card.project && (card.project._id || card.project.id)) ||
+      null
+    );
+  };
+
+  // Decide source list: if apiCards loaded (and not empty) AND not showing all, use apiCards.
+  // otherwise use filtered store cards (existing behaviour).
+  const projId =
+    (selectedProject as any)?.id ||
+    (selectedProject as any)?._id ||
+    (selectedProject as any)?.projectId;
+
+  const storeFiltered = storeProductionCards.filter((card: any) => {
+    if (showAllCards) return true;
+    if (!selectedProject) return false;
+    const projIdFromCard = normalizeCardProjectId(card);
+    if (!projIdFromCard || !projId) return false;
+    return String(projIdFromCard) === String(projId);
+  });
+
+  // use apiCards if available for the project and user isn't asking for "all cards"
+  const sourceCards =
+    !showAllCards && apiCards && apiCards.length > 0 ? apiCards : storeFiltered;
+
+  const displayProductionCards: ProductionCardData[] = sourceCards.map(
+    (card: any) => ({
+      id: card.id || card._id,
+      projectId: card.projectId || card.project?._id || card.project || null,
+      cardName: card.cardNumber || card.cardName,
+      productionType: card.description || "Production",
+      priority: "Medium",
+      targetQuantity: card.cardQuantity?.toString?.() ?? "",
+      startDate: card.startDate,
+      endDate: "",
+      supervisor: card.createdBy,
+      workShift: card.workShift,
+      description: card.description,
+      specialInstructions: card.specialInstructions,
+      status: card.status,
+      createdAt: card.createdAt,
+      assignPlant: card.assignedPlant,
+    })
   );
-};
-
-// Decide source list: if apiCards loaded (and not empty) AND not showing all, use apiCards.
-// otherwise use filtered store cards (existing behaviour).
-const projId =
-  (selectedProject as any)?.id || (selectedProject as any)?._id || (selectedProject as any)?.projectId;
-
-const storeFiltered = storeProductionCards.filter((card: any) => {
-  if (showAllCards) return true;
-  if (!selectedProject) return false;
-  const projIdFromCard = normalizeCardProjectId(card);
-  if (!projIdFromCard || !projId) return false;
-  return String(projIdFromCard) === String(projId);
-});
-
-// use apiCards if available for the project and user isn't asking for "all cards"
-const sourceCards =
-  !showAllCards && apiCards && apiCards.length > 0 ? apiCards : storeFiltered;
-
-const displayProductionCards: ProductionCardData[] = sourceCards.map(
-  (card: any) => ({
-    id: card.id || card._id || (card._id && card._id.toString && card._id.toString()) || String(card.cardNumber || Math.random()),
-    cardName: card.cardNumber || card.cardName || card.cardNameFormatted || "",
-    productionType: card.description || "Standard Production",
-    priority: "Medium",
-    targetQuantity:
-      card.cardQuantity?.toString?.() ?? String(card.cardQuantity || ""),
-    startDate: card.startDate,
-    endDate: "",
-    supervisor: card.createdBy || card.supervisor || "",
-    workShift: card.workShift || "Day Shift",
-    description: card.description,
-    specialInstructions: card.specialInstructions,
-    status: card.status,
-    createdAt: card.createdDate || card.createdAt || new Date().toISOString(),
-    assignPlant: card.assignedPlant || card.assignPlant || "",
-  })
-);
 
   const [productionCard, setProductionCard] = useState<ProductionCard>({
     productionName: "",
@@ -393,6 +423,14 @@ const displayProductionCards: ProductionCardData[] = sourceCards.map(
     // For now, we'll just show a success message since we need to integrate with the store properly
     toast.success("Production Card saved successfully!");
     console.log("Production card saved:", cardData);
+    // refresh list
+    const projId =
+      selectedProject?.project?._id ||
+      selectedProject?.id ||
+      selectedProject?._id ||
+      selectedProject?.projectId;
+
+    if (projId) fetchProductionCardsForProject(projId);
 
     if (editingCard) {
       setEditingCard(null);
@@ -502,26 +540,27 @@ const displayProductionCards: ProductionCardData[] = sourceCards.map(
         <button
           onClick={() => handleStartProduction(card)}
           disabled={isStarting}
-          className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 text-sm"
+          className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2"
         >
-          {isStarting ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Starting...
-            </>
-          ) : (
-            <>
-              <Factory className="w-4 h-4" />
-              Start Production
-            </>
-          )}
+          <Factory className="w-4 h-4" />
+          Start
         </button>
+
         <button
           onClick={() => handleEditCard(card)}
-          className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 text-sm"
+          className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2"
         >
           <Target className="w-4 h-4" />
-          Edit Card
+          Edit
+        </button>
+
+        {/* 🔥 DELETE BUTTON FIXED & ADDED */}
+        <button
+          onClick={() => handleDeleteCard(card)}
+          className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+        >
+          <Trash2 className="w-4 h-4" />
+          Delete
         </button>
       </>
     );
@@ -597,32 +636,40 @@ const displayProductionCards: ProductionCardData[] = sourceCards.map(
                     Manage production workflow and resource allocation
                   </p>
                 </div>
-               <div className="flex items-center gap-3">
-  <Button
-    variant="outline"
-    size="sm"
-    onClick={() => setShowAllCards((s) => !s)}
-    className="px-3 py-2 mr-2"
-    title={showAllCards ? "Showing all projects — click to show only selected project" : "Show only this project's cards"}
-  >
-    {showAllCards ? "Showing: All" : "Showing: This Project"}
-  </Button>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAllCards((s) => !s)}
+                    className="px-3 py-2 mr-2"
+                    title={
+                      showAllCards
+                        ? "Showing all projects — click to show only selected project"
+                        : "Show only this project's cards"
+                    }
+                  >
+                    {showAllCards ? "Showing: All" : "Showing: This Project"}
+                  </Button>
 
-  <Button
-    className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white px-6 py-2.5"
-    onClick={() => setShowProductionCardForm(true)}
-  >
-    <Plus className="w-4 h-4 mr-2" />
-    Create Production Card
-  </Button>
+                  <Button
+                    className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white px-6 py-2.5"
+                    onClick={() => setShowProductionCardForm(true)}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Production Card
+                  </Button>
 
-  {/* status */}
-  <div className="ml-3 text-xs text-gray-500">
-    {apiLoading ? "Loading..." : apiError ? `API error` : apiCards.length ? `${apiCards.length} from API` : ""}
-  </div>
-</div>
-
-
+                  {/* status */}
+                  <div className="ml-3 text-xs text-gray-500">
+                    {apiLoading
+                      ? "Loading..."
+                      : apiError
+                      ? `API error`
+                      : apiCards.length
+                      ? `${apiCards.length} from API`
+                      : ""}
+                  </div>
+                </div>
               </div>
               {/* Production Cards Display */}
               {displayProductionCards.filter(
@@ -814,7 +861,15 @@ const displayProductionCards: ProductionCardData[] = sourceCards.map(
         onSave={handleSaveProductionCard}
         selectedProject={selectedProductionCard}
         editingCard={editingCard}
-        // onCardCreated={loadServerProductionCards}
+        onCardCreated={() => {
+          const projId =
+            selectedProject?.project?._id ||
+            selectedProject?.id ||
+            selectedProject?._id ||
+            selectedProject?.projectId;
+
+          if (projId) fetchProductionCardsForProject(projId);
+        }}
       />
     </Dialog>
   );

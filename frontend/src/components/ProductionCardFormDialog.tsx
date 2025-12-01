@@ -369,7 +369,55 @@ export function ProductionCardFormDialog({
     const random = Math.floor(Math.random() * 1000);
     return `PC-${timestamp}-${random}`;
   };
+  // MATERIALS (upper + material)
+  const materials = [];
+  ["upper", "material"].forEach((section) => {
+    costData[section]?.forEach((row) => {
+      const itemName = row.item;
 
+      materials.push({
+        id: row._id,
+        name: row.item,
+        specification: row.description,
+        requirement:
+          parseFloat(String(row.consumption).match(/\d+\.?\d*/)?.[0] || 0) *
+          Number(formData.cardQuantity || 0),
+        unit: row.unit || "unit",
+        available: materialData[itemName]?.available || 0,
+        issued: materialData[itemName]?.issued || 0,
+        balance:
+          parseFloat(String(row.consumption).match(/\d+\.?\d*/)?.[0] || 0) *
+            Number(formData.cardQuantity || 0) -
+          ((materialData[itemName]?.available || 0) +
+            (materialData[itemName]?.issued || 0)),
+      });
+    });
+  });
+
+  // COMPONENTS (component + packaging + misc)
+  const components = [];
+  ["component", "packaging", "miscellaneous"].forEach((section) => {
+    costData[section]?.forEach((row) => {
+      const itemName = row.item;
+
+      components.push({
+        id: row._id,
+        name: row.item,
+        specification: row.description,
+        requirement:
+          parseFloat(String(row.consumption).match(/\d+\.?\d*/)?.[0] || 0) *
+          Number(formData.cardQuantity || 0),
+        unit: row.unit || "unit",
+        available: materialData[itemName]?.available || 0,
+        issued: materialData[itemName]?.issued || 0,
+        balance:
+          parseFloat(String(row.consumption).match(/\d+\.?\d*/)?.[0] || 0) *
+            Number(formData.cardQuantity || 0) -
+          ((materialData[itemName]?.available || 0) +
+            (materialData[itemName]?.issued || 0)),
+      });
+    });
+  });
   const handleSave = async () => {
     if (
       !formData.cardQuantity ||
@@ -387,7 +435,8 @@ export function ProductionCardFormDialog({
       return;
     }
 
-    const cardId = generateCardId();
+    const cardId = editingCard?.id || generateCardId();
+
     const cardNumber = generateProductionCardNumber();
 
     // Resolve projectId (same logic you already use)
@@ -404,30 +453,43 @@ export function ProductionCardFormDialog({
 
     // Build payload for server (note: server expects route /projects/:projectId/production-cards)
     const payload = {
-      // you can still include cardNumber in body (server will generate its own unique number),
-      // but including it is fine for optimistic UI.
       cardNumber,
       projectId,
       productName: getProductName(),
-      cardQuantity: parseInt(formData.cardQuantity, 10),
+      cardQuantity: Number(formData.cardQuantity),
       startDate: formData.startDate,
       assignedPlant: formData.assignPlant,
       description: formData.description,
       specialInstructions: formData.specialInstructions,
       status: "Draft",
       materialRequestStatus: requestStatus,
-      materials: (selectedProject as any)?.materials || [],
-      components: (selectedProject as any)?.components || [],
+      materials, // <-- FIXED
+      components, // <-- FIXED
     };
 
     let serverCreated: any = null;
 
     try {
       // NOTE: your api baseURL already contains /api (see api.ts)
+      if (editingCard) {
+        // UPDATE existing card
+        const res = await api.put(
+          `/projects/${projectId}/production-cards/${editingCard.id}`,
+          payload
+        );
+
+        toast.success("Production card updated");
+        onSave(res.data.data);
+        onClose();
+        return;
+      }
+
+      // CREATE new card
       const res = await api.post(
         `/projects/${projectId}/production-cards`,
         payload
       );
+
       // server returns { success: true, data: { productionCard, materialRequest } }
       serverCreated = res?.data?.data || res?.data;
     } catch (err: any) {

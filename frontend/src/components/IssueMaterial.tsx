@@ -1,20 +1,18 @@
-import React, { useState } from "react";
+// IssueMaterial.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
-  Edit,
   Trash2,
   FileText,
   Filter,
-  Clock,
-  CheckCircle,
   Package,
   Send,
   X,
   Target,
 } from "lucide-react";
+
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Card, CardContent } from "./ui/card";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +20,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from "./ui/dialog";
+
+import api from "../lib/api";
 
 interface IssueMaterialProps {
   searchTerm: string;
@@ -32,807 +32,517 @@ export function IssueMaterial({
   searchTerm,
   onSearchChange,
 }: IssueMaterialProps) {
-  const [selectedRequisition, setSelectedRequisition] = useState(null);
+  const [materialRequisitions, setMaterialRequisitions] = useState<any[]>([]);
+  const [selectedRequisition, setSelectedRequisition] = useState<any | null>(
+    null
+  );
 
-  const getMaterialRequisitions = () => [
-    {
-      id: "REQ001",
-      productionCard: "PC-001",
-      productName: "Premium Lifestyle Sneakers",
-      requestedBy: "John Smith",
-      department: "Production Floor A",
-      status: "Pending Approval",
-      priority: "High",
-      requestDate: "2024-09-15",
-      requiredDate: "2024-09-18",
-      totalItems: 12,
-      approver: "Sarah Johnson",
-      materials: [
-        { name: "Upper", quantity: 25, unit: "pair/vth", available: 120 },
-        {
-          name: "Lining_Skimh",
-          quantity: 25,
-          unit: "pair @ 15/-",
-          available: 150,
-        },
-        {
-          name: "Lining_EVA",
-          quantity: 35,
-          unit: "3370 - 1.5mm 35pair",
-          available: 40,
-        },
-        { name: "Foam", quantity: 7.5, unit: "gm", available: 85 },
-        { name: "Velcro", quantity: 1.25, unit: "pair", available: 95 },
-      ],
-    },
-    {
-      id: "REQ002",
-      productionCard: "PC-003",
-      productName: "Formal Business Shoes",
-      requestedBy: "Mike Chen",
-      department: "Production Floor B",
-      status: "Approved",
-      priority: "Medium",
-      requestDate: "2024-09-14",
-      requiredDate: "2024-09-17",
-      totalItems: 8,
-      approver: "David Brown",
-      materials: [
-        { name: "Leather Uppers", quantity: 30, unit: "pairs", available: 45 },
-        { name: "Dress Soles", quantity: 30, unit: "pairs", available: 35 },
-      ],
-    },
-    {
-      id: "REQ003",
-      productionCard: "PC-005",
-      productName: "Sports Sandals",
-      requestedBy: "Lisa Wang",
-      department: "Production Floor C",
-      status: "Issued",
-      priority: "Low",
-      requestDate: "2024-09-13",
-      requiredDate: "2024-09-16",
-      totalItems: 6,
-      approver: "Sarah Johnson",
-      materials: [
-        { name: "EVA Foam", quantity: 15, unit: "sheets", available: 20 },
-        { name: "Velcro Straps", quantity: 60, unit: "pieces", available: 80 },
-      ],
-    },
-    {
-      id: "REQ004",
-      productionCard: "PC-007",
-      productName: "Athletic Running Shoes",
-      requestedBy: "Tom Wilson",
-      department: "Production Floor A",
-      status: "Partial Issued",
-      priority: "High",
-      requestDate: "2024-09-16",
-      requiredDate: "2024-09-19",
-      totalItems: 15,
-      approver: "David Brown",
-      materials: [
-        { name: "Mesh Fabric", quantity: 40, unit: "meters", available: 25 },
-        { name: "Running Soles", quantity: 50, unit: "pairs", available: 50 },
-        { name: "Foam Padding", quantity: 20, unit: "sheets", available: 12 },
-      ],
-    },
-  ];
-
-  const filteredData = () => {
-    return getMaterialRequisitions().filter(
-      (req) =>
-        req.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.requestedBy.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+  // Fetch all material requests
+  const fetchMaterialList = async () => {
+    try {
+      const res = await api.get(`/material-requests/all`);
+      setMaterialRequisitions(res.data.data || []);
+    } catch (err) {
+      console.error("Failed to fetch material list", err);
+    }
   };
 
-  // Material Issue Dialog Component
+  useEffect(() => {
+    fetchMaterialList();
+  }, []);
+
+  const filteredData = () => {
+    return materialRequisitions.filter((req) => {
+      const card = req.productionCardId?.cardNumber || "";
+      const product = req.productionCardId?.productName || "";
+      return (
+        card.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    });
+  };
+
+  /* =====================================================
+   MaterialIssueDialog - opens for a single requisition
+   - fetches project's cost sections and maps items into the 5
+     sections by matching IDs against those cost rows.
+  ======================================================*/
   const MaterialIssueDialog = ({ requisition, open, onOpenChange }: any) => {
     const [issuedQuantities, setIssuedQuantities] = useState<
       Record<string, number>
     >({});
+    const [costLists, setCostLists] = useState<any>({
+      upper: [],
+      material: [],
+      component: [],
+      packaging: [],
+      miscellaneous: [],
+    });
+    const [loadingCosts, setLoadingCosts] = useState(false);
 
-    if (!requisition) return null;
+    useEffect(() => {
+      // reset when different requisition opens
+      setIssuedQuantities({});
+      setCostLists({
+        upper: [],
+        material: [],
+        component: [],
+        packaging: [],
+        miscellaneous: [],
+      });
+      if (open && requisition) {
+        loadCostsForProject(requisition);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, requisition]);
 
-    const handleIssueQuantityChange = (
-      materialName: string,
-      quantity: number
-    ) => {
+    const loadCostsForProject = async (req: any) => {
+      if (!req) return;
+      const projectId =
+        req.projectId?._id ||
+        req.projectId ||
+        (req.productionCardId?.projectId ?? null);
+
+      if (!projectId) {
+        console.warn(
+          "No projectId found on requisition; cannot load cost rows"
+        );
+        return;
+      }
+
+      try {
+        setLoadingCosts(true);
+        // fetch five sections in parallel
+        const [upperRes, componentRes, materialRes, packagingRes, miscRes] =
+          await Promise.all([
+            api
+              .get(`/projects/${projectId}/costs/upper`)
+              .catch(() => ({ data: { rows: [] } })),
+            api
+              .get(`/projects/${projectId}/costs/component`)
+              .catch(() => ({ data: { rows: [] } })),
+            api
+              .get(`/projects/${projectId}/costs/material`)
+              .catch(() => ({ data: { rows: [] } })),
+            api
+              .get(`/projects/${projectId}/costs/packaging`)
+              .catch(() => ({ data: { rows: [] } })),
+            api
+              .get(`/projects/${projectId}/costs/miscellaneous`)
+              .catch(() => ({ data: { rows: [] } })),
+          ]);
+
+        setCostLists({
+          upper: upperRes?.data?.rows || [],
+          component: componentRes?.data?.rows || [],
+          material: materialRes?.data?.rows || [],
+          packaging: packagingRes?.data?.rows || [],
+          miscellaneous: miscRes?.data?.rows || [],
+        });
+      } catch (err) {
+        console.error("Failed to load project costs", err);
+      } finally {
+        setLoadingCosts(false);
+      }
+    };
+
+    const handleIssueQuantityChange = (id: string, qty: number) => {
       setIssuedQuantities((prev) => ({
         ...prev,
-        [materialName]: quantity,
+        [id]: qty,
       }));
     };
 
-    const calculateBalance = (
-      required: number,
-      available: number,
-      issued: number
-    ) => {
-      return required - issued;
+    // Build lists by matching IDs (preferred) — fallback to name heuristics if missing
+    const sections = useMemo(() => {
+      if (!requisition) {
+        return {
+          upper: [],
+          material: [],
+          component: [],
+          packaging: [],
+          miscellaneous: [],
+        };
+      }
+
+      const mats: any[] = requisition.materials || [];
+      const comps: any[] = requisition.components || [];
+
+      // create sets of cost ids for quick matching
+      const upperIds = new Set(
+        (costLists.upper || []).map((r: any) => String(r._id))
+      );
+      const materialIds = new Set(
+        (costLists.material || []).map((r: any) => String(r._id))
+      );
+      const componentIds = new Set(
+        (costLists.component || []).map((r: any) => String(r._id))
+      );
+      const packagingIds = new Set(
+        (costLists.packaging || []).map((r: any) => String(r._id))
+      );
+      const miscIds = new Set(
+        (costLists.miscellaneous || []).map((r: any) => String(r._id))
+      );
+
+      // map function: try to match by id string, else fallback to name heuristics
+      const classifyMaterial = (m: any) => {
+        const idStr = String(m.id || m._id || m.idStr || "");
+        if (upperIds.has(idStr)) return "upper";
+        if (materialIds.has(idStr)) return "material";
+        // fallback: if name contains "upper" treat as upper
+        if ((m.name || "").toLowerCase().includes("upper")) return "upper";
+        // else default to material
+        return "material";
+      };
+
+      const classifyComponent = (c: any) => {
+        const idStr = String(c.id || c._id || c.idStr || "");
+        if (componentIds.has(idStr)) return "component";
+        if (packagingIds.has(idStr)) return "packaging";
+        if (miscIds.has(idStr)) return "miscellaneous";
+        // fallback heuristics
+        const name = (c.name || "").toLowerCase();
+        if (name.startsWith("c ")) return "component";
+        if (name.includes("pack")) return "packaging";
+        return "miscellaneous";
+      };
+
+      const outUpper: any[] = [];
+      const outMaterial: any[] = [];
+      const outComponent: any[] = [];
+      const outPackaging: any[] = [];
+      const outMisc: any[] = [];
+
+      mats.forEach((m) => {
+        const bucket = classifyMaterial(m);
+        if (bucket === "upper") outUpper.push(m);
+        else outMaterial.push(m);
+      });
+
+      comps.forEach((c) => {
+        const bucket = classifyComponent(c);
+        if (bucket === "component") outComponent.push(c);
+        else if (bucket === "packaging") outPackaging.push(c);
+        else outMisc.push(c);
+      });
+
+      return {
+        upper: outUpper,
+        material: outMaterial,
+        component: outComponent,
+        packaging: outPackaging,
+        miscellaneous: outMisc,
+      };
+    }, [requisition, costLists]);
+
+    // Issue materials: compute updated arrays and call API
+    const handleIssueMaterials = async () => {
+      if (!requisition) return;
+      try {
+        const reqId = requisition._id;
+        const projectId =
+          requisition.projectId?._id ||
+          requisition.projectId ||
+          (requisition.productionCardId?.projectId ?? null);
+
+        if (!projectId) {
+          throw new Error("projectId missing on requisition");
+        }
+
+        const updatedMaterials = (requisition.materials || []).map(
+          (item: any) => {
+            const issued = Number(issuedQuantities[item.id] || 0);
+            const available = Number(item.available || 0);
+            const requirement = Number(item.requirement || 0);
+            return {
+              ...item,
+              issued,
+              available,
+              balance: Math.max(0, requirement - (available + issued)),
+            };
+          }
+        );
+
+        const updatedComponents = (requisition.components || []).map(
+          (item: any) => {
+            const issued = Number(issuedQuantities[item.id] || 0);
+            const available = Number(item.available || 0);
+            const requirement = Number(item.requirement || 0);
+            return {
+              ...item,
+              issued,
+              available,
+              balance: Math.max(0, requirement - (available + issued)),
+            };
+          }
+        );
+
+        // decide status
+        const allIssued = [...updatedMaterials, ...updatedComponents].every(
+          (i) => Number(i.issued || 0) >= Number(i.requirement || 0)
+        );
+        const newStatus = allIssued ? "Issued" : "Partially Issued";
+
+        const body = {
+          materials: updatedMaterials,
+          components: updatedComponents,
+          status: newStatus,
+        };
+
+        await api.put(
+          `/projects/${projectId}/material-requests/${reqId}`,
+          body
+        );
+
+        // refresh list and close
+        await fetchMaterialList();
+        onOpenChange(false);
+        setSelectedRequisition(null);
+        alert("Materials issued successfully!");
+      } catch (err) {
+        console.error("Issue material failed", err);
+        alert("Failed to issue materials.");
+      }
     };
 
-    const handleIssueAll = () => {
-      // Issue all materials logic
-      console.log("Issuing materials:", requisition, issuedQuantities);
-      onOpenChange(false);
-    };
-
-    // Sample material requirements data
-    const materialRequirements = requisition.materials || [
-      {
-        name: "Upper",
-        quantity: 25,
-        unit: "pair/vth",
-        available: 120,
-        issued: 0,
-      },
-      {
-        name: "Lining_Skimh",
-        quantity: 25,
-        unit: "pair @ 15/-",
-        available: 150,
-        issued: 0,
-      },
-      {
-        name: "Lining_EVA",
-        quantity: 35,
-        unit: "3370 - 1.5mm 35pair",
-        available: 40,
-        issued: 0,
-      },
-      { name: "Foam", quantity: 7.5, unit: "gm", available: 85, issued: 0 },
-      {
-        name: "Velcro",
-        quantity: 1.25,
-        unit: "pair",
-        available: 95,
-        issued: 0,
-      },
-      { name: "Buckle", quantity: 2, unit: "pcs", available: 180, issued: 0 },
-      { name: "Trim", quantity: 10, unit: "pcs", available: 250, issued: 0 },
-    ];
+    if (!requisition) return null;
 
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-[96vw]! w-[96vw]! max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
-          {/* Sticky Header Section */}
-          <div className="sticky top-0 z-50 px-12 py-8 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-8">
-                <div className="w-16 h-16 bg-linear-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <Package className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <DialogTitle className="text-4xl font-semibold text-gray-900 mb-2">
-                    Material Issue Manager
-                  </DialogTitle>
-                  <DialogDescription className="text-xl text-gray-600">
-                    Issue materials from the store room to the production floor
-                    for this production card with real-time inventory tracking
-                  </DialogDescription>
-                </div>
+        <DialogContent
+          className="
+            !max-w-[95vw]
+            !w-[95vw]
+            !h-[95vh]
+            overflow-hidden
+            p-0
+            m-0
+            top-[2vh]
+            translate-y-0
+            flex flex-col
+          "
+        >
+          {/* HEADER */}
+          <div className="sticky top-0 z-50 px-10 py-6 bg-white border-b shadow-sm flex justify-between items-center">
+            <div className="flex items-center gap-6">
+              <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center shadow-md">
+                <Package className="w-8 h-8 text-white" />
               </div>
-              <div className="flex items-center gap-6">
-                <Button
-                  onClick={() => onOpenChange(false)}
-                  variant="ghost"
-                  size="sm"
-                  className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center"
-                  type="button"
-                >
-                  <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
-                </Button>
+
+              <div>
+                <DialogTitle className="text-3xl font-semibold">
+                  Issue Material
+                </DialogTitle>
+                <DialogDescription className="text-gray-600 text-lg">
+                  Issue materials for this production card
+                </DialogDescription>
               </div>
             </div>
+
+            <Button
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              className="h-12 w-12 rounded-full hover:bg-gray-100"
+            >
+              <X className="w-6 h-6 text-gray-600" />
+            </Button>
           </div>
 
-          {/* Scrollable Main Content */}
-          <div className="flex-1 overflow-y-auto scrollbar-hide">
-            <div className="px-12 py-10 space-y-8">
-              {/* Basic Product Details Section */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-6">
-                  <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                    <Package className="w-6 h-6 text-white" />
-                  </div>
-                  <h3 className="text-2xl font-semibold text-gray-900">
-                    Production Card Details
-                  </h3>
-                  <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
-                </div>
+          {/* CONTENT */}
+          <div className="flex-1 overflow-y-auto px-10 py-8 space-y-10">
+            <div className="bg-gray-50 p-6 rounded-xl border">
+              <h3 className="text-xl font-semibold flex items-center gap-3 mb-4">
+                <FileText className="w-6 h-6 text-blue-600" />
+                Production Card Details
+              </h3>
 
-                <div className="bg-gray-50 rounded-lg p-6">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">Card Number</p>
-                      <p className="text-base font-semibold text-gray-900">
-                        {requisition.productionCard || requisition.id}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">Product Name</p>
-                      <p className="text-base font-semibold text-gray-900">
-                        {requisition.productName || "Athletic Sneaker"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">Art & Colour</p>
-                      <p className="text-base font-semibold text-gray-900">
-                        {requisition.artNumber || "ART-2025-001"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">Color</p>
-                      <p className="text-base font-semibold text-blue-600">
-                        {requisition.color || "Navy Blue"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">Request Date</p>
-                      <p className="text-base font-semibold text-gray-900">
-                        {requisition.requestDate || "2025-01-15"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">Requested By</p>
-                      <p className="text-base font-semibold text-gray-900">
-                        {requisition.requestedBy || "Production Team"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">Department</p>
-                      <p className="text-base font-semibold text-gray-900">
-                        {requisition.department || "Production Floor A"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">
-                        Total Materials
-                      </p>
-                      <p className="text-base font-semibold text-green-600">
-                        {materialRequirements.length} items
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Material Requirements & Issue Section */}
-              <div className="space-y-8">
-                <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-4">
-                  <Target className="w-6 h-6 text-blue-500" />
-                  Material Requirements & Allocation
-                </h3>
-
-                {/* Material Requirements Table - Exact Same as ProductionCardFormDialog */}
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-8">
-                  {/* Materials Requirements Table */}
-                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="bg-gray-100 border-b-2 border-gray-200">
-                            <th className="px-6 py-4 text-left font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
-                              ITEM
-                            </th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-900 border-r border-gray-300 min-w-[200px]">
-                              SPECIFICATION
-                            </th>
-                            <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
-                              REQUIREMENT
-                            </th>
-                            <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
-                              AVAILABLE
-                            </th>
-                            <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[100px]">
-                              ISSUED
-                            </th>
-                            <th className="px-6 py-4 text-center font-semibold text-gray-900 min-w-[100px]">
-                              BALANCE
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {/* Materials Section */}
-                          <tr className="border-b border-gray-200 bg-cyan-100">
-                            <td
-                              className="px-6 py-3 font-semibold text-cyan-800 border-r border-gray-300"
-                              colSpan={6}
-                            >
-                              MATERIALS USED
-                            </td>
-                          </tr>
-                          <tr className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                              Upper
-                            </td>
-                            <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                              Rexine
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                              {requisition.cardQuantity
-                                ? `${
-                                    parseInt(requisition.cardQuantity || "1") *
-                                    25
-                                  } pair/vth`
-                                : "25 pair/vth"}
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <span className="text-center">
-                                {materialRequirements.find(
-                                  (m) => m.name === "Upper"
-                                )?.available || 120}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={issuedQuantities["Upper"] || ""}
-                                onChange={(e) =>
-                                  handleIssueQuantityChange(
-                                    "Upper",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-400">
-                              {Math.max(
-                                0,
-                                (requisition.cardQuantity
-                                  ? parseInt(requisition.cardQuantity || "1") *
-                                    25
-                                  : 25) -
-                                  (materialRequirements.find(
-                                    (m) => m.name === "Upper"
-                                  )?.available || 120) -
-                                  (issuedQuantities["Upper"] || 0)
-                              )}
-                            </td>
-                          </tr>
-                          <tr className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                              Lining
-                            </td>
-                            <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                              Skimh
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                              {requisition.cardQuantity
-                                ? `${
-                                    parseInt(requisition.cardQuantity || "1") *
-                                    25
-                                  } pair @ 15/-`
-                                : "25 pair @ 15/-"}
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <span className="text-center">
-                                {materialRequirements.find(
-                                  (m) => m.name === "Lining_Skimh"
-                                )?.available || 150}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={issuedQuantities["Lining_Skimh"] || ""}
-                                onChange={(e) =>
-                                  handleIssueQuantityChange(
-                                    "Lining_Skimh",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-400">
-                              {Math.max(
-                                0,
-                                (requisition.cardQuantity
-                                  ? parseInt(requisition.cardQuantity || "1") *
-                                    25
-                                  : 25) -
-                                  (materialRequirements.find(
-                                    (m) => m.name === "Lining_Skimh"
-                                  )?.available || 150) -
-                                  (issuedQuantities["Lining_Skimh"] || 0)
-                              )}
-                            </td>
-                          </tr>
-                          <tr className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                              Lining
-                            </td>
-                            <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                              EVA
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                              3370 - 1.5mm 35pair
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <span className="text-center">
-                                {materialRequirements.find(
-                                  (m) => m.name === "Lining_EVA"
-                                )?.available || 40}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={issuedQuantities["Lining_EVA"] || ""}
-                                onChange={(e) =>
-                                  handleIssueQuantityChange(
-                                    "Lining_EVA",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-400">
-                              {Math.max(
-                                0,
-                                35 -
-                                  (materialRequirements.find(
-                                    (m) => m.name === "Lining_EVA"
-                                  )?.available || 40) -
-                                  (issuedQuantities["Lining_EVA"] || 0)
-                              )}
-                            </td>
-                          </tr>
-                          <tr className="border-b border-gray-200 bg-cyan-50">
-                            <td
-                              className="px-6 py-3 text-sm text-cyan-700 border-r border-gray-300 italic"
-                              colSpan={6}
-                            >
-                              Total Materials: 3 different materials used in
-                              production
-                            </td>
-                          </tr>
-
-                          {/* Components Section */}
-                          <tr className="border-b border-gray-200 bg-purple-100">
-                            <td
-                              className="px-6 py-3 font-semibold text-purple-800 border-r border-gray-300"
-                              colSpan={6}
-                            >
-                              COMPONENTS USED
-                            </td>
-                          </tr>
-                          <tr className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                              Foam
-                            </td>
-                            <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                              -
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                              {requisition.cardQuantity
-                                ? `${(
-                                    parseFloat(
-                                      requisition.cardQuantity || "1"
-                                    ) * 7.5
-                                  ).toFixed(1)} gm`
-                                : "7.5 gm"}
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <span className="text-center">
-                                {materialRequirements.find(
-                                  (m) => m.name === "Foam"
-                                )?.available || 85}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="0.1"
-                                value={issuedQuantities["Foam"] || ""}
-                                onChange={(e) =>
-                                  handleIssueQuantityChange(
-                                    "Foam",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-400">
-                              {Math.max(
-                                0,
-                                (requisition.cardQuantity
-                                  ? parseFloat(
-                                      requisition.cardQuantity || "1"
-                                    ) * 7.5
-                                  : 7.5) -
-                                  (materialRequirements.find(
-                                    (m) => m.name === "Foam"
-                                  )?.available || 85) -
-                                  (issuedQuantities["Foam"] || 0)
-                              ).toFixed(1)}
-                            </td>
-                          </tr>
-                          <tr className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                              Velcro
-                            </td>
-                            <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                              75mm
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                              {requisition.cardQuantity
-                                ? `${(
-                                    parseFloat(
-                                      requisition.cardQuantity || "1"
-                                    ) * 1.25
-                                  ).toFixed(2)} pair`
-                                : "1.25 pair"}
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <span className="text-center">
-                                {materialRequirements.find(
-                                  (m) => m.name === "Velcro"
-                                )?.available || 95}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="0.1"
-                                value={issuedQuantities["Velcro"] || ""}
-                                onChange={(e) =>
-                                  handleIssueQuantityChange(
-                                    "Velcro",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-400">
-                              {Math.max(
-                                0,
-                                (requisition.cardQuantity
-                                  ? parseFloat(
-                                      requisition.cardQuantity || "1"
-                                    ) * 1.25
-                                  : 1.25) -
-                                  (materialRequirements.find(
-                                    (m) => m.name === "Velcro"
-                                  )?.available || 95) -
-                                  (issuedQuantities["Velcro"] || 0)
-                              ).toFixed(2)}
-                            </td>
-                          </tr>
-                          <tr className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                              Buckle
-                            </td>
-                            <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                              -
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                              {requisition.cardQuantity
-                                ? `${
-                                    parseInt(requisition.cardQuantity || "1") *
-                                    2
-                                  } pcs`
-                                : "2 pcs"}
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <span className="text-center">
-                                {materialRequirements.find(
-                                  (m) => m.name === "Buckle"
-                                )?.available || 180}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={issuedQuantities["Buckle"] || ""}
-                                onChange={(e) =>
-                                  handleIssueQuantityChange(
-                                    "Buckle",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-400">
-                              {Math.max(
-                                0,
-                                (requisition.cardQuantity
-                                  ? parseInt(requisition.cardQuantity || "1") *
-                                    2
-                                  : 2) -
-                                  (materialRequirements.find(
-                                    (m) => m.name === "Buckle"
-                                  )?.available || 180) -
-                                  (issuedQuantities["Buckle"] || 0)
-                              )}
-                            </td>
-                          </tr>
-                          <tr className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="px-6 py-4 font-medium text-gray-900 border-r border-gray-300">
-                              Trim
-                            </td>
-                            <td className="px-6 py-4 text-gray-600 border-r border-gray-300">
-                              sticker
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-900 border-r border-gray-300">
-                              {requisition.cardQuantity
-                                ? `${
-                                    parseInt(requisition.cardQuantity || "1") *
-                                    10
-                                  } pcs`
-                                : "10 pcs"}
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <span className="text-center">
-                                {materialRequirements.find(
-                                  (m) => m.name === "Trim"
-                                )?.available || 250}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center border-r border-gray-300">
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                className="w-20 h-8 text-center border-gray-300"
-                                min="0"
-                                step="1"
-                                value={issuedQuantities["Trim"] || ""}
-                                onChange={(e) =>
-                                  handleIssueQuantityChange(
-                                    "Trim",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-6 py-4 text-center text-gray-400">
-                              {Math.max(
-                                0,
-                                (requisition.cardQuantity
-                                  ? parseInt(requisition.cardQuantity || "1") *
-                                    10
-                                  : 10) -
-                                  (materialRequirements.find(
-                                    (m) => m.name === "Trim"
-                                  )?.available || 250) -
-                                  (issuedQuantities["Trim"] || 0)
-                              )}
-                            </td>
-                          </tr>
-                          <tr className="border-b border-gray-200 bg-purple-50">
-                            <td
-                              className="px-6 py-3 text-sm text-purple-700 border-r border-gray-300 italic"
-                              colSpan={6}
-                            >
-                              Total Components: 4 different components used in
-                              production
-                            </td>
-                          </tr>
-
-                          {/* Summary Row */}
-                          <tr className="border-t-2 border-gray-300 bg-blue-100">
-                            <td
-                              className="px-6 py-4 font-bold text-blue-900 border-r border-gray-300"
-                              colSpan={2}
-                            >
-                              TOTAL ITEMS FOR PRODUCTION
-                            </td>
-                            <td className="px-6 py-4 text-center font-bold text-blue-900 border-r border-gray-300">
-                              {requisition.cardQuantity || "1"} units
-                            </td>
-                            <td className="px-6 py-4 text-center font-semibold text-blue-700 border-r border-gray-300">
-                              Available
-                            </td>
-                            <td className="px-6 py-4 text-center font-semibold text-blue-700 border-r border-gray-300">
-                              Pending
-                            </td>
-                            <td className="px-6 py-4 text-center font-semibold text-blue-700">
-                              Remaining
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Issue Summary Card */}
-                <div className="bg-linear-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6 shadow-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center">
-                        <CheckCircle className="w-6 h-6 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-blue-900">
-                          Issue Summary
-                        </h3>
-                        <p className="text-sm text-blue-700">
-                          Total Items: {Object.keys(issuedQuantities).length} |
-                          Total Quantity Issued:{" "}
-                          {Object.values(issuedQuantities).reduce(
-                            (sum, qty) => sum + qty,
-                            0
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-blue-600 font-semibold">
-                        Issue Status
-                      </p>
-                      <p className="text-xl font-mono font-bold text-blue-800">
-                        {Object.values(issuedQuantities).reduce(
-                          (sum, qty) => sum + qty,
-                          0
-                        ) > 0
-                          ? "Ready"
-                          : "Pending"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Sticky Action Buttons */}
-                <div className="sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200/80 shadow-2xl shadow-gray-900/10 z-50">
-                  <div className="px-12 py-6 flex justify-end gap-4">
-                    <Button
-                      onClick={() => onOpenChange(false)}
-                      variant="outline"
-                      size="lg"
-                      className="px-8 py-3 h-12 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 shadow-sm"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleIssueAll}
-                      size="lg"
-                      className="px-8 py-3 h-12 bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 border-0"
-                    >
-                      <Send className="w-5 h-5 mr-2" />
-                      Issue Materials
-                    </Button>
-                  </div>
-                </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <Info
+                  label="Card Number"
+                  value={requisition?.productionCardId?.cardNumber}
+                />
+                <Info
+                  label="Product"
+                  value={requisition?.productionCardId?.productName}
+                />
+                <Info label="Requested By" value={requisition?.requestedBy} />
+                <Info label="Status" value={requisition?.status} highlight />
               </div>
             </div>
+
+            {/* Material sections */}
+            <MaterialSectionTable
+              sections={[
+                {
+                  label: "UPPER MATERIAL",
+                  color: "bg-cyan-100 text-cyan-900",
+                  items: sections.upper,
+                },
+                {
+                  label: "MATERIAL USED",
+                  color: "bg-cyan-200 text-cyan-900",
+                  items: sections.material,
+                },
+                {
+                  label: "COMPONENT USED",
+                  color: "bg-purple-100 text-purple-900",
+                  items: sections.component,
+                },
+                {
+                  label: "PACKAGING USED",
+                  color: "bg-yellow-100 text-yellow-900",
+                  items: sections.packaging,
+                },
+                {
+                  label: "MISCELLANEOUS USED",
+                  color: "bg-rose-100 text-rose-900",
+                  items: sections.miscellaneous,
+                },
+              ]}
+              issuedQuantities={issuedQuantities}
+              onIssueChange={handleIssueQuantityChange}
+              loadingCosts={loadingCosts}
+            />
+          </div>
+
+          {/* FOOTER */}
+          <div className="sticky bottom-0 p-6 border-t bg-white flex justify-end gap-4">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleIssueMaterials}
+            >
+              Issue Materials
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
     );
   };
 
+  /* ----------------------
+     Small subcomponents
+  ------------------------*/
+  const Info = ({ label, value, highlight = false }: any) => (
+    <div>
+      <p className="text-gray-500 text-sm mb-1">{label}</p>
+      <p
+        className={`font-semibold ${
+          highlight ? "text-blue-600" : "text-gray-900"
+        }`}
+      >
+        {value ?? "-"}
+      </p>
+    </div>
+  );
+
+  const MaterialSectionTable = ({
+    sections,
+    issuedQuantities,
+    onIssueChange,
+    loadingCosts,
+  }: any) => {
+    return (
+      <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-100 border-b">
+              <th className="px-6 py-3 border-r text-left">ITEM</th>
+              <th className="px-6 py-3 border-r text-left">SPECIFICATION</th>
+              <th className="px-6 py-3 border-r text-center">REQUIRED</th>
+              <th className="px-6 py-3 border-r text-center">AVAILABLE</th>
+              <th className="px-6 py-3 border-r text-center">ISSUE NOW</th>
+              <th className="px-6 py-3 text-center">BALANCE</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {loadingCosts && (
+              <tr>
+                <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  Loading cost mapping...
+                </td>
+              </tr>
+            )}
+
+            {sections.map((sec: any) => (
+              <React.Fragment key={sec.label}>
+                <tr className={`${sec.color} border-y`}>
+                  <td colSpan={6} className="px-6 py-2 font-semibold">
+                    {sec.label}
+                  </td>
+                </tr>
+
+                {sec.items.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-6 py-3 text-center text-gray-400"
+                    >
+                      No items
+                    </td>
+                  </tr>
+                )}
+
+                {sec.items.map((item: any) => (
+                  <IssueRow
+                    key={item.id || item._id}
+                    item={item}
+                    issuedQuantities={issuedQuantities}
+                    onIssueChange={onIssueChange}
+                  />
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const IssueRow = ({ item, issuedQuantities, onIssueChange }: any) => {
+    const id = item.id || item._id;
+    const req = Number(item.requirement || 0);
+    const avail = Number(item.available || 0);
+    const issued = Number(issuedQuantities[id] || 0);
+    const balance = Math.max(0, req - (avail + issued));
+
+    return (
+      <tr className="border-b hover:bg-gray-50">
+        <td className="px-6 py-3 border-r">{item.name}</td>
+        <td className="px-6 py-3 border-r">{item.specification}</td>
+        <td className="px-6 py-3 border-r text-center font-semibold text-blue-700">
+          {req}
+        </td>
+        <td className="px-6 py-3 border-r text-center">{avail}</td>
+
+        <td className="px-6 py-3 border-r text-center">
+          <Input
+            type="number"
+            min={0}
+            value={issued}
+            className="w-20 text-center"
+            onChange={(e) => onIssueChange(id, parseFloat(e.target.value) || 0)}
+          />
+        </td>
+
+        <td className="px-6 py-3 text-center font-semibold">{balance}</td>
+      </tr>
+    );
+  };
+
+  /* ----------------------
+     Main render: list & dialog
+  ------------------------*/
   return (
     <div className="space-y-6">
-      {/* Search and Filters */}
-      <div className="flex items-center gap-4 mb-6">
+      {/* SEARCH BAR */}
+      <div className="flex items-center gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <Input
             placeholder="Search issue material..."
             value={searchTerm}
@@ -841,111 +551,68 @@ export function IssueMaterial({
           />
         </div>
         <Button variant="outline">
-          <Filter className="w-4 h-4 mr-2" />
-          Filters
+          <Filter className="w-4 h-4 mr-2" /> Filters
         </Button>
       </div>
 
-      {/* Material Requisitions Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Card Number
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Product Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Art and Colour
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Create Date
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredData().map((req: any) => (
-                <tr key={req.id} className="hover:bg-gray-50 transition-colors">
-                  <td
-                    className="px-6 py-4 whitespace-nowrap cursor-pointer hover:bg-blue-50 transition-colors"
+      {/* TABLE */}
+      <div className="bg-white rounded-lg shadow border overflow-auto">
+        <table className="w-full">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="px-6 py-3 text-left">Card Number</th>
+              <th className="px-6 py-3 text-left">Product Name</th>
+              <th className="px-6 py-3 text-left">Status</th>
+              <th className="px-6 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {filteredData().map((req) => (
+              <tr key={req._id} className="border-b hover:bg-gray-50">
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 bg-blue-100 rounded flex items-center justify-center">
+                      <FileText className="text-blue-600 w-5 h-5" />
+                    </div>
+                    <div>{req.productionCardId?.cardNumber}</div>
+                  </div>
+                </td>
+
+                <td className="px-6 py-4">
+                  {req.productionCardId?.productName || "-"}
+                </td>
+
+                <td className="px-6 py-4 font-semibold">{req.status}</td>
+
+                <td className="px-6 py-4 text-right">
+                  <Button
+                    size="sm"
+                    className="bg-green-600 text-white hover:bg-green-700 mr-2"
                     onClick={() => setSelectedRequisition(req)}
                   >
-                    <div className="flex items-center">
-                      <div className="shrink-0 h-10 w-10">
-                        <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <FileText className="w-5 h-5 text-blue-600" />
-                        </div>
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
-                          {req.productionCard || req.id}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          Production Card
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">
-                      {req.productName || "Athletic Sneaker"}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      Size: {req.size || "7-11"}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">
-                      {req.artNumber || "ART-2025-001"}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      Color: {req.color || "Navy Blue"}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">
-                    <div>{req.requestDate || "2025-01-15"}</div>
-                    <div className="text-gray-500">
-                      {req.requestTime || "10:30 AM"}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                        onClick={() => setSelectedRequisition(req)}
-                      >
-                        <Send className="w-4 h-4 mr-1" />
-                        Issue
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-red-200 text-red-600 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <Send className="w-4 h-4 mr-1" /> Issue
+                  </Button>
+
+                  <Button size="sm" variant="outline" className="text-red-600">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* Material Issue Dialog */}
+      {/* ISSUE DIALOG */}
       <MaterialIssueDialog
         requisition={selectedRequisition}
         open={!!selectedRequisition}
-        onOpenChange={(open: boolean) => !open && setSelectedRequisition(null)}
+        onOpenChange={(open: boolean) => {
+          if (!open) {
+            setSelectedRequisition(null);
+          }
+        }}
       />
     </div>
   );

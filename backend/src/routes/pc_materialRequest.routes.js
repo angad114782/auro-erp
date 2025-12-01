@@ -15,4 +15,5 @@ router.put("/:requestId", ctrl.updateMaterialRequest);
 // DELETE
 router.delete("/:requestId", ctrl.deleteMaterialRequest);
 
+// router.get("/all/requests", ctrl.fetchmateriallist);
 export default router;
