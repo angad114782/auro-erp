@@ -609,7 +609,12 @@ export function TentativeCostDialog({
           ...summaryData,
           // Ensure all number fields have safe defaults
           additionalCosts: Number(summaryData.additionalCosts) || 0,
-          profitMargin: Number(summaryData.profitMargin) || 25,
+          profitMargin:
+            summaryData.profitMargin === undefined ||
+            summaryData.profitMargin === null
+              ? 0
+              : Number(summaryData.profitMargin),
+
           upperTotal: Number(summaryData.upperTotal) || 0,
           componentTotal: Number(summaryData.componentTotal) || 0,
           materialTotal: Number(summaryData.materialTotal) || 0,
@@ -778,20 +783,20 @@ export function TentativeCostDialog({
   };
 
   const handleProfitMarginChange = (raw: string) => {
-    // Allow empty input
-    if (raw === "") {
-      setCostSummary((prev) => ({ ...prev, profitMargin: "" as any }));
-      setRealTimeSummary(null);
-      return;
+    let value = Number(raw);
+
+    // If user clears the field → treat as 0%
+    if (raw.trim() === "" || isNaN(value)) {
+      value = 0;
     }
 
-    const value = Number(raw);
-    if (isNaN(value)) return; // ignore invalid
+    // clamp 0–100
+    value = Math.max(0, Math.min(value, 100));
 
     const newProfitMargin = value;
-
     const newAdditionalCosts = costSummary.additionalCosts || 0;
 
+    // compute realtime costs
     const totalAllCosts =
       (costSummary.upperTotal || 0) +
       (costSummary.componentTotal || 0) +
@@ -800,21 +805,20 @@ export function TentativeCostDialog({
       (costSummary.miscTotal || 0) +
       (costSummary.labourTotal || 0);
 
-    const subtotalBeforeProfit = totalAllCosts + newAdditionalCosts;
-    const profitAmount = Math.round(
-      (subtotalBeforeProfit * newProfitMargin) / 100
-    );
-    const tentativeCost = subtotalBeforeProfit + profitAmount;
+    const subtotal = totalAllCosts + newAdditionalCosts;
+    const profitAmount = Math.round((subtotal * newProfitMargin) / 100);
+    const tentativeCost = subtotal + profitAmount;
 
+    // realtime display
     setRealTimeSummary({
       ...costSummary,
       profitMargin: newProfitMargin,
-      additionalCosts: newAdditionalCosts,
       totalAllCosts,
       profitAmount,
       tentativeCost,
     });
 
+    // store value for saving
     setCostSummary((prev) => ({
       ...prev,
       profitMargin: newProfitMargin,
@@ -1079,7 +1083,12 @@ export function TentativeCostDialog({
           ...summaryData,
           // Ensure all number fields have safe defaults
           additionalCosts: Number(summaryData.additionalCosts) || 0,
-          profitMargin: Number(summaryData.profitMargin) || 25,
+          profitMargin:
+            summaryData.profitMargin === undefined ||
+            summaryData.profitMargin === null
+              ? 0
+              : Number(summaryData.profitMargin),
+
           upperTotal: Number(summaryData.upperTotal) || 0,
           componentTotal: Number(summaryData.componentTotal) || 0,
           materialTotal: Number(summaryData.materialTotal) || 0,
@@ -1109,7 +1118,8 @@ export function TentativeCostDialog({
     try {
       const payload = {
         additionalCosts: Number(costSummary.additionalCosts) || 0,
-        profitMargin: Number(costSummary.profitMargin) || 25,
+        profitMargin: Number(costSummary.profitMargin) || 0,
+
         remarks: costSummary.remarks || "",
       };
 
@@ -1462,11 +1472,7 @@ export function TentativeCostDialog({
                     <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <Input
                       type="number"
-                      value={
-                        displaySummary.profitMargin === ""
-                          ? ""
-                          : displaySummary.profitMargin
-                      }
+                      value={displaySummary.profitMargin ?? 0}
                       onChange={(e) => handleProfitMarginChange(e.target.value)}
                       className="pl-10"
                       placeholder="Enter profit margin %"

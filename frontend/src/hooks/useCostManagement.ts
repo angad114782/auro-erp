@@ -58,7 +58,12 @@ export const useCostManagement = (projectId?: string) => {
       if (summaryData) {
         setCostSummary({
           additionalCosts: Number(summaryData.additionalCosts) || 0,
-          profitMargin: Number(summaryData.profitMargin) || 25,
+          profitMargin:
+            summaryData.profitMargin === undefined ||
+            summaryData.profitMargin === null
+              ? 0
+              : Number(summaryData.profitMargin),
+
           remarks: summaryData.remarks || "",
           upperTotal: Number(summaryData.upperTotal) || 0,
           componentTotal: Number(summaryData.componentTotal) || 0,
