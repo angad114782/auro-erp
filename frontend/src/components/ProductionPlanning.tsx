@@ -413,7 +413,7 @@ export function ProductionPlanning() {
 
             // color / art colour
             artColour: proj.color || doc.colorSnapshot || "",
-            assignPerson: proj.assignPerson|| "",
+            assignPerson: proj.assignPerson || "",
             color: proj.color || doc.colorSnapshot || "",
 
             // quantity from PO
@@ -1231,7 +1231,13 @@ export function ProductionPlanning() {
       setIsDeletingEntryId(null);
     }
   };
-
+  // Add this function near other handler functions
+  const handleRefreshCalendar = async () => {
+    if (selectedView === "calendar") {
+      await fetchCalendarEntries();
+      toast.success("Calendar refreshed");
+    }
+  };
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1826,17 +1832,12 @@ export function ProductionPlanning() {
                   </div>
 
                   {/* Add Production Card Button */}
+                  {/* Add Production Card Button */}
                   <Button
                     onClick={() => {
-                      // Default to current viewing month's first day
-                      const defaultDate = new Date(
-                        currentDate.getFullYear(),
-                        currentDate.getMonth(),
-                        1
-                      )
-                        .toISOString()
-                        .split("T")[0];
-                      setSelectedCalendarDate(defaultDate);
+                      // Default to today's date instead of first day of month
+                      const today = new Date().toISOString().split("T")[0];
+                      setSelectedCalendarDate(today);
                       setIsAddCardDialogOpen(true);
                     }}
                     className="bg-linear-to-r from-[#0c9dcb] to-[#26b4e0] hover:from-[#0a8bb5] hover:to-[#1ea3c9] text-white shadow-lg hover:shadow-xl transition-all duration-200 h-10 px-6"
@@ -2344,11 +2345,29 @@ export function ProductionPlanning() {
       />
 
       {/* Add Production Card Dialog (from calendar) */}
+      {/* Add Production Card Dialog (from calendar) */}
       <AddProductionCardDialog
         open={isAddCardDialogOpen}
-        onOpenChange={setIsAddCardDialogOpen}
+        onOpenChange={(open) => {
+          setIsAddCardDialogOpen(open);
+          // When dialog closes, refresh calendar if we were adding
+          if (!open) {
+            // Small delay to ensure backend processed the request
+            setTimeout(() => {
+              if (selectedView === "calendar") {
+                fetchCalendarEntries();
+              }
+            }, 300);
+          }
+        }}
         selectedDate={selectedCalendarDate}
-        onSave={handleSaveProductionCard}
+        onSave={(newCard) => {
+          console.log("New calendar card created:", newCard);
+          // Immediately refresh the calendar view
+          if (selectedView === "calendar") {
+            fetchCalendarEntries();
+          }
+        }}
       />
 
       {/* View Production Card Dialog */}

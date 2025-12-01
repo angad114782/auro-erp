@@ -197,6 +197,7 @@ export function AddProductionCardDialog({
   };
 
   // Submit handler: posts to /calendar (matches backend service keys)
+  // In AddProductionCardDialog.tsx - Update handleSubmit function
   const handleSubmit = async () => {
     if (
       !formData.productName ||
@@ -207,10 +208,9 @@ export function AddProductionCardDialog({
       return;
     }
 
-    // Build payload exactly matching service expectation
+    // Build payload
     const payload: any = {
-      projectId: selectedProjectId, // REQUIRED by service (must be valid ObjectId). If null, service will error.
-      // We still include a snapshot as fallback
+      projectId: selectedProjectId,
       projectSnapshot: selectedProjectSnapshot || {
         autoCode: formData.productCode,
         artName: formData.productName,
@@ -223,8 +223,7 @@ export function AddProductionCardDialog({
         poRef: null,
       },
       scheduling: {
-        // IMPORTANT: backend expects scheduling.scheduleDate
-        scheduleDate: formData.productionDate, // ISO date string e.g. "2025-09-01"
+        scheduleDate: formData.productionDate,
         assignedPlant: formData.assignedPlant || "",
         soleFrom: formData.soleFrom || "",
         soleColor: formData.soleColor || "",
@@ -243,9 +242,15 @@ export function AddProductionCardDialog({
       const res = await api.post("/calendar", payload);
       console.log("POST /calendar response:", res.data);
       const created = res.data?.data ?? res.data;
+
       toast.success(`Production scheduled for ${formData.productName}`);
-      onSave && onSave(created);
-      // reset
+
+      // IMPORTANT: Call onSave with the created data
+      if (onSave) {
+        onSave(created);
+      }
+
+      // Reset and close
       handleClearSelection();
       onOpenChange(false);
     } catch (err: any) {
