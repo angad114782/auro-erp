@@ -252,7 +252,8 @@ export function IssueMaterial({
 
         const updatedMaterials = (requisition.materials || []).map(
           (item: any) => {
-            const issued = Number(issuedQuantities[item.id] || 0);
+            const issued = Number(issuedQuantities[String(item.id)] || 0);
+
             const available = Number(item.available || 0);
             const requirement = Number(item.requirement || 0);
             return {
@@ -364,7 +365,7 @@ export function IssueMaterial({
                 />
                 <Info
                   label="Product"
-                  value={requisition?.productionCardId?.productName}
+                  value={requisition?.projectId?.artName || "-"}
                 />
                 <Info label="Requested By" value={requisition?.requestedBy} />
                 <Info label="Status" value={requisition?.status} highlight />
@@ -504,19 +505,25 @@ export function IssueMaterial({
   };
 
   const IssueRow = ({ item, issuedQuantities, onIssueChange }: any) => {
-    const id = item.id || item._id;
+    const id = String(item.id || item._id); // ✅ MUST STRINGIFY
     const req = Number(item.requirement || 0);
     const avail = Number(item.available || 0);
+
+    // 🔥 FIX: ensure correct quantity is read
     const issued = Number(issuedQuantities[id] || 0);
+
+    // 🔥 FIX: correct live balance calculation
     const balance = Math.max(0, req - (avail + issued));
 
     return (
       <tr className="border-b hover:bg-gray-50">
         <td className="px-6 py-3 border-r">{item.name}</td>
         <td className="px-6 py-3 border-r">{item.specification}</td>
+
         <td className="px-6 py-3 border-r text-center font-semibold text-blue-700">
           {req}
         </td>
+
         <td className="px-6 py-3 border-r text-center">{avail}</td>
 
         <td className="px-6 py-3 border-r text-center">
@@ -525,7 +532,9 @@ export function IssueMaterial({
             min={0}
             value={issued}
             className="w-20 text-center"
-            onChange={(e) => onIssueChange(id, parseFloat(e.target.value) || 0)}
+            onChange={
+              (e) => onIssueChange(id, Number(e.target.value) || 0) // 🔥 ID FIXED
+            }
           />
         </td>
 
@@ -579,9 +588,7 @@ export function IssueMaterial({
                   </div>
                 </td>
 
-                <td className="px-6 py-4">
-                  {req.productionCardId?.productName || "-"}
-                </td>
+                <td className="px-6 py-4">{req.projectId?.artName || "-"}</td>
 
                 <td className="px-6 py-4 font-semibold">{req.status}</td>
 
