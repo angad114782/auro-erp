@@ -81,7 +81,10 @@
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
 }
-
+.export-safe * {
+  color-scheme: light;
+  forced-color-adjust: none;
+}
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

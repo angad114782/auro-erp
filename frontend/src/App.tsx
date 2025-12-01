@@ -72,7 +72,7 @@ function AppContent(): React.JSX.Element {
       case "rd-management":
         return <RDManagement />;
       case "production":
-        return <ProductionManagement currentSubModule={currentSubModule} />;
+        return <ProductionManagement />;
       case "inventory":
         return <InventoryManagement currentSubModule={currentSubModule} />;
       case "delivery":

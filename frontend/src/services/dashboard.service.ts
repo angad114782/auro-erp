@@ -1,6 +1,24 @@
 import api from "../lib/api";
 
 export const dashboardService = {
+  // Dashboard aggregated endpoint
+  async getDashboard() {
+    try {
+      const response = await api.get("/dashboard");
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching dashboard:", error);
+      return {
+        projects: [],
+        brands: [],
+        categories: [],
+        users: [],
+        vendors: [],
+        inventory: [],
+        companies: [],
+      };
+    }
+  },
   // Projects
   async getProjects() {
     try {

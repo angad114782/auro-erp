@@ -23,15 +23,12 @@ import { ProductionDashboard } from "./ProductionDashboard";
 import ProductionPlanning from "./ProductionPlanning";
 import { ProductionAnalytics } from "./ProductionAnalytics";
 import { ProductionTrackingTable } from "./ProductionTrackingTable";
+import { useERP } from "../lib/stores/erpContext";
 
-interface ProductionManagementProps {
-  currentSubModule?: string;
-}
-
-export function ProductionManagement({
-  currentSubModule,
-}: ProductionManagementProps) {
+export function ProductionManagement() {
   const { productionOrders, productionCards } = useERPStore();
+
+  const { currentSubModule, handleModuleChange } = useERP();
   const [selectedSubModule, setSelectedSubModule] = useState("");
   const [selectedTab, setSelectedTab] = useState("production-cards");
   const [showStartProductionDialog, setShowStartProductionDialog] =
