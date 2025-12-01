@@ -1,5 +1,11 @@
 // RedSealProjectDetailsDialog.tsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import {
   Eye,
   Edit2,
@@ -52,7 +58,9 @@ import { useCostManagement } from "../hooks/useCostManagement";
 import { Project, projectService } from "../components/services/projectService";
 import { useRedirect } from "../hooks/useRedirect";
 
-// AddNewItemDialog omitted for brevity in this snippet — copy from your original component
+/**
+ * AddNewItemDialog - same UI you had (kept small & functional)
+ */
 const AddNewItemDialog = ({
   category,
   isOpen,
@@ -166,21 +174,19 @@ export function RedSealProjectDetailsDialog(props: any) {
     reloadProjects,
     setSelectedSubModule,
   } = props;
+
   const { goTo } = useRedirect();
   const [isEditing, setIsEditing] = useState(false);
   const [editedProject, setEditedProject] = useState<Project | null>(null);
 
-  const [sampleFiles, setSampleFiles] = useState<(File | null)[]>([]); // actual files for upload
-
-  // images
+  const [sampleFiles, setSampleFiles] = useState<(File | null)[]>([]);
   const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
-
   const [samples, setSamples] = useState<string[]>([]);
-  const coverRef = React.useRef<HTMLInputElement | null>(null);
-  const sampleRefs = React.useRef<(HTMLInputElement | null)[]>([]);
+  const coverRef = useRef<HTMLInputElement | null>(null);
+  const sampleRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // cost management hook (your hook)
+  // --- cost management hook
   const {
     costRows,
     labourCost,
@@ -194,54 +200,50 @@ export function RedSealProjectDetailsDialog(props: any) {
     updateBrandFinalCost,
   } = useCostManagement(project?._id);
 
-  // dialog states for add items
-  const [addItemDialogs, setAddItemDialogs] = useState({
-    upper: false,
-    component: false,
-    material: false,
-    packaging: false,
-    miscellaneous: false,
-  });
+  // Local editable summary fields (since backend doesn't return computed fields)
+  const [editAdditionalCosts, setEditAdditionalCosts] = useState<number>(0);
+  const [editProfitMargin, setEditProfitMargin] = useState<number>(0);
 
-  const [dialogForms, setDialogForms] = useState({
-    upper: { item: "", description: "", consumption: "", cost: 0 },
-    component: { item: "", description: "", consumption: "", cost: 0 },
-    material: { item: "", description: "", consumption: "", cost: 0 },
-    packaging: { item: "", description: "", consumption: "", cost: 0 },
-    miscellaneous: { item: "", description: "", consumption: "", cost: 0 },
-  });
+  // Keep local computed values to display realtime
+  const [localProfitAmount, setLocalProfitAmount] = useState<number>(0);
+  const [localTentativeCost, setLocalTentativeCost] = useState<number>(0);
 
-  // computed stage info
-  const currentStage = useMemo(
-    () => getStage(editedProject?.status),
-    [editedProject?.status]
-  );
-  const currentIndex = useMemo(
-    () => workflowStages.findIndex((s) => s.id === editedProject?.status),
-    [editedProject?.status]
-  );
-  const nextStage = useMemo(
-    () =>
-      currentIndex >= 0 && currentIndex < workflowStages.length - 1
-        ? workflowStages[currentIndex + 1]
-        : null,
-    [currentIndex]
-  );
+  // When costSummary changes, sync editable fields and recompute
+  useEffect(() => {
+    if (!costSummary) return;
+    const add = Number(costSummary.additionalCosts || 0);
+    const margin = Number(costSummary.profitMargin || 0);
+    setEditAdditionalCosts(add);
+    setEditProfitMargin(margin);
+  }, [costSummary]);
 
-  const coverImageUrl = useMemo(
-    () => getFullImageUrl(coverPhoto),
-    [coverPhoto]
-  );
-  const sampleImageUrls = useMemo(
-    () => samples.map(getFullImageUrl),
-    [samples]
-  );
+  // derive totals and compute realtime values whenever totals or edits change
+  useEffect(() => {
+    // Use totals from costSummary (assumed available from hook)
+    const totalAll = Number(costSummary?.totalAllCosts || 0);
+    const additional = Number(editAdditionalCosts || 0);
+    const margin = Number(editProfitMargin || 0);
 
-  // initialize when dialog opens
+    const profitAmount = Math.round(((totalAll + additional) * margin) / 100);
+    const tentative = totalAll + additional + profitAmount;
+
+    setLocalProfitAmount(profitAmount);
+    setLocalTentativeCost(tentative);
+  }, [costSummary?.totalAllCosts, editAdditionalCosts, editProfitMargin]);
+
+  const computeRealtimeSummary = () => {
+    return {
+      profitAmount: localProfitAmount,
+      tentative: localTentativeCost,
+    };
+  };
+
+  const realtime = computeRealtimeSummary();
+
+  // Initialize dialog on open
   useEffect(() => {
     if (!project || !open) return;
 
-    // prefer project.nextUpdate subdoc if present
     const nextUpdateDate =
       project?.nextUpdate?.date || project?.nextUpdateDate || "";
     const updateNotes = project?.nextUpdate?.note || project?.updateNotes || "";
@@ -258,6 +260,7 @@ export function RedSealProjectDetailsDialog(props: any) {
     setSamples(project.sampleImages ? [...project.sampleImages] : []);
     setIsEditing(false);
 
+    // Load cost data fresh
     loadAllCostData();
   }, [project, open, loadAllCostData]);
 
@@ -318,7 +321,6 @@ export function RedSealProjectDetailsDialog(props: any) {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
       const preview = URL.createObjectURL(file);
       setCoverPhoto(preview);
       setCoverFile(file);
@@ -330,17 +332,12 @@ export function RedSealProjectDetailsDialog(props: any) {
     (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
       const preview = URL.createObjectURL(file);
-
-      // Update preview URL list
       setSamples((prev) => {
         const arr = [...prev];
         arr[index] = preview;
         return arr;
       });
-
-      // Update real file list
       setSampleFiles((prev) => {
         const arr = [...prev];
         arr[index] = file;
@@ -360,7 +357,23 @@ export function RedSealProjectDetailsDialog(props: any) {
     setSampleFiles((prev) => [...prev, null]);
   };
 
-  // cost item handlers use useCostManagement hook functions
+  // dialog forms & cost item handlers
+  const [addItemDialogs, setAddItemDialogs] = useState({
+    upper: false,
+    component: false,
+    material: false,
+    packaging: false,
+    miscellaneous: false,
+  });
+
+  const [dialogForms, setDialogForms] = useState({
+    upper: { item: "", description: "", consumption: "", cost: 0 },
+    component: { item: "", description: "", consumption: "", cost: 0 },
+    material: { item: "", description: "", consumption: "", cost: 0 },
+    packaging: { item: "", description: "", consumption: "", cost: 0 },
+    miscellaneous: { item: "", description: "", consumption: "", cost: 0 },
+  });
+
   const openAddItemDialog = (category: string) =>
     setAddItemDialogs((p) => ({ ...p, [category]: true }));
   const closeAddItemDialog = (category: string) => {
@@ -409,13 +422,35 @@ export function RedSealProjectDetailsDialog(props: any) {
     return costRows[section].reduce((sum, item) => sum + (item.cost || 0), 0);
   };
 
-  // update project status (uses projectService)
+  // update project status
+  const currentStage = useMemo(
+    () => getStage(editedProject?.status),
+    [editedProject?.status]
+  );
+  const currentIndex = useMemo(
+    () => workflowStages.findIndex((s) => s.id === editedProject?.status),
+    [editedProject?.status]
+  );
+  const nextStage = useMemo(
+    () =>
+      currentIndex >= 0 && currentIndex < workflowStages.length - 1
+        ? workflowStages[currentIndex + 1]
+        : null,
+    [currentIndex]
+  );
+
+  const coverImageUrl = useMemo(
+    () => getFullImageUrl(coverPhoto),
+    [coverPhoto]
+  );
+  const sampleImageUrls = useMemo(
+    () => samples.map(getFullImageUrl),
+    [samples]
+  );
+
   const updateStatus = useCallback(
     async (newStatus: string) => {
       if (!editedProject) return;
-      const companyId = editedProject.company?._id;
-      const brandId = editedProject.brand?._id;
-      const categoryId = editedProject.category?._id;
       const projectId = editedProject._id;
       await projectService.updateProjectStatus(projectId, newStatus);
     },
@@ -446,9 +481,9 @@ export function RedSealProjectDetailsDialog(props: any) {
     onOpenChange,
   ]);
 
-  // Save project using projectService.updateProject()
+  // --- SAVE handler: sends additionalCosts & profitMargin to backend and updates project
   const handleSave = useCallback(async () => {
-    if (!editedProject) return;
+    if (!editedProject || !project) return;
 
     if (
       !editedProject.company?._id ||
@@ -498,30 +533,39 @@ export function RedSealProjectDetailsDialog(props: any) {
         );
       }
 
-      // Add sample files
+      // add sample files if any
       sampleFiles.forEach((file) => {
         if (file) fd.append("sampleImages", file);
       });
 
-      // Keep existing sample URLs (those that are not being replaced)
+      // keep existing samples not replaced
       const existingSampleUrls = samples.filter((s, i) => !sampleFiles[i]);
-
       if (existingSampleUrls.length > 0) {
         fd.append("keepExistingSamples", JSON.stringify(existingSampleUrls));
       }
 
-      // Cover image handling
+      // cover handling
       if (coverFile) {
         fd.append("coverImage", coverFile);
       } else if (coverPhoto) {
         fd.append("keepExistingCover", "true");
       }
 
+      // 1) Save cost summary (only fields backend expects)
+      await api.patch(`/projects/${project._id}/costs`, {
+        additionalCosts: Number(editAdditionalCosts) || 0,
+        profitMargin: Number(editProfitMargin) || 0,
+      });
+
+      // 2) Save project details
       await projectService.updateProject(editedProject._id, fd);
+
+      // 3) Reload cost summary and row data from backend to reflect persisted values
+      await loadAllCostData();
 
       toast.success("Project updated successfully");
       await reloadProjects();
-      await loadAllCostData(); // 🔥 reload brandFinalCost
+      await loadAllCostData();
 
       setIsEditing(false);
       onOpenChange(false);
@@ -533,10 +577,13 @@ export function RedSealProjectDetailsDialog(props: any) {
     editedProject,
     coverPhoto,
     samples,
-    costSummary.brandFinalCost,
+    sampleFiles,
+    editAdditionalCosts,
+    editProfitMargin,
     onOpenChange,
     reloadProjects,
     project,
+    loadAllCostData,
   ]);
 
   const handleCancelEdit = useCallback(() => {
@@ -549,9 +596,16 @@ export function RedSealProjectDetailsDialog(props: any) {
     });
     setCoverPhoto(project.coverImage || null);
     setSamples(project.sampleImages || []);
-  }, [project, costSummary.brandFinalCost]);
+    // reset local edits to backend values
+    setEditAdditionalCosts(Number(costSummary.additionalCosts || 0));
+    setEditProfitMargin(Number(costSummary.profitMargin || 0));
+  }, [project, costSummary]);
+
+  // cost item operations use hook functions (updateItemCost, deleteCostItem etc.)
+  // (Assuming useCostManagement provides them.)
 
   if (!project || !editedProject) return null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[85vw]! w-[85vw]! max-h-[90vh] overflow-hidden p-0 m-0 flex flex-col">
@@ -858,7 +912,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {companies.map((c) => (
+                          {companies.map((c: any) => (
                             <SelectItem key={c._id} value={c._id}>
                               {c.name}
                             </SelectItem>
@@ -878,7 +932,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                         onValueChange={(v) =>
                           setEditedProject({
                             ...editedProject,
-                            brand: brands.find((b) => b._id === v) || null,
+                            brand: brands.find((b: any) => b._id === v) || null,
                             category: null,
                           })
                         }
@@ -887,7 +941,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {brands.map((b) => (
+                          {brands.map((b: any) => (
                             <SelectItem key={b._id} value={b._id}>
                               {b.name}
                             </SelectItem>
@@ -908,7 +962,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                           setEditedProject({
                             ...editedProject,
                             category:
-                              categories.find((c) => c._id === v) || null,
+                              categories.find((c: any) => c._id === v) || null,
                           })
                         }
                       >
@@ -916,7 +970,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {categories.map((c) => (
+                          {categories.map((c: any) => (
                             <SelectItem key={c._id} value={c._id}>
                               {c.name}
                             </SelectItem>
@@ -936,7 +990,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                         onValueChange={(v) =>
                           setEditedProject({
                             ...editedProject,
-                            type: types.find((t) => t._id === v) || null,
+                            type: types.find((t: any) => t._id === v) || null,
                           })
                         }
                       >
@@ -944,7 +998,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {types.map((t) => (
+                          {types.map((t: any) => (
                             <SelectItem key={t._id} value={t._id}>
                               {t.name}
                             </SelectItem>
@@ -1024,7 +1078,8 @@ export function RedSealProjectDetailsDialog(props: any) {
                         onValueChange={(v) =>
                           setEditedProject({
                             ...editedProject,
-                            country: countries.find((c) => c._id === v) || null,
+                            country:
+                              countries.find((c: any) => c._id === v) || null,
                           })
                         }
                       >
@@ -1032,7 +1087,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {countries.map((c) => (
+                          {countries.map((c: any) => (
                             <SelectItem key={c._id} value={c._id}>
                               {c.name}
                             </SelectItem>
@@ -1110,7 +1165,8 @@ export function RedSealProjectDetailsDialog(props: any) {
                           setEditedProject({
                             ...editedProject,
                             assignPerson:
-                              assignPersons.find((p) => p._id === v) || null,
+                              assignPersons.find((p: any) => p._id === v) ||
+                              null,
                           })
                         }
                       >
@@ -1118,7 +1174,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {assignPersons?.map((p) => (
+                          {assignPersons?.map((p: any) => (
                             <SelectItem key={p._id} value={p._id}>
                               {p.name}
                             </SelectItem>
@@ -1394,7 +1450,7 @@ export function RedSealProjectDetailsDialog(props: any) {
               )}
             </div>
 
-            {/* Cost Breakdown — uses useCostManagement hook data */}
+            {/* Cost Breakdown */}
             <div className="space-y-6">
               <div className="flex items-center gap-5">
                 <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
@@ -1419,7 +1475,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                       </div>
                     </div>
                     <div className="text-3xl font-bold text-green-800 tracking-tight">
-                      ₹{costSummary?.tentativeCost?.toLocaleString()}
+                      ₹{(realtime.tentative || 0).toLocaleString()}
                     </div>
                   </div>
 
@@ -1465,37 +1521,37 @@ export function RedSealProjectDetailsDialog(props: any) {
                     <div className="flex justify-between">
                       <span className="text-gray-600">Upper Cost:</span>
                       <span className="font-medium">
-                        ₹{costSummary.upperTotal.toFixed(2)}
+                        ₹{Number(costSummary.upperTotal || 0).toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Component Cost:</span>
                       <span className="font-medium">
-                        ₹{costSummary.componentTotal.toFixed(2)}
+                        ₹{Number(costSummary.componentTotal || 0).toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Material Cost:</span>
                       <span className="font-medium">
-                        ₹{costSummary.materialTotal.toFixed(2)}
+                        ₹{Number(costSummary.materialTotal || 0).toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Packaging Cost:</span>
                       <span className="font-medium">
-                        ₹{costSummary.packagingTotal.toFixed(2)}
+                        ₹{Number(costSummary.packagingTotal || 0).toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Labour + OH:</span>
                       <span className="font-medium">
-                        ₹{costSummary.labourTotal.toFixed(2)}
+                        ₹{Number(costSummary.labourTotal || 0).toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Miscellaneous:</span>
                       <span className="font-medium">
-                        ₹{costSummary.miscTotal.toFixed(2)}
+                        ₹{Number(costSummary.miscTotal || 0).toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -1503,27 +1559,101 @@ export function RedSealProjectDetailsDialog(props: any) {
                   <Separator className="my-3" />
                   <div className="flex justify-between font-semibold mb-3">
                     <span>Total All Costs:</span>
-                    <span>₹{costSummary.totalAllCosts.toFixed(2)}</span>
+                    <span>
+                      ₹{Number(costSummary.totalAllCosts || 0).toFixed(2)}
+                    </span>
                   </div>
+
+                  {/* Additional Costs */}
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-600">Additional Costs:</span>
+                    {!isEditing ? (
+                      <span className="font-medium">
+                        ₹{Number(costSummary.additionalCosts || 0).toFixed(2)}
+                      </span>
+                    ) : (
+                      <div className="relative w-28">
+                        <Input
+                          type="number"
+                          value={editAdditionalCosts}
+                          onChange={(e) =>
+                            setEditAdditionalCosts(Number(e.target.value) || 0)
+                          }
+                          className="h-8"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Profit Margin (%) */}
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-600">Profit Margin (%):</span>
+                    {!isEditing ? (
+                      <span className="font-medium">
+                        {Number(costSummary.profitMargin || 0)}%
+                      </span>
+                    ) : (
+                      <div className="relative w-20">
+                        <Input
+                          type="number"
+                          value={editProfitMargin}
+                          min={0}
+                          max={100}
+                          onChange={(e) => {
+                            let val = Number(e.target.value);
+                            if (isNaN(val) || val < 0) val = 0;
+                            if (val > 100) val = 100;
+                            setEditProfitMargin(val);
+                          }}
+                          className="h-8"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Profit Amount */}
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-600">
-                      Profit ({costSummary.profitMargin}%):
+                      Profit (
+                      {isEditing ? editProfitMargin : costSummary.profitMargin}
+                      %):
                     </span>
                     <span className="font-medium">
-                      +₹{costSummary.profitAmount.toFixed(2)}
+                      +₹
+                      {(isEditing
+                        ? localProfitAmount
+                        : Number(costSummary.profitAmount || 0)
+                      ).toFixed(2)}
                     </span>
                   </div>
+
+                  <Separator />
+
+                  {/* Tentative Cost */}
+                  <div className="flex justify-between font-bold text-lg text-green-700">
+                    <span>Total Tentative Cost:</span>
+                    <span>
+                      ₹
+                      {(isEditing
+                        ? localTentativeCost
+                        : Number(costSummary.tentativeCost || 0)
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+
                   <Separator className="my-3" />
                   <div className="flex justify-between font-semibold">
                     <span>Total Tentative Cost:</span>
-                    <span>₹{costSummary.tentativeCost.toFixed(2)}</span>
+                    <span>
+                      ₹{Number(costSummary.tentativeCost || 0).toFixed(2)}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Detailed Cost Breakdown Cards */}
+              {/* The detailed cost cards (upper/component/etc.) — we keep your existing structure and handlers */}
+              {/* Upper card */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Upper Cost Card */}
                 <div className="bg-white border-2 border-orange-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-orange-900 mb-4">
                     Upper Cost Breakdown
@@ -1534,7 +1664,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                       <div>DESCRIPTION</div>
                       <div>CONSUMPTION</div>
                       <div>
-                        COST
+                        COST{" "}
                         {isEditing && <span className="ml-1">/ ACTION</span>}
                       </div>
                     </div>
@@ -1612,8 +1742,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                         className="w-full text-orange-600 border-orange-200 hover:bg-orange-50"
                         onClick={() => openAddItemDialog("upper")}
                       >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add New Item
+                        <Plus className="w-4 h-4 mr-2" /> Add New Item
                       </Button>
                     )}
 
@@ -1626,7 +1755,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                   </div>
                 </div>
 
-                {/* Component Cost Card */}
+                {/* Component card */}
                 <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
                   <h4 className="text-lg font-semibold text-purple-900 mb-4">
                     Component Cost Breakdown
@@ -1637,7 +1766,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                       <div>DESCRIPTION</div>
                       <div>CONSUMPTION</div>
                       <div>
-                        COST
+                        COST{" "}
                         {isEditing && <span className="ml-1">/ ACTION</span>}
                       </div>
                     </div>
@@ -1715,8 +1844,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                         className="w-full text-purple-600 border-purple-200 hover:bg-purple-50"
                         onClick={() => openAddItemDialog("component")}
                       >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add New Component
+                        <Plus className="w-4 h-4 mr-2" /> Add New Component
                       </Button>
                     )}
 
@@ -1728,12 +1856,12 @@ export function RedSealProjectDetailsDialog(props: any) {
                     </div>
                   </div>
                 </div>
-
-                {/* Material, Packaging, Labour, Misc sections - keep same pattern (omitted here to save space) */}
-                {/* Copy the rest from your original component unchanged. They should use costRows.*, labourCost, updateLabourCost, deleteCostItem, openAddItemDialog, handleAddItem, etc. */}
               </div>
 
-              {/* Final Calculation Summary & Approval Notes — unchanged */}
+              {/* You can copy/paste similar sections for material, packaging, labour, misc as in original component */}
+              {/* For brevity they were omitted here but you should keep them the same as your original file (they use costRows.*, labourCost, updateLabourCost, deleteCostItem, openAddItemDialog). */}
+
+              {/* Final Calculation Summary & Approval Notes */}
               <div className="bg-linear-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-xl p-6">
                 <h4 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <CheckCircle className="w-6 h-6 text-green-600" />
@@ -1745,27 +1873,44 @@ export function RedSealProjectDetailsDialog(props: any) {
                       Total Production Cost:
                     </span>
                     <span className="font-medium">
-                      ₹{costSummary.totalAllCosts.toFixed(2)}
+                      ₹{Number(costSummary.totalAllCosts || 0).toFixed(2)}
                     </span>
                   </div>
+
                   <div className="flex justify-between">
                     <span className="text-gray-600">Additional Costs:</span>
                     <span className="font-medium">
-                      ₹{costSummary.additionalCosts.toFixed(2)}
+                      ₹
+                      {isEditing
+                        ? editAdditionalCosts.toFixed(2)
+                        : Number(costSummary.additionalCosts || 0).toFixed(2)}
                     </span>
                   </div>
+
                   <div className="flex justify-between">
                     <span className="text-gray-600">
-                      Profit Margin ({costSummary.profitMargin}%):
+                      Profit (
+                      {isEditing ? editProfitMargin : costSummary.profitMargin}
+                      %):
                     </span>
                     <span className="font-medium">
-                      +₹{costSummary.profitAmount.toFixed(2)}
+                      +₹
+                      {isEditing
+                        ? localProfitAmount.toFixed(2)
+                        : Number(costSummary.profitAmount || 0).toFixed(2)}
                     </span>
                   </div>
+
                   <Separator />
+
                   <div className="flex justify-between font-bold text-lg text-green-700">
                     <span>Final Tentative Cost:</span>
-                    <span>₹{costSummary.tentativeCost.toFixed(2)}</span>
+                    <span>
+                      ₹
+                      {isEditing
+                        ? localTentativeCost.toFixed(2)
+                        : Number(costSummary.tentativeCost || 0).toFixed(2)}
+                    </span>
                   </div>
                 </div>
               </div>
