@@ -14,6 +14,8 @@ import {
   X,
   Building,
   Download,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   Dialog,
@@ -25,6 +27,7 @@ import {
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { VendorEditDialog } from "./VendorEditDialog";
 
 interface VendorViewDialogProps {
@@ -58,45 +61,6 @@ const getSupplyHistory = (vendorId: string) => [
     unit: "pair",
     status: "Delivered",
     orderValue: "₹45,000",
-    deliveryTime: "2 days",
-    quality: "Good",
-  },
-  {
-    id: "3",
-    date: "2024-09-01",
-    billNumber: "BILL-2024-003",
-    itemName: "Cotton Shoe Laces",
-    itemCode: "CSL-001",
-    quantity: 1000,
-    unit: "piece",
-    status: "In Transit",
-    orderValue: "₹8,500",
-    deliveryTime: "1 day",
-    quality: "Pending",
-  },
-  {
-    id: "4",
-    date: "2024-08-28",
-    billNumber: "BILL-2024-004",
-    itemName: "Metal Eyelets",
-    itemCode: "ME-001",
-    quantity: 2000,
-    unit: "piece",
-    status: "Delivered",
-    orderValue: "₹12,000",
-    deliveryTime: "4 days",
-    quality: "Excellent",
-  },
-  {
-    id: "5",
-    date: "2024-08-20",
-    billNumber: "BILL-2024-005",
-    itemName: "Leather Polish",
-    itemCode: "LP-001",
-    quantity: 50,
-    unit: "bottle",
-    status: "Delivered",
-    orderValue: "₹3,500",
     deliveryTime: "2 days",
     quality: "Good",
   },
@@ -137,14 +101,7 @@ export function VendorViewDialog({
 }: VendorViewDialogProps) {
   const [showEditDialog, setShowEditDialog] = useState(false);
 
-  // Debug logging
-  console.log("VendorViewDialog rendered with:", {
-    open,
-    vendor,
-  });
-
   if (!vendor) {
-    console.log("No vendor provided to VendorViewDialog");
     return null;
   }
 
@@ -161,294 +118,365 @@ export function VendorViewDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-[96vw]! w-[96vw]! max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
-          {/* Sticky Header Section */}
-          <div className="sticky top-0 z-50 px-12 py-8 bg-linear-to-r from-cyan-50 via-white to-cyan-50 border-b-2 border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-8">
-                <div className="w-16 h-16 bg-linear-to-br from-cyan-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg text-white font-bold text-xl">
+        <DialogContent className="max-w-[95vw] md:max-w-6xl w-[95vw] md:w-full max-h-[95vh] md:max-h-[85vh] p-0 md:rounded-lg flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="sticky top-0 z-50 px-4 md:px-8 py-4 md:py-6 bg-linear-to-r from-cyan-50 via-white to-cyan-50 border-b-2 border-gray-200 shadow-sm flex-shrink-0">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="w-10 h-10 md:w-14 md:h-14 bg-linear-to-br from-cyan-500 to-cyan-600 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg text-white font-bold text-lg md:text-xl flex-shrink-0">
                   {(vendor.vendorName || "N/A").slice(0, 2).toUpperCase()}
                 </div>
-                <div>
-                  <DialogTitle className="text-4xl font-semibold text-gray-900 mb-2">
+                <div className="min-w-0">
+                  <DialogTitle className="text-lg md:text-2xl lg:text-3xl font-semibold text-gray-900 truncate">
                     {vendor.vendorName || "Unknown Vendor"}
                   </DialogTitle>
-                  <DialogDescription className="text-xl text-gray-600">
-                    Complete vendor profile and supply history management
+                  <DialogDescription className="text-sm md:text-base lg:text-lg text-gray-600 truncate">
+                    Complete vendor profile and supply history
                   </DialogDescription>
                 </div>
               </div>
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2 md:gap-4">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-10 px-4 border-cyan-200 text-cyan-600 hover:bg-cyan-50"
-                  type="button"
-                  onClick={() => {
-                    // Export functionality - can be extended to generate CSV/Excel
-                    console.log(
-                      "Exporting vendor data for:",
-                      vendor.vendorName
-                    );
-                  }}
+                  className="h-8 md:h-10 px-3 md:px-4 border-cyan-200 text-cyan-600 hover:bg-cyan-50"
+                  onClick={() => console.log("Exporting vendor data")}
                 >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export Data
+                  <Download className="w-4 h-4 mr-1 md:mr-2" />
+                  <span className="hidden md:inline">Export</span>
                 </Button>
                 <Button
                   onClick={() => onOpenChange(false)}
                   variant="ghost"
                   size="sm"
-                  className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center"
-                  type="button"
+                  className="h-8 w-8 md:h-10 md:w-10 p-0 hover:bg-gray-100 rounded-full"
                 >
-                  <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
+                  <X className="w-4 h-4 md:w-5 md:h-5 text-gray-500" />
                 </Button>
               </div>
             </div>
           </div>
 
-          {/* Scrollable Main Content */}
-          <div className="flex-1 overflow-y-auto scrollbar-hide">
-            <div className="px-12 py-10">
-              {/* Vendor Information Section */}
-              <div className="space-y-8">
-                <div className="flex items-center gap-6">
-                  <div className="w-12 h-12 bg-cyan-500 rounded-xl flex items-center justify-center shadow-md">
-                    <Users className="w-6 h-6 text-white" />
-                  </div>
-                  <h3 className="text-2xl font-semibold text-gray-900">
-                    Vendor Information
-                  </h3>
-                  <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto px-4 md:px-8 py-4 md:py-6">
+            {/* Vendor Information */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-cyan-500 rounded-lg md:rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                  <Users className="w-4 h-4 md:w-5 md:h-5 text-white" />
                 </div>
+                <h3 className="text-lg md:text-xl lg:text-2xl font-semibold text-gray-900">
+                  Vendor Information
+                </h3>
+              </div>
 
-                {/* Vendor Details Grid */}
-                <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-                  {/* Basic Details */}
-                  <div className="xl:col-span-2 space-y-6">
-                    <div className="bg-gray-50 rounded-lg p-6 border-2 border-gray-200">
-                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <Building className="w-5 h-5 text-cyan-600" />
+              {/* Vendor Details Cards */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                {/* Basic Details Card */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <Building className="w-4 h-4 md:w-5 md:h-5 text-cyan-600" />
+                      <CardTitle className="text-base md:text-lg">
                         Basic Details
-                      </h4>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="text-sm font-semibold text-gray-600">
-                            Vendor Name
-                          </label>
-                          <p className="text-base font-medium text-gray-900">
-                            {vendor.vendorName || "N/A"}
-                          </p>
-                        </div>
-                        <div>
-                          <label className="text-sm font-semibold text-gray-600">
-                            Vendor Code
-                          </label>
-                          <p className="text-base font-medium text-gray-900">
-                            {vendor.vendorId || "N/A"}
-                          </p>
-                        </div>
-                        <div>
-                          <label className="text-sm font-semibold text-gray-600">
-                            Status
-                          </label>
-                          <div className="mt-1">
-                            <Badge
-                              variant={
-                                vendor.status === "Active"
-                                  ? "default"
-                                  : "secondary"
-                              }
-                              className={
-                                vendor.status === "Active"
-                                  ? "bg-green-100 text-green-800 border-green-200"
-                                  : "bg-gray-100 text-gray-800"
-                              }
-                            >
-                              {vendor.status}
-                            </Badge>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-sm font-semibold text-gray-600">
-                            Location
-                          </label>
-                          <div className="flex items-center gap-2 mt-1">
-                            <MapPin className="w-4 h-4 text-gray-400" />
-                            <p className="text-base text-gray-900">
-                              {vendor.countryId === "1"
-                                ? "India"
-                                : vendor.countryId === "2"
-                                ? "China"
-                                : vendor.countryId === "3"
-                                ? "Vietnam"
-                                : vendor.countryId === "4"
-                                ? "Indonesia"
-                                : "Unknown"}
-                            </p>
-                          </div>
-                        </div>
+                      </CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-600">
+                        Vendor Name
+                      </p>
+                      <p className="text-base font-medium text-gray-900">
+                        {vendor.vendorName || "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-600">
+                        Vendor Code
+                      </p>
+                      <p className="text-base font-medium text-gray-900">
+                        {vendor.vendorId || "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-600">
+                        Status
+                      </p>
+                      <Badge
+                        variant={
+                          vendor.status === "Active" ? "default" : "secondary"
+                        }
+                        className={
+                          vendor.status === "Active"
+                            ? "bg-green-100 text-green-800 border-green-200"
+                            : "bg-gray-100 text-gray-800"
+                        }
+                      >
+                        {vendor.status}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-600">
+                        Location
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <MapPin className="w-4 h-4 text-gray-400" />
+                        <p className="text-base text-gray-900">
+                          {vendor.countryId === "1"
+                            ? "India"
+                            : vendor.countryId === "2"
+                            ? "China"
+                            : vendor.countryId === "3"
+                            ? "Vietnam"
+                            : vendor.countryId === "4"
+                            ? "Indonesia"
+                            : "Unknown"}
+                        </p>
                       </div>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  {/* Contact Information */}
-                  <div className="xl:col-span-2 space-y-6">
-                    <div className="bg-gray-50 rounded-lg p-6 border-2 border-gray-200">
-                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <Phone className="w-5 h-5 text-cyan-600" />
+                {/* Contact Information Card */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 md:w-5 md:h-5 text-cyan-600" />
+                      <CardTitle className="text-base md:text-lg">
                         Contact Information
-                      </h4>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="text-sm font-semibold text-gray-600">
-                            Contact Person
-                          </label>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Users className="w-4 h-4 text-gray-400" />
-                            <p className="text-base font-medium text-gray-900">
-                              {vendor.contactPerson || "N/A"}
-                            </p>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-sm font-semibold text-gray-600">
-                            Phone Number
-                          </label>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Phone className="w-4 h-4 text-gray-400" />
-                            <p className="text-base text-gray-900">
-                              {vendor.phone || "N/A"}
-                            </p>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-sm font-semibold text-gray-600">
-                            Email Address
-                          </label>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Mail className="w-4 h-4 text-gray-400" />
-                            <p className="text-base text-gray-900">
-                              {vendor.email || "N/A"}
-                            </p>
-                          </div>
-                        </div>
+                      </CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-600">
+                        Contact Person
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Users className="w-4 h-4 text-gray-400" />
+                        <p className="text-base font-medium text-gray-900">
+                          {vendor.contactPerson || "N/A"}
+                        </p>
                       </div>
                     </div>
-                  </div>
-                </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-600">
+                        Phone Number
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Phone className="w-4 h-4 text-gray-400" />
+                        <p className="text-base text-gray-900">
+                          {vendor.phone || "N/A"}
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-600">
+                        Email Address
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Mail className="w-4 h-4 text-gray-400" />
+                        <p className="text-base text-gray-900">
+                          {vendor.email || "N/A"}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
 
-                {/* Supply Performance Metrics */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-8">
-                  <div className="bg-linear-to-br from-blue-50 to-blue-100 rounded-lg p-6 border border-blue-200">
+              {/* Performance Metrics */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
+                <Card>
+                  <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <Package className="w-8 h-8 text-blue-600" />
+                      <Package className="w-6 h-6 md:w-8 md:h-8 text-blue-600" />
                       <div>
-                        <p className="text-sm font-semibold text-blue-600">
+                        <p className="text-xs md:text-sm font-semibold text-blue-600">
                           Total Orders
                         </p>
-                        <p className="text-2xl font-bold text-blue-900">
+                        <p className="text-xl md:text-2xl font-bold text-blue-900">
                           {totalOrders}
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  <div className="bg-linear-to-br from-green-50 to-green-100 rounded-lg p-6 border border-green-200">
+                <Card>
+                  <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <CheckCircle className="w-8 h-8 text-green-600" />
+                      <CheckCircle className="w-6 h-6 md:w-8 md:h-8 text-green-600" />
                       <div>
-                        <p className="text-sm font-semibold text-green-600">
+                        <p className="text-xs md:text-sm font-semibold text-green-600">
                           Completed
                         </p>
-                        <p className="text-2xl font-bold text-green-900">
+                        <p className="text-xl md:text-2xl font-bold text-green-900">
                           {completedOrders}
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  <div className="bg-linear-to-br from-purple-50 to-purple-100 rounded-lg p-6 border border-purple-200">
+                <Card>
+                  <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <TrendingUp className="w-8 h-8 text-purple-600" />
+                      <TrendingUp className="w-6 h-6 md:w-8 md:h-8 text-purple-600" />
                       <div>
-                        <p className="text-sm font-semibold text-purple-600">
+                        <p className="text-xs md:text-sm font-semibold text-purple-600">
                           Success Rate
                         </p>
-                        <p className="text-2xl font-bold text-purple-900">
-                          {Math.round((completedOrders / totalOrders) * 100)}%
+                        <p className="text-xl md:text-2xl font-bold text-purple-900">
+                          {totalOrders > 0
+                            ? Math.round((completedOrders / totalOrders) * 100)
+                            : 0}
+                          %
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  <div className="bg-linear-to-br from-cyan-50 to-cyan-100 rounded-lg p-6 border border-cyan-200">
+                <Card>
+                  <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <IndianRupee className="w-8 h-8 text-cyan-600" />
+                      <IndianRupee className="w-6 h-6 md:w-8 md:h-8 text-cyan-600" />
                       <div>
-                        <p className="text-sm font-semibold text-cyan-600">
+                        <p className="text-xs md:text-sm font-semibold text-cyan-600">
                           Total Value
                         </p>
-                        <p className="text-2xl font-bold text-cyan-900">
+                        <p className="text-xl md:text-2xl font-bold text-cyan-900">
                           ₹{(totalValue / 100000).toFixed(1)}L
                         </p>
                       </div>
                     </div>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               </div>
 
-              <Separator className="my-8" />
+              <Separator className="my-6 md:my-8" />
 
-              {/* Supply History Section */}
-              <div className="space-y-8">
-                <div className="flex items-center gap-6">
-                  <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
-                    <Package className="w-6 h-6 text-white" />
+              {/* Supply History */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-8 h-8 md:w-10 md:h-10 bg-green-500 rounded-lg md:rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                      <Package className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                    </div>
+                    <h3 className="text-lg md:text-xl lg:text-2xl font-semibold text-gray-900">
+                      Supply History
+                    </h3>
                   </div>
-                  <h3 className="text-2xl font-semibold text-gray-900">
-                    Supply History
-                  </h3>
-                  <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
-                  <Badge variant="secondary" className="text-base px-3 py-1">
+                  <Badge variant="secondary" className="text-sm px-3 py-1">
                     {supplyHistory.length} transactions
                   </Badge>
                 </div>
 
-                {/* Supply History Table */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                {/* Mobile Supply History Cards */}
+                <div className="md:hidden space-y-4">
+                  {supplyHistory.map((order) => (
+                    <Card key={order.id}>
+                      <CardContent className="pt-6">
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4 text-gray-400" />
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {new Date(order.date).toLocaleDateString(
+                                    "en-GB"
+                                  )}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {order.billNumber}
+                                </p>
+                              </div>
+                            </div>
+                            <Badge className={getStatusColor(order.status)}>
+                              {order.status}
+                            </Badge>
+                          </div>
+
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {order.itemName}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              Code: {order.itemCode}
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-xs text-gray-500">Quantity</p>
+                              <p className="text-sm font-medium">
+                                {order.quantity.toLocaleString()} {order.unit}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">
+                                Order Value
+                              </p>
+                              <div className="flex items-center gap-1">
+                                <IndianRupee className="w-3 h-3 text-green-600" />
+                                <p className="text-sm font-medium">
+                                  {order.orderValue}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                {getQualityIcon(order.quality)}
+                                <span className="text-sm text-gray-900">
+                                  {order.quality}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500">
+                                Delivered in {order.deliveryTime}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Desktop Supply History Table */}
+                <div className="hidden md:block bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                          <th className="px-4 md:px-6 py-3 text-left text-xs font-semibold text-gray-900">
                             Order Date
                           </th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                          <th className="px-4 md:px-6 py-3 text-left text-xs font-semibold text-gray-900">
                             Bill Number
                           </th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                          <th className="px-4 md:px-6 py-3 text-left text-xs font-semibold text-gray-900">
                             Item Details
                           </th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
-                            Quantity & Unit
+                          <th className="px-4 md:px-6 py-3 text-left text-xs font-semibold text-gray-900">
+                            Quantity
                           </th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                          <th className="px-4 md:px-6 py-3 text-left text-xs font-semibold text-gray-900">
                             Order Value
                           </th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                          <th className="px-4 md:px-6 py-3 text-left text-xs font-semibold text-gray-900">
                             Quality & Delivery
                           </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {supplyHistory.map((order) => (
-                          <tr
-                            key={order.id}
-                            className="hover:bg-gray-50 transition-colors"
-                          >
-                            <td className="px-6 py-4 whitespace-nowrap">
+                          <tr key={order.id} className="hover:bg-gray-50">
+                            <td className="px-4 md:px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 <Calendar className="w-4 h-4 text-gray-400" />
                                 <div>
@@ -468,20 +496,13 @@ export function VendorViewDialog({
                                 </div>
                               </div>
                             </td>
-
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="space-y-1">
-                                <div className="text-sm font-medium text-gray-900">
-                                  {order.billNumber}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  Invoice Ref
-                                </div>
+                            <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">
+                                {order.billNumber}
                               </div>
                             </td>
-
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="space-y-1">
+                            <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                              <div>
                                 <div className="text-sm font-medium text-gray-900">
                                   {order.itemName}
                                 </div>
@@ -490,9 +511,8 @@ export function VendorViewDialog({
                                 </div>
                               </div>
                             </td>
-
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="space-y-1">
+                            <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                              <div>
                                 <div className="text-sm font-medium text-gray-900">
                                   {order.quantity.toLocaleString()}
                                 </div>
@@ -501,8 +521,7 @@ export function VendorViewDialog({
                                 </div>
                               </div>
                             </td>
-
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="px-4 md:px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 <IndianRupee className="w-4 h-4 text-green-600" />
                                 <div className="text-sm font-medium text-gray-900">
@@ -510,9 +529,8 @@ export function VendorViewDialog({
                                 </div>
                               </div>
                             </td>
-
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="space-y-2">
+                            <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                              <div className="space-y-1">
                                 <div className="flex items-center gap-2">
                                   {getQualityIcon(order.quality)}
                                   <span className="text-sm text-gray-900">
@@ -534,37 +552,35 @@ export function VendorViewDialog({
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-12 py-8 flex justify-between items-center shadow-lg z-50">
-            <div className="flex items-center gap-4">
-              <CheckCircle className="w-6 h-6 text-green-600" />
+          {/* Footer Actions */}
+          <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-3 flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-600" />
               <div>
-                <p className="text-base font-semibold text-gray-900">
+                <p className="text-sm md:text-base font-semibold text-gray-900">
                   Vendor Profile Complete
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-xs md:text-sm text-gray-600 hidden md:block">
                   All vendor information and supply history is up to date
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col-reverse md:flex-row gap-3 w-full md:w-auto">
               <Button
                 variant="outline"
-                size="lg"
-                className="px-8 py-3 text-base border-gray-300 text-gray-700 hover:bg-gray-50"
+                size="sm"
+                className="w-full md:w-auto"
                 onClick={() => onOpenChange(false)}
-                type="button"
               >
                 Close
               </Button>
               <Button
-                size="lg"
-                className="px-8 py-3 text-base bg-cyan-600 hover:bg-cyan-700"
-                type="button"
+                size="sm"
+                className="w-full md:w-auto bg-cyan-600 hover:bg-cyan-700"
                 onClick={() => setShowEditDialog(true)}
               >
-                <Users className="w-5 h-5 mr-3" />
+                <Users className="w-4 h-4 mr-2" />
                 Edit Vendor
               </Button>
             </div>

@@ -1,15 +1,10 @@
+// ColorMaterialsDialog.tsx
 import { CheckCircle, Palette, Plus, Save, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import api from "../lib/api";
 import { Button } from "./ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
@@ -37,7 +32,7 @@ interface ColorMaterialsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   project: any;
-  colors?: any[]; // master colors array: { id, colorName, hexCode } etc.
+  colors?: any[];
   onSave?: (savedColorIds: string[]) => void;
 }
 
@@ -59,14 +54,13 @@ export function ColorMaterialsDialog({
   const [colorVariantsData, setColorVariantsData] = useState<{
     [colorId: string]: ColorVariantData;
   }>({});
+  const [isMobile, setIsMobile] = useState(false);
 
-  // NEW: Track pending variants that haven't been saved to DB
   const [pendingColorVariants, setPendingColorVariants] = useState<{
     [colorId: string]: ColorVariantData;
   }>({});
   const [newColorVariants, setNewColorVariants] = useState<string[]>([]);
 
-  // Current editing state for active color tab
   const [currentComponents, setCurrentComponents] = useState<
     Array<{ name: string; desc: string; consumption: string }>
   >([]);
@@ -74,21 +68,25 @@ export function ColorMaterialsDialog({
     Array<{ name: string; desc: string; consumption: string }>
   >([]);
 
-  // Dialog states for adding new items
   const [addComponentDialogOpen, setAddComponentDialogOpen] = useState(false);
   const [addMaterialDialogOpen, setAddMaterialDialogOpen] = useState(false);
 
-  // Form fields for new component
   const [newComponentName, setNewComponentName] = useState("");
   const [newComponentDesc, setNewComponentDesc] = useState("");
   const [newComponentConsumption, setNewComponentConsumption] = useState("");
 
-  // Form fields for new material
   const [newMaterialName, setNewMaterialName] = useState("");
   const [newMaterialDesc, setNewMaterialDesc] = useState("");
   const [newMaterialConsumption, setNewMaterialConsumption] = useState("");
 
-  // Default data for new color variants
+  // Check screen size
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   const getDefaultComponents = (): Component[] => [
     { name: "Foam", desc: "-", consumption: "7.5grm" },
     { name: "Velcro", desc: "75mm", consumption: "1.25 pair" },
@@ -113,7 +111,6 @@ export function ColorMaterialsDialog({
     { name: "Print", desc: "-", consumption: "-" },
   ];
 
-  // ---------- color name -> hex fallback map (AUTO-DETECT by name) ----------
   const nameToHexMap: Record<string, string> = {
     black: "#000000",
     white: "#ffffff",
@@ -133,12 +130,10 @@ export function ColorMaterialsDialog({
     default: "#6b7280",
   };
 
-  // Load color variants from backend (safe conversion)
   const loadColorVariants = async () => {
     if (!project?._id) return;
 
     try {
-      // Convert whatever project.colorVariants shape into a plain object
       const variants: {
         [key: string]: ColorVariantData;
       } = {};
@@ -157,7 +152,6 @@ export function ColorMaterialsDialog({
         Object.assign(variants, project.colorVariants);
       }
 
-      // If backend returned nothing but project.color exists, seed with defaults
       if (Object.keys(variants).length === 0 && project.color) {
         variants[project.color] = {
           materials: getDefaultMaterials(),
@@ -167,15 +161,12 @@ export function ColorMaterialsDialog({
       }
 
       setColorVariantsData(variants);
-
-      // NEW: Reset pending variants when loading from backend
       setPendingColorVariants({});
       setNewColorVariants([]);
 
       const colorIds = Object.keys(variants);
       if (colorIds.length > 0) {
         setSelectedColors(colorIds);
-        // Keep previously active tab if present else set to first
         setActiveColorTab((prev) =>
           prev && colorIds.includes(prev) ? prev : colorIds[0]
         );
@@ -189,22 +180,17 @@ export function ColorMaterialsDialog({
     }
   };
 
-  // 🔥 FIXED: Enhanced useEffect to properly reload when dialog opens
   useEffect(() => {
     if (project && open) {
       loadColorVariants();
-
-      // Also reset the adding state when dialog opens
       setIsAddingColor(false);
       setNewColorName("");
       setNewColorHex("#000000");
     }
   }, [project, open]);
 
-  // Load current components/materials when active tab changes
   useEffect(() => {
     if (activeColorTab) {
-      // NEW: Check pending variants first, then saved variants
       const variantData =
         pendingColorVariants[activeColorTab] ||
         colorVariantsData[activeColorTab];
@@ -224,25 +210,20 @@ export function ColorMaterialsDialog({
   if (!project) return null;
 
   const getColorName = (colorId: string) => {
-    // Check custom colors first (user-created)
     if (customColors[colorId]) {
       return customColors[colorId].name;
     }
-    // Then check master data colors array passed via props
     const color = colors?.find(
       (c) => c.id === colorId || c.colorName === colorId
     );
     return color?.colorName || colorId || "Unknown Color";
   };
 
-  // Auto-detect hex using (1) customColors, (2) master colors array, (3) fallback map by name
   const getColorHex = (colorIdOrName: string) => {
-    // customColors store actual hex when created via dialog
     if (customColors[colorIdOrName]) {
       return customColors[colorIdOrName].hex;
     }
 
-    // find in master colors prop by id or colorName
     const found = colors?.find(
       (c) =>
         c.id === colorIdOrName ||
@@ -253,7 +234,6 @@ export function ColorMaterialsDialog({
       return found.hexCode || found.hex;
     }
 
-    // Try to interpret colorIdOrName as a name and lookup map
     const normalized = String(colorIdOrName)
       .toLowerCase()
       .replace(/[_\s]+/g, " ")
@@ -265,26 +245,19 @@ export function ColorMaterialsDialog({
     if (!project?._id) return;
 
     try {
-      // NEW: Check if it's a pending variant (not saved to DB yet)
       if (pendingColorVariants[colorId]) {
-        // Remove from pending variants
         const newPending = { ...pendingColorVariants };
         delete newPending[colorId];
         setPendingColorVariants(newPending);
 
-        // Remove from new color variants list
         setNewColorVariants((prev) => prev.filter((id) => id !== colorId));
-
-        // Remove from selected colors
         const newColors = selectedColors.filter((id) => id !== colorId);
         setSelectedColors(newColors);
 
-        // Remove from custom colors
         const newCustomColors = { ...customColors };
         delete newCustomColors[colorId];
         setCustomColors(newCustomColors);
 
-        // Switch to first color if we're removing the active tab
         if (activeColorTab === colorId && newColors.length > 0) {
           setActiveColorTab(newColors[0]);
         } else if (newColors.length === 0) {
@@ -295,18 +268,15 @@ export function ColorMaterialsDialog({
         return;
       }
 
-      // Existing variant - remove from DB
       await api.delete(`/projects/${project._id}/color-variants/${colorId}`);
 
       const newColors = selectedColors.filter((id) => id !== colorId);
       setSelectedColors(newColors);
 
-      // Remove from local state
       const newVariants = { ...colorVariantsData };
       delete newVariants[colorId];
       setColorVariantsData(newVariants);
 
-      // Switch to first color if we're removing the active tab
       if (activeColorTab === colorId && newColors.length > 0) {
         setActiveColorTab(newColors[0]);
       } else if (newColors.length === 0) {
@@ -320,33 +290,26 @@ export function ColorMaterialsDialog({
     }
   };
 
-  // UPDATED: handleAddNewColor - now only creates locally, not in DB
   const handleAddNewColor = () => {
     if (!newColorName.trim()) return;
 
     const newColorId = newColorName.toLowerCase().replace(/\s+/g, "_");
 
-    // Create new color variant locally only (not in DB yet)
     const variantData = {
       materials: getDefaultMaterials(),
       components: getDefaultComponents(),
       images: [],
     };
 
-    // Add to pending variants
     setPendingColorVariants((prev) => ({
       ...prev,
       [newColorId]: variantData,
     }));
 
-    // Track as new variant
     setNewColorVariants((prev) => [...prev, newColorId]);
-
-    // Add to selected colors and set as active
     setSelectedColors((prev) => [...prev, newColorId]);
     setActiveColorTab(newColorId);
 
-    // Also update custom colors for display
     setCustomColors((prev) => ({
       ...prev,
       [newColorId]: {
@@ -369,7 +332,6 @@ export function ColorMaterialsDialog({
         colors: colorIds,
       });
 
-      // Reload color variants after cloning
       await loadColorVariants();
       toast.success("Color variants cloned successfully");
     } catch (error) {
@@ -378,7 +340,6 @@ export function ColorMaterialsDialog({
     }
   };
 
-  // Update component field
   const updateComponent = (
     index: number,
     field: "name" | "desc" | "consumption",
@@ -388,10 +349,8 @@ export function ColorMaterialsDialog({
     updated[index] = { ...updated[index], [field]: value };
     setCurrentComponents(updated);
 
-    // NEW: Update the pending or existing variant data
     if (activeColorTab) {
       if (pendingColorVariants[activeColorTab]) {
-        // Update pending variant
         setPendingColorVariants((prev) => ({
           ...prev,
           [activeColorTab]: {
@@ -400,7 +359,6 @@ export function ColorMaterialsDialog({
           },
         }));
       } else if (colorVariantsData[activeColorTab]) {
-        // Update existing variant in pending changes
         setPendingColorVariants((prev) => ({
           ...prev,
           [activeColorTab]: {
@@ -412,7 +370,6 @@ export function ColorMaterialsDialog({
     }
   };
 
-  // Update material field
   const updateMaterial = (
     index: number,
     field: "name" | "desc" | "consumption",
@@ -422,10 +379,8 @@ export function ColorMaterialsDialog({
     updated[index] = { ...updated[index], [field]: value };
     setCurrentMaterials(updated);
 
-    // NEW: Update the pending or existing variant data
     if (activeColorTab) {
       if (pendingColorVariants[activeColorTab]) {
-        // Update pending variant
         setPendingColorVariants((prev) => ({
           ...prev,
           [activeColorTab]: {
@@ -434,7 +389,6 @@ export function ColorMaterialsDialog({
           },
         }));
       } else if (colorVariantsData[activeColorTab]) {
-        // Update existing variant in pending changes
         setPendingColorVariants((prev) => ({
           ...prev,
           [activeColorTab]: {
@@ -446,12 +400,10 @@ export function ColorMaterialsDialog({
     }
   };
 
-  // Delete component
   const deleteComponent = (index: number) => {
     const updated = currentComponents.filter((_, i) => i !== index);
     setCurrentComponents(updated);
 
-    // NEW: Update the pending or existing variant data
     if (activeColorTab) {
       if (pendingColorVariants[activeColorTab]) {
         setPendingColorVariants((prev) => ({
@@ -475,12 +427,10 @@ export function ColorMaterialsDialog({
     toast.success("Component removed");
   };
 
-  // Delete material
   const deleteMaterial = (index: number) => {
     const updated = currentMaterials.filter((_, i) => i !== index);
     setCurrentMaterials(updated);
 
-    // NEW: Update the pending or existing variant data
     if (activeColorTab) {
       if (pendingColorVariants[activeColorTab]) {
         setPendingColorVariants((prev) => ({
@@ -504,17 +454,14 @@ export function ColorMaterialsDialog({
     toast.success("Material removed");
   };
 
-  // Open add component dialog
   const openAddComponentDialog = () => {
     setAddComponentDialogOpen(true);
   };
 
-  // Open add material dialog
   const openAddMaterialDialog = () => {
     setAddMaterialDialogOpen(true);
   };
 
-  // Save new component
   const saveNewComponent = () => {
     if (!newComponentName.trim()) {
       toast.error("Please enter component name");
@@ -532,7 +479,6 @@ export function ColorMaterialsDialog({
 
     setCurrentComponents(newComponents);
 
-    // NEW: Update the pending or existing variant data
     if (activeColorTab) {
       if (pendingColorVariants[activeColorTab]) {
         setPendingColorVariants((prev) => ({
@@ -553,7 +499,6 @@ export function ColorMaterialsDialog({
       }
     }
 
-    // Reset form and close dialog
     setNewComponentName("");
     setNewComponentDesc("");
     setNewComponentConsumption("");
@@ -561,7 +506,6 @@ export function ColorMaterialsDialog({
     toast.success("Component added successfully");
   };
 
-  // Save new material
   const saveNewMaterial = () => {
     if (!newMaterialName.trim()) {
       toast.error("Please enter material name");
@@ -579,7 +523,6 @@ export function ColorMaterialsDialog({
 
     setCurrentMaterials(newMaterials);
 
-    // NEW: Update the pending or existing variant data
     if (activeColorTab) {
       if (pendingColorVariants[activeColorTab]) {
         setPendingColorVariants((prev) => ({
@@ -600,7 +543,6 @@ export function ColorMaterialsDialog({
       }
     }
 
-    // Reset form and close dialog
     setNewMaterialName("");
     setNewMaterialDesc("");
     setNewMaterialConsumption("");
@@ -608,14 +550,12 @@ export function ColorMaterialsDialog({
     toast.success("Material added successfully");
   };
 
-  // UPDATED: handleSave - saves all pending changes to DB
   const handleSave = async () => {
     if (!project?._id) return;
 
     try {
       const updates = [];
 
-      // Save all pending new variants to DB
       for (const [colorId, variantData] of Object.entries(
         pendingColorVariants
       )) {
@@ -627,11 +567,9 @@ export function ColorMaterialsDialog({
         );
       }
 
-      // Execute all updates
       if (updates.length > 0) {
         await Promise.all(updates);
       } else {
-        // If no new variants, but we have active tab changes, save them
         if (activeColorTab && pendingColorVariants[activeColorTab]) {
           await api.put(
             `/projects/${project._id}/color-variants/${activeColorTab}`,
@@ -640,13 +578,11 @@ export function ColorMaterialsDialog({
         }
       }
 
-      // Clear pending variants after successful save
       setPendingColorVariants({});
       setNewColorVariants([]);
 
       toast.success("All color variants saved successfully!");
 
-      // 🔥 FIXED: Call onSave with ALL selected colors, not just active one
       if (onSave) {
         onSave(selectedColors);
       }
@@ -658,58 +594,63 @@ export function ColorMaterialsDialog({
     }
   };
 
-  // NEW: Check if there are unsaved changes
   const hasUnsavedChanges = Object.keys(pendingColorVariants).length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
-        {/* Sticky Header Section - Green Theme (matching Green Seal) */}
-        <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-green-50 via-white to-green-50 border-b border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div className="w-14 h-14 bg-linear-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
-                <Palette className="w-7 h-7 text-white" />
+      <DialogContent
+        className={`
+          ${
+            isMobile
+              ? "max-w-[95vw]! w-[95vw]! max-h-[95vh] top-[2.5vh] translate-y-0"
+              : "max-w-[85vw]! w-[85vw]! max-h-[90vh]"
+          } overflow-hidden p-0 m-0 flex flex-col
+        `}
+      >
+        {/* Sticky Header Section */}
+        <div className="sticky top-0 z-50 px-4 md:px-8 py-4 md:py-6 bg-linear-to-r from-green-50 via-white to-green-50 border-b border-gray-200 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4 md:gap-6">
+              <div className="w-10 h-10 md:w-14 md:h-14 bg-linear-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg shrink-0">
+                <Palette className="w-5 h-5 md:w-7 md:h-7 text-white" />
               </div>
-              <div>
-                <DialogTitle className="text-3xl font-semibold text-gray-900 mb-2">
+              <div className="min-w-0">
+                <DialogTitle className="text-xl md:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 md:mb-2 truncate">
                   Brand Color Variants
                   {hasUnsavedChanges && (
-                    <span className="ml-2 text-sm font-normal text-orange-600 bg-orange-100 px-2 py-1 rounded">
+                    <span className="ml-2 text-xs font-normal text-orange-600 bg-orange-100 px-2 py-1 rounded">
                       Unsaved Changes
                     </span>
                   )}
                 </DialogTitle>
-                <DialogDescription className="sr-only">
-                  Manage color options and their specific materials & components
-                </DialogDescription>
-                <div className="flex items-center gap-4 mt-2">
-                  <span className="text-lg text-gray-600">
+                <div className="flex items-center gap-2 md:gap-4 mt-2">
+                  <span className="text-sm md:text-lg text-gray-600 truncate">
                     {project.autoCode}
                   </span>
                   {newColorVariants.length > 0 && (
-                    <span className="text-sm text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                    <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
                       {newColorVariants.length} new variant(s) pending save
                     </span>
                   )}
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3">
               <Button
                 onClick={handleSave}
-                className="bg-green-500 hover:bg-green-600"
+                className="bg-green-500 hover:bg-green-600 text-xs md:text-sm"
+                size={isMobile ? "sm" : "default"}
                 disabled={!hasUnsavedChanges}
               >
-                <Save className="w-4 h-4 mr-2" />
-                Save Color Variant
+                <Save className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                {isMobile ? "Save" : "Save Color Variant"}
               </Button>
               <button
                 onClick={() => onOpenChange(false)}
                 type="button"
-                className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
+                className="h-8 w-8 md:h-10 md:w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
               >
-                <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
+                <X className="w-4 h-4 md:w-5 md:h-5 text-gray-500 hover:text-gray-700" />
               </button>
             </div>
           </div>
@@ -717,96 +658,101 @@ export function ColorMaterialsDialog({
 
         {/* Scrollable Main Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-8 py-4 space-y-5">
+          <div className="px-4 md:px-8 py-4 space-y-4 md:space-y-5">
             {/* Color Variant Tabs Section */}
             <div className="space-y-3">
               {/* Tab Navigation */}
               <div className="flex items-center gap-2 border-b border-gray-200">
-                {selectedColors.map((colorId) => (
-                  <button
-                    key={colorId}
-                    onClick={() => setActiveColorTab(colorId)}
-                    className={`flex items-center gap-2 px-4 py-2.5 border-b-2 transition-colors ${
-                      activeColorTab === colorId
-                        ? "border-green-600 text-gray-900"
-                        : "border-transparent text-gray-600 hover:text-gray-900"
-                    }`}
-                  >
-                    <div
-                      className="w-4 h-4 rounded-full border border-gray-300"
-                      style={{
-                        backgroundColor: getColorHex(getColorName(colorId)),
-                      }}
-                    ></div>
-                    <span>
-                      {getColorName(colorId)}
-                      {colorId === project.color && (
-                        <span className="ml-1.5 text-xs text-gray-500">
-                          (Default)
-                        </span>
-                      )}
-                      {pendingColorVariants[colorId] && (
-                        <span className="ml-1.5 text-xs text-orange-500">
-                          *
-                        </span>
-                      )}
-                    </span>
-                    {selectedColors.length > 1 && colorId !== project.color && (
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveColor(colorId);
+                <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
+                  {selectedColors.map((colorId) => (
+                    <button
+                      key={colorId}
+                      onClick={() => setActiveColorTab(colorId)}
+                      className={`flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 border-b-2 transition-colors shrink-0 ${
+                        activeColorTab === colorId
+                          ? "border-green-600 text-gray-900"
+                          : "border-transparent text-gray-600 hover:text-gray-900"
+                      }`}
+                    >
+                      <div
+                        className="w-3 h-3 md:w-4 md:h-4 rounded-full border border-gray-300"
+                        style={{
+                          backgroundColor: getColorHex(getColorName(colorId)),
                         }}
-                        className="ml-1 p-0.5 hover:bg-gray-100 rounded transition-colors cursor-pointer"
-                        role="button"
-                        aria-label="Remove color variant"
-                      >
-                        <X className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                      ></div>
+                      <span className="text-xs md:text-sm">
+                        {getColorName(colorId)}
+                        {colorId === project.color && (
+                          <span className="ml-1 text-xs text-gray-500 hidden md:inline">
+                            (Default)
+                          </span>
+                        )}
+                        {pendingColorVariants[colorId] && (
+                          <span className="ml-1 text-xs text-orange-500">
+                            *
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </button>
-                ))}
+                      {selectedColors.length > 1 &&
+                        colorId !== project.color && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveColor(colorId);
+                            }}
+                            className="ml-1 p-0.5 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+                            role="button"
+                            aria-label="Remove color variant"
+                          >
+                            <X className="w-3 h-3 md:w-3.5 md:h-3.5 text-gray-400 hover:text-red-500" />
+                          </span>
+                        )}
+                    </button>
+                  ))}
+                </div>
 
                 {/* Add Color Variant Button */}
                 <button
                   onClick={() => setIsAddingColor(!isAddingColor)}
-                  className={`flex items-center gap-1.5 px-3 py-2 ml-auto text-sm border rounded transition-colors ${
+                  className={`flex items-center gap-1.5 px-2 md:px-3 py-1.5 md:py-2 ml-auto text-xs md:text-sm border rounded transition-colors shrink-0 ${
                     isAddingColor
                       ? "bg-purple-500 text-white border-purple-500"
                       : "border-gray-300 text-gray-700 hover:border-purple-400 hover:text-purple-600"
                   }`}
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Variant</span>
+                  <Plus className="w-3 h-3 md:w-4 md:h-4" />
+                  <span className="hidden md:inline">Add Variant</span>
+                  <span className="md:hidden">Add</span>
                 </button>
               </div>
 
               {/* Add New Color Form */}
               {isAddingColor && (
-                <div className="p-5 bg-linear-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
-                  <h4 className="font-semibold text-gray-900 mb-4">
+                <div className="p-4 md:p-5 bg-linear-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
+                  <h4 className="font-semibold text-gray-900 mb-3 md:mb-4 text-sm md:text-base">
                     Create New Color Variant
                   </h4>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                     <div>
-                      <Label className="text-sm text-gray-700 mb-2">
+                      <Label className="text-xs md:text-sm text-gray-700 mb-2">
                         Color Name
                       </Label>
                       <Input
                         value={newColorName}
                         onChange={(e) => setNewColorName(e.target.value)}
                         placeholder="e.g., Navy Blue"
-                        className="mt-1"
+                        className="mt-1 h-8 md:h-10 text-xs md:text-sm"
                       />
                     </div>
                     <div className="flex items-end gap-2">
                       <Button
                         onClick={handleAddNewColor}
-                        className="bg-linear-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 flex-1"
+                        className="bg-linear-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 flex-1 text-xs md:text-sm"
+                        size={isMobile ? "sm" : "default"}
                         disabled={!newColorName.trim()}
                       >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Create Variant
+                        <CheckCircle className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                        {isMobile ? "Create" : "Create Variant"}
                       </Button>
                       <Button
                         onClick={() => {
@@ -815,6 +761,8 @@ export function ColorMaterialsDialog({
                           setNewColorHex("#000000");
                         }}
                         variant="outline"
+                        size={isMobile ? "sm" : "default"}
+                        className="text-xs md:text-sm"
                       >
                         Cancel
                       </Button>
@@ -826,70 +774,76 @@ export function ColorMaterialsDialog({
 
             {/* Materials & Components for Active Color Only */}
             {activeColorTab && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="space-y-4 md:space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                   {/* Components Analysis */}
-                  <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <h4 className="text-lg font-semibold text-purple-900">
+                  <div className="bg-white border-2 border-purple-200 rounded-xl p-4 md:p-6">
+                    <div className="flex items-center gap-3 mb-3 md:mb-4">
+                      <h4 className="text-base md:text-lg font-semibold text-purple-900">
                         Components Used
                       </h4>
                       <div className="flex items-center gap-2 px-2 py-1 bg-purple-50 rounded">
                         <div
-                          className="w-4 h-4 rounded-full border border-purple-300"
+                          className="w-3 h-3 md:w-4 md:h-4 rounded-full border border-purple-300"
                           style={{
                             backgroundColor: getColorHex(
                               getColorName(activeColorTab)
                             ),
                           }}
                         ></div>
-                        <span className="text-xs font-medium text-purple-700">
+                        <span className="text-xs font-medium text-purple-700 truncate">
                           {getColorName(activeColorTab)}
                         </span>
                         {pendingColorVariants[activeColorTab] && (
                           <span className="text-xs text-orange-500 ml-1">
-                            (unsaved)
+                            *
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-2 md:space-y-3">
                       {/* Fixed Table Header */}
-                      <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
-                        <div className="col-span-3">COMPONENT</div>
-                        <div className="col-span-4">DESCRIPTION</div>
-                        <div className="col-span-4">CONSUMPTION</div>
+                      <div className="grid grid-cols-12 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
+                        <div className="col-span-4 md:col-span-3">
+                          COMPONENT
+                        </div>
+                        <div className="col-span-4 md:col-span-4">
+                          DESCRIPTION
+                        </div>
+                        <div className="col-span-3 md:col-span-4">
+                          CONSUMPTION
+                        </div>
                         <div className="col-span-1 text-center">ACTION</div>
                       </div>
 
                       {/* Scrollable Content */}
-                      <div className="max-h-64 overflow-y-auto scrollbar-hide space-y-2">
+                      <div className="max-h-48 md:max-h-64 overflow-y-auto scrollbar-hide space-y-1 md:space-y-2">
                         {currentComponents.map((item, index) => (
                           <div
                             key={index}
-                            className="grid grid-cols-12 gap-2 items-center text-sm py-2 border-b border-gray-200 group hover:bg-purple-50 transition-colors px-2 -mx-2 rounded"
+                            className="grid grid-cols-12 gap-1 md:gap-2 items-center text-xs md:text-sm py-1 md:py-2 border-b border-gray-200 group hover:bg-purple-50 transition-colors px-2 -mx-2 rounded"
                           >
-                            <div className="col-span-3">
+                            <div className="col-span-4 md:col-span-3">
                               <Input
                                 value={item.name}
                                 onChange={(e) =>
                                   updateComponent(index, "name", e.target.value)
                                 }
-                                className="h-8 text-sm"
+                                className="h-7 md:h-8 text-xs"
                                 placeholder="Component"
                               />
                             </div>
-                            <div className="col-span-4">
+                            <div className="col-span-4 md:col-span-4">
                               <Input
                                 value={item.desc}
                                 onChange={(e) =>
                                   updateComponent(index, "desc", e.target.value)
                                 }
-                                className="h-8 text-sm"
+                                className="h-7 md:h-8 text-xs"
                                 placeholder="Description"
                               />
                             </div>
-                            <div className="col-span-4">
+                            <div className="col-span-3 md:col-span-4">
                               <Input
                                 value={item.consumption}
                                 onChange={(e) =>
@@ -899,7 +853,7 @@ export function ColorMaterialsDialog({
                                     e.target.value
                                   )
                                 }
-                                className="h-8 text-sm"
+                                className="h-7 md:h-8 text-xs"
                                 placeholder="Consumption"
                               />
                             </div>
@@ -908,9 +862,9 @@ export function ColorMaterialsDialog({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => deleteComponent(index)}
-                                className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
+                                className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
                               </Button>
                             </div>
                           </div>
@@ -921,16 +875,16 @@ export function ColorMaterialsDialog({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="w-full text-purple-600 border-purple-200 hover:bg-purple-50"
+                        className="w-full text-purple-600 border-purple-200 hover:bg-purple-50 text-xs"
                         onClick={openAddComponentDialog}
                       >
-                        <Plus className="w-4 h-4 mr-2" />
+                        <Plus className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                         Add New Component
                       </Button>
 
                       {/* Total Count */}
-                      <div className="bg-purple-50 p-3 rounded-lg mt-3">
-                        <div className="text-sm text-purple-800">
+                      <div className="bg-purple-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                        <div className="text-xs md:text-sm text-purple-800">
                           <strong>Total Components:</strong>{" "}
                           {currentComponents.length} different components used
                           in production
@@ -940,67 +894,71 @@ export function ColorMaterialsDialog({
                   </div>
 
                   {/* Materials Analysis */}
-                  <div className="bg-white border-2 border-teal-200 rounded-xl p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <h4 className="text-lg font-semibold text-teal-900">
+                  <div className="bg-white border-2 border-teal-200 rounded-xl p-4 md:p-6">
+                    <div className="flex items-center gap-3 mb-3 md:mb-4">
+                      <h4 className="text-base md:text-lg font-semibold text-teal-900">
                         Materials Used
                       </h4>
                       <div className="flex items-center gap-2 px-2 py-1 bg-teal-50 rounded">
                         <div
-                          className="w-4 h-4 rounded-full border border-teal-300"
+                          className="w-3 h-3 md:w-4 md:h-4 rounded-full border border-teal-300"
                           style={{
                             backgroundColor: getColorHex(
                               getColorName(activeColorTab)
                             ),
                           }}
                         ></div>
-                        <span className="text-xs font-medium text-teal-700">
+                        <span className="text-xs font-medium text-teal-700 truncate">
                           {getColorName(activeColorTab)}
                         </span>
                         {pendingColorVariants[activeColorTab] && (
                           <span className="text-xs text-orange-500 ml-1">
-                            (unsaved)
+                            *
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-2 md:space-y-3">
                       {/* Fixed Table Header */}
-                      <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-600 bg-teal-50 p-2 rounded">
-                        <div className="col-span-3">MATERIAL</div>
-                        <div className="col-span-4">DESCRIPTION</div>
-                        <div className="col-span-4">CONSUMPTION</div>
+                      <div className="grid grid-cols-12 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-teal-50 p-2 rounded">
+                        <div className="col-span-4 md:col-span-3">MATERIAL</div>
+                        <div className="col-span-4 md:col-span-4">
+                          DESCRIPTION
+                        </div>
+                        <div className="col-span-3 md:col-span-4">
+                          CONSUMPTION
+                        </div>
                         <div className="col-span-1 text-center">ACTION</div>
                       </div>
 
                       {/* Scrollable Content */}
-                      <div className="max-h-64 overflow-y-auto scrollbar-hide space-y-2">
+                      <div className="max-h-48 md:max-h-64 overflow-y-auto scrollbar-hide space-y-1 md:space-y-2">
                         {currentMaterials.map((item, index) => (
                           <div
                             key={index}
-                            className="grid grid-cols-12 gap-2 items-center text-sm py-2 border-b border-gray-200 group hover:bg-teal-50 transition-colors px-2 -mx-2 rounded"
+                            className="grid grid-cols-12 gap-1 md:gap-2 items-center text-xs md:text-sm py-1 md:py-2 border-b border-gray-200 group hover:bg-teal-50 transition-colors px-2 -mx-2 rounded"
                           >
-                            <div className="col-span-3">
+                            <div className="col-span-4 md:col-span-3">
                               <Input
                                 value={item.name}
                                 onChange={(e) =>
                                   updateMaterial(index, "name", e.target.value)
                                 }
-                                className="h-8 text-sm"
+                                className="h-7 md:h-8 text-xs"
                                 placeholder="Material"
                               />
                             </div>
-                            <div className="col-span-4">
+                            <div className="col-span-4 md:col-span-4">
                               <Input
                                 value={item.desc}
                                 onChange={(e) =>
                                   updateMaterial(index, "desc", e.target.value)
                                 }
-                                className="h-8 text-sm"
+                                className="h-7 md:h-8 text-xs"
                                 placeholder="Description"
                               />
                             </div>
-                            <div className="col-span-4">
+                            <div className="col-span-3 md:col-span-4">
                               <Input
                                 value={item.consumption}
                                 onChange={(e) =>
@@ -1010,7 +968,7 @@ export function ColorMaterialsDialog({
                                     e.target.value
                                   )
                                 }
-                                className="h-8 text-sm"
+                                className="h-7 md:h-8 text-xs"
                                 placeholder="Consumption"
                               />
                             </div>
@@ -1019,9 +977,9 @@ export function ColorMaterialsDialog({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => deleteMaterial(index)}
-                                className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
+                                className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
                               </Button>
                             </div>
                           </div>
@@ -1032,16 +990,16 @@ export function ColorMaterialsDialog({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
+                        className="w-full text-teal-600 border-teal-200 hover:bg-teal-50 text-xs"
                         onClick={openAddMaterialDialog}
                       >
-                        <Plus className="w-4 h-4 mr-2" />
+                        <Plus className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                         Add New Material
                       </Button>
 
                       {/* Total Count */}
-                      <div className="bg-teal-50 p-3 rounded-lg mt-3">
-                        <div className="text-sm text-teal-800">
+                      <div className="bg-teal-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                        <div className="text-xs md:text-sm text-teal-800">
                           <strong>Total Materials:</strong>{" "}
                           {currentMaterials.length} different materials used in
                           production
@@ -1056,58 +1014,66 @@ export function ColorMaterialsDialog({
         </div>
       </DialogContent>
 
-      {/* Add New Component Dialog */}
+      {/* Add New Component Dialog - Responsive */}
       <Dialog
         open={addComponentDialogOpen}
         onOpenChange={setAddComponentDialogOpen}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent
+          className={isMobile ? "max-w-[95vw] w-[95vw]" : "max-w-2xl"}
+        >
           <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <Plus className="w-5 h-5 text-purple-600" />
+            <DialogTitle className="text-lg md:text-xl flex items-center gap-2">
+              <Plus className="w-4 h-4 md:w-5 md:h-5 text-purple-600" />
               Add New Component
             </DialogTitle>
-            <DialogDescription>
-              Enter the details for the new component item
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-3 md:space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="componentName">Component Name *</Label>
+              <Label htmlFor="componentName" className="text-xs md:text-sm">
+                Component Name *
+              </Label>
               <Input
                 id="componentName"
                 value={newComponentName}
                 onChange={(e) => setNewComponentName(e.target.value)}
                 placeholder="e.g., Foam, Velcro, Thread"
-                className="w-full"
+                className="w-full h-8 md:h-10 text-xs md:text-sm"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="componentDesc">Description</Label>
+              <Label htmlFor="componentDesc" className="text-xs md:text-sm">
+                Description
+              </Label>
               <Input
                 id="componentDesc"
                 value={newComponentDesc}
                 onChange={(e) => setNewComponentDesc(e.target.value)}
                 placeholder="e.g., 75mm, MRP, sticker"
-                className="w-full"
+                className="w-full h-8 md:h-10 text-xs md:text-sm"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="componentConsumption">Consumption</Label>
+              <Label
+                htmlFor="componentConsumption"
+                className="text-xs md:text-sm"
+              >
+                Consumption
+              </Label>
               <Input
                 id="componentConsumption"
                 value={newComponentConsumption}
                 onChange={(e) => setNewComponentConsumption(e.target.value)}
                 placeholder="e.g., 7.5grm, 1.25 pair, 2pcs"
-                className="w-full"
+                className="w-full h-8 md:h-10 text-xs md:text-sm"
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-2 md:gap-3">
             <Button
               variant="outline"
               onClick={() => {
@@ -1116,72 +1082,83 @@ export function ColorMaterialsDialog({
                 setNewComponentDesc("");
                 setNewComponentConsumption("");
               }}
+              size={isMobile ? "sm" : "default"}
+              className="text-xs md:text-sm"
             >
               Cancel
             </Button>
             <Button
               onClick={saveNewComponent}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-purple-600 hover:bg-purple-700 text-xs md:text-sm"
+              size={isMobile ? "sm" : "default"}
             >
-              <CheckCircle className="w-4 h-4 mr-2" />
+              <CheckCircle className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
               Add Component
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Add New Material Dialog */}
+      {/* Add New Material Dialog - Responsive */}
       <Dialog
         open={addMaterialDialogOpen}
         onOpenChange={setAddMaterialDialogOpen}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent
+          className={isMobile ? "max-w-[95vw] w-[95vw]" : "max-w-2xl"}
+        >
           <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <Plus className="w-5 h-5 text-teal-600" />
+            <DialogTitle className="text-lg md:text-xl flex items-center gap-2">
+              <Plus className="w-4 h-4 md:w-5 md:h-5 text-teal-600" />
               Add New Material
             </DialogTitle>
-            <DialogDescription>
-              Enter the details for the new material item
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-3 md:space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="materialName">Material Name *</Label>
+              <Label htmlFor="materialName" className="text-xs md:text-sm">
+                Material Name *
+              </Label>
               <Input
                 id="materialName"
                 value={newMaterialName}
                 onChange={(e) => setNewMaterialName(e.target.value)}
                 placeholder="e.g., Upper, Lining, Footbed"
-                className="w-full"
+                className="w-full h-8 md:h-10 text-xs md:text-sm"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="materialDesc">Description</Label>
+              <Label htmlFor="materialDesc" className="text-xs md:text-sm">
+                Description
+              </Label>
               <Input
                 id="materialDesc"
                 value={newMaterialDesc}
                 onChange={(e) => setNewMaterialDesc(e.target.value)}
                 placeholder="e.g., Rexine, Skinfit, EVA"
-                className="w-full"
+                className="w-full h-8 md:h-10 text-xs md:text-sm"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="materialConsumption">Consumption</Label>
+              <Label
+                htmlFor="materialConsumption"
+                className="text-xs md:text-sm"
+              >
+                Consumption
+              </Label>
               <Input
                 id="materialConsumption"
                 value={newMaterialConsumption}
                 onChange={(e) => setNewMaterialConsumption(e.target.value)}
                 placeholder="e.g., 26 pairs/mtr, 25 pair @ 155/-"
-                className="w-full"
+                className="w-full h-8 md:h-10 text-xs md:text-sm"
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-2 md:gap-3">
             <Button
               variant="outline"
               onClick={() => {
@@ -1190,14 +1167,17 @@ export function ColorMaterialsDialog({
                 setNewMaterialDesc("");
                 setNewMaterialConsumption("");
               }}
+              size={isMobile ? "sm" : "default"}
+              className="text-xs md:text-sm"
             >
               Cancel
             </Button>
             <Button
               onClick={saveNewMaterial}
-              className="bg-teal-600 hover:bg-teal-700"
+              className="bg-teal-600 hover:bg-teal-700 text-xs md:text-sm"
+              size={isMobile ? "sm" : "default"}
             >
-              <CheckCircle className="w-4 h-4 mr-2" />
+              <CheckCircle className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
               Add Material
             </Button>
           </div>

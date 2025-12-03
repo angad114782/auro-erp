@@ -3,13 +3,11 @@ import {
   Users,
   Phone,
   Mail,
-  MapPin,
   Building,
   X,
   Save,
   User,
   Package,
-  Tag,
   Award,
 } from "lucide-react";
 import {
@@ -29,8 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Badge } from "./ui/badge";
-import { useERPStore } from "../lib/data-store";
 import { toast } from "sonner";
 import { useVendorStore } from "../hooks/useVendor";
 
@@ -62,7 +58,6 @@ export function VendorEditDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Initialize form data when vendor changes
   useEffect(() => {
     if (vendor) {
       setFormData({
@@ -83,7 +78,6 @@ export function VendorEditDialog({
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: "" }));
     }
@@ -94,10 +88,6 @@ export function VendorEditDialog({
 
     if (!formData.vendorName.trim()) {
       newErrors.vendorName = "Vendor name is required";
-    }
-
-    if (!formData.vendorId.trim()) {
-      newErrors.vendorId = "Vendor ID is required";
     }
 
     if (!formData.contactPerson.trim()) {
@@ -116,7 +106,6 @@ export function VendorEditDialog({
       newErrors.email = "Please enter a valid email address";
     }
 
-    // Item validation
     if (!formData.itemName.trim()) {
       newErrors.itemName = "Item name is required";
     }
@@ -142,9 +131,7 @@ export function VendorEditDialog({
     setIsSubmitting(true);
 
     try {
-      // Update vendor in the store
       await updateVendor(vendor._id, formData);
-
       toast.success(`Vendor "${formData.vendorName}" updated successfully!`);
       onOpenChange(false);
     } catch (error) {
@@ -156,7 +143,6 @@ export function VendorEditDialog({
   };
 
   const handleCancel = () => {
-    // Reset form to original values
     if (vendor) {
       setFormData({
         vendorName: vendor.vendorName || "",
@@ -179,19 +165,19 @@ export function VendorEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-4xl !w-4xl max-h-[90vh] overflow-hidden p-0 m-0 flex flex-col [&>button]:hidden">
-        {/* Header Section */}
-        <div className="px-8 py-6 bg-linear-to-r from-cyan-50 via-white to-cyan-50 border-b-2 border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div className="w-12 h-12 bg-linear-to-br from-cyan-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg text-white font-bold">
-                <Users className="w-6 h-6" />
+      <DialogContent className="max-w-[95vw] md:max-w-6xl w-[95vw] md:w-full max-h-[95vh] md:max-h-[85vh] p-0 md:rounded-lg flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="sticky top-0 z-50 px-4 md:px-8 py-4 md:py-6 bg-linear-to-r from-cyan-50 via-white to-cyan-50 border-b-2 border-gray-200 flex-shrink-0">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-linear-to-br from-cyan-500 to-cyan-600 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg text-white font-bold flex-shrink-0">
+                <Users className="w-5 h-5 md:w-6 md:h-6" />
               </div>
-              <div>
-                <DialogTitle className="text-2xl font-semibold text-gray-900">
+              <div className="min-w-0">
+                <DialogTitle className="text-lg md:text-2xl font-semibold text-gray-900 truncate">
                   Edit Vendor Information
                 </DialogTitle>
-                <DialogDescription className="text-base text-gray-600 mt-1">
+                <DialogDescription className="text-sm md:text-base text-gray-600 mt-1 truncate">
                   Update vendor details and contact information
                 </DialogDescription>
               </div>
@@ -200,7 +186,7 @@ export function VendorEditDialog({
               onClick={handleCancel}
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
+              className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full flex-shrink-0 ml-2"
             >
               <X className="w-4 h-4 text-gray-500" />
             </Button>
@@ -208,26 +194,22 @@ export function VendorEditDialog({
         </div>
 
         {/* Form Content */}
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="space-y-8">
-            {/* Basic Information Section */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div className="space-y-6 md:space-y-8">
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Building className="w-4 h-4 text-white" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">
+                <h3 className="text-base md:text-lg font-semibold text-gray-900">
                   Basic Information
                 </h3>
-                <div className="flex-1 h-px bg-gray-200"></div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="vendorName"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="vendorName" className="text-sm font-medium">
                     Vendor Name <span className="text-red-500">*</span>
                   </Label>
                   <Input
@@ -236,11 +218,8 @@ export function VendorEditDialog({
                     onChange={(e) =>
                       handleInputChange("vendorName", e.target.value)
                     }
-                    placeholder="Enter vendor name"
                     className={`h-10 ${
-                      errors.vendorName
-                        ? "border-red-500 focus:border-red-500"
-                        : ""
+                      errors.vendorName ? "border-red-500" : ""
                     }`}
                   />
                   {errors.vendorName && (
@@ -249,10 +228,7 @@ export function VendorEditDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="vendorId"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="vendorId" className="text-sm font-medium">
                     Vendor ID <span className="text-red-500">*</span>
                   </Label>
                   <Input
@@ -261,11 +237,8 @@ export function VendorEditDialog({
                     onChange={(e) =>
                       handleInputChange("vendorId", e.target.value)
                     }
-                    placeholder="Enter vendor ID"
                     className={`h-10 ${
-                      errors.vendorId
-                        ? "border-red-500 focus:border-red-500"
-                        : ""
+                      errors.vendorId ? "border-red-500" : ""
                     }`}
                   />
                   {errors.vendorId && (
@@ -274,10 +247,7 @@ export function VendorEditDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="status"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="status" className="text-sm font-medium">
                     Status
                   </Label>
                   <Select
@@ -287,7 +257,7 @@ export function VendorEditDialog({
                     }
                   >
                     <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select status" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Active">Active</SelectItem>
@@ -297,10 +267,7 @@ export function VendorEditDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="country"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="country" className="text-sm font-medium">
                     Location
                   </Label>
                   <Select
@@ -310,7 +277,7 @@ export function VendorEditDialog({
                     }
                   >
                     <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select location" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="1">India</SelectItem>
@@ -323,23 +290,22 @@ export function VendorEditDialog({
               </div>
             </div>
 
-            {/* Contact Information Section */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+            {/* Contact Information */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Phone className="w-4 h-4 text-white" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">
+                <h3 className="text-base md:text-lg font-semibold text-gray-900">
                   Contact Information
                 </h3>
-                <div className="flex-1 h-px bg-gray-200"></div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label
                     htmlFor="contactPerson"
-                    className="text-sm font-medium text-gray-700"
+                    className="text-sm font-medium"
                   >
                     Contact Person <span className="text-red-500">*</span>
                   </Label>
@@ -351,11 +317,8 @@ export function VendorEditDialog({
                       onChange={(e) =>
                         handleInputChange("contactPerson", e.target.value)
                       }
-                      placeholder="Enter contact person name"
                       className={`h-10 pl-10 ${
-                        errors.contactPerson
-                          ? "border-red-500 focus:border-red-500"
-                          : ""
+                        errors.contactPerson ? "border-red-500" : ""
                       }`}
                     />
                   </div>
@@ -367,10 +330,7 @@ export function VendorEditDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="phone"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="phone" className="text-sm font-medium">
                     Phone Number <span className="text-red-500">*</span>
                   </Label>
                   <div className="relative">
@@ -381,11 +341,8 @@ export function VendorEditDialog({
                       onChange={(e) =>
                         handleInputChange("phone", e.target.value)
                       }
-                      placeholder="Enter phone number"
                       className={`h-10 pl-10 ${
-                        errors.phone
-                          ? "border-red-500 focus:border-red-500"
-                          : ""
+                        errors.phone ? "border-red-500" : ""
                       }`}
                     />
                   </div>
@@ -395,10 +352,7 @@ export function VendorEditDialog({
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label
-                    htmlFor="email"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="email" className="text-sm font-medium">
                     Email Address <span className="text-red-500">*</span>
                   </Label>
                   <div className="relative">
@@ -410,11 +364,8 @@ export function VendorEditDialog({
                       onChange={(e) =>
                         handleInputChange("email", e.target.value)
                       }
-                      placeholder="Enter email address"
                       className={`h-10 pl-10 ${
-                        errors.email
-                          ? "border-red-500 focus:border-red-500"
-                          : ""
+                        errors.email ? "border-red-500" : ""
                       }`}
                     />
                   </div>
@@ -425,24 +376,20 @@ export function VendorEditDialog({
               </div>
             </div>
 
-            {/* Item Information Section */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+            {/* Item Information */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Package className="w-4 h-4 text-white" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">
+                <h3 className="text-base md:text-lg font-semibold text-gray-900">
                   Item Information
                 </h3>
-                <div className="flex-1 h-px bg-gray-200"></div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="itemName"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="itemName" className="text-sm font-medium">
                     Item Name <span className="text-red-500">*</span>
                   </Label>
                   <Input
@@ -451,11 +398,8 @@ export function VendorEditDialog({
                     onChange={(e) =>
                       handleInputChange("itemName", e.target.value)
                     }
-                    placeholder="Enter item name"
                     className={`h-10 ${
-                      errors.itemName
-                        ? "border-red-500 focus:border-red-500"
-                        : ""
+                      errors.itemName ? "border-red-500" : ""
                     }`}
                   />
                   {errors.itemName && (
@@ -464,10 +408,7 @@ export function VendorEditDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="itemCode"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="itemCode" className="text-sm font-medium">
                     Item Code <span className="text-red-500">*</span>
                   </Label>
                   <Input
@@ -476,11 +417,8 @@ export function VendorEditDialog({
                     onChange={(e) =>
                       handleInputChange("itemCode", e.target.value)
                     }
-                    placeholder="Enter item code"
                     className={`h-10 ${
-                      errors.itemCode
-                        ? "border-red-500 focus:border-red-500"
-                        : ""
+                      errors.itemCode ? "border-red-500" : ""
                     }`}
                   />
                   {errors.itemCode && (
@@ -489,10 +427,7 @@ export function VendorEditDialog({
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label
-                    htmlFor="brand"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="brand" className="text-sm font-medium">
                     Brand <span className="text-red-500">*</span>
                   </Label>
                   <div className="relative">
@@ -503,11 +438,8 @@ export function VendorEditDialog({
                       onChange={(e) =>
                         handleInputChange("brand", e.target.value)
                       }
-                      placeholder="Enter brand name"
                       className={`h-10 pl-10 ${
-                        errors.brand
-                          ? "border-red-500 focus:border-red-500"
-                          : ""
+                        errors.brand ? "border-red-500" : ""
                       }`}
                     />
                   </div>
@@ -521,25 +453,24 @@ export function VendorEditDialog({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-8 py-6 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <span className="text-red-500">*</span>
-            <span>Required fields</span>
+        <div className="sticky bottom-0 px-4 md:px-8 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
+          <div className="text-sm text-gray-600">
+            <span className="text-red-500">*</span> Required fields
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col-reverse sm:flex-row gap-3 w-full sm:w-auto">
             <Button
               variant="outline"
               onClick={handleCancel}
               disabled={isSubmitting}
-              className="px-6"
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSave}
               disabled={isSubmitting}
-              className="px-6 bg-cyan-600 hover:bg-cyan-700"
+              className="w-full sm:w-auto bg-cyan-600 hover:bg-cyan-700"
             >
               {isSubmitting ? (
                 <>

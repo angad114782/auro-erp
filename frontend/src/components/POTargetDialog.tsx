@@ -1,3 +1,4 @@
+// POTargetDialog.tsx (responsive version)
 import React, { useState } from "react";
 import {
   ShoppingCart,
@@ -12,15 +13,8 @@ import {
   Calculator,
   Target,
   AlertTriangle,
-  FileText,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -59,8 +53,17 @@ export function POTargetDialog({
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [urgencyLevel, setUrgencyLevel] = useState("Normal");
   const [qualityRequirements, setQualityRequirements] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
 
   const { goTo } = useRedirect();
+
+  // Check screen size
+  React.useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   if (!project) return null;
 
@@ -71,7 +74,6 @@ export function POTargetDialog({
   };
 
   const handleSubmit = async () => {
-    // Validation
     if (!orderQuantity || parseInt(orderQuantity) <= 0) {
       toast.error("Please enter a valid order quantity");
       return;
@@ -87,8 +89,6 @@ export function POTargetDialog({
       return;
     }
 
-    console.log(project, "dfff");
-
     try {
       const poData = {
         orderQuantity: parseInt(orderQuantity),
@@ -102,31 +102,15 @@ export function POTargetDialog({
         specialInstructions: specialInstructions,
       };
 
-      // Update PO details via backend API
       await api.patch(`/projects/${project._id}/po`, poData);
 
       if (poNumber.trim()) {
-        // PO APPROVED
         toast.success("PO approved successfully!");
-
-        goTo(
-          "rd-management",
-          "po-target-date",
-          { tab: "po-approved" } // 💥 redirect to PO APPROVED tab
-        );
+        goTo("rd-management", "po-target-date", { tab: "po-approved" });
       } else {
-        // PO PENDING
         toast.success("PO saved — waiting for PO number (Pending)");
-
-        goTo(
-          "rd-management",
-          "po-target-date",
-          { tab: "po-pending" } // 💥 redirect to PO PENDING tab
-        );
+        goTo("rd-management", "po-target-date", { tab: "po-pending" });
       }
-
-      onConfirm();
-      onOpenChange(false);
 
       onConfirm();
       onOpenChange(false);
@@ -158,46 +142,58 @@ export function POTargetDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
+      <DialogContent
+        className={`
+          ${
+            isMobile
+              ? "max-w-[95vw]! w-[95vw]! max-h-[95vh] top-[2.5vh] translate-y-0"
+              : "max-w-[85vw]! w-[85vw]! max-h-[90vh]"
+          } overflow-hidden p-0 m-0 flex flex-col
+        `}
+      >
         {/* Header */}
-        <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-emerald-50 via-white to-emerald-50 border-b border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div className="w-14 h-14 bg-linear-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-                <ShoppingCart className="w-7 h-7 text-white" />
+        <div className="sticky top-0 z-50 px-4 md:px-8 py-4 md:py-6 bg-linear-to-r from-emerald-50 via-white to-emerald-50 border-b border-gray-200 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4 md:gap-6">
+              <div className="w-10 h-10 md:w-14 md:h-14 bg-linear-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shrink-0">
+                <ShoppingCart className="w-5 h-5 md:w-7 md:h-7 text-white" />
               </div>
-              <div>
-                <DialogTitle className="text-3xl font-semibold text-gray-900 mb-2">
+              <div className="min-w-0">
+                <DialogTitle className="text-xl md:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 md:mb-2 truncate">
                   PO Target & Order Confirmation
                 </DialogTitle>
-                <DialogDescription className="sr-only">
-                  Collect client feedback and order quantity for PO generation
-                </DialogDescription>
-                <div className="flex items-center gap-4">
-                  <span className="text-lg text-gray-600">
+                <div className="flex flex-wrap items-center gap-2 md:gap-4">
+                  <span className="text-sm md:text-lg text-gray-600 truncate">
                     {project.autoCode}
                   </span>
-                  <Badge className="bg-emerald-100 text-emerald-800">
+                  <Badge className="bg-emerald-100 text-emerald-800 text-xs md:text-sm px-2 md:px-3 py-1">
                     Green Seal → PO Target
                   </Badge>
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3">
               <Button
                 onClick={handleSubmit}
-                className="bg-emerald-500 hover:bg-emerald-600"
+                className="bg-emerald-500 hover:bg-emerald-600 text-xs md:text-sm"
+                size={isMobile ? "sm" : "default"}
               >
-                <Save className="w-4 h-4 mr-2" />
-                {poNumber.trim() ? "Approve & Issue PO" : "Advance PO Target"}
+                <Save className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                {poNumber.trim()
+                  ? isMobile
+                    ? "Approve PO"
+                    : "Approve & Issue PO"
+                  : isMobile
+                  ? "Advance"
+                  : "Advance PO Target"}
               </Button>
               <Button
                 onClick={() => onOpenChange(false)}
                 variant="ghost"
                 size="sm"
-                className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center"
+                className="h-8 w-8 md:h-10 md:w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center"
               >
-                <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
+                <X className="w-4 h-4 md:w-5 md:h-5 text-gray-500 hover:text-gray-700" />
               </Button>
             </div>
           </div>
@@ -205,45 +201,45 @@ export function POTargetDialog({
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-8 py-8 space-y-8">
+          <div className="px-4 md:px-8 py-4 md:py-8 space-y-6 md:space-y-8">
             {/* Project Summary */}
-            <div className="space-y-5">
-              <div className="flex items-center gap-5">
-                <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                  <Package className="w-5 h-5 text-white" />
+            <div className="space-y-4 md:space-y-5">
+              <div className="flex items-center gap-4 md:gap-5">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                  <Package className="w-4 h-4 md:w-5 md:h-5 text-white" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900">
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900">
                   Project Summary
                 </h3>
               </div>
 
-              <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white border-2 border-gray-200 rounded-xl p-4 md:p-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
                   <div>
-                    <Label className="text-sm font-medium text-gray-600">
+                    <Label className="text-xs md:text-sm font-medium text-gray-600">
                       Product Code
                     </Label>
-                    <div className="mt-1 text-base font-mono font-bold text-gray-900">
+                    <div className="mt-1 text-sm md:text-base font-mono font-bold text-gray-900">
                       {project.autoCode}
                     </div>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-gray-600">
+                    <Label className="text-xs md:text-sm font-medium text-gray-600">
                       Tentative Cost per Unit
                     </Label>
-                    <div className="mt-1 flex items-center space-x-1 text-base font-semibold text-green-700">
-                      <IndianRupee className="w-4 h-4" />
+                    <div className="mt-1 flex items-center space-x-1 text-sm md:text-base font-semibold text-green-700">
+                      <IndianRupee className="w-3 h-3 md:w-4 md:h-4" />
                       <span>
                         {(project.clientFinalCost || 0).toLocaleString("en-IN")}
                       </span>
                     </div>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-gray-600">
+                    <Label className="text-xs md:text-sm font-medium text-gray-600">
                       Brand Final Cost
                     </Label>
-                    <div className="mt-1 flex items-center space-x-1 text-base font-semibold text-blue-700">
-                      <IndianRupee className="w-4 h-4" />
+                    <div className="mt-1 flex items-center space-x-1 text-sm md:text-base font-semibold text-blue-700">
+                      <IndianRupee className="w-3 h-3 md:w-4 md:h-4" />
                       <span>
                         {(project.clientFinalCost || 0).toLocaleString("en-IN")}
                       </span>
@@ -254,23 +250,23 @@ export function POTargetDialog({
             </div>
 
             {/* Order Details */}
-            <div className="space-y-5">
-              <div className="flex items-center gap-5">
-                <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
-                  <ShoppingCart className="w-5 h-5 text-white" />
+            <div className="space-y-4 md:space-y-5">
+              <div className="flex items-center gap-4 md:gap-5">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                  <ShoppingCart className="w-4 h-4 md:w-5 md:h-5 text-white" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900">
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900">
                   Order Details
                 </h3>
               </div>
 
-              <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white border-2 border-gray-200 rounded-xl p-4 md:p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                   {/* Order Quantity */}
                   <div>
                     <Label
                       htmlFor="orderQuantity"
-                      className="text-sm font-medium text-gray-700 mb-2 block"
+                      className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
                       Order Quantity <span className="text-red-500">*</span>
                     </Label>
@@ -280,7 +276,7 @@ export function POTargetDialog({
                       value={orderQuantity}
                       onChange={(e) => setOrderQuantity(e.target.value)}
                       placeholder="Enter quantity (e.g. 1000)"
-                      className="w-full"
+                      className="w-full h-8 md:h-10 text-xs md:text-sm"
                       min="1"
                     />
                   </div>
@@ -289,7 +285,7 @@ export function POTargetDialog({
                   <div>
                     <Label
                       htmlFor="poNumber"
-                      className="text-sm font-medium text-gray-700 mb-2 block"
+                      className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
                       PO Order Number
                     </Label>
@@ -299,20 +295,24 @@ export function POTargetDialog({
                       value={poNumber}
                       onChange={(e) => setPONumber(e.target.value)}
                       placeholder="Enter client PO number (e.g. PO-2024-001)"
-                      className="w-full"
+                      className="w-full h-8 md:h-10 text-xs md:text-sm"
                     />
                     <div className="flex items-center gap-2 mt-1">
                       {poNumber.trim() ? (
                         <div className="flex items-center gap-1 text-xs text-green-600">
                           <CheckCircle className="w-3 h-3" />
-                          <span>PO Number will be marked as Approved</span>
+                          <span className="hidden md:inline">
+                            PO Number will be marked as Approved
+                          </span>
+                          <span className="md:hidden">PO Number provided</span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1 text-xs text-orange-600">
                           <AlertTriangle className="w-3 h-3" />
-                          <span>
+                          <span className="hidden md:inline">
                             Status will be Pending until PO number is provided
                           </span>
+                          <span className="md:hidden">Awaiting PO number</span>
                         </div>
                       )}
                     </div>
@@ -322,7 +322,7 @@ export function POTargetDialog({
                   <div>
                     <Label
                       htmlFor="unitPrice"
-                      className="text-sm font-medium text-gray-700 mb-2 block"
+                      className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
                       Reverify Brand Final Cost
                     </Label>
@@ -334,7 +334,7 @@ export function POTargetDialog({
                       placeholder={`Default: ₹${(
                         project.clientFinalCost || 0
                       ).toLocaleString("en-IN")}`}
-                      className="w-full"
+                      className="w-full h-8 md:h-10 text-xs md:text-sm"
                       step="0.01"
                     />
                     <p className="text-xs text-gray-500 mt-1">
@@ -347,7 +347,7 @@ export function POTargetDialog({
                   <div>
                     <Label
                       htmlFor="deliveryDate"
-                      className="text-sm font-medium text-gray-700 mb-2 block"
+                      className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
                       Expected Delivery Date{" "}
                       <span className="text-red-500">*</span>
@@ -357,7 +357,7 @@ export function POTargetDialog({
                       type="date"
                       value={deliveryDate}
                       onChange={(e) => setDeliveryDate(e.target.value)}
-                      className="w-full"
+                      className="w-full h-8 md:h-10 text-xs md:text-sm"
                     />
                   </div>
 
@@ -365,7 +365,7 @@ export function POTargetDialog({
                   <div>
                     <Label
                       htmlFor="paymentTerms"
-                      className="text-sm font-medium text-gray-700 mb-2 block"
+                      className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
                       Payment Terms
                     </Label>
@@ -373,39 +373,78 @@ export function POTargetDialog({
                       value={paymentTerms}
                       onValueChange={setPaymentTerms}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-8 md:h-10 text-xs md:text-sm">
                         <SelectValue placeholder="Select payment terms" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="30-days">30 Days Net</SelectItem>
-                        <SelectItem value="45-days">45 Days Net</SelectItem>
-                        <SelectItem value="60-days">60 Days Net</SelectItem>
-                        <SelectItem value="advance-50">50% Advance</SelectItem>
-                        <SelectItem value="advance-100">
+                        <SelectItem
+                          value="30-days"
+                          className="text-xs md:text-sm"
+                        >
+                          30 Days Net
+                        </SelectItem>
+                        <SelectItem
+                          value="45-days"
+                          className="text-xs md:text-sm"
+                        >
+                          45 Days Net
+                        </SelectItem>
+                        <SelectItem
+                          value="60-days"
+                          className="text-xs md:text-sm"
+                        >
+                          60 Days Net
+                        </SelectItem>
+                        <SelectItem
+                          value="advance-50"
+                          className="text-xs md:text-sm"
+                        >
+                          50% Advance
+                        </SelectItem>
+                        <SelectItem
+                          value="advance-100"
+                          className="text-xs md:text-sm"
+                        >
                           100% Advance
                         </SelectItem>
-                        <SelectItem value="cod">Cash on Delivery</SelectItem>
+                        <SelectItem value="cod" className="text-xs md:text-sm">
+                          Cash on Delivery
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   {/* Urgency Level */}
                   <div>
-                    <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                    <Label className="text-xs md:text-sm font-medium text-gray-700 mb-2 block">
                       Order Urgency Level
                     </Label>
                     <Select
                       value={urgencyLevel}
                       onValueChange={setUrgencyLevel}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-8 md:h-10 text-xs md:text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Low">Low Priority</SelectItem>
-                        <SelectItem value="Normal">Normal Priority</SelectItem>
-                        <SelectItem value="High">High Priority</SelectItem>
-                        <SelectItem value="Urgent">Urgent</SelectItem>
+                        <SelectItem value="Low" className="text-xs md:text-sm">
+                          Low Priority
+                        </SelectItem>
+                        <SelectItem
+                          value="Normal"
+                          className="text-xs md:text-sm"
+                        >
+                          Normal Priority
+                        </SelectItem>
+                        <SelectItem value="High" className="text-xs md:text-sm">
+                          High Priority
+                        </SelectItem>
+                        <SelectItem
+                          value="Urgent"
+                          className="text-xs md:text-sm"
+                        >
+                          Urgent
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -413,19 +452,19 @@ export function POTargetDialog({
 
                 {/* Total Amount Display */}
                 {orderQuantity && (
-                  <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <div className="mt-4 md:mt-6 p-3 md:p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
                     <div className="flex items-center justify-between">
-                      <span className="text-lg font-medium text-emerald-700">
+                      <span className="text-sm md:text-lg font-medium text-emerald-700">
                         Total Order Amount:
                       </span>
-                      <div className="flex items-center space-x-1 text-2xl font-bold text-emerald-600">
-                        <IndianRupee className="w-5 h-5" />
+                      <div className="flex items-center space-x-1 text-lg md:text-2xl font-bold text-emerald-600">
+                        <IndianRupee className="w-4 h-4 md:w-5 md:h-5" />
                         <span>
                           {calculateTotalAmount().toLocaleString("en-IN")}
                         </span>
                       </div>
                     </div>
-                    <div className="text-sm text-emerald-600 mt-1">
+                    <div className="text-xs md:text-sm text-emerald-600 mt-1">
                       {orderQuantity} units × ₹
                       {(
                         parseFloat(unitPrice) ||
@@ -440,23 +479,23 @@ export function POTargetDialog({
             </div>
 
             {/* Client Feedback & Requirements */}
-            <div className="space-y-5">
-              <div className="flex items-center gap-5">
-                <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
-                  <MessageSquare className="w-5 h-5 text-white" />
+            <div className="space-y-4 md:space-y-5">
+              <div className="flex items-center gap-4 md:gap-5">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                  <MessageSquare className="w-4 h-4 md:w-5 md:h-5 text-white" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900">
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900">
                   Client Feedback & Requirements
                 </h3>
               </div>
 
-              <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-                <div className="space-y-6">
+              <div className="bg-white border-2 border-gray-200 rounded-xl p-4 md:p-6">
+                <div className="space-y-4 md:space-y-6">
                   {/* Client Feedback */}
                   <div>
                     <Label
                       htmlFor="clientFeedback"
-                      className="text-sm font-medium text-gray-700 mb-2 block"
+                      className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
                       Client Feedback & Comments{" "}
                       <span className="text-red-500">*</span>
@@ -466,7 +505,7 @@ export function POTargetDialog({
                       value={clientFeedback}
                       onChange={(e) => setClientFeedback(e.target.value)}
                       placeholder="Enter detailed client feedback on Green Seal approval and order confirmation..."
-                      className="min-h-[120px] resize-none"
+                      className="min-h-[80px] md:min-h-[120px] resize-none text-xs md:text-sm"
                     />
                   </div>
 
@@ -474,7 +513,7 @@ export function POTargetDialog({
                   <div>
                     <Label
                       htmlFor="qualityRequirements"
-                      className="text-sm font-medium text-gray-700 mb-2 block"
+                      className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
                       Special Quality Requirements
                     </Label>
@@ -483,7 +522,7 @@ export function POTargetDialog({
                       value={qualityRequirements}
                       onChange={(e) => setQualityRequirements(e.target.value)}
                       placeholder="Any specific quality standards, certifications, or inspection requirements..."
-                      className="min-h-[100px] resize-none"
+                      className="min-h-[60px] md:min-h-[100px] resize-none text-xs md:text-sm"
                     />
                   </div>
 
@@ -491,7 +530,7 @@ export function POTargetDialog({
                   <div>
                     <Label
                       htmlFor="specialInstructions"
-                      className="text-sm font-medium text-gray-700 mb-2 block"
+                      className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
                       Special Production Instructions
                     </Label>
@@ -500,7 +539,7 @@ export function POTargetDialog({
                       value={specialInstructions}
                       onChange={(e) => setSpecialInstructions(e.target.value)}
                       placeholder="Any special instructions for production, packaging, or delivery..."
-                      className="min-h-[100px] resize-none"
+                      className="min-h-[60px] md:min-h-[100px] resize-none text-xs md:text-sm"
                     />
                   </div>
                 </div>

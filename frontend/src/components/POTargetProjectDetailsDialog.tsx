@@ -1,3 +1,4 @@
+// src/components/POPendingProjectDetailsDialog.tsx
 import {
   AlertTriangle,
   ArrowRight,
@@ -48,7 +49,6 @@ import {
 } from "./ui/select";
 import { Separator } from "./ui/separator";
 
-// --- Minimal helper implementations so this file is self-contained ---
 function dataUrlToFile(dataUrl: string, filename: string) {
   const arr = dataUrl.split(",");
   const mime = arr[0].match(/:(.*?);/)?.[1] || "image/png";
@@ -80,12 +80,10 @@ function getFullImageUrl(path?: string | null) {
 }
 
 function getStage(status?: string | null) {
-  // simple mapping - keep parity with workflowStages
   const s = workflowStages.find((w) => w.id === status) || workflowStages[2];
   return s;
 }
 
-// --- Basic types used in this file (kept small & flexible) ---
 interface MasterItem {
   _id: string;
   name: string;
@@ -165,30 +163,31 @@ export function POPendingProjectDetailsDialog(props: Props) {
     setSelectedSubModule,
   } = props;
 
-  // --- Hooks (kept in stable order) ---
   const [isEditing, setIsEditing] = useState(false);
   const [editedProject, setEditedProject] = useState<ProductDevelopment | null>(
     null
   );
-
   const [poNumber, setPONumber] = useState("");
   const [isAddingPO, setIsAddingPO] = useState(false);
-
   const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
   const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [dynamicImages, setDynamicImages] = useState<string[]>([]);
+  const [isMobile, setIsMobile] = useState(false);
 
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const additionalInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const dynamicInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Derived values
-  const currentStage = useMemo(
-    () => getStage(editedProject?.status || project?.status),
-    [editedProject?.status, project?.status]
-  );
+  // Check screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
-  // Effects: initialize edit state when dialog opens
   useEffect(() => {
     if (!project || !open) return;
     setEditedProject({ ...project });
@@ -199,13 +198,16 @@ export function POPendingProjectDetailsDialog(props: Props) {
     setPONumber(project.poNumber || "");
   }, [project, open]);
 
-  // Fetch brands when company changes
+  const currentStage = useMemo(
+    () => getStage(editedProject?.status || project?.status),
+    [editedProject?.status, project?.status]
+  );
+
   useEffect(() => {
     if (!isEditing || !editedProject?.company?._id) {
       if (isEditing) setBrands && setBrands([]);
       return;
     }
-
     const companyId = editedProject.company._id;
     let cancelled = false;
     api
@@ -216,13 +218,11 @@ export function POPendingProjectDetailsDialog(props: Props) {
         setBrands && setBrands(arr);
       })
       .catch(() => !cancelled && setBrands && setBrands([]));
-
     return () => {
       cancelled = true;
     };
   }, [editedProject?.company?._id, isEditing, setBrands]);
 
-  // Fetch categories when brand changes
   useEffect(() => {
     if (
       !isEditing ||
@@ -232,11 +232,9 @@ export function POPendingProjectDetailsDialog(props: Props) {
       if (isEditing) setCategories && setCategories([]);
       return;
     }
-
     const c = editedProject.company._id;
     const b = editedProject.brand._id;
     let cancelled = false;
-
     api
       .get(`/companies/${c}/brands/${b}/categories`)
       .then((res) => {
@@ -245,7 +243,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
         setCategories && setCategories(arr);
       })
       .catch(() => !cancelled && setCategories && setCategories([]));
-
     return () => {
       cancelled = true;
     };
@@ -256,7 +253,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
     setCategories,
   ]);
 
-  // --- Image handlers ---
+  // Image handlers
   const handleCoverPhotoUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -337,10 +334,8 @@ export function POPendingProjectDetailsDialog(props: Props) {
     toast.success("Images saved (local logic kept).");
   }, [editedProject]);
 
-  // --- Save edited project (FormData -> PUT) ---
   const handleSave = useCallback(async () => {
     if (!editedProject) return;
-
     if (
       !editedProject.company?._id ||
       !editedProject.brand?._id ||
@@ -349,13 +344,11 @@ export function POPendingProjectDetailsDialog(props: Props) {
       toast.error("Company, Brand and Category are required");
       return;
     }
-
     try {
       const fd = new FormData();
       fd.append("company", editedProject.company._id);
       fd.append("brand", editedProject.brand._id);
       fd.append("category", editedProject.category._id);
-
       if (editedProject.type) fd.append("type", String(editedProject.type._id));
       if (editedProject.country)
         fd.append("country", String(editedProject.country._id));
@@ -374,7 +367,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
         fd.append("redSealTargetDate", editedProject.redSealTargetDate);
       if (editedProject.clientApproval)
         fd.append("clientApproval", editedProject.clientApproval);
-
       if (editedProject?.nextUpdateDate) {
         fd.append(
           "nextUpdate",
@@ -384,7 +376,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
           })
         );
       }
-
       if (coverPhoto) {
         if (coverPhoto.startsWith("data:")) {
           const file = dataUrlToFile(coverPhoto, "cover.png");
@@ -393,14 +384,12 @@ export function POPendingProjectDetailsDialog(props: Props) {
           fd.append("keepExistingCover", "true");
         }
       }
-
       const existingAdditional = additionalImages.filter(
         (s) => s && !s.startsWith("data:")
       );
       const newAdditional = additionalImages.filter(
         (s) => s && s.startsWith("data:")
       );
-
       if (existingAdditional.length > 0)
         fd.append("keepExistingSamples", JSON.stringify(existingAdditional));
       newAdditional.forEach((d, idx) =>
@@ -409,7 +398,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
           dataUrlToFile(d, `sample-${Date.now()}-${idx}.png`)
         )
       );
-
       dynamicImages.forEach((d, idx) => {
         if (d && d.startsWith("data:"))
           fd.append(
@@ -417,7 +405,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
             dataUrlToFile(d, `dynamic-${Date.now()}-${idx}.png`)
           );
       });
-
       if ((editedProject as any).poNumber)
         fd.append("poNumber", (editedProject as any).poNumber);
       if ((editedProject as any).poStatus)
@@ -429,12 +416,10 @@ export function POPendingProjectDetailsDialog(props: Props) {
         );
       if ((editedProject as any).poValue != null)
         fd.append("poValue", String((editedProject as any).poValue));
-
       const url = `/projects/${editedProject._id}`;
       await api.put(url, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-
       toast.success("Project updated");
       await reloadProjects?.();
       setIsEditing(false);
@@ -452,14 +437,11 @@ export function POPendingProjectDetailsDialog(props: Props) {
     reloadProjects,
   ]);
 
-  // PO handlers
   const handleAddPONumber = useCallback(() => {
     if (!editedProject) return;
     const value = poNumber.trim();
     if (!value) return toast.error("Please enter a valid PO number.");
-
     setEditedProject({ ...editedProject, poNumber: value });
-
     (async () => {
       try {
         await api.patch(`/projects/${editedProject._id}/po`, {
@@ -474,17 +456,14 @@ export function POPendingProjectDetailsDialog(props: Props) {
         toast.error("Failed to save PO Number");
       }
     })();
-
     setIsAddingPO(false);
   }, [editedProject, poNumber, reloadProjects]);
 
   const handleEditPONumber = useCallback(() => {
     if (!editedProject) return;
     if (!poNumber.trim()) return toast.error("Please enter a valid PO number.");
-
     const updatedProject = { ...editedProject, poNumber: poNumber.trim() };
     setEditedProject(updatedProject);
-
     (async () => {
       try {
         await api.patch(`/projects/${updatedProject._id}/po`, {
@@ -497,7 +476,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
         toast.error("Failed to update PO Number");
       }
     })();
-
     setPONumber("");
     setIsAddingPO(false);
   }, [editedProject, poNumber, reloadProjects]);
@@ -505,7 +483,6 @@ export function POPendingProjectDetailsDialog(props: Props) {
   const handleAdvanceToPOApproved = useCallback(async () => {
     if (!editedProject?.poNumber)
       return toast.error("PO Number is required to advance");
-
     try {
       await api.patch(`/projects/${editedProject._id}/po`, {
         poNumber: editedProject.poNumber,
@@ -550,314 +527,305 @@ export function POPendingProjectDetailsDialog(props: Props) {
     );
   }, [project]);
 
-  // --- Render (JSX) ---
+  // Responsive grid classes
+  const responsiveGridClass = isMobile
+    ? "grid grid-cols-2 gap-3"
+    : "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-3";
+
+  // Responsive image grid
+  const imageGridClass = isMobile
+    ? "grid grid-cols-4 gap-2"
+    : "flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1";
+
+  // Responsive materials grid
+  const materialsGridClass = isMobile
+    ? "grid grid-cols-1 gap-4"
+    : "grid grid-cols-1 lg:grid-cols-2 gap-6";
+
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
-          {/* Sticky Header Section */}
-          <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-orange-50 via-white to-orange-50 border-b border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                <div className="w-14 h-14 bg-linear-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <Package className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <DialogTitle className="text-3xl font-semibold text-gray-900 mb-2">
-                    PO Pending Details
-                  </DialogTitle>
-                  <DialogDescription className="sr-only">
-                    View and manage PO Pending project details and information
-                  </DialogDescription>
-                  <div className="flex items-center gap-4">
-                    <span className="text-lg text-gray-600">
-                      {project?.autoCode}
-                    </span>
-                    <Badge
-                      className={`${currentStage.color} text-sm px-3 py-1`}
-                    >
-                      {currentStage.name}
-                    </Badge>
-                    <Badge
-                      className={`${
-                        project?.priority === "high"
-                          ? "bg-red-500 text-white"
-                          : project?.priority === "medium"
-                          ? "bg-purple-500 text-white"
-                          : "bg-green-600 text-white"
-                      } text-xs px-2 py-1`}
-                    >
-                      {project?.priority}
-                    </Badge>
-                  </div>
-                </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={`!max-w-[95vw] !w-[95vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col ${
+          isMobile ? "!max-w-full !w-full mx-0 my-0" : ""
+        }`}
+      >
+        {/* Sticky Header Section */}
+        <div className="sticky top-0 z-50 px-4 md:px-8 py-4 md:py-6 bg-linear-to-r from-orange-50 via-white to-orange-50 border-b border-gray-200 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 md:w-14 md:h-14 bg-linear-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Package className="w-5 h-5 md:w-7 md:h-7 text-white" />
               </div>
-
-              <div className="flex items-center gap-3">
-                <Button
-                  onClick={handleAdvanceToPOApproved}
-                  disabled={!editedProject?.poNumber}
-                  className={`bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 ${
-                    !editedProject?.poNumber
-                      ? "opacity-50 cursor-not-allowed"
-                      : ""
-                  }`}
-                  title={
-                    !editedProject?.poNumber
-                      ? "PO Number required to advance to PO Approved"
-                      : "Advance to PO Approved"
-                  }
-                >
-                  <ArrowRight className="w-4 h-4 mr-2" />
-                  Advance to PO Approved
-                </Button>
-
-                <Button
-                  onClick={handleApproveAndAdvanceToProduction}
-                  disabled={!editedProject?.poNumber}
-                  className={`bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 ${
-                    !editedProject?.poNumber
-                      ? "opacity-50 cursor-not-allowed"
-                      : ""
-                  }`}
-                  title={
-                    !editedProject?.poNumber
-                      ? "PO Number required to advance to Production"
-                      : "Advance directly to Production"
-                  }
-                >
-                  <Factory className="w-4 h-4 mr-2" />
-                  Approve & Advance to Production
-                </Button>
-
-                {!isEditing ? (
-                  <Button
-                    onClick={() => setIsEditing(true)}
-                    className="bg-blue-500 hover:bg-blue-600"
+              <div>
+                <DialogTitle className="text-xl md:text-3xl font-semibold text-gray-900 mb-1 md:mb-2">
+                  PO Pending Details
+                </DialogTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm md:text-lg text-gray-600">
+                    {project?.autoCode}
+                  </span>
+                  <Badge className={`${currentStage.color} text-xs px-2 py-1`}>
+                    {currentStage.name}
+                  </Badge>
+                  <Badge
+                    className={`${
+                      project?.priority === "high"
+                        ? "bg-red-500 text-white"
+                        : project?.priority === "medium"
+                        ? "bg-purple-500 text-white"
+                        : "bg-green-600 text-white"
+                    } text-xs px-2 py-1`}
                   >
-                    <Edit2 className="w-4 h-4 mr-2" />
-                    Edit Project
-                  </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleSave}
-                      className="bg-green-500 hover:bg-green-600"
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Changes
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setIsEditing(false);
-                        setEditedProject({ ...project });
-                      }}
-                      variant="outline"
-                    >
-                      Cancel Edit
-                    </Button>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => onOpenChange(false)}
-                  type="button"
-                  className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
-                >
-                  <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
-                </button>
+                    {project?.priority}
+                  </Badge>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Scrollable Main Content */}
-          <div className="flex-1 overflow-y-auto scrollbar-hide">
-            <div className="px-8 py-8 space-y-10">
-              {/* Approval Progress */}
-              <div className="space-y-5">
-                <div className="flex items-center gap-5">
-                  <div className="w-10 h-10 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
-                    <Workflow className="w-5 h-5 text-white" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    PO Target Progress
-                  </h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={handleAdvanceToPOApproved}
+                disabled={!editedProject?.poNumber}
+                className={`bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-xs md:text-sm ${
+                  !editedProject?.poNumber
+                    ? "opacity-50 cursor-not-allowed"
+                    : ""
+                }`}
+                size={isMobile ? "sm" : "default"}
+              >
+                <ArrowRight className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                {isMobile ? "To Approved" : "Advance to PO Approved"}
+              </Button>
+
+              <Button
+                onClick={handleApproveAndAdvanceToProduction}
+                disabled={!editedProject?.poNumber}
+                className={`bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-xs md:text-sm ${
+                  !editedProject?.poNumber
+                    ? "opacity-50 cursor-not-allowed"
+                    : ""
+                }`}
+                size={isMobile ? "sm" : "default"}
+              >
+                <Factory className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                {isMobile ? "To Production" : "Approve & To Production"}
+              </Button>
+
+              {!isEditing ? (
+                <Button
+                  onClick={() => setIsEditing(true)}
+                  className="bg-blue-500 hover:bg-blue-600 text-xs md:text-sm"
+                  size={isMobile ? "sm" : "default"}
+                >
+                  <Edit2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  {isMobile ? "Edit" : "Edit Project"}
+                </Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleSave}
+                    className="bg-green-500 hover:bg-green-600 text-xs"
+                    size="sm"
+                  >
+                    <Save className="w-3 h-3 mr-1" />
+                    Save
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditedProject({ ...project });
+                    }}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Cancel
+                  </Button>
                 </div>
+              )}
 
-                <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-                  <div className="mb-5">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium text-gray-600">
-                        Overall Progress
-                      </span>
-                      <span className="text-sm font-bold text-gray-900">
-                        {currentStage.progress}%
-                      </span>
-                    </div>
-                    <Progress value={currentStage.progress} className="h-2" />
+              <button
+                onClick={() => onOpenChange(false)}
+                type="button"
+                className="h-8 w-8 md:h-10 md:w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
+              >
+                <X className="w-4 h-4 md:w-5 md:h-5 text-gray-500 hover:text-gray-700" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable Main Content */}
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
+          <div className="px-4 md:px-8 py-4 md:py-8 space-y-6 md:space-y-10">
+            {/* Approval Progress */}
+            <div className="space-y-3 md:space-y-5">
+              <div className="flex items-center gap-3 md:gap-5">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
+                  <Workflow className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                </div>
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900">
+                  PO Target Progress
+                </h3>
+              </div>
+              <div className="bg-white border border-gray-200 md:border-2 rounded-xl p-4 md:p-6">
+                <div className="mb-3 md:mb-5">
+                  <div className="flex justify-between items-center mb-1 md:mb-2">
+                    <span className="text-xs md:text-sm font-medium text-gray-600">
+                      Overall Progress
+                    </span>
+                    <span className="text-xs md:text-sm font-bold text-gray-900">
+                      {currentStage.progress}%
+                    </span>
                   </div>
-
-                  <div className="grid grid-cols-6 gap-2">
-                    {workflowStages.map((stage, index) => {
-                      const isCompleted =
-                        workflowStages.findIndex(
-                          (s) => s.id === "PO Pending"
-                        ) >= index;
-                      const isCurrent = stage.id === "PO Pending";
-
-                      return (
+                  <Progress
+                    value={currentStage.progress}
+                    className="h-1 md:h-2"
+                  />
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 md:gap-2">
+                  {workflowStages.map((stage, index) => {
+                    const isCompleted =
+                      workflowStages.findIndex((s) => s.id === "PO Pending") >=
+                      index;
+                    const isCurrent = stage.id === "PO Pending";
+                    return (
+                      <div
+                        key={stage.id}
+                        className={`text-center p-1 md:p-2 rounded-lg transition-all ${
+                          isCurrent
+                            ? "bg-orange-100 border border-orange-400 md:border-2 shadow-sm md:shadow-md"
+                            : isCompleted
+                            ? "bg-green-50 border border-green-200"
+                            : "bg-gray-50 border border-gray-200"
+                        }`}
+                      >
                         <div
-                          key={stage.id}
-                          className={`text-center p-2 rounded-lg transition-all ${
+                          className={`w-4 h-4 md:w-6 md:h-6 mx-auto mb-0.5 md:mb-1 rounded-full flex items-center justify-center text-xs ${
                             isCurrent
-                              ? "bg-orange-100 border-2 border-orange-400 shadow-md"
+                              ? "bg-orange-500 text-white"
                               : isCompleted
-                              ? "bg-green-50 border border-green-200"
-                              : "bg-gray-50 border border-gray-200"
+                              ? "bg-green-500 text-white"
+                              : "bg-gray-300 text-gray-600"
                           }`}
                         >
-                          <div
-                            className={`w-6 h-6 mx-auto mb-1 rounded-full flex items-center justify-center text-xs ${
-                              isCurrent
-                                ? "bg-orange-500 text-white"
-                                : isCompleted
-                                ? "bg-green-500 text-white"
-                                : "bg-gray-300 text-gray-600"
-                            }`}
-                          >
-                            {isCompleted ? (
-                              <CheckCircle className="w-3 h-3" />
-                            ) : (
-                              index + 1
-                            )}
-                          </div>
-                          <div className="text-xs font-medium text-gray-700">
-                            {stage.name}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* PO Target Information */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                    <Target className="w-5 h-5 text-white" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    PO Target Information
-                  </h3>
-                </div>
-
-                {/* Unified Product Details Section */}
-                <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-5">
-                    <h4 className="text-lg font-semibold text-gray-900">
-                      Product & Brand Details
-                    </h4>
-                    <Badge
-                      variant="secondary"
-                      className="bg-orange-50 text-orange-700 border-orange-200"
-                    >
-                      PO Pending
-                    </Badge>
-                  </div>
-
-                  {/* Horizontal Layout: Preview + Images */}
-                  <div className="flex gap-4 mb-5">
-                    {/* Product Preview - Compact */}
-                    <div className="shrink-0 w-44">
-                      <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 h-full">
-                        <Label className="text-xs font-medium text-gray-600 mb-2 block">
-                          Preview
-                        </Label>
-                        <div className="w-20 h-20 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm mx-auto mb-2">
-                          <img
-                            src={getFullImageUrl(
-                              coverPhoto || (project as any)?.coverImage
-                            )}
-                            alt={(project as any)?.autoCode || ""}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="text-xs font-medium text-gray-900 text-center">
-                          {(project as any)?.autoCode ||
-                            (project as any)?.productCode}
-                        </div>
-                        <div className="text-xs text-gray-500 text-center mt-0.5">
-                          Sample
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Product Images Gallery (same as other dialogs) */}
-                    <div className="flex-1 min-w-0">
-                      <div className="p-3 bg-linear-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center">
-                              <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
-                            </div>
-                            <Label className="text-xs font-semibold text-gray-800">
-                              Images
-                            </Label>
-                          </div>
-                          {(coverPhoto ||
-                            additionalImages.filter((img) => img).length > 0 ||
-                            dynamicImages.length > 0) && (
-                            <Badge
-                              variant="secondary"
-                              className="bg-blue-50 text-blue-700 border-blue-200 text-xs h-5"
-                            >
-                              {
-                                [
-                                  coverPhoto,
-                                  ...additionalImages.filter((img) => img),
-                                  ...dynamicImages,
-                                ].length
-                              }
-                            </Badge>
+                          {isCompleted ? (
+                            <CheckCircle className="w-2 h-2 md:w-3 md:h-3" />
+                          ) : (
+                            index + 1
                           )}
                         </div>
+                        <div className="text-xs font-medium text-gray-700 truncate">
+                          {isMobile
+                            ? stage.shortName || stage.name
+                            : stage.name}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
 
-                        {!isEditing ? (
-                          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                            {coverPhoto && (
-                              <div className="group relative shrink-0">
-                                <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
-                                  <img
-                                    src={getFullImageUrl(coverPhoto)}
-                                    alt="Cover"
-                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                  />
-                                </div>
+            {/* PO Target Information */}
+            <div className="space-y-4 md:space-y-6">
+              <div className="flex items-center gap-3 md:gap-5">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
+                  <Target className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                </div>
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900">
+                  PO Target Information
+                </h3>
+              </div>
+
+              {/* Unified Product Details Section */}
+              <div className="bg-white border border-gray-200 md:border-2 rounded-xl p-4 md:p-6">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 md:mb-5">
+                  <h4 className="text-base md:text-lg font-semibold text-gray-900 mb-2 sm:mb-0">
+                    Product & Brand Details
+                  </h4>
+                  <Badge
+                    variant="secondary"
+                    className="bg-orange-50 text-orange-700 border-orange-200 text-xs"
+                  >
+                    PO Pending
+                  </Badge>
+                </div>
+
+                {/* Horizontal Layout for desktop, stacked for mobile */}
+                <div className="flex flex-col lg:flex-row gap-4 mb-4 md:mb-5">
+                  {/* Product Preview */}
+                  <div className={`${isMobile ? "w-full" : "shrink-0 w-44"}`}>
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 h-full">
+                      <Label className="text-xs font-medium text-gray-600 mb-2 block">
+                        Preview
+                      </Label>
+                      <div className="w-16 h-16 md:w-20 md:h-20 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm mx-auto mb-2">
+                        <img
+                          src={getFullImageUrl(
+                            coverPhoto || (project as any)?.coverImage
+                          )}
+                          alt={(project as any)?.autoCode || ""}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="text-xs font-medium text-gray-900 text-center truncate">
+                        {(project as any)?.autoCode ||
+                          (project as any)?.productCode}
+                      </div>
+                      <div className="text-xs text-gray-500 text-center mt-0.5">
+                        Sample
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Product Images Gallery */}
+                  <div className="flex-1 min-w-0">
+                    <div className="p-3 bg-linear-to-br from-gray-50 to-gray-100/50 rounded-lg border border-gray-200/80 shadow-sm h-full">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-5 h-5 md:w-6 md:h-6 bg-blue-100 rounded-md flex items-center justify-center">
+                            <ImageIcon className="w-3 h-3 md:w-3.5 md:h-3.5 text-blue-600" />
+                          </div>
+                          <Label className="text-xs font-semibold text-gray-800">
+                            Images
+                          </Label>
+                        </div>
+                        {(coverPhoto ||
+                          additionalImages.filter((img) => img).length > 0 ||
+                          dynamicImages.length > 0) && (
+                          <Badge
+                            variant="secondary"
+                            className="bg-blue-50 text-blue-700 border-blue-200 text-xs h-4 md:h-5"
+                          >
+                            {
+                              [
+                                coverPhoto,
+                                ...additionalImages.filter((img) => img),
+                                ...dynamicImages,
+                              ].length
+                            }
+                          </Badge>
+                        )}
+                      </div>
+
+                      {!isEditing ? (
+                        <div className={imageGridClass}>
+                          {coverPhoto && (
+                            <div className="group relative shrink-0">
+                              <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
+                                <img
+                                  src={getFullImageUrl(coverPhoto)}
+                                  alt="Cover"
+                                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                />
                               </div>
-                            )}
-                            {additionalImages
-                              .filter((img) => img)
-                              .map((image, i) => (
-                                <div
-                                  key={i}
-                                  className="group relative shrink-0"
-                                >
-                                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
-                                    <img
-                                      src={getFullImageUrl(image)}
-                                      alt={`Image ${i + 1}`}
-                                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                            {dynamicImages.map((image, i) => (
-                              <div
-                                key={`dynamic-${i}`}
-                                className="group relative shrink-0"
-                              >
-                                <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
+                            </div>
+                          )}
+                          {additionalImages
+                            .filter((img) => img)
+                            .map((image, i) => (
+                              <div key={i} className="group relative shrink-0">
+                                <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
                                   <img
                                     src={getFullImageUrl(image)}
                                     alt={`Image ${i + 1}`}
@@ -866,34 +834,95 @@ export function POPendingProjectDetailsDialog(props: Props) {
                                 </div>
                               </div>
                             ))}
-                            {!coverPhoto &&
-                              additionalImages.filter((img) => img).length ===
-                                0 &&
-                              dynamicImages.length === 0 && (
-                                <div className="w-full text-center py-4">
-                                  <ImageIcon className="w-8 h-8 mx-auto mb-1 text-gray-400" />
-                                  <p className="text-xs text-gray-500">
-                                    No images
-                                  </p>
+                          {dynamicImages.map((image, i) => (
+                            <div
+                              key={`dynamic-${i}`}
+                              className="group relative shrink-0"
+                            >
+                              <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
+                                <img
+                                  src={getFullImageUrl(image)}
+                                  alt={`Image ${i + 1}`}
+                                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                          {!coverPhoto &&
+                            additionalImages.filter((img) => img).length ===
+                              0 &&
+                            dynamicImages.length === 0 && (
+                              <div className="w-full text-center py-3 md:py-4">
+                                <ImageIcon className="w-6 h-6 md:w-8 md:h-8 mx-auto mb-1 text-gray-400" />
+                                <p className="text-xs text-gray-500">
+                                  No images
+                                </p>
+                              </div>
+                            )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className={imageGridClass}>
+                            <div className="shrink-0">
+                              <input
+                                ref={coverInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleCoverPhotoUpload}
+                              />
+                              {coverPhoto ? (
+                                <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md group">
+                                  <img
+                                    src={getFullImageUrl(coverPhoto)}
+                                    alt="Cover"
+                                    className="w-full h-full object-cover"
+                                  />
+                                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
+                                    <Button
+                                      type="button"
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={removeCoverPhoto}
+                                      className="h-5 w-5 md:h-6 md:w-6 p-0 shadow-lg"
+                                    >
+                                      <Trash2 className="w-2 h-2 md:w-3 md:h-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  onClick={() => coverInputRef.current?.click()}
+                                  className="w-16 h-16 md:w-20 md:h-20 border-2 border-dashed border-blue-400 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md"
+                                >
+                                  <ImageIcon className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+                                  <span className="text-xs text-blue-700 mt-0.5">
+                                    Cover
+                                  </span>
                                 </div>
                               )}
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                              <div className="shrink-0">
+                            </div>
+
+                            {[0, 1, 2, 3, 4].map((i) => (
+                              <div key={i} className="shrink-0">
                                 <input
-                                  ref={coverInputRef}
+                                  ref={(el) => {
+                                    if (additionalInputRefs.current) {
+                                      additionalInputRefs.current[i] = el;
+                                    }
+                                  }}
                                   type="file"
                                   accept="image/*"
                                   className="hidden"
-                                  onChange={handleCoverPhotoUpload}
+                                  onChange={(e) =>
+                                    handleAdditionalImageUpload(e, i)
+                                  }
                                 />
-                                {coverPhoto ? (
-                                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md group">
+                                {additionalImages[i] ? (
+                                  <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
                                     <img
-                                      src={getFullImageUrl(coverPhoto)}
-                                      alt="Cover"
+                                      src={getFullImageUrl(additionalImages[i])}
+                                      alt={`Image ${i + 1}`}
                                       className="w-full h-full object-cover"
                                     />
                                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
@@ -901,142 +930,904 @@ export function POPendingProjectDetailsDialog(props: Props) {
                                         type="button"
                                         variant="destructive"
                                         size="sm"
-                                        onClick={removeCoverPhoto}
-                                        className="h-6 w-6 p-0 shadow-lg"
+                                        onClick={() => removeAdditionalImage(i)}
+                                        className="h-5 w-5 md:h-6 md:w-6 p-0 shadow-lg"
                                       >
-                                        <Trash2 className="w-3 h-3" />
+                                        <Trash2 className="w-2 h-2 md:w-3 md:h-3" />
                                       </Button>
                                     </div>
                                   </div>
                                 ) : (
                                   <div
                                     onClick={() =>
-                                      coverInputRef.current?.click()
+                                      additionalInputRefs.current[i]?.click()
                                     }
-                                    className="w-20 h-20 border-2 border-dashed border-blue-400 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center shadow-sm hover:shadow-md"
+                                    className="w-16 h-16 md:w-20 md:h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md"
                                   >
-                                    <ImageIcon className="w-5 h-5 text-blue-600" />
-                                    <span className="text-xs text-blue-700 mt-0.5">
-                                      Cover
-                                    </span>
+                                    <Upload className="w-4 h-4 md:w-5 md:h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
                                   </div>
                                 )}
                               </div>
+                            ))}
 
-                              {[0, 1, 2, 3, 4].map((i) => (
-                                <div key={i} className="shrink-0">
-                                  <input
-                                    ref={(el) => {
-                                      if (additionalInputRefs.current) {
-                                        additionalInputRefs.current[i] = el;
-                                      }
-                                    }}
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(e) =>
-                                      handleAdditionalImageUpload(e, i)
+                            {dynamicImages.map((image, i) => (
+                              <div key={`dynamic-${i}`} className="shrink-0">
+                                <input
+                                  ref={(el) => {
+                                    if (dynamicInputRefs.current) {
+                                      dynamicInputRefs.current[i] = el;
                                     }
-                                  />
-                                  {additionalImages[i] ? (
-                                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
-                                      <img
-                                        src={getFullImageUrl(
-                                          additionalImages[i]
-                                        )}
-                                        alt={`Image ${i + 1}`}
-                                        className="w-full h-full object-cover"
-                                      />
-                                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          onClick={() =>
-                                            removeAdditionalImage(i)
-                                          }
-                                          className="h-6 w-6 p-0 shadow-lg"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </Button>
-                                      </div>
+                                  }}
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) =>
+                                    handleDynamicImageUpload(e, i)
+                                  }
+                                />
+                                {image ? (
+                                  <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
+                                    <img
+                                      src={getFullImageUrl(image)}
+                                      alt={`Image ${i + 1}`}
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
+                                      <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={() => removeDynamicImage(i)}
+                                        className="h-5 w-5 md:h-6 md:w-6 p-0 shadow-lg"
+                                      >
+                                        <Trash2 className="w-2 h-2 md:w-3 md:h-3" />
+                                      </Button>
                                     </div>
-                                  ) : (
-                                    <div
-                                      onClick={() =>
-                                        additionalInputRefs.current[i]?.click()
-                                      }
-                                      className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md"
-                                    >
-                                      <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-
-                              {dynamicImages.map((image, i) => (
-                                <div key={`dynamic-${i}`} className="shrink-0">
-                                  <input
-                                    ref={(el) => {
-                                      if (dynamicInputRefs.current) {
-                                        dynamicInputRefs.current[i] = el;
-                                      }
-                                    }}
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(e) =>
-                                      handleDynamicImageUpload(e, i)
+                                  </div>
+                                ) : (
+                                  <div
+                                    onClick={() =>
+                                      dynamicInputRefs.current[i]?.click()
                                     }
-                                  />
-                                  {image ? (
-                                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
-                                      <img
-                                        src={getFullImageUrl(image)}
-                                        alt={`Image ${i + 1}`}
-                                        className="w-full h-full object-cover"
-                                      />
-                                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center">
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          onClick={() => removeDynamicImage(i)}
-                                          className="h-6 w-6 p-0 shadow-lg"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div
-                                      onClick={() =>
-                                        dynamicInputRefs.current[i]?.click()
-                                      }
-                                      className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md"
-                                    >
-                                      <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-
-                              <div
-                                onClick={handleAddImageSlot}
-                                className="w-20 h-20 shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md"
-                              >
-                                <Plus className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-all duration-200" />
+                                    className="w-16 h-16 md:w-20 md:h-20 border-2 border-dashed border-gray-300 rounded-lg bg-white hover:bg-gray-50 hover:border-blue-400 transition-all duration-200 cursor-pointer flex items-center justify-center group shadow-sm hover:shadow-md"
+                                  >
+                                    <Upload className="w-4 h-4 md:w-5 md:h-5 text-gray-400 group-hover:text-blue-500 transition-all duration-200" />
+                                  </div>
+                                )}
                               </div>
-                            </div>
+                            ))}
 
-                            <div className="flex justify-end pt-2 border-t border-gray-200">
+                            <div
+                              onClick={handleAddImageSlot}
+                              className="w-16 h-16 md:w-20 md:h-20 shrink-0 border-2 border-dashed border-blue-400 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 hover:from-blue-100 hover:to-blue-200/50 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group shadow-sm hover:shadow-md"
+                            >
+                              <Plus className="w-4 h-4 md:w-5 md:h-5 text-blue-600 group-hover:scale-110 transition-all duration-200" />
+                            </div>
+                          </div>
+                          <div className="flex justify-end pt-2 border-t border-gray-200">
+                            <Button
+                              onClick={handleSaveImages}
+                              className="bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-6 md:h-7 text-xs"
+                              size="sm"
+                            >
+                              <Save className="w-2 h-2 md:w-3 md:h-3 mr-1.5" />
+                              Save
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* All Fields in Responsive Grid */}
+                <div className={responsiveGridClass}>
+                  <div>
+                    <Label className="text-xs md:text-sm">Product Code</Label>
+                    <div className="mt-1 font-mono font-bold text-gray-900 text-sm">
+                      {(project as any)?.autoCode ||
+                        (project as any)?.productCode}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Company</Label>
+                    {isEditing ? (
+                      <Select
+                        value={editedProject?.company?._id || ""}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            company: companies.find((c) => c._id === v) || null,
+                            brand: null,
+                            category: null,
+                          } as ProductDevelopment)
+                        }
+                      >
+                        <SelectTrigger className="mt-1 h-8 md:h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {companies?.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {project?.company?.name || "N/A"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Brand</Label>
+                    {isEditing ? (
+                      <Select
+                        value={editedProject?.brand?._id || ""}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            brand: brands.find((b) => b._id === v) || null,
+                            category: null,
+                          } as ProductDevelopment)
+                        }
+                      >
+                        <SelectTrigger className="mt-1 h-8 md:h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(brands || []).map((b) => (
+                            <SelectItem key={b._id} value={b._id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {project?.brand?.name || "N/A"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Category</Label>
+                    {isEditing ? (
+                      <Select
+                        value={editedProject?.category?._id || ""}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            category:
+                              categories.find((c) => c._id === v) || null,
+                          } as ProductDevelopment)
+                        }
+                      >
+                        <SelectTrigger className="mt-1 h-8 md:h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {project?.category?.name || "N/A"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Type</Label>
+                    {isEditing ? (
+                      <Select
+                        value={editedProject?.type?._id || ""}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            type: types.find((t) => t._id === v) || null,
+                          } as ProductDevelopment)
+                        }
+                      >
+                        <SelectTrigger className="mt-1 h-8 md:h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {types.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {project?.type?.name || "N/A"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Gender</Label>
+                    {isEditing ? (
+                      <Select
+                        value={editedProject?.gender || ""}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            gender: v,
+                          } as ProductDevelopment)
+                        }
+                      >
+                        <SelectTrigger className="mt-1 h-8 md:h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Unisex">Unisex</SelectItem>
+                          <SelectItem value="Men">Men</SelectItem>
+                          <SelectItem value="Women">Women</SelectItem>
+                          <SelectItem value="Kids">Kids</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {project?.gender || "N/A"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Art</Label>
+                    {isEditing ? (
+                      <Input
+                        value={editedProject?.artName || ""}
+                        onChange={(e) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            artName: e.target.value,
+                          } as ProductDevelopment)
+                        }
+                        className="mt-1 h-8 md:h-10 text-sm"
+                      />
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {(project as any)?.artName || "N/A"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Colour</Label>
+                    {isEditing ? (
+                      <Input
+                        value={editedProject?.color || ""}
+                        onChange={(e) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            color: e.target.value,
+                          } as ProductDevelopment)
+                        }
+                        className="mt-1 h-8 md:h-10 text-sm"
+                      />
+                    ) : (
+                      <div className="mt-1 flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 md:w-4 md:h-4 rounded-full`}
+                          style={{
+                            backgroundColor:
+                              (project as any)?.colorHex || "#cccccc",
+                          }}
+                        ></div>
+                        <span className="text-gray-900 text-sm">
+                          {(project as any)?.color || "N/A"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Country</Label>
+                    {isEditing ? (
+                      <Select
+                        value={editedProject?.country?._id || ""}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            country: countries.find((c) => c._id === v) || null,
+                          } as ProductDevelopment)
+                        }
+                      >
+                        <SelectTrigger className="mt-1 h-8 md:h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {countries.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {project?.country?.name || "N/A"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Status</Label>
+                    <div className="mt-1">
+                      <Badge className={`${currentStage.color} text-xs`}>
+                        {currentStage.name}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Start Date</Label>
+                    {isEditing ? (
+                      <Input
+                        type="date"
+                        value={
+                          editedProject?.createdAt
+                            ? (editedProject.createdAt as string).split("T")[0]
+                            : ""
+                        }
+                        readOnly
+                        className="mt-1 h-8 md:h-10 text-sm bg-gray-50"
+                      />
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {formatDateDisplay((project as any)?.createdAt)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Target Date</Label>
+                    {isEditing ? (
+                      <Input
+                        type="date"
+                        value={
+                          editedProject?.redSealTargetDate
+                            ? (editedProject.redSealTargetDate as string).split(
+                                "T"
+                              )[0]
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            redSealTargetDate: e.target.value,
+                          } as ProductDevelopment)
+                        }
+                        className="mt-1 h-8 md:h-10 text-sm"
+                      />
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {formatDateDisplay((project as any)?.redSealTargetDate)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Priority</Label>
+                    {isEditing ? (
+                      <Select
+                        value={editedProject?.priority || "low"}
+                        onValueChange={(value) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            priority: value,
+                          } as ProductDevelopment)
+                        }
+                      >
+                        <SelectTrigger className="mt-1 h-8 md:h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1">
+                        <Badge
+                          className={
+                            (project as any)?.priority === "high"
+                              ? "bg-red-500 text-white text-xs"
+                              : (project as any)?.priority === "medium"
+                              ? "bg-amber-500 text-white text-xs"
+                              : "bg-green-500 text-white text-xs"
+                          }
+                        >
+                          {(project as any)?.priority || "N/A"}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs md:text-sm">Assigned To</Label>
+                    {isEditing ? (
+                      <Select
+                        value={editedProject?.assignPerson?._id || ""}
+                        onValueChange={(v) =>
+                          setEditedProject({
+                            ...editedProject!,
+                            assignPerson:
+                              assignPersons.find((p) => p._id === v) || null,
+                          } as ProductDevelopment)
+                        }
+                      >
+                        <SelectTrigger className="mt-1 h-8 md:h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assignPersons?.map((p) => (
+                            <SelectItem key={p._id} value={p._id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="mt-1 text-gray-900 text-sm">
+                        {project?.assignPerson?.name || "N/A"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Materials & Components Analysis */}
+            <div className="space-y-4 md:space-y-6">
+              <div className="flex items-center gap-3 md:gap-5">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-teal-500 rounded-xl flex items-center justify-center shadow-md">
+                  <Calculator className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                </div>
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900">
+                  Materials & Components Analysis
+                </h3>
+              </div>
+
+              <div className={materialsGridClass}>
+                {/* Components Analysis */}
+                <div className="bg-white border border-purple-200 md:border-2 rounded-xl p-4 md:p-6">
+                  <h4 className="text-base md:text-lg font-semibold text-purple-900 mb-3 md:mb-4">
+                    Components Used
+                  </h4>
+                  <div className="space-y-2 md:space-y-3">
+                    <div className="grid grid-cols-3 gap-1 md:gap-2 text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
+                      <div>COMPONENT</div>
+                      <div>DESCRIPTION</div>
+                      <div>CONSUMPTION</div>
+                    </div>
+
+                    <div className="space-y-1 md:space-y-2 max-h-48 md:max-h-64 overflow-y-auto">
+                      {(
+                        (editedProject && (editedProject as any).components) ||
+                        (project && (project as any).components) ||
+                        []
+                      ).length > 0 ? (
+                        (
+                          (editedProject &&
+                            (editedProject as any).components) ||
+                          (project && (project as any).components) ||
+                          []
+                        ).map((component: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="grid grid-cols-3 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b border-gray-200"
+                          >
+                            <div className="font-medium truncate">
+                              {component.name}
+                            </div>
+                            <div className="text-gray-600 truncate">
+                              {component.desc || "-"}
+                            </div>
+                            <div className="text-gray-600 truncate">
+                              {component.consumption || "-"}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-3 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b border-gray-200">
+                            <div className="font-medium">Foam</div>
+                            <div className="text-gray-600">-</div>
+                            <div className="text-gray-600">7.5grm</div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b border-gray-200">
+                            <div className="font-medium">Velcro</div>
+                            <div className="text-gray-600">75mm</div>
+                            <div className="text-gray-600">1.25 pair</div>
+                          </div>
+                          {/* Add more rows as needed */}
+                        </>
+                      )}
+                    </div>
+
+                    <div className="bg-purple-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                      <div className="text-xs md:text-sm text-purple-800">
+                        <strong>Total Components:</strong>{" "}
+                        {(
+                          (editedProject &&
+                            (editedProject as any).components) ||
+                          (project && (project as any).components) ||
+                          []
+                        ).length || 9}{" "}
+                        different components
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Materials Analysis */}
+                <div className="bg-white border border-teal-200 md:border-2 rounded-xl p-4 md:p-6">
+                  <h4 className="text-base md:text-lg font-semibold text-teal-900 mb-3 md:mb-4">
+                    Materials Used
+                  </h4>
+                  <div className="space-y-2 md:space-y-3">
+                    <div className="grid grid-cols-3 gap-1 md:gap-2 text-xs font-medium text-gray-600 bg-teal-50 p-2 rounded">
+                      <div>MATERIAL</div>
+                      <div>DESCRIPTION</div>
+                      <div>CONSUMPTION</div>
+                    </div>
+
+                    <div className="space-y-1 md:space-y-2 max-h-48 md:max-h-64 overflow-y-auto">
+                      {(
+                        (editedProject && (editedProject as any).materials) ||
+                        (project && (project as any).materials) ||
+                        []
+                      ).length > 0 ? (
+                        (
+                          (editedProject && (editedProject as any).materials) ||
+                          (project && (project as any).materials) ||
+                          []
+                        ).map((material: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="grid grid-cols-3 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b border-gray-200"
+                          >
+                            <div className="font-medium truncate">
+                              {material.name}
+                            </div>
+                            <div className="text-gray-600 truncate">
+                              {material.desc || "-"}
+                            </div>
+                            <div className="text-gray-600 truncate">
+                              {material.consumption || "-"}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-3 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b border-gray-200">
+                            <div className="font-medium">Upper</div>
+                            <div className="text-gray-600">Rexine</div>
+                            <div className="text-gray-600">26 pairs/mtr</div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b border-gray-200">
+                            <div className="font-medium">Lining</div>
+                            <div className="text-gray-600">Skinfit</div>
+                            <div className="text-gray-600">25 pair @ 155/-</div>
+                          </div>
+                          {/* Add more rows as needed */}
+                        </>
+                      )}
+                    </div>
+
+                    <div className="bg-teal-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                      <div className="text-xs md:text-sm text-teal-800">
+                        <strong>Total Materials:</strong>{" "}
+                        {(
+                          (editedProject && (editedProject as any).materials) ||
+                          (project && (project as any).materials) ||
+                          []
+                        ).length || 9}{" "}
+                        different materials
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Analysis Summary */}
+              <div className="bg-linear-to-r from-purple-50 to-teal-50 border border-purple-200 md:border-2 rounded-xl p-4 md:p-6">
+                <h4 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">
+                  Production Analysis Summary
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                  <div className="text-center p-3 md:p-4 bg-white rounded-lg border border-purple-200">
+                    <div className="text-xs md:text-sm text-purple-600 font-medium">
+                      Total Components
+                    </div>
+                    <div className="text-xl md:text-2xl font-bold text-purple-800">
+                      {(
+                        (editedProject && (editedProject as any).components) ||
+                        (project && (project as any).components) ||
+                        []
+                      ).length || 9}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5 md:mt-1">
+                      Active components
+                    </div>
+                  </div>
+                  <div className="text-center p-3 md:p-4 bg-white rounded-lg border border-teal-200">
+                    <div className="text-xs md:text-sm text-teal-600 font-medium">
+                      Total Materials
+                    </div>
+                    <div className="text-xl md:text-2xl font-bold text-teal-800">
+                      {(
+                        (editedProject && (editedProject as any).materials) ||
+                        (project && (project as any).materials) ||
+                        []
+                      ).length || 9}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5 md:mt-1">
+                      Raw materials
+                    </div>
+                  </div>
+                  <div className="text-center p-3 md:p-4 bg-white rounded-lg border border-gray-200">
+                    <div className="text-xs md:text-sm text-gray-600 font-medium">
+                      Production Complexity
+                    </div>
+                    <div className="text-xl md:text-2xl font-bold text-gray-800">
+                      {(project && (project as any).productionComplexity) ||
+                        "Medium"}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5 md:mt-1">
+                      {(project && (project as any).totalItems) ||
+                        "18 total items"}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 md:mt-4 p-2 md:p-3 bg-white border border-gray-200 rounded-lg">
+                  <div className="text-xs md:text-sm text-gray-700">
+                    <strong>PO Target Analysis:</strong>{" "}
+                    {(project && (project as any).poAnalysis) ||
+                      "Product ready for production order with standardized materials and components."}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* PO Number Management Section - For Pending Projects Only */}
+            {isPOPending() && (
+              <div className="space-y-4 md:space-y-6">
+                <div className="flex items-center gap-3 md:gap-5">
+                  <div className="w-8 h-8 md:w-10 md:h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
+                    <Package className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                  </div>
+                  <h3 className="text-lg md:text-xl font-semibold text-gray-900">
+                    Add PO Number
+                  </h3>
+                </div>
+
+                <div className="bg-linear-to-br from-orange-50 to-orange-100 border border-orange-300 md:border-2 rounded-xl p-4 md:p-8 shadow-lg">
+                  <div className="flex items-start gap-3 md:gap-4 mb-4 md:mb-6">
+                    <div className="w-8 h-8 md:w-12 md:h-12 bg-orange-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                      {(editedProject as any)?.poNumber ? (
+                        <CheckCircle className="w-4 h-4 md:w-6 md:h-6 text-white" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 md:w-6 md:h-6 text-white" />
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="text-base md:text-xl font-semibold text-orange-900 mb-1 md:mb-2">
+                        {(editedProject as any)?.poNumber
+                          ? "PO Number Added - Buttons Activated"
+                          : "PO Number Required to Proceed"}
+                      </h4>
+                      <p className="text-xs md:text-sm text-orange-800">
+                        {(editedProject as any)?.poNumber
+                          ? "PO Number has been saved. The advance buttons at the top are now active."
+                          : "Enter the Purchase Order number below to unlock the advance buttons."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl p-4 md:p-6 border border-orange-200 md:border-2 shadow-md">
+                    <div className="space-y-2 md:space-y-3">
+                      <Label className="text-sm md:text-base font-semibold text-gray-800 flex items-center gap-1 md:gap-2">
+                        <ShoppingCart className="w-3 h-3 md:w-4 md:h-4 text-orange-600" />
+                        Purchase Order Number
+                      </Label>
+
+                      <div className="flex flex-col sm:flex-row gap-2 md:gap-3 items-start">
+                        <div className="flex-1">
+                          <Input
+                            value={
+                              poNumber || (editedProject as any)?.poNumber || ""
+                            }
+                            onChange={(e) => setPONumber(e.target.value)}
+                            placeholder="Enter PO number (e.g., PO-2024-001)"
+                            className="h-10 md:h-12 text-sm md:text-base border border-gray-300 md:border-2 focus:border-orange-500 focus:ring-orange-500"
+                          />
+                          <p className="text-xs text-gray-600 mt-1 md:mt-2 flex items-center gap-1">
+                            {(editedProject as any)?.poNumber ? (
+                              <>
+                                <CheckCircle className="w-3 h-3 text-green-600" />
+                                <span className="text-green-700 font-medium">
+                                  Saved: {(editedProject as any).poNumber}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                                Enter the official purchase order number
+                              </>
+                            )}
+                          </p>
+                        </div>
+
+                        <Button
+                          onClick={handleAddPONumber}
+                          disabled={!poNumber.trim()}
+                          className="h-10 md:h-12 px-4 md:px-6 bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed font-semibold shadow-lg whitespace-nowrap w-full sm:w-auto"
+                          size={isMobile ? "sm" : "default"}
+                        >
+                          <Save className="w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2" />
+                          {(editedProject as any)?.poNumber
+                            ? "Update PO Number"
+                            : poNumber.trim()
+                            ? "Save PO Number"
+                            : "Enter to Continue"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PO Number Added - Ready to Advance Section */}
+            {(project as any)?.poNumber && !isPOApproved() && (
+              <div className="space-y-4 md:space-y-6">
+                <div className="bg-linear-to-r from-green-50 to-emerald-50 border border-green-200 md:border-2 rounded-xl p-4 md:p-6">
+                  <div className="flex items-start gap-3 md:gap-4 mb-3 md:mb-4">
+                    <CheckCircle className="w-4 h-4 md:w-6 md:h-6 text-green-600 mt-0.5" />
+                    <div>
+                      <h4 className="text-base md:text-lg font-semibold text-green-800 mb-1 md:mb-2">
+                        PO Number Added Successfully!
+                      </h4>
+                      <p className="text-xs md:text-sm text-green-700 mb-2 md:mb-3">
+                        PO Number{" "}
+                        <span className="font-mono font-bold">
+                          {(project as any)?.poNumber}
+                        </span>{" "}
+                        has been added.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mt-3 md:mt-4">
+                    <div className="bg-white p-3 md:p-4 rounded-lg border border-green-200">
+                      <div className="flex items-center gap-1 md:gap-2 mb-1 md:mb-2">
+                        <ArrowRight className="w-3 h-3 md:w-4 md:h-4 text-green-600" />
+                        <span className="text-xs md:text-sm font-semibold text-green-800">
+                          Option 1
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        <strong>Advance to PO Approved:</strong> Move project to
+                        PO Approved section
+                      </p>
+                    </div>
+                    <div className="bg-white p-3 md:p-4 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-1 md:gap-2 mb-1 md:mb-2">
+                        <Factory className="w-3 h-3 md:w-4 md:h-4 text-blue-600" />
+                        <span className="text-xs md:text-sm font-semibold text-blue-800">
+                          Option 2
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        <strong>Approve & Advance to Production:</strong> Skip
+                        PO Approved and go directly to Production
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PO Number Display & Edit Section - For Approved Projects Only */}
+            {isPOApproved() && (
+              <div className="space-y-4 md:space-y-6">
+                <div className="flex items-center gap-3 md:gap-5">
+                  <div className="w-8 h-8 md:w-10 md:h-10 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
+                    <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                  </div>
+                  <h3 className="text-lg md:text-xl font-semibold text-gray-900">
+                    PO Number Information
+                  </h3>
+                </div>
+
+                <div className="bg-green-50 border border-green-200 md:border-2 rounded-xl p-4 md:p-6">
+                  <div className="flex items-start gap-3 md:gap-4 mb-3 md:mb-4">
+                    <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-600 mt-0.5" />
+                    <div>
+                      <h4 className="text-base md:text-lg font-semibold text-green-800 mb-1 md:mb-2">
+                        PO Number Approved
+                      </h4>
+                      <p className="text-xs md:text-sm text-green-700">
+                        This project has been approved and has an assigned PO
+                        number.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 md:mt-6 p-3 md:p-4 bg-white rounded-lg border border-green-200">
+                    <div className="space-y-3 md:space-y-4">
+                      <div>
+                        <Label className="text-xs md:text-sm font-medium text-gray-700">
+                          Current PO Number
+                        </Label>
+                        {!isAddingPO ? (
+                          <div className="mt-1 flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 gap-2">
+                            <div className="flex items-center gap-2 md:gap-3">
+                              <Badge className="bg-green-100 text-green-800 px-2 py-1 md:px-3 md:py-1 text-sm md:text-base font-mono">
+                                {(project as any).poNumber || "PO-2024-001"}
+                              </Badge>
+                              <span className="text-xs md:text-sm text-gray-600">
+                                Approved PO Number
+                              </span>
+                            </div>
+                            <Button
+                              onClick={() => {
+                                setIsAddingPO(true);
+                                setPONumber((project as any).poNumber || "");
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="hover:bg-blue-50 hover:border-blue-300 w-full sm:w-auto"
+                            >
+                              <Edit2 className="w-3 h-3 mr-1" />
+                              Edit
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="mt-1 space-y-2 md:space-y-3">
+                            <Input
+                              value={poNumber}
+                              onChange={(e) => setPONumber(e.target.value)}
+                              placeholder="Enter new PO number"
+                              className="mt-1 h-10 md:h-12"
+                            />
+                            <p className="text-xs text-gray-500">
+                              Update the purchase order number
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
                               <Button
-                                onClick={handleSaveImages}
-                                className="bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all h-7 text-xs"
-                                size="sm"
+                                onClick={handleEditPONumber}
+                                className="bg-green-500 hover:bg-green-600 w-full sm:w-auto"
+                                disabled={!poNumber.trim()}
+                                size={isMobile ? "sm" : "default"}
                               >
-                                <Save className="w-3 h-3 mr-1.5" />
-                                Save
+                                <Save className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                                Update PO Number
+                              </Button>
+                              <Button
+                                onClick={() => {
+                                  setIsAddingPO(false);
+                                  setPONumber("");
+                                }}
+                                variant="outline"
+                                className="w-full sm:w-auto"
+                                size={isMobile ? "sm" : "default"}
+                              >
+                                Cancel
                               </Button>
                             </div>
                           </div>
@@ -1044,1041 +1835,116 @@ export function POPendingProjectDetailsDialog(props: Props) {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
 
-                  {/* All Fields in Horizontal Grid - 6 columns */}
-                  <div className="grid grid-cols-6 gap-x-3 gap-y-3">
-                    <div>
-                      <Label>Product Code</Label>
-                      <div className="mt-1 font-mono font-bold text-gray-900">
-                        {(project as any)?.autoCode ||
-                          (project as any)?.productCode}
-                      </div>
-                    </div>
+            {/* Client Feedback & Updates */}
+            <div className="space-y-4 md:space-y-6">
+              <div className="flex items-center gap-3 md:gap-5">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
+                  <MessageSquare className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                </div>
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900">
+                  Client Feedback & Updates
+                </h3>
+              </div>
 
+              <div className="bg-white border border-gray-200 md:border-2 rounded-xl p-4 md:p-6">
+                <div className="space-y-3 md:space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     <div>
-                      <Label>Company</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject?.company?._id || ""}
-                          onValueChange={(v) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              company:
-                                companies.find((c) => c._id === v) || null,
-                              brand: null,
-                              category: null,
-                            } as ProductDevelopment)
+                      <Label className="text-xs md:text-sm font-medium text-gray-600">
+                        Client Feedback Status
+                      </Label>
+                      <div className="mt-1 md:mt-2">
+                        <Badge
+                          className={
+                            (project as any)?.clientApproval === "ok"
+                              ? "bg-green-100 text-green-800 text-xs px-2 py-1 md:px-3 md:py-2"
+                              : (project as any)?.clientApproval ===
+                                "update_req"
+                              ? "bg-orange-100 text-orange-800 text-xs px-2 py-1 md:px-3 md:py-2"
+                              : (project as any)?.clientApproval === "pending"
+                              ? "bg-blue-100 text-blue-800 text-xs px-2 py-1 md:px-3 md:py-2"
+                              : "bg-orange-100 text-orange-800 text-xs px-2 py-1 md:px-3 md:py-2"
                           }
                         >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {companies?.map((c) => (
-                              <SelectItem key={c._id} value={c._id}>
-                                {c.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project?.company?.name || "N/A"}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Brand</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject?.brand?._id || ""}
-                          onValueChange={(v) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              brand: brands.find((b) => b._id === v) || null,
-                              category: null,
-                            } as ProductDevelopment)
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(brands || []).map((b) => (
-                              <SelectItem key={b._id} value={b._id}>
-                                {b.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project?.brand?.name || "N/A"}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Category</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject?.category?._id || ""}
-                          onValueChange={(v) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              category:
-                                categories.find((c) => c._id === v) || null,
-                            } as ProductDevelopment)
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((c) => (
-                              <SelectItem key={c._id} value={c._id}>
-                                {c.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project?.category?.name || "N/A"}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Type</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject?.type?._id || ""}
-                          onValueChange={(v) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              type: types.find((t) => t._id === v) || null,
-                            } as ProductDevelopment)
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {types.map((t) => (
-                              <SelectItem key={t._id} value={t._id}>
-                                {t.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project?.type?.name || "N/A"}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Gender</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject?.gender || ""}
-                          onValueChange={(v) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              gender: v,
-                            } as ProductDevelopment)
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Unisex">Unisex</SelectItem>
-                            <SelectItem value="Men">Men</SelectItem>
-                            <SelectItem value="Women">Women</SelectItem>
-                            <SelectItem value="Kids">Kids</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project?.gender || "N/A"}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Art</Label>
-                      {isEditing ? (
-                        <Input
-                          value={editedProject?.artName || ""}
-                          onChange={(e) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              artName: e.target.value,
-                            } as ProductDevelopment)
-                          }
-                          className="mt-1"
-                        />
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {(project as any)?.artName || "N/A"}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Colour</Label>
-                      {isEditing ? (
-                        <Input
-                          value={editedProject?.color || ""}
-                          onChange={(e) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              color: e.target.value,
-                            } as ProductDevelopment)
-                          }
-                          className="mt-1"
-                        />
-                      ) : (
-                        <div className="mt-1 flex items-center gap-2">
-                          <div
-                            className={`w-4 h-4 rounded-full`}
-                            style={{
-                              backgroundColor:
-                                (project as any)?.colorHex || "#cccccc",
-                            }}
-                          ></div>
-                          <span className="text-gray-900">
-                            {(project as any)?.color || "N/A"}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Country</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject?.country?._id || ""}
-                          onValueChange={(v) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              country:
-                                countries.find((c) => c._id === v) || null,
-                            } as ProductDevelopment)
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {countries.map((c) => (
-                              <SelectItem key={c._id} value={c._id}>
-                                {c.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project?.country?.name || "N/A"}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Status</Label>
-                      <div className="mt-1">
-                        <Badge className={currentStage.color}>
-                          {currentStage.name}
+                          {(project as any)?.clientApproval === "ok"
+                            ? "✅ Client Approved"
+                            : (project as any)?.clientApproval === "update_req"
+                            ? "⚠ Update Required"
+                            : (project as any)?.clientApproval === "pending"
+                            ? "📋 Ready for PO"
+                            : "⏳ Awaiting Approval"}
                         </Badge>
                       </div>
                     </div>
 
                     <div>
-                      <Label>Start Date</Label>
-                      {isEditing ? (
-                        <Input
-                          type="date"
-                          value={
-                            editedProject?.createdAt
-                              ? (editedProject.createdAt as string).split(
-                                  "T"
-                                )[0]
-                              : ""
-                          }
-                          readOnly
-                          className="mt-1 bg-gray-50"
-                        />
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {formatDateDisplay((project as any)?.createdAt)}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Target Date</Label>
-                      {isEditing ? (
-                        <Input
-                          type="date"
-                          value={
-                            editedProject?.redSealTargetDate
-                              ? (
-                                  editedProject.redSealTargetDate as string
-                                ).split("T")[0]
-                              : ""
-                          }
-                          onChange={(e) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              redSealTargetDate: e.target.value,
-                            } as ProductDevelopment)
-                          }
-                          className="mt-1"
-                        />
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {formatDateDisplay(
-                            (project as any)?.redSealTargetDate
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Priority</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject?.priority || "low"}
-                          onValueChange={(value) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              priority: value,
-                            } as ProductDevelopment)
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1">
-                          <Badge
-                            className={
-                              (project as any)?.priority === "high"
-                                ? "bg-red-500 text-white"
-                                : (project as any)?.priority === "medium"
-                                ? "bg-amber-500 text-white"
-                                : "bg-green-500 text-white"
-                            }
-                          >
-                            {(project as any)?.priority || "N/A"}
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Assigned To</Label>
-                      {isEditing ? (
-                        <Select
-                          value={editedProject?.assignPerson?._id || ""}
-                          onValueChange={(v) =>
-                            setEditedProject({
-                              ...editedProject!,
-                              assignPerson:
-                                assignPersons.find((p) => p._id === v) || null,
-                            } as ProductDevelopment)
-                          }
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {assignPersons?.map((p) => (
-                              <SelectItem key={p._id} value={p._id}>
-                                {p.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-1 text-gray-900">
-                          {project?.assignPerson?.name || "N/A"}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Materials & Components Analysis */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-10 h-10 bg-teal-500 rounded-xl flex items-center justify-center shadow-md">
-                    <Calculator className="w-5 h-5 text-white" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    Materials & Components Analysis
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Components Analysis */}
-                  <div className="bg-white border-2 border-purple-200 rounded-xl p-6">
-                    <h4 className="text-lg font-semibold text-purple-900 mb-4">
-                      Components Used
-                    </h4>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-3 gap-2 text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
-                        <div>COMPONENT</div>
-                        <div>DESCRIPTION</div>
-                        <div>CONSUMPTION</div>
-                      </div>
-
-                      <div className="space-y-2">
-                        {/* If backend provides components list, use it; otherwise fallback to defaults */}
-                        {(
-                          (editedProject &&
-                            (editedProject as any).components) ||
-                          (project && (project as any).components) ||
-                          []
-                        ).length > 0 ? (
-                          (
-                            (editedProject &&
-                              (editedProject as any).components) ||
-                            (project && (project as any).components) ||
-                            []
-                          ).map((component: any, idx: number) => (
-                            <div
-                              key={idx}
-                              className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200"
-                            >
-                              <div className="font-medium">
-                                {component.name}
-                              </div>
-                              <div className="text-gray-600">
-                                {component.desc || "-"}
-                              </div>
-                              <div className="text-gray-600">
-                                {component.consumption || "-"}
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <>
-                            {/* fallback static rows (kept from original) */}
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Foam</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">7.5grm</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Velcro</div>
-                              <div className="text-gray-600">75mm</div>
-                              <div className="text-gray-600">1.25 pair</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Elastic Roop</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Thread</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Tafta Label</div>
-                              <div className="text-gray-600">MRP</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Buckle</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">2pcs</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Heat Transfer</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Trim</div>
-                              <div className="text-gray-600">sticker</div>
-                              <div className="text-gray-600">10 pcs</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Welding</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="bg-purple-50 p-3 rounded-lg mt-3">
-                        <div className="text-sm text-purple-800">
-                          <strong>Total Components:</strong>{" "}
-                          {(
-                            (editedProject &&
-                              (editedProject as any).components) ||
-                            (project && (project as any).components) ||
-                            []
-                          ).length || 9}{" "}
-                          different components used in production
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Materials Analysis */}
-                  <div className="bg-white border-2 border-teal-200 rounded-xl p-6">
-                    <h4 className="text-lg font-semibold text-teal-900 mb-4">
-                      Materials Used
-                    </h4>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-3 gap-2 text-xs font-medium text-gray-600 bg-teal-50 p-2 rounded">
-                        <div>MATERIAL</div>
-                        <div>DESCRIPTION</div>
-                        <div>CONSUMPTION</div>
-                      </div>
-
-                      <div className="space-y-2">
-                        {/* Use backend materials if present, otherwise fallback */}
-                        {(
-                          (editedProject && (editedProject as any).materials) ||
-                          (project && (project as any).materials) ||
-                          []
-                        ).length > 0 ? (
-                          (
-                            (editedProject &&
-                              (editedProject as any).materials) ||
-                            (project && (project as any).materials) ||
-                            []
-                          ).map((material: any, idx: number) => (
-                            <div
-                              key={idx}
-                              className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200"
-                            >
-                              <div className="font-medium">{material.name}</div>
-                              <div className="text-gray-600">
-                                {material.desc || "-"}
-                              </div>
-                              <div className="text-gray-600">
-                                {material.consumption || "-"}
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Upper</div>
-                              <div className="text-gray-600">Rexine</div>
-                              <div className="text-gray-600">26 pairs/mtr</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Lining</div>
-                              <div className="text-gray-600">Skinfit</div>
-                              <div className="text-gray-600">
-                                25 pair @ 155/-
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Lining</div>
-                              <div className="text-gray-600">EVA</div>
-                              <div className="text-gray-600">
-                                33/70 - 1.5mm 35pair
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Footbed</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Mid Sole 1</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Mid Sole 2</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Out Sole</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">PU Adhesive</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-gray-200">
-                              <div className="font-medium">Print</div>
-                              <div className="text-gray-600">-</div>
-                              <div className="text-gray-600">-</div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="bg-teal-50 p-3 rounded-lg mt-3">
-                        <div className="text-sm text-teal-800">
-                          <strong>Total Materials:</strong>{" "}
-                          {(
-                            (editedProject &&
-                              (editedProject as any).materials) ||
-                            (project && (project as any).materials) ||
-                            []
-                          ).length || 9}{" "}
-                          different materials used in production
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Additional Analysis Summary */}
-                <div className="bg-linear-to-r from-purple-50 to-teal-50 border-2 border-purple-200 rounded-xl p-6">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">
-                    Production Analysis Summary
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-white rounded-lg border border-purple-200">
-                      <div className="text-sm text-purple-600 font-medium">
-                        Total Components
-                      </div>
-                      <div className="text-2xl font-bold text-purple-800">
-                        {(
-                          (editedProject &&
-                            (editedProject as any).components) ||
-                          (project && (project as any).components) ||
-                          []
-                        ).length || 9}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Active components
-                      </div>
-                    </div>
-                    <div className="text-center p-4 bg-white rounded-lg border border-teal-200">
-                      <div className="text-sm text-teal-600 font-medium">
-                        Total Materials
-                      </div>
-                      <div className="text-2xl font-bold text-teal-800">
-                        {(
-                          (editedProject && (editedProject as any).materials) ||
-                          (project && (project as any).materials) ||
-                          []
-                        ).length || 9}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Raw materials
-                      </div>
-                    </div>
-                    <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
-                      <div className="text-sm text-gray-600 font-medium">
-                        Production Complexity
-                      </div>
-                      <div className="text-2xl font-bold text-gray-800">
-                        {(project && (project as any).productionComplexity) ||
-                          "Medium"}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {(project && (project as any).totalItems) ||
-                          "18 total items"}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4 p-3 bg-white border border-gray-200 rounded-lg">
-                    <div className="text-sm text-gray-700">
-                      <strong>PO Target Analysis:</strong>{" "}
-                      {(project && (project as any).poAnalysis) ||
-                        "Product ready for production order with standardized materials and components. Upper materials include Rexine and Skinfit lining with EVA padding. Component specifications finalized with velcro, buckles, and heat transfer elements. All material consumption rates have been validated for efficient production and cost optimization."}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* PO Number Management Section - For Pending Projects Only */}
-              {isPOPending() && (
-                <div className="space-y-6">
-                  <div className="flex items-center gap-5">
-                    <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
-                      <Package className="w-5 h-5 text-white" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-gray-900">
-                      Add PO Number
-                    </h3>
-                  </div>
-
-                  <div className="bg-linear-to-br from-orange-50 to-orange-100 border-2 border-orange-300 rounded-xl p-8 shadow-lg">
-                    <div className="flex items-start gap-4 mb-6">
-                      <div className="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
-                        {(editedProject as any)?.poNumber ? (
-                          <CheckCircle className="w-6 h-6 text-white" />
-                        ) : (
-                          <AlertTriangle className="w-6 h-6 text-white" />
-                        )}
-                      </div>
-                      <div>
-                        <h4 className="text-xl font-semibold text-orange-900 mb-2">
-                          {(editedProject as any)?.poNumber
-                            ? "PO Number Added - Buttons Activated"
-                            : "PO Number Required to Proceed"}
-                        </h4>
-                        <p className="text-sm text-orange-800">
-                          {(editedProject as any)?.poNumber
-                            ? "PO Number has been saved. The advance buttons at the top are now active. You can edit the PO number below if needed."
-                            : "Enter the Purchase Order number below to unlock the advance buttons. Once added, you can advance this project to PO Approved or directly to Production."}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-xl p-6 border-2 border-orange-200 shadow-md">
-                      <div className="space-y-3">
-                        <Label className="text-base font-semibold text-gray-800 flex items-center gap-2">
-                          <ShoppingCart className="w-4 h-4 text-orange-600" />
-                          Purchase Order Number
-                        </Label>
-
-                        <div className="flex gap-3 items-start">
-                          <div className="flex-1">
-                            <Input
-                              value={
-                                poNumber ||
-                                (editedProject as any)?.poNumber ||
-                                ""
-                              }
-                              onChange={(e) => setPONumber(e.target.value)}
-                              placeholder="Enter PO number (e.g., PO-2024-001)"
-                              className="h-12 text-base border-2 border-gray-300 focus:border-orange-500 focus:ring-orange-500"
-                            />
-                            <p className="text-xs text-gray-600 mt-2 flex items-center gap-1">
-                              {(editedProject as any)?.poNumber ? (
-                                <>
-                                  <CheckCircle className="w-3 h-3 text-green-600" />
-                                  <span className="text-green-700 font-medium">
-                                    Saved: {(editedProject as any).poNumber}
-                                  </span>
-                                  <span className="text-gray-500 ml-1">
-                                    - You can edit and save again if needed
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
-                                  Enter the official purchase order number
-                                  provided by the client
-                                </>
-                              )}
-                            </p>
-                          </div>
-
-                          <Button
-                            onClick={handleAddPONumber}
-                            disabled={!poNumber.trim()}
-                            className="h-12 px-6 bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed font-semibold shadow-lg whitespace-nowrap"
-                          >
-                            <Save className="w-5 h-5 mr-2" />
-                            {(editedProject as any)?.poNumber
-                              ? "Update PO Number"
-                              : poNumber.trim()
-                              ? "Save PO Number"
-                              : "Enter to Continue"}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* PO Number Added - Ready to Advance Section */}
-              {(project as any)?.poNumber && !isPOApproved() && (
-                <div className="space-y-6">
-                  <div className="bg-linear-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
-                    <div className="flex items-start gap-4 mb-4">
-                      <CheckCircle className="w-6 h-6 text-green-600 mt-0.5" />
-                      <div>
-                        <h4 className="text-lg font-semibold text-green-800 mb-2">
-                          PO Number Added Successfully!
-                        </h4>
-                        <p className="text-sm text-green-700 mb-3">
-                          PO Number{" "}
-                          <span className="font-mono font-bold">
-                            {(project as any)?.poNumber}
-                          </span>{" "}
-                          has been added to this project.
-                        </p>
-                        <p className="text-sm text-green-700">
-                          You can now use the buttons at the top to:
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 mt-4">
-                      <div className="bg-white p-4 rounded-lg border border-green-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <ArrowRight className="w-4 h-4 text-green-600" />
-                          <span className="text-sm font-semibold text-green-800">
-                            Option 1
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-600">
-                          <strong>Advance to PO Approved:</strong> Move project
-                          to PO Approved section for review before production
-                        </p>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg border border-blue-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Factory className="w-4 h-4 text-blue-600" />
-                          <span className="text-sm font-semibold text-blue-800">
-                            Option 2
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-600">
-                          <strong>Approve & Advance to Production:</strong> Skip
-                          PO Approved and go directly to Production
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* PO Number Display & Edit Section - For Approved Projects Only */}
-              {isPOApproved() && (
-                <div className="space-y-6">
-                  <div className="flex items-center gap-5">
-                    <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
-                      <CheckCircle className="w-5 h-5 text-white" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-gray-900">
-                      PO Number Information
-                    </h3>
-                  </div>
-
-                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-6">
-                    <div className="flex items-start gap-4 mb-4">
-                      <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-                      <div>
-                        <h4 className="text-lg font-semibold text-green-800 mb-2">
-                          PO Number Approved
-                        </h4>
-                        <p className="text-sm text-green-700">
-                          This project has been approved and has an assigned PO
-                          number. You can edit the PO number if needed.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-6 p-4 bg-white rounded-lg border border-green-200">
-                      <div className="space-y-4">
-                        <div>
-                          <Label className="text-sm font-medium text-gray-700">
-                            Current PO Number
-                          </Label>
-                          {!isAddingPO ? (
-                            <div className="mt-1 flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                              <div className="flex items-center gap-3">
-                                <Badge className="bg-green-100 text-green-800 px-3 py-1 text-base font-mono">
-                                  {(project as any).poNumber || "PO-2024-001"}
-                                </Badge>
-                                <span className="text-sm text-gray-600">
-                                  Approved PO Number
-                                </span>
-                              </div>
-                              <Button
-                                onClick={() => {
-                                  setIsAddingPO(true);
-                                  setPONumber((project as any).poNumber || "");
-                                }}
-                                variant="outline"
-                                size="sm"
-                                className="hover:bg-blue-50 hover:border-blue-300"
-                              >
-                                <Edit2 className="w-3 h-3 mr-1" />
-                                Edit
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="mt-1 space-y-3">
-                              <Input
-                                value={poNumber}
-                                onChange={(e) => setPONumber(e.target.value)}
-                                placeholder="Enter new PO number (e.g., PO-2024-001)"
-                                className="mt-1"
-                              />
-                              <p className="text-xs text-gray-500">
-                                Update the purchase order number for this
-                                project
-                              </p>
-                              <div className="flex gap-3">
-                                <Button
-                                  onClick={handleEditPONumber}
-                                  className="bg-green-500 hover:bg-green-600"
-                                  disabled={!poNumber.trim()}
-                                >
-                                  <Save className="w-4 h-4 mr-2" />
-                                  Update PO Number
-                                </Button>
-                                <Button
-                                  onClick={() => {
-                                    setIsAddingPO(false);
-                                    setPONumber("");
-                                  }}
-                                  variant="outline"
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-center gap-2 mb-1">
-                        <CheckCircle className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-medium text-blue-800">
-                          Project Status:
-                        </span>
-                      </div>
-                      <ul className="text-xs text-blue-700 ml-6 space-y-1">
-                        <li>• This project is in the "PO Approved" section</li>
-                        <li>• Project status: "PO Issued" (100% complete)</li>
-                        <li>• PO status: "Approved"</li>
-                        <li>
-                          • You can edit the PO number without changing the
-                          project status
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Client Feedback & Updates */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
-                    <MessageSquare className="w-5 h-5 text-white" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    Client Feedback & Updates
-                  </h3>
-                </div>
-
-                <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600">
-                          Client Feedback Status
-                        </Label>
-                        <div className="mt-2">
-                          <Badge
-                            className={
-                              (project as any)?.clientApproval === "ok"
-                                ? "bg-green-100 text-green-800 text-sm px-3 py-2"
-                                : (project as any)?.clientApproval ===
-                                  "update_req"
-                                ? "bg-orange-100 text-orange-800 text-sm px-3 py-2"
-                                : (project as any)?.clientApproval === "pending"
-                                ? "bg-blue-100 text-blue-800 text-sm px-3 py-2"
-                                : "bg-orange-100 text-orange-800 text-sm px-3 py-2"
-                            }
-                          >
-                            {(project as any)?.clientApproval === "ok"
-                              ? "✅ Client Approved & PO Confirmed"
-                              : (project as any)?.clientApproval ===
-                                "update_req"
-                              ? "⚠ Update Required"
-                              : (project as any)?.clientApproval === "pending"
-                              ? "📋 Ready for PO Generation"
-                              : "⏳ Awaiting Client Approval"}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600">
-                          Next Action Date
-                        </Label>
-                        <div className="mt-2 text-base text-gray-900">
-                          {formatDateDisplay(
-                            (project as any)?.nextUpdate?.date ||
-                              (project as any)?.nextDate ||
-                              ""
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    <div>
-                      <Label className="text-sm font-medium text-gray-600 mb-3 block">
-                        PO Target Summary
+                      <Label className="text-xs md:text-sm font-medium text-gray-600">
+                        Next Action Date
                       </Label>
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                          <div>
-                            <span className="font-medium text-gray-600">
-                              Product:
-                            </span>
-                            <div className="text-gray-900">
-                              {(project as any)?.artName ||
-                                (project as any)?.artColour ||
-                                ""}
-                            </div>
+                      <div className="mt-1 md:mt-2 text-sm md:text-base text-gray-900">
+                        {formatDateDisplay(
+                          (project as any)?.nextUpdate?.date ||
+                            (project as any)?.nextDate ||
+                            ""
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <Label className="text-xs md:text-sm font-medium text-gray-600 mb-2 md:mb-3 block">
+                      PO Target Summary
+                    </Label>
+                    <div className="bg-gray-50 rounded-lg p-3 md:p-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 text-xs md:text-sm">
+                        <div>
+                          <span className="font-medium text-gray-600">
+                            Product:
+                          </span>
+                          <div className="text-gray-900 truncate">
+                            {(project as any)?.artName ||
+                              (project as any)?.artColour ||
+                              ""}
                           </div>
-                          <div>
-                            <span className="font-medium text-gray-600">
-                              Quantity:
-                            </span>
-                            <div className="text-gray-900">
-                              {(project as any)?.orderQuantity != null
-                                ? Number(
-                                    (project as any)?.orderQuantity
-                                  ).toLocaleString("en-IN")
-                                : (editedProject as any)?.orderQuantity != null
-                                ? Number(
-                                    (editedProject as any)?.orderQuantity
-                                  ).toLocaleString("en-IN")
-                                : "0"}{" "}
-                              units
-                            </div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-600">
+                            Quantity:
+                          </span>
+                          <div className="text-gray-900">
+                            {(project as any)?.po?.orderQuantity != null
+                              ? Number(
+                                  (project as any)?.po?.orderQuantity
+                                ).toLocaleString("en-IN")
+                              : (editedProject as any)?.orderQuantity != null
+                              ? Number(
+                                  (editedProject as any)?.orderQuantity
+                                ).toLocaleString("en-IN")
+                              : "0"}{" "}
+                            units
                           </div>
-                          <div>
-                            <span className="font-medium text-gray-600">
-                              Total Value:
-                            </span>
-                            <div className="text-gray-900 flex items-center">
-                              <IndianRupee className="w-3 h-3 mr-1" />
-                              {(project as any)?.poValue != null
-                                ? Number(
-                                    (project as any)?.poValue
-                                  ).toLocaleString("en-IN")
-                                : (editedProject as any)?.poValue != null
-                                ? Number(
-                                    (editedProject as any)?.poValue
-                                  ).toLocaleString("en-IN")
-                                : "0"}
-                            </div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-600">
+                            Total Value:
+                          </span>
+                          <div className="text-gray-900 flex items-center">
+                            <IndianRupee className="w-2 h-2 md:w-3 md:h-3 mr-1" />
+                            {(project as any)?.po?.totalAmount != null
+                              ? Number(
+                                  (project as any)?.po?.totalAmount
+                                ).toLocaleString("en-IN")
+                              : (editedProject as any)?.poValue != null
+                              ? Number(
+                                  (editedProject as any)?.poValue
+                                ).toLocaleString("en-IN")
+                              : "0"}
                           </div>
                         </div>
                       </div>
@@ -2088,8 +1954,8 @@ export function POPendingProjectDetailsDialog(props: Props) {
               </div>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -148,9 +148,18 @@ export function UpdateStockDialog({
         if (!isOpen) onOpenChange(false);
       }}
     >
-      <DialogContent className="!max-w-2xl !w-2xl max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
+      <DialogContent
+        className="
+    w-[95vw] max-w-lg sm:max-w-xl md:max-w-2xl 
+    max-h-[90vh] 
+    overflow-hidden 
+    p-0 m-0 
+    top-[5vh] translate-y-0 
+    flex flex-col
+  "
+      >
         <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b-2 border-blue-200 shadow-sm">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-6">
               <div className="w-14 h-14 bg-linear-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                 <Package className="w-7 h-7 text-white" />
@@ -175,7 +184,7 @@ export function UpdateStockDialog({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-8">
           <div className="bg-linear-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-xl p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -211,7 +220,7 @@ export function UpdateStockDialog({
             className="w-full"
             onValueChange={setActiveTab}
           >
-            <TabsList className="grid w-full grid-cols-2 h-14 bg-gray-100 p-1 rounded-lg">
+            <TabsList className="grid w-full grid-cols-2 h-12 sm:h-14 bg-gray-100 p-1 rounded-lg">
               <TabsTrigger
                 value="add-stock"
                 className="h-full data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md transition-all"
@@ -271,7 +280,7 @@ export function UpdateStockDialog({
                       Stock Update Summary
                     </h4>
                   </div>
-                  <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-center">
                     <div className="bg-white rounded-lg p-4 border border-green-200">
                       <p className="text-sm text-gray-600 mb-1">
                         Current Stock
@@ -510,7 +519,7 @@ export function UpdateStockDialog({
                       Stock Reduction Summary
                     </h4>
                   </div>
-                  <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-center">
                     <div className="bg-white rounded-lg p-4 border border-orange-200">
                       <p className="text-sm text-gray-600 mb-1">
                         Current Stock
@@ -585,7 +594,7 @@ export function UpdateStockDialog({
         </div>
 
         <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-8 py-6 flex justify-between items-center shadow-lg">
-          <div className="flex items-center gap-4 ml-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 ml-auto w-full sm:w-auto">
             <Button
               variant="outline"
               size="lg"

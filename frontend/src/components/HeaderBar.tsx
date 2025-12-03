@@ -1,4 +1,3 @@
-// components/HeaderBar.tsx
 import React from "react";
 import {
   Search,
@@ -164,97 +163,93 @@ export function HeaderBar({
     switch (module) {
       case "dashboard":
         return {
-          title: "Executive Dashboard",
-          description:
-            "Comprehensive business intelligence and analytics overview",
-          icon: <LayoutDashboard className="w-6 h-6 text-white" />,
+          title: "Dashboard",
+          description: "Overview and analytics",
+          icon: <LayoutDashboard className="w-5 h-5 text-white" />,
           gradient: "from-[#0c9dcb] to-[#26b4e0]",
         };
       case "master-data":
         return {
-          title: "Master Data Management",
-          description: "Centralized reference data management system",
-          icon: <Tags className="w-6 h-6 text-white" />,
+          title: "Master Data",
+          description: "Reference data management",
+          icon: <Tags className="w-5 h-5 text-white" />,
           gradient: "from-[#20c997] to-[#17a2b8]",
         };
       case "rd-management":
         return {
           title: "R&D Management",
-          description: "Design lifecycle and project management system",
-          icon: <Lightbulb className="w-6 h-6 text-white" />,
+          description: "Design lifecycle",
+          icon: <Lightbulb className="w-5 h-5 text-white" />,
           gradient: "from-[#0c9dcb] to-[#26b4e0]",
         };
       case "image-document":
         return {
-          title: "Image & Document Management",
-          description: "Digital asset management and document control system",
-          icon: <ImageIcon className="w-6 h-6 text-white" />,
+          title: "Document Management",
+          description: "Digital asset control",
+          icon: <ImageIcon className="w-5 h-5 text-white" />,
           gradient: "from-[#fd7e14] to-[#ffc107]",
         };
       case "workflow-automation":
         return {
-          title: "Workflow Automation",
-          description: "Business process automation and optimization",
-          icon: <Workflow className="w-6 h-6 text-white" />,
+          title: "Workflow",
+          description: "Process automation",
+          icon: <Workflow className="w-5 h-5 text-white" />,
           gradient: "from-[#e83e8c] to-[#dc3545]",
         };
       case "production":
         return {
-          title: "Production Management",
-          description:
-            "Manufacturing process tracking: Cutting → Printing → Upper → Assembly → Packing → RFD",
-          icon: <Factory className="w-6 h-6 text-white" />,
+          title: "Production",
+          description: "Manufacturing tracking",
+          icon: <Factory className="w-5 h-5 text-white" />,
           gradient: "from-[#6f42c1] to-[#7c3aed]",
         };
       case "inventory":
         return {
-          title: "Inventory & Storage",
-          description:
-            "Advanced inventory management and storage optimization system",
-          icon: <Package className="w-6 h-6 text-white" />,
+          title: "Inventory",
+          description: "Storage management",
+          icon: <Package className="w-5 h-5 text-white" />,
           gradient: "from-[#198754] to-[#20c997]",
         };
       case "delivery":
         return {
-          title: "Delivery Management",
-          description: "Track deliveries, shipments, and logistics operations",
-          icon: <Truck className="w-6 h-6 text-white" />,
+          title: "Delivery",
+          description: "Shipments tracking",
+          icon: <Truck className="w-5 h-5 text-white" />,
           gradient: "from-[#0d6efd] to-[#6610f2]",
         };
       case "users":
         return {
-          title: "User & Role Management",
-          description: "System access control and user administration",
-          icon: <Users className="w-6 h-6 text-white" />,
+          title: "User Management",
+          description: "Access control",
+          icon: <Users className="w-5 h-5 text-white" />,
           gradient: "from-[#6610f2] to-[#6f42c1]",
         };
       case "notifications":
         return {
-          title: "Notifications & Alerts",
-          description: "System notifications and alert management",
-          icon: <BellIcon className="w-6 h-6 text-white" />,
+          title: "Alerts",
+          description: "System notifications",
+          icon: <BellIcon className="w-5 h-5 text-white" />,
           gradient: "from-[#dc3545] to-[#e83e8c]",
         };
       case "reports":
         return {
-          title: "Reporting & Analytics",
-          description: "Business intelligence and data analytics platform",
-          icon: <BarChart3 className="w-6 h-6 text-white" />,
+          title: "Analytics",
+          description: "Business intelligence",
+          icon: <BarChart3 className="w-5 h-5 text-white" />,
           gradient: "from-[#0d6efd] to-[#6610f2]",
         };
       case "wireframe":
         return {
-          title: "System Documentation",
-          description: "System architecture and module overview",
-          icon: <Grid className="w-6 h-6 text-white" />,
+          title: "Documentation",
+          description: "System overview",
+          icon: <Grid className="w-5 h-5 text-white" />,
           gradient: "from-[#495057] to-[#6c757d]",
         };
       default:
         return {
-          title: "Executive Dashboard",
-          description:
-            "Comprehensive business intelligence and analytics overview",
-          icon: <LayoutDashboard className="w-6 h-6 text-white" />,
+          title: "Dashboard",
+          description: "Overview and analytics",
+          icon: <LayoutDashboard className="w-5 h-5 text-white" />,
           gradient: "from-[#0c9dcb] to-[#26b4e0]",
         };
     }
@@ -268,32 +263,45 @@ export function HeaderBar({
 
   return (
     <div className="bg-white border-b border-gray-200 shadow-sm">
-      <div className="px-6 py-6">
-        <div className="flex items-center justify-between">
-          {/* Enhanced Module Header */}
-          <div className="flex items-center gap-4">
+      <div className="px-3 md:px-6 py-3 md:py-6">
+        <div className="flex items-center justify-between gap-2 md:gap-4">
+          {/* Enhanced Module Header - More compact on mobile */}
+          <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
             <div
-              className={`w-12 h-12 bg-linear-to-br ${moduleInfo.gradient} rounded-xl flex items-center justify-center shadow-lg`}
+              className={`w-8 h-8 ml-14 sm:ml-0 md:w-12 md:h-12 bg-linear-to-br ${moduleInfo.gradient} rounded-lg md:rounded-xl flex items-center justify-center shadow-lg shrink-0`}
             >
               {moduleInfo.icon}
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm md:text-2xl font-bold text-gray-900 mb-0.5 md:mb-1 truncate">
                 {moduleInfo.title}
               </h1>
-              <p className="text-gray-600 text-sm">{moduleInfo.description}</p>
+              <p className="text-gray-600 text-xs md:text-sm line-clamp-1">
+                {moduleInfo.description}
+              </p>
             </div>
           </div>
 
           {/* Right Side - Search, Notifications and User */}
-          <div className="flex items-center gap-6">
-            {/* Search Bar */}
-            <div className="relative">
+          <div className="flex items-center gap-2 md:gap-6">
+            {/* Mobile Search Toggle */}
+            <div className="md:hidden">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="relative p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Search className="w-4 h-4 text-gray-600" />
+              </Button>
+            </div>
+
+            {/* Desktop Search Bar */}
+            <div className="hidden md:block relative">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
                 type="text"
                 placeholder="Search across all modules..."
-                className="pl-10 pr-4 py-2 w-80 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0c9dcb] focus:border-transparent focus:bg-white transition-all"
+                className="pl-10 pr-4 py-2 w-64 lg:w-80 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0c9dcb] focus:border-transparent focus:bg-white transition-all"
               />
             </div>
 
@@ -303,33 +311,36 @@ export function HeaderBar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="relative p-3 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="relative p-1.5 md:p-3 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <Bell className="w-5 h-5 text-gray-600" />
+                  <Bell className="w-4 h-4 md:w-5 md:h-5 text-gray-600" />
                   {unreadCount > 0 && (
                     <Badge
                       variant="destructive"
-                      className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs font-semibold bg-red-500 hover:bg-red-500"
+                      className="absolute -top-0.5 -right-0.5 md:-top-1 md:-right-1 h-4 w-4 md:h-5 md:w-5 flex items-center justify-center p-0 text-[10px] md:text-xs font-semibold bg-red-500 hover:bg-red-500"
                     >
-                      {unreadCount}
+                      {unreadCount > 9 ? "9+" : unreadCount}
                     </Badge>
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-96 p-0 mr-4" align="end">
+              <PopoverContent
+                className="w-[calc(100vw-2rem)] md:w-96 p-0 mr-0 md:mr-4"
+                align="end"
+              >
                 <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
                   {/* Header */}
-                  <div className="px-6 py-4 bg-linear-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                  <div className="px-4 md:px-6 py-3 md:py-4 bg-linear-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Bell className="w-5 h-5 text-gray-700" />
-                        <h3 className="font-semibold text-gray-900">
+                        <Bell className="w-4 h-4 md:w-5 md:h-5 text-gray-700" />
+                        <h3 className="font-semibold text-gray-900 text-sm md:text-base">
                           Notifications
                         </h3>
                         {unreadCount > 0 && (
                           <Badge
                             variant="secondary"
-                            className="bg-red-100 text-red-700 hover:bg-red-100"
+                            className="bg-red-100 text-red-700 hover:bg-red-100 text-xs"
                           >
                             {unreadCount} new
                           </Badge>
@@ -349,12 +360,12 @@ export function HeaderBar({
                   </div>
 
                   {/* Notifications List */}
-                  <ScrollArea className="h-80">
-                    <div className="p-2">
+                  <ScrollArea className="h-64 md:h-80">
+                    <div className="p-1 md:p-2">
                       {notifications.map((notification, index) => (
                         <div key={notification.id}>
                           <div
-                            className={`group p-4 rounded-lg transition-all cursor-pointer hover:shadow-md ${getNotificationBg(
+                            className={`group p-3 md:p-4 rounded-lg transition-all cursor-pointer hover:shadow-md ${getNotificationBg(
                               notification.type,
                               notification.unread
                             )}`}
@@ -362,14 +373,14 @@ export function HeaderBar({
                               toast.info(`Opening ${notification.title}`)
                             }
                           >
-                            <div className="flex items-start gap-3">
+                            <div className="flex items-start gap-2 md:gap-3">
                               <div className="shrink-0 mt-0.5">
                                 {getNotificationIcon(notification.type)}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between">
                                   <h4
-                                    className={`font-medium text-sm ${
+                                    className={`font-medium text-xs md:text-sm ${
                                       notification.unread
                                         ? "text-gray-900"
                                         : "text-gray-700"
@@ -378,11 +389,11 @@ export function HeaderBar({
                                     {notification.title}
                                   </h4>
                                   {notification.unread && (
-                                    <div className="w-2 h-2 bg-[#0c9dcb] rounded-full shrink-0 ml-2"></div>
+                                    <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#0c9dcb] rounded-full shrink-0 ml-1 md:ml-2"></div>
                                   )}
                                 </div>
                                 <p
-                                  className={`text-sm mt-1 ${
+                                  className={`text-xs md:text-sm mt-0.5 md:mt-1 line-clamp-2 ${
                                     notification.unread
                                       ? "text-gray-700"
                                       : "text-gray-600"
@@ -390,13 +401,13 @@ export function HeaderBar({
                                 >
                                   {notification.message}
                                 </p>
-                                <div className="flex items-center gap-3 mt-2">
-                                  <div className="flex items-center gap-1 text-xs text-gray-500">
-                                    <Clock className="w-3 h-3" />
+                                <div className="flex items-center gap-2 md:gap-3 mt-1 md:mt-2">
+                                  <div className="flex items-center gap-0.5 md:gap-1 text-[10px] md:text-xs text-gray-500">
+                                    <Clock className="w-2.5 h-2.5 md:w-3 md:h-3" />
                                     {notification.time}
                                   </div>
-                                  <div className="flex items-center gap-1 text-xs text-gray-500">
-                                    <User className="w-3 h-3" />
+                                  <div className="flex items-center gap-0.5 md:gap-1 text-[10px] md:text-xs text-gray-500">
+                                    <User className="w-2.5 h-2.5 md:w-3 md:h-3" />
                                     {notification.user}
                                   </div>
                                 </div>
@@ -407,18 +418,21 @@ export function HeaderBar({
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 hover:bg-white/50"
+                                      className="h-6 w-6 md:h-8 md:w-8 p-0 opacity-0 group-hover:opacity-100 hover:bg-white/50"
                                     >
                                       <MoreHorizontal className="w-3 h-3" />
                                     </Button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
+                                  <DropdownMenuContent
+                                    align="end"
+                                    className="text-xs md:text-sm"
+                                  >
                                     <DropdownMenuItem
                                       onClick={() =>
                                         toast.info("Viewing details")
                                       }
                                     >
-                                      <Eye className="w-4 h-4 mr-2" />
+                                      <Eye className="w-3 h-3 md:w-4 md:h-4 mr-2" />
                                       View Details
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
@@ -426,7 +440,7 @@ export function HeaderBar({
                                         toast.info("Marking as read")
                                       }
                                     >
-                                      <CheckCircle className="w-4 h-4 mr-2" />
+                                      <CheckCircle className="w-3 h-3 md:w-4 md:h-4 mr-2" />
                                       Mark as Read
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
@@ -435,7 +449,7 @@ export function HeaderBar({
                             </div>
                           </div>
                           {index < notifications.length - 1 && (
-                            <Separator className="my-1 mx-2" />
+                            <Separator className="my-0.5 md:my-1 mx-1 md:mx-2" />
                           )}
                         </div>
                       ))}
@@ -443,10 +457,10 @@ export function HeaderBar({
                   </ScrollArea>
 
                   {/* Footer */}
-                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
+                  <div className="px-4 md:px-6 py-2 md:py-3 bg-gray-50 border-t border-gray-200">
                     <Button
                       variant="ghost"
-                      className="w-full text-[#0c9dcb] hover:text-[#0c9dcb] hover:bg-blue-50 justify-center"
+                      className="w-full text-[#0c9dcb] hover:text-[#0c9dcb] hover:bg-blue-50 justify-center text-sm"
                       onClick={() => toast.info("Opening all notifications")}
                     >
                       View All Notifications
@@ -461,20 +475,21 @@ export function HeaderBar({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="flex items-center gap-3 hover:bg-gray-100 rounded-lg px-3 py-2 transition-colors"
+                  className="flex items-center gap-1 md:gap-3 hover:bg-gray-100 rounded-lg px-1.5 md:px-3 py-1.5 md:py-2 transition-colors"
                 >
-                  <div className="w-8 h-8 bg-[#0c9dcb] rounded-full flex items-center justify-center">
-                    <User className="w-4 h-4 text-white" />
+                  <div className="w-6 h-6 md:w-8 md:h-8 bg-[#0c9dcb] rounded-full flex items-center justify-center">
+                    <User className="w-3 h-3 md:w-4 md:h-4 text-white" />
                   </div>
-                  <div className="text-left">
+                  <div className="hidden lg:block text-left">
                     <div className="font-semibold text-gray-900 text-sm">
-                      {user?.name || "User"}
+                      {user?.name?.split(" ")[0] || "User"}
                     </div>
                     <div className="text-xs text-gray-500 capitalize">
-                      {user?.role || "User"}
+                      {user?.role?.charAt(0).toUpperCase() +
+                        user?.role?.slice(1) || "User"}
                     </div>
                   </div>
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                  <ChevronDown className="hidden lg:block w-4 h-4 text-gray-400" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">

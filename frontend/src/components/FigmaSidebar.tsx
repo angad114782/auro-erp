@@ -1,4 +1,3 @@
-// components/FigmaSidebar.tsx
 import React, { useState } from "react";
 import {
   LayoutDashboard,
@@ -25,6 +24,7 @@ import {
   Calendar,
   Target,
   Search,
+  X,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -36,6 +36,8 @@ interface SidebarProps {
   currentSubModule?: string;
   onModuleChange: (module: string, subModule?: string) => void;
   onCollapseChange?: (collapsed: boolean) => void;
+  isMobileOpen?: boolean;
+  onMobileToggle?: () => void;
 }
 
 interface SubModule {
@@ -59,6 +61,8 @@ export function FigmaSidebar({
   currentSubModule,
   onModuleChange,
   onCollapseChange,
+  isMobileOpen = false,
+  onMobileToggle,
 }: SidebarProps): React.JSX.Element {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedModules, setExpandedModules] = useState<string[]>([
@@ -72,6 +76,35 @@ export function FigmaSidebar({
   const handleCollapseToggle = (collapsed: boolean): void => {
     setIsCollapsed(collapsed);
     onCollapseChange?.(collapsed);
+  };
+
+  const handleMobileClose = (): void => {
+    if (onMobileToggle) {
+      onMobileToggle();
+    }
+  };
+
+  const handleModuleClick = (moduleId: string, hasSubModules = false): void => {
+    if (hasSubModules) {
+      toggleModuleExpansion(moduleId);
+    } else {
+      onModuleChange(moduleId);
+      // Close sidebar on mobile when a module is clicked
+      if (onMobileToggle) {
+        onMobileToggle();
+      }
+    }
+  };
+
+  const handleSubModuleClick = (
+    parentModuleId: string,
+    subModuleId: string
+  ): void => {
+    onModuleChange(parentModuleId, subModuleId);
+    // Close sidebar on mobile when a submodule is clicked
+    if (onMobileToggle) {
+      onMobileToggle();
+    }
   };
 
   const modules: Module[] = [
@@ -239,33 +272,10 @@ export function FigmaSidebar({
         },
       ],
     },
-    // {
-    //   id: "wireframe",
-    //   name: "System Documentation",
-    //   icon: <BarChart3 className="w-5 h-5" />,
-    //   description: "Design system",
-    // },
   ];
 
   // Filter modules based on user permissions
   const filteredModules = modules.filter((module) => hasPermission(module.id));
-
-  const handleModuleClick = (moduleId: string, hasSubModules = false): void => {
-    if (hasSubModules) {
-      // For modules with sub-modules, only toggle expansion - don't navigate
-      toggleModuleExpansion(moduleId);
-    } else {
-      // For modules without sub-modules, navigate directly
-      onModuleChange(moduleId);
-    }
-  };
-
-  const handleSubModuleClick = (
-    parentModuleId: string,
-    subModuleId: string
-  ): void => {
-    onModuleChange(parentModuleId, subModuleId);
-  };
 
   const toggleModuleExpansion = (moduleId: string): void => {
     setExpandedModules((prev) =>
@@ -280,14 +290,30 @@ export function FigmaSidebar({
       {/* Fixed Figma-style Sidebar */}
       <div
         className={`fixed top-0 left-0 h-full bg-white border-r border-gray-200 z-50 transform transition-all duration-300 ease-out shadow-lg ${
-          isCollapsed ? "w-16" : "w-80"
+          isCollapsed ? "w-0 md:w-16" : "w-72 md:w-80"
+        } ${
+          isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
         <div className="h-full flex flex-col">
+          {/* Mobile close button */}
+          {isMobileOpen && (
+            <div className="md:hidden absolute top-4 right-4 z-50">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleMobileClose}
+                className="text-gray-400 hover:text-gray-600 p-1 bg-white rounded-full shadow"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+
           {/* Header */}
           <div
             className={`p-4 border-b border-gray-100 ${
-              isCollapsed ? "px-3" : "px-6"
+              isCollapsed ? "px-3 hidden md:block" : "px-4 md:px-6"
             }`}
           >
             <div className="flex items-center justify-between">
@@ -313,7 +339,7 @@ export function FigmaSidebar({
                   variant="ghost"
                   size="sm"
                   onClick={() => handleCollapseToggle(true)}
-                  className="text-gray-400 hover:text-gray-600 p-1"
+                  className="text-gray-400 hover:text-gray-600 p-1 hidden md:flex"
                 >
                   <Minimize2 className="w-4 h-4" />
                 </Button>
@@ -321,9 +347,9 @@ export function FigmaSidebar({
             </div>
           </div>
 
-          {/* Hamburger Toggle when collapsed */}
-          {isCollapsed && (
-            <div className="p-3 border-b border-gray-100">
+          {/* Hamburger Toggle when collapsed - only on desktop */}
+          {isCollapsed && !isMobileOpen && (
+            <div className="border-b border-gray-100 hidden md:block">
               <Button
                 variant="ghost"
                 size="sm"
@@ -352,7 +378,7 @@ export function FigmaSidebar({
           {/* Navigation */}
           <nav
             className={`flex-1 overflow-y-auto scrollbar-hide ${
-              isCollapsed ? "px-2 py-3" : "px-4 py-4"
+              isCollapsed ? "px-2 py-3 hidden md:block" : "px-4 py-4"
             }`}
           >
             <div className="space-y-1">
@@ -459,30 +485,6 @@ export function FigmaSidebar({
               ))}
             </div>
           </nav>
-
-          {/* Footer - only when expanded
-          {!isCollapsed && (
-            <>
-              <Separator className="mx-4" />
-              <div className="p-4">
-                <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-gray-700 hover:bg-gray-100 transition-colors">
-                  <Settings className="w-4 h-4 text-gray-500" />
-                  <span className="font-medium text-sm">Settings</span>
-                </button>
-              </div>
-            </>
-          )}
-
-          {isCollapsed && (
-            <div className="p-2 border-t border-gray-100">
-              <button
-                className="w-full p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Settings"
-              >
-                <Settings className="w-4 h-4 mx-auto" />
-              </button>
-            </div>
-          )} */}
         </div>
       </div>
     </>

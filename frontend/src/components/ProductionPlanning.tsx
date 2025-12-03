@@ -25,6 +25,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ImageIcon,
+  Menu,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -57,8 +58,15 @@ import { AddProductionCardDialog } from "./AddProductionCardDialog";
 import { ViewProductionCardDialog } from "./ViewProductionCardDialog";
 import { ProductionPlanDetailsDialog } from "./ProductionPlanDetailsDialog";
 import { toast } from "sonner";
+import api from "../lib/api";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "./ui/sheet";
 
-import api from "../lib/api"; // adjust path if needed
 // Production Plan interface based on R&D project data
 interface ProductionPlan {
   id: string;
@@ -105,7 +113,6 @@ interface ProductionPlan {
     | "In Production";
   assignedPlant: string;
   assignedTeam: string;
-  // taskInc: string;
 
   targetCost: number;
   finalCost: number;
@@ -126,6 +133,34 @@ interface ProductionPlan {
   // raw original doc
   raw?: any;
 }
+
+type CalendarEntry = {
+  id: string;
+  projectId: string | null;
+  projectCode: string;
+  productName: string;
+  artName: string;
+  color: string;
+  size: string;
+  brand?: string;
+  brandId?: string;
+  category?: string;
+  categoryId?: string;
+  type?: string;
+  typeId?: string;
+  company?: string;
+  companyId?: string;
+  country?: string;
+  countryId?: string;
+  gender?: string;
+  assignedPlant: string | null;
+  quantity: number;
+  startDate: string;
+  endDate: string;
+  remarks?: string;
+  raw?: any;
+};
+
 const resolveNameFromList = (
   value: any,
   list: any[] = [],
@@ -166,6 +201,7 @@ const resolveNameFromList = (
 
   return undefined;
 };
+
 // normalize various priority values from DB into High|Medium|Low
 const normalizePriority = (val: any): "High" | "Medium" | "Low" => {
   if (!val && val !== 0) return "Medium";
@@ -203,117 +239,18 @@ export function ProductionPlanning() {
   );
   // Add near other state hooks in ProductionPlanning
   const [isLoadingPlanDetails, setIsLoadingPlanDetails] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-  // Helper to fetch full production or project data
-  const loadFullPlanDetails = async (plan: any) => {
-    if (!plan) return null;
-
-    // Try a few candidate ids (production id first, then project id)
-    const tryIds = [
-      plan.id,
-      plan.raw?._id,
-      plan.raw?.id,
-      plan.rdProjectId,
-      plan.projectId,
-      plan.project?._id,
-    ].filter(Boolean);
-
-    setIsLoadingPlanDetails(true);
-    try {
-      // 1) Try fetch production doc by prodId
-      for (const candidate of tryIds) {
-        try {
-          const prodRes = await api.get(`/projects/production/${candidate}`);
-          const prodDoc = prodRes.data?.data ?? prodRes.data;
-          if (prodDoc) {
-            // if project is not populated try to fetch it
-            if (!prodDoc.project || typeof prodDoc.project === "string") {
-              const projectId =
-                prodDoc.project || plan.rdProjectId || prodDoc.projectId;
-              if (projectId) {
-                try {
-                  const pRes = await api.get(`/projects/${projectId}`);
-                  prodDoc.project = pRes.data?.data ?? pRes.data;
-                } catch (e) {
-                  // ignore project fetch error
-                  console.debug("project fetch failed for", projectId, e);
-                }
-              }
-            }
-
-            // compute a safe numeric quantity
-            const quantity =
-              prodDoc.quantity ??
-              prodDoc.quantitySnapshot ??
-              prodDoc.po?.orderQuantity ??
-              prodDoc.project?.po?.orderQuantity ??
-              prodDoc.project?.orderQuantity ??
-              0;
-
-            return {
-              // don't mutate original — return a normalized copy
-              ...prodDoc,
-              quantity,
-              project: prodDoc.project ?? null,
-            };
-          }
-        } catch (e) {
-          // ignore single-prod fetch failures, try next candidate
-          console.debug("prod fetch candidate failed:", candidate, e);
-        }
-      }
-
-      // 2) No production doc — try fetching project directly
-      const projectId =
-        plan.rdProjectId ?? plan.projectId ?? plan.raw?.project ?? null;
-      if (projectId) {
-        try {
-          const pRes = await api.get(`/projects/${projectId}`);
-          const project = pRes.data?.data ?? pRes.data;
-          if (project) {
-            const computedQuantity =
-              plan.quantity ??
-              plan.quantitySnapshot ??
-              project.po?.orderQuantity ??
-              project.orderQuantity ??
-              0;
-
-            return {
-              ...plan,
-              project,
-              artNameSnapshot:
-                plan.artNameSnapshot ??
-                project.artName ??
-                plan.productName ??
-                "",
-              colorSnapshot: plan.colorSnapshot ?? project.color ?? "",
-              coverImageSnapshot:
-                plan.coverImageSnapshot ?? project.coverImage ?? "",
-              priority: plan.priority ?? project.priority ?? "Medium",
-              po: plan.po ?? project.po ?? null,
-              quantity: computedQuantity,
-            };
-          }
-        } catch (e) {
-          console.debug("project fetch error:", projectId, e);
-        }
-      }
-
-      // fallback to original plan but ensure quantity is present
-      return {
-        ...plan,
-        quantity:
-          plan.quantity ??
-          plan.quantitySnapshot ??
-          plan.po?.orderQuantity ??
-          plan.project?.po?.orderQuantity ??
-          0,
-        project: plan.project ?? null,
-      };
-    } finally {
-      setIsLoadingPlanDetails(false);
-    }
-  };
+  // Check screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // Production cards management state
   const [isProductionDialogOpen, setIsProductionDialogOpen] = useState(false);
@@ -471,39 +408,7 @@ export function ProductionPlanning() {
     fetchProductionPlans();
   }, []);
 
-  console.log(productionPlans, "pprr");
   // ---------------------- Calendar types & state ----------------------
-  type CalendarEntry = {
-    id: string;
-    projectId: string | null;
-    projectCode: string;
-
-    productName: string;
-    artName: string;
-    color: string;
-    size: string;
-
-    // resolved names + raw ids
-    brand?: string;
-    brandId?: string;
-    category?: string;
-    categoryId?: string;
-    type?: string;
-    typeId?: string;
-    company?: string;
-    companyId?: string;
-    country?: string;
-    countryId?: string;
-    gender?: string;
-
-    assignedPlant: string | null;
-    quantity: number;
-    startDate: string;
-    endDate: string;
-    remarks?: string;
-    raw?: any;
-  };
-
   const [calendarEntries, setCalendarEntries] = React.useState<CalendarEntry[]>(
     []
   );
@@ -735,7 +640,7 @@ export function ProductionPlanning() {
     }
 
     // fallback: match productionPlans by local startDate equality
-    return filteredPlans
+    return productionPlans
       .filter((plan) => {
         if (!plan.startDate) return false;
         const planStart = plan.startDate.split("T")[0];
@@ -773,13 +678,116 @@ export function ProductionPlanning() {
     }
   }, [selectedView]);
 
-  React.useEffect(() => {
-    console.log(
-      "calendarEntries (count):",
-      calendarEntries.length,
-      calendarEntries
-    );
-  }, [calendarEntries]);
+  // Helper to fetch full production or project data
+  const loadFullPlanDetails = async (plan: any) => {
+    if (!plan) return null;
+
+    // Try a few candidate ids (production id first, then project id)
+    const tryIds = [
+      plan.id,
+      plan.raw?._id,
+      plan.raw?.id,
+      plan.rdProjectId,
+      plan.projectId,
+      plan.project?._id,
+    ].filter(Boolean);
+
+    setIsLoadingPlanDetails(true);
+    try {
+      // 1) Try fetch production doc by prodId
+      for (const candidate of tryIds) {
+        try {
+          const prodRes = await api.get(`/projects/production/${candidate}`);
+          const prodDoc = prodRes.data?.data ?? prodRes.data;
+          if (prodDoc) {
+            // if project is not populated try to fetch it
+            if (!prodDoc.project || typeof prodDoc.project === "string") {
+              const projectId =
+                prodDoc.project || plan.rdProjectId || prodDoc.projectId;
+              if (projectId) {
+                try {
+                  const pRes = await api.get(`/projects/${projectId}`);
+                  prodDoc.project = pRes.data?.data ?? pRes.data;
+                } catch (e) {
+                  // ignore project fetch error
+                  console.debug("project fetch failed for", projectId, e);
+                }
+              }
+            }
+
+            // compute a safe numeric quantity
+            const quantity =
+              prodDoc.quantity ??
+              prodDoc.quantitySnapshot ??
+              prodDoc.po?.orderQuantity ??
+              prodDoc.project?.po?.orderQuantity ??
+              prodDoc.project?.orderQuantity ??
+              0;
+
+            return {
+              // don't mutate original — return a normalized copy
+              ...prodDoc,
+              quantity,
+              project: prodDoc.project ?? null,
+            };
+          }
+        } catch (e) {
+          // ignore single-prod fetch failures, try next candidate
+          console.debug("prod fetch candidate failed:", candidate, e);
+        }
+      }
+
+      // 2) No production doc — try fetching project directly
+      const projectId =
+        plan.rdProjectId ?? plan.projectId ?? plan.raw?.project ?? null;
+      if (projectId) {
+        try {
+          const pRes = await api.get(`/projects/${projectId}`);
+          const project = pRes.data?.data ?? pRes.data;
+          if (project) {
+            const computedQuantity =
+              plan.quantity ??
+              plan.quantitySnapshot ??
+              project.po?.orderQuantity ??
+              project.orderQuantity ??
+              0;
+
+            return {
+              ...plan,
+              project,
+              artNameSnapshot:
+                plan.artNameSnapshot ??
+                project.artName ??
+                plan.productName ??
+                "",
+              colorSnapshot: plan.colorSnapshot ?? project.color ?? "",
+              coverImageSnapshot:
+                plan.coverImageSnapshot ?? project.coverImage ?? "",
+              priority: plan.priority ?? project.priority ?? "Medium",
+              po: plan.po ?? project.po ?? null,
+              quantity: computedQuantity,
+            };
+          }
+        } catch (e) {
+          console.debug("project fetch error:", projectId, e);
+        }
+      }
+
+      // fallback to original plan but ensure quantity is present
+      return {
+        ...plan,
+        quantity:
+          plan.quantity ??
+          plan.quantitySnapshot ??
+          plan.po?.orderQuantity ??
+          plan.project?.po?.orderQuantity ??
+          0,
+        project: plan.project ?? null,
+      };
+    } finally {
+      setIsLoadingPlanDetails(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     const colors = {
@@ -1040,7 +1048,6 @@ export function ProductionPlanning() {
       status: "Planning",
       assignedPlant: cardData.assignedPlant || "-",
       assignedTeam: "-",
-      // taskInc: "-",
       targetCost: 0,
       finalCost: 0,
       poValue: 0,
@@ -1231,6 +1238,7 @@ export function ProductionPlanning() {
       setIsDeletingEntryId(null);
     }
   };
+
   // Add this function near other handler functions
   const handleRefreshCalendar = async () => {
     if (selectedView === "calendar") {
@@ -1238,29 +1246,43 @@ export function ProductionPlanning() {
       toast.success("Calendar refreshed");
     }
   };
+
+  // Responsive grid classes
+  const summaryGridClass = isMobile
+    ? "grid grid-cols-1 gap-4"
+    : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6";
+
+  const calendarDayGridClass = isMobile
+    ? "grid grid-cols-1"
+    : "grid grid-cols-7";
+
+  const calendarDayClass = isMobile ? "min-h-[150px]" : "min-h-[200px]";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-linear-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
             <Calendar className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
               Production Planning
             </h1>
-            <p className="text-gray-600">
+            <p className="text-sm text-gray-600">
               Schedule and manage manufacturing operations from approved R&D
               projects
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline">
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Analytics
-          </Button>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          {!isMobile && (
+            <Button variant="outline">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Analytics
+            </Button>
+          )}
           <Dialog
             open={isCreateDialogOpen}
             onOpenChange={setIsCreateDialogOpen}
@@ -1375,11 +1397,31 @@ export function ProductionPlanning() {
               </div>
             </DialogContent>
           </Dialog>
+          {isMobile && (
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <Menu className="w-4 h-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle>Production Planning</SheetTitle>
+                </SheetHeader>
+                <div className="mt-6 space-y-4">
+                  <Button variant="outline" className="w-full">
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    Analytics
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
+          )}
         </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className={summaryGridClass}>
         <Card className="border-0 shadow-lg bg-linear-to-br from-blue-50 to-blue-100">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -1481,164 +1523,187 @@ export function ProductionPlanning() {
       {/* Filters and Search */}
       <Card className="shadow-lg border-0">
         <CardContent className="p-6">
-          <div className="flex items-center justify-between gap-4 mb-6">
-            <div className="flex items-center gap-4 flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search production plans, PO numbers, products..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="pl-10"
-                />
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-4 flex-1 w-full">
+              {/* Search and Filter Section */}
+              <div className="flex flex-col md:flex-row gap-4 w-full">
+                {/* Search Bar */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search production plans, PO numbers, products..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="pl-10"
+                  />
+                </div>
+
+                {/* Filter Dropdown - Hidden on mobile in favor of filter button */}
+                {!isMobile ? (
+                  <Select
+                    value={selectedFilter}
+                    onValueChange={(value) => {
+                      setSelectedFilter(value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-[220px]">
+                      <Filter className="w-4 h-4 mr-2" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="planning">Planning</SelectItem>
+                      <SelectItem value="capacity-allocated">
+                        Capacity Allocated
+                      </SelectItem>
+                      <SelectItem value="manufacturing-assigned">
+                        Manufacturing Assigned
+                      </SelectItem>
+                      <SelectItem value="process-defined">
+                        Process Defined
+                      </SelectItem>
+                      <SelectItem value="ready-for-production">
+                        Ready for Production
+                      </SelectItem>
+                      <SelectItem value="in-production">
+                        In Production
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowMobileFilters(!showMobileFilters)}
+                    className="w-full"
+                  >
+                    <Filter className="w-4 h-4 mr-2" />
+                    Filters
+                  </Button>
+                )}
               </div>
-              <Select
-                value={selectedFilter}
-                onValueChange={(value) => {
-                  setSelectedFilter(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger className="w-[220px]">
-                  <Filter className="w-4 h-4 mr-2" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="planning">Planning</SelectItem>
-                  <SelectItem value="capacity-allocated">
-                    Capacity Allocated
-                  </SelectItem>
-                  <SelectItem value="manufacturing-assigned">
-                    Manufacturing Assigned
-                  </SelectItem>
-                  <SelectItem value="process-defined">
-                    Process Defined
-                  </SelectItem>
-                  <SelectItem value="ready-for-production">
-                    Ready for Production
-                  </SelectItem>
-                  <SelectItem value="in-production">In Production</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={selectedView === "list" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedView("list")}
-              >
-                List View
-              </Button>
-              <Button
-                variant={selectedView === "calendar" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedView("calendar")}
-              >
-                Calendar View
-              </Button>
+
+              {/* View Toggle */}
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <Button
+                  variant={selectedView === "list" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedView("list")}
+                  className="flex-1 md:flex-none"
+                >
+                  List View
+                </Button>
+                <Button
+                  variant={selectedView === "calendar" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedView("calendar")}
+                  className="flex-1 md:flex-none"
+                >
+                  Calendar View
+                </Button>
+              </div>
             </div>
           </div>
+
+          {/* Mobile Filters */}
+          {isMobile && showMobileFilters && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant={selectedFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedFilter("all")}
+                  className="text-xs"
+                >
+                  All Status
+                </Button>
+                <Button
+                  variant={
+                    selectedFilter === "planning" ? "default" : "outline"
+                  }
+                  size="sm"
+                  onClick={() => setSelectedFilter("planning")}
+                  className="text-xs"
+                >
+                  Planning
+                </Button>
+                <Button
+                  variant={
+                    selectedFilter === "capacity-allocated"
+                      ? "default"
+                      : "outline"
+                  }
+                  size="sm"
+                  onClick={() => setSelectedFilter("capacity-allocated")}
+                  className="text-xs"
+                >
+                  Capacity Allocated
+                </Button>
+                <Button
+                  variant={
+                    selectedFilter === "manufacturing-assigned"
+                      ? "default"
+                      : "outline"
+                  }
+                  size="sm"
+                  onClick={() => setSelectedFilter("manufacturing-assigned")}
+                  className="text-xs"
+                >
+                  Manufacturing Assigned
+                </Button>
+                <Button
+                  variant={
+                    selectedFilter === "ready-for-production"
+                      ? "default"
+                      : "outline"
+                  }
+                  size="sm"
+                  onClick={() => setSelectedFilter("ready-for-production")}
+                  className="text-xs"
+                >
+                  Ready for Production
+                </Button>
+                <Button
+                  variant={
+                    selectedFilter === "in-production" ? "default" : "outline"
+                  }
+                  size="sm"
+                  onClick={() => setSelectedFilter("in-production")}
+                  className="text-xs"
+                >
+                  In Production
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Production Plans List - Card Based */}
           {selectedView === "list" ? (
             <div className="space-y-4">
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Product Code
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Image & Profile
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Art & Colour
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        PO Number
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Priority
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                {isMobile ? (
+                  // Mobile Card View
+                  <div className="space-y-4 p-4">
                     {getPaginatedPlans().map((plan) => (
-                      // <tr
-                      //   key={plan.id}
-                      //   className="hover:bg-blue-50 cursor-pointer transition-colors"
-                      //   onClick={() => {
-                      //     setSelectedPlanForDetails(plan);
-                      //     setIsPlanDetailsDialogOpen(true);
-                      //   }}
-                      // >
-                      //    {getPaginatedPlans().map((plan) => (
-                      <tr
+                      <div
                         key={plan.id}
-                        className="hover:bg-blue-50 cursor-pointer transition-colors"
                         onClick={async () => {
                           try {
                             const full = await loadFullPlanDetails(plan);
-                            // Ensure we have an object
-                            if (!full) {
-                              setSelectedPlanForDetails(plan);
-                              setIsPlanDetailsDialogOpen(true);
-                              return;
-                            }
-
-                            // Normalized: prefer returned full's fields but keep original plan as fallback
-                            const normalized = {
-                              ...plan,
-                              ...full,
-                              project: full.project ?? plan.project ?? null,
-                              // ensure numeric quantity
-                              quantity:
-                                full.quantity ??
-                                full.quantitySnapshot ??
-                                full.po?.orderQuantity ??
-                                full.project?.po?.orderQuantity ??
-                                plan.quantity ??
-                                0,
-                            };
-
-                            // debug if you'd like
-                            // console.log("Normalized plan for details:", normalized);
-
-                            setSelectedPlanForDetails(normalized);
+                            setSelectedPlanForDetails(full || plan);
                             setIsPlanDetailsDialogOpen(true);
                           } catch (err) {
                             console.error("Failed to load plan details:", err);
                             toast.error("Failed to load plan details");
                           }
                         }}
+                        className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
                       >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-mono font-medium text-blue-600">
-                            {plan.projectCode}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center justify-center ">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-3">
                             {plan.profileImage ? (
                               <img
                                 src={`${import.meta.env.VITE_BACKEND_URL}/${
@@ -1652,24 +1717,15 @@ export function ProductionPlanning() {
                                 <ImageIcon className="w-6 h-6 text-gray-400" />
                               </div>
                             )}
+                            <div>
+                              <h4 className="font-medium text-gray-900">
+                                {plan.projectCode}
+                              </h4>
+                              <p className="text-sm text-gray-600">
+                                {plan.productName}
+                              </p>
+                            </div>
                           </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="font-medium text-gray-900">
-                              {plan?.productName}
-                            </span>
-                            <span className="text-xs text-gray-500 mt-0.5">
-                              {plan.color}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-mono font-medium text-green-600">
-                            {plan.poNumber}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
                           <Badge
                             className={`${getPriorityColor(
                               plan.priority
@@ -1677,11 +1733,131 @@ export function ProductionPlanning() {
                           >
                             {plan.priority}
                           </Badge>
-                        </td>
-                      </tr>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <span className="text-gray-500">PO:</span>
+                            <span className="font-medium ml-1">
+                              {plan.poNumber}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Color:</span>
+                            <span className="font-medium ml-1">
+                              {plan.color}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                ) : (
+                  // Desktop Table View
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Product Code
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Image & Profile
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Art & Colour
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          PO Number
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Priority
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {getPaginatedPlans().map((plan) => (
+                        <tr
+                          key={plan.id}
+                          className="hover:bg-blue-50 cursor-pointer transition-colors"
+                          onClick={async () => {
+                            try {
+                              const full = await loadFullPlanDetails(plan);
+                              setSelectedPlanForDetails(full || plan);
+                              setIsPlanDetailsDialogOpen(true);
+                            } catch (err) {
+                              console.error(
+                                "Failed to load plan details:",
+                                err
+                              );
+                              toast.error("Failed to load plan details");
+                            }
+                          }}
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="font-mono font-medium text-blue-600">
+                              {plan.projectCode}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center justify-center ">
+                              {plan.profileImage ? (
+                                <img
+                                  src={`${import.meta.env.VITE_BACKEND_URL}/${
+                                    plan.profileImage
+                                  }`}
+                                  alt="Product"
+                                  className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
+                                />
+                              ) : (
+                                <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                                  <ImageIcon className="w-6 h-6 text-gray-400" />
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-gray-900">
+                                {plan?.productName}
+                              </span>
+                              <span className="text-xs text-gray-500 mt-0.5">
+                                {plan.color}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="font-mono font-medium text-green-600">
+                              {plan.poNumber}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <Badge
+                              className={`${getPriorityColor(
+                                plan.priority
+                              )} text-xs px-2 py-1`}
+                            >
+                              {plan.priority}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
                 {filteredPlans.length === 0 && (
                   <div className="text-center py-12">
                     <Factory className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -1707,8 +1883,8 @@ export function ProductionPlanning() {
 
               {/* Pagination */}
               {filteredPlans.length > 0 && (
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
+                <div className="flex flex-col md:flex-row items-center justify-between">
+                  <div className="text-sm text-gray-600 mb-4 md:mb-0">
                     Showing {getPaginatedPlans().length} of{" "}
                     {filteredPlans.length} results
                   </div>
@@ -1757,7 +1933,7 @@ export function ProductionPlanning() {
           {selectedView === "calendar" && (
             <div className="space-y-4">
               {/* Calendar Header */}
-              <div className="flex items-center justify-between bg-linear-to-r from-blue-50 to-blue-100 rounded-xl p-6 shadow-sm">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between bg-linear-to-r from-blue-50 to-blue-100 rounded-xl p-6 shadow-sm gap-4">
                 <div className="flex items-center gap-4">
                   <Button
                     variant="outline"
@@ -1775,7 +1951,7 @@ export function ProductionPlanning() {
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
-                  <h2 className="text-2xl font-semibold text-gray-900">
+                  <h2 className="text-xl md:text-2xl font-semibold text-gray-900">
                     {currentDate.toLocaleDateString("en-US", {
                       month: "long",
                       year: "numeric",
@@ -1799,11 +1975,11 @@ export function ProductionPlanning() {
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col md:flex-row items-center gap-4">
                   {/* Month Total */}
                   <div className="bg-white/70 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/50 shadow-sm">
                     <div className="flex items-center gap-2">
-                      <div className="text-2xl font-bold text-blue-900">
+                      <div className="text-xl md:text-2xl font-bold text-blue-900">
                         {(() => {
                           // Calculate month total by summing daily quantities (similar to week totals)
                           const year = currentDate.getFullYear();
@@ -1831,7 +2007,6 @@ export function ProductionPlanning() {
                     </div>
                   </div>
 
-                  {/* Add Production Card Button */}
                   {/* Add Production Card Button */}
                   <Button
                     onClick={() => {
@@ -1870,7 +2045,7 @@ export function ProductionPlanning() {
                     >
                       {/* Week Header */}
                       <div className="bg-linear-to-r from-violet-50 to-violet-100 p-4 border-b border-gray-200">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-violet-500 rounded-lg flex items-center justify-center">
                               <span className="text-white font-semibold text-sm">
@@ -1909,118 +2084,75 @@ export function ProductionPlanning() {
                         </div>
                       </div>
 
-                      {/* Days Grid */}
-                      <div className="grid grid-cols-7 divide-x divide-gray-200">
-                        {weekDays.map((day, dayIndex) => {
-                          const isCurrentMonth =
-                            day.getMonth() === currentDate.getMonth();
-                          // const dayProductions = getProductionsForDate(day);
-                          const dayProductions =
-                            getProductionsForDateUniversal(day);
+                      {/* Days Grid - Mobile: Stack vertically, Desktop: Grid */}
+                      {isMobile ? (
+                        <div className="divide-y divide-gray-200">
+                          {weekDays.map((day, dayIndex) => {
+                            const isCurrentMonth =
+                              day.getMonth() === currentDate.getMonth();
+                            const dayProductions =
+                              getProductionsForDateUniversal(day);
+                            const isToday =
+                              day.toDateString() === new Date().toDateString();
+                            const dayNames = [
+                              "Monday",
+                              "Tuesday",
+                              "Wednesday",
+                              "Thursday",
+                              "Friday",
+                              "Saturday",
+                              "Sunday",
+                            ];
+                            const dayAbbrevs = [
+                              "Mon",
+                              "Tue",
+                              "Wed",
+                              "Thu",
+                              "Fri",
+                              "Sat",
+                              "Sun",
+                            ];
 
-                          const isToday =
-                            day.toDateString() === new Date().toDateString();
-                          const dayNames = [
-                            "Monday",
-                            "Tuesday",
-                            "Wednesday",
-                            "Thursday",
-                            "Friday",
-                            "Saturday",
-                            "Sunday",
-                          ];
-                          const dayAbbrevs = [
-                            "Mon",
-                            "Tue",
-                            "Wed",
-                            "Thu",
-                            "Fri",
-                            "Sat",
-                            "Sun",
-                          ];
+                            if (!isCurrentMonth) return null;
 
-                          // Get theme colors based on day
-                          let headerBg = "bg-gray-50";
-                          let headerText = "text-gray-700";
-                          let cellBg = "bg-white";
-
-                          if (
-                            dayIndex === 0 ||
-                            dayIndex === 2 ||
-                            dayIndex === 4
-                          ) {
-                            // Mon, Wed, Fri
-                            headerBg = "bg-emerald-50";
-                            headerText = "text-emerald-700";
-                            cellBg = "bg-emerald-25";
-                          } else if (dayIndex === 1 || dayIndex === 3) {
-                            // Tue, Thu
-                            headerBg = "bg-sky-50";
-                            headerText = "text-sky-700";
-                            cellBg = "bg-sky-25";
-                          } else if (dayIndex === 5) {
-                            // Sat
-                            headerBg = "bg-slate-50";
-                            headerText = "text-slate-700";
-                            cellBg = "bg-slate-25";
-                          } else if (dayIndex === 6) {
-                            // Sun
-                            headerBg = "bg-orange-50";
-                            headerText = "text-orange-700";
-                            cellBg = "bg-orange-25";
-                          }
-
-                          if (!isCurrentMonth) {
-                            headerBg = "bg-gray-50";
-                            headerText = "text-gray-400";
-                            cellBg = "bg-gray-50";
-                          }
-
-                          return (
-                            <div
-                              key={dayIndex}
-                              className={`min-h-[200px] ${
-                                isToday ? "ring-2 ring-blue-500 ring-inset" : ""
-                              }`}
-                            >
-                              {/* Day Header */}
+                            return (
                               <div
-                                className={`${headerBg} p-3 border-b border-gray-200`}
+                                key={dayIndex}
+                                className={`p-4 ${
+                                  isToday ? "bg-blue-50" : "bg-white"
+                                }`}
                               >
-                                <div className="text-center">
-                                  <div
-                                    className={`text-lg font-bold mb-2 ${headerText} ${
-                                      isToday ? "text-blue-600" : ""
-                                    }`}
-                                  >
-                                    {String(day.getDate()).padStart(2, "0")}{" "}
-                                    {dayAbbrevs[dayIndex]}
+                                <div className="flex items-center justify-between mb-3">
+                                  <div>
+                                    <h4 className="font-semibold text-gray-900">
+                                      {String(day.getDate()).padStart(2, "0")}{" "}
+                                      {dayAbbrevs[dayIndex]}
+                                    </h4>
+                                    {dayProductions.length > 0 && (
+                                      <div className="mt-1 flex items-center gap-2">
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
+                                          <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                                          {dayProductions.length} product
+                                          {dayProductions.length !== 1
+                                            ? "s"
+                                            : ""}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                                          Total:{" "}
+                                          {dayProductions.reduce(
+                                            (sum, prod) =>
+                                              sum + (prod.quantity || 0),
+                                            0
+                                          )}{" "}
+                                          units
+                                        </span>
+                                      </div>
+                                    )}
                                   </div>
-                                  {dayProductions.length > 0 && (
-                                    <div className="space-y-1 flex flex-col items-center">
-                                      <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                                        {dayProductions.length} product
-                                        {dayProductions.length !== 1 ? "s" : ""}
-                                      </div>
-                                      <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
-                                        Total:{" "}
-                                        {dayProductions.reduce(
-                                          (sum, prod) =>
-                                            sum + (prod.quantity || 0),
-                                          0
-                                        )}{" "}
-                                        units
-                                      </div>
-                                    </div>
-                                  )}
                                 </div>
-                              </div>
 
-                              {/* Day Content */}
-                              <div className={`${cellBg} p-3 min-h-40`}>
-                                {isCurrentMonth ? (
-                                  <div className="space-y-2">
+                                {dayProductions.length > 0 ? (
+                                  <div className="space-y-3">
                                     {dayProductions.map((production, idx) => (
                                       <div
                                         key={idx}
@@ -2030,13 +2162,13 @@ export function ProductionPlanning() {
                                           );
                                           setIsViewCardDialogOpen(true);
                                         }}
-                                        className="bg-white rounded-lg p-3 shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer relative pb-8"
+                                        className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer"
                                       >
                                         {/* Product Name and Quantity */}
                                         <div className="flex items-center justify-between mb-2">
-                                          <h4 className="font-semibold text-gray-900 text-sm leading-tight truncate flex-1 mr-2">
+                                          <h5 className="font-semibold text-gray-900 text-sm leading-tight truncate flex-1 mr-2">
                                             {production.productName}
-                                          </h4>
+                                          </h5>
                                           <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap">
                                             {production.quantity.toLocaleString()}
                                           </span>
@@ -2059,96 +2191,306 @@ export function ProductionPlanning() {
                                           </p>
                                         )}
 
-                                        {/* Calendar Icon - Bottom Right */}
-                                        {/* Calendar Button - Bottom Left */}
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setSelectedProductionForDateChange(
-                                              production
-                                            );
-                                            setNewProductionDate(
-                                              production.startDate
-                                            );
-                                            setIsDateChangeDialogOpen(true);
-                                          }}
-                                          className="absolute bottom-2 left-2 w-6 h-6 bg-blue-500 hover:bg-blue-600 
-             rounded-md flex items-center justify-center shadow-sm 
-             hover:shadow-md transition-all duration-200 group"
-                                          title="Change production date"
-                                        >
-                                          <Calendar className="w-3.5 h-3.5 text-white" />
-                                        </button>
-
-                                        {/* Trash Button - Bottom Right */}
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteCalendarEntry(
-                                              production
-                                            );
-                                          }}
-                                          className="absolute bottom-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 
-    rounded-md flex items-center justify-center shadow-sm 
-    hover:shadow-md transition-all duration-200 group"
-                                          title="Delete production"
-                                        >
-                                          {isDeletingEntryId ===
-                                          (production.id ??
-                                            production._id ??
-                                            production.raw?._id) ? (
-                                            <svg
-                                              className="animate-spin w-3.5 h-3.5 text-white"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <circle
-                                                cx="12"
-                                                cy="12"
-                                                r="10"
-                                                stroke="currentColor"
-                                                strokeWidth="4"
-                                                strokeDasharray="60"
-                                                strokeLinecap="round"
-                                                fill="none"
-                                              ></circle>
-                                            </svg>
-                                          ) : (
-                                            <Trash2 className="w-3.5 h-3.5 text-white" />
-                                          )}
-                                        </button>
+                                        {/* Action Buttons */}
+                                        <div className="flex gap-2 mt-3">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedProductionForDateChange(
+                                                production
+                                              );
+                                              setNewProductionDate(
+                                                production.startDate
+                                              );
+                                              setIsDateChangeDialogOpen(true);
+                                            }}
+                                            className="text-xs h-7"
+                                          >
+                                            <Calendar className="w-3 h-3 mr-1" />
+                                            Change Date
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="destructive"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteCalendarEntry(
+                                                production
+                                              );
+                                            }}
+                                            className="text-xs h-7"
+                                          >
+                                            {isDeletingEntryId ===
+                                            (production.id ??
+                                              production._id ??
+                                              production.raw?._id) ? (
+                                              <svg
+                                                className="animate-spin w-3 h-3 mr-1"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <circle
+                                                  cx="12"
+                                                  cy="12"
+                                                  r="10"
+                                                  stroke="currentColor"
+                                                  strokeWidth="4"
+                                                  strokeDasharray="60"
+                                                  strokeLinecap="round"
+                                                  fill="none"
+                                                ></circle>
+                                              </svg>
+                                            ) : (
+                                              <Trash2 className="w-3 h-3 mr-1" />
+                                            )}
+                                            Delete
+                                          </Button>
+                                        </div>
                                       </div>
                                     ))}
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-center h-32 text-gray-400">
+                                    <div className="text-center">
+                                      <Package className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                                      <p className="text-sm">
+                                        No production scheduled
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        /* Desktop Calendar Grid */
+                        <div className={calendarDayGridClass}>
+                          {weekDays.map((day, dayIndex) => {
+                            const isCurrentMonth =
+                              day.getMonth() === currentDate.getMonth();
+                            const dayProductions =
+                              getProductionsForDateUniversal(day);
+                            const isToday =
+                              day.toDateString() === new Date().toDateString();
+                            const dayAbbrevs = [
+                              "Mon",
+                              "Tue",
+                              "Wed",
+                              "Thu",
+                              "Fri",
+                              "Sat",
+                              "Sun",
+                            ];
 
-                                    {dayProductions.length === 0 && (
-                                      <div className="flex items-center justify-center h-32 text-gray-400">
-                                        <div className="text-center">
-                                          <Package className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                                          <p className="text-xs">
-                                            No production scheduled
-                                          </p>
+                            // Get theme colors based on day
+                            let headerBg = "bg-gray-50";
+                            let headerText = "text-gray-700";
+                            let cellBg = "bg-white";
+
+                            if (
+                              dayIndex === 0 ||
+                              dayIndex === 2 ||
+                              dayIndex === 4
+                            ) {
+                              // Mon, Wed, Fri
+                              headerBg = "bg-emerald-50";
+                              headerText = "text-emerald-700";
+                              cellBg = "bg-emerald-25";
+                            } else if (dayIndex === 1 || dayIndex === 3) {
+                              // Tue, Thu
+                              headerBg = "bg-sky-50";
+                              headerText = "text-sky-700";
+                              cellBg = "bg-sky-25";
+                            } else if (dayIndex === 5) {
+                              // Sat
+                              headerBg = "bg-slate-50";
+                              headerText = "text-slate-700";
+                              cellBg = "bg-slate-25";
+                            } else if (dayIndex === 6) {
+                              // Sun
+                              headerBg = "bg-orange-50";
+                              headerText = "text-orange-700";
+                              cellBg = "bg-orange-25";
+                            }
+
+                            if (!isCurrentMonth) {
+                              headerBg = "bg-gray-50";
+                              headerText = "text-gray-400";
+                              cellBg = "bg-gray-50";
+                            }
+
+                            return (
+                              <div
+                                key={dayIndex}
+                                className={`${calendarDayClass} border-r last:border-r-0 ${
+                                  isToday
+                                    ? "ring-2 ring-blue-500 ring-inset"
+                                    : ""
+                                }`}
+                              >
+                                {/* Day Header */}
+                                <div
+                                  className={`${headerBg} p-3 border-b border-gray-200`}
+                                >
+                                  <div className="text-center">
+                                    <div
+                                      className={`text-lg font-bold mb-2 ${headerText} ${
+                                        isToday ? "text-blue-600" : ""
+                                      }`}
+                                    >
+                                      {String(day.getDate()).padStart(2, "0")}{" "}
+                                      {dayAbbrevs[dayIndex]}
+                                    </div>
+                                    {dayProductions.length > 0 && (
+                                      <div className="space-y-1 flex flex-col items-center">
+                                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
+                                          <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                                          {dayProductions.length} product
+                                          {dayProductions.length !== 1
+                                            ? "s"
+                                            : ""}
+                                        </div>
+                                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                                          Total:{" "}
+                                          {dayProductions.reduce(
+                                            (sum, prod) =>
+                                              sum + (prod.quantity || 0),
+                                            0
+                                          )}{" "}
+                                          units
                                         </div>
                                       </div>
                                     )}
                                   </div>
-                                ) : (
-                                  <div className="flex items-center justify-center h-32">
-                                    <span className="text-gray-400 text-sm">
-                                      {day.getDate()}
-                                    </span>
-                                  </div>
-                                )}
+                                </div>
 
-                                {/* Today indicator */}
-                                {isToday && (
-                                  <div className="absolute top-2 right-2">
-                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                                  </div>
-                                )}
+                                {/* Day Content */}
+                                <div className={`${cellBg} p-3 min-h-40`}>
+                                  {isCurrentMonth ? (
+                                    <div className="space-y-2">
+                                      {dayProductions.map((production, idx) => (
+                                        <div
+                                          key={idx}
+                                          onClick={() => {
+                                            setSelectedProductionForView(
+                                              production
+                                            );
+                                            setIsViewCardDialogOpen(true);
+                                          }}
+                                          className="bg-white rounded-lg p-3 shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer relative pb-8"
+                                        >
+                                          {/* Product Name and Quantity */}
+                                          <div className="flex items-center justify-between mb-2">
+                                            <h4 className="font-semibold text-gray-900 text-sm leading-tight truncate flex-1 mr-2">
+                                              {production.productName}
+                                            </h4>
+                                            <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap">
+                                              {production.quantity.toLocaleString()}
+                                            </span>
+                                          </div>
+
+                                          {/* Assigned Plant */}
+                                          {production.assignedPlant && (
+                                            <div className="flex items-center gap-1.5 mb-2">
+                                              <Building className="w-3.5 h-3.5 text-emerald-600" />
+                                              <span className="text-xs font-medium text-emerald-700">
+                                                {production.assignedPlant}
+                                              </span>
+                                            </div>
+                                          )}
+
+                                          {/* Remarks */}
+                                          {production.remarks && (
+                                            <p className="text-xs text-gray-600 leading-relaxed">
+                                              {production.remarks}
+                                            </p>
+                                          )}
+
+                                          {/* Calendar Button - Bottom Left */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedProductionForDateChange(
+                                                production
+                                              );
+                                              setNewProductionDate(
+                                                production.startDate
+                                              );
+                                              setIsDateChangeDialogOpen(true);
+                                            }}
+                                            className="absolute bottom-2 left-2 w-6 h-6 bg-blue-500 hover:bg-blue-600 
+             rounded-md flex items-center justify-center shadow-sm 
+             hover:shadow-md transition-all duration-200 group"
+                                            title="Change production date"
+                                          >
+                                            <Calendar className="w-3.5 h-3.5 text-white" />
+                                          </button>
+
+                                          {/* Trash Button - Bottom Right */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteCalendarEntry(
+                                                production
+                                              );
+                                            }}
+                                            className="absolute bottom-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 
+    rounded-md flex items-center justify-center shadow-sm 
+    hover:shadow-md transition-all duration-200 group"
+                                            title="Delete production"
+                                          >
+                                            {isDeletingEntryId ===
+                                            (production.id ??
+                                              production._id ??
+                                              production.raw?._id) ? (
+                                              <svg
+                                                className="animate-spin w-3.5 h-3.5 text-white"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <circle
+                                                  cx="12"
+                                                  cy="12"
+                                                  r="10"
+                                                  stroke="currentColor"
+                                                  strokeWidth="4"
+                                                  strokeDasharray="60"
+                                                  strokeLinecap="round"
+                                                  fill="none"
+                                                ></circle>
+                                              </svg>
+                                            ) : (
+                                              <Trash2 className="w-3.5 h-3.5 text-white" />
+                                            )}
+                                          </button>
+                                        </div>
+                                      ))}
+
+                                      {dayProductions.length === 0 && (
+                                        <div className="flex items-center justify-center h-32 text-gray-400">
+                                          <div className="text-center">
+                                            <Package className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                                            <p className="text-xs">
+                                              No production scheduled
+                                            </p>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-center h-32">
+                                      <span className="text-gray-400 text-sm">
+                                        {day.getDate()}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2344,7 +2686,6 @@ export function ProductionPlanning() {
         selectedProductionCard={selectedPlan}
       />
 
-      {/* Add Production Card Dialog (from calendar) */}
       {/* Add Production Card Dialog (from calendar) */}
       <AddProductionCardDialog
         open={isAddCardDialogOpen}

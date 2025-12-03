@@ -5,7 +5,11 @@ const phaseSchema = new mongoose.Schema(
     name: { type: String, required: true },
     startDate: { type: Date, default: null },
     endDate: { type: Date, default: null },
-    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
     note: { type: String, default: "" },
     status: { type: String, default: "not-started" },
   },
@@ -41,7 +45,11 @@ const productionSchema = new mongoose.Schema(
     specSnapshot: { type: mongoose.Schema.Types.Mixed, default: {} },
 
     po: {
-      _id: { type: mongoose.Schema.Types.ObjectId, ref: "PoDetails", default: null },
+      _id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "PoDetails",
+        default: null,
+      },
       poNumber: { type: String, default: "" },
       orderQuantity: { type: Number, default: null },
       unitPrice: { type: Number, default: null },
@@ -68,7 +76,10 @@ const productionSchema = new mongoose.Schema(
 
     phases: { type: [phaseSchema], default: [] },
     materials: { type: [materialSchema], default: [] },
-    assignedTeam: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], default: [] },
+    assignedTeam: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      default: [],
+    },
 
     startDate: { type: Date, default: null },
     targetCompletionDate: { type: Date, default: null },
@@ -79,7 +90,11 @@ const productionSchema = new mongoose.Schema(
         {
           from: { type: String, default: null },
           to: { type: String, required: true },
-          by: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+          by: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+          },
           at: { type: Date, default: Date.now },
           note: { type: String, default: "" },
         },
@@ -91,8 +106,16 @@ const productionSchema = new mongoose.Schema(
 
     notes: { type: String, default: "" },
 
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
     updatedAt: { type: Date, default: Date.now },
 
     isActive: { type: Boolean, default: true },
@@ -101,6 +124,8 @@ const productionSchema = new mongoose.Schema(
 );
 
 // Ensure model created only once (safe for hot reloads)
-const ProductionProject = mongoose.models?.ProductionProject || mongoose.model("ProductionProject", productionSchema);
+const ProductionProject =
+  mongoose.models?.ProductionProject ||
+  mongoose.model("ProductionProject", productionSchema);
 
 export default ProductionProject;

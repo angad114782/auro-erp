@@ -48,42 +48,9 @@ export interface NewProject {
   gender?: string;
   priority: string;
   productDesc: string;
-  redSealTargetDate: string; // red seal target date
+  redSealTargetDate: string;
   coverImage: string;
   sampleImages: string[];
-  // clientFinalCost: number;
-  // clientCostHistory: {
-  //   amount: number;
-  //   by: string;
-  //   setAt: string;
-  // };
-  // nextUpdate: {
-  //   date: string;
-  //   note: string;
-  //   setBy: string;
-  //   setAt: string;
-  // };
-  // clientApproval: {
-  //   status: "pending" | "approved" | "rejected";
-  //   by: string;
-  //   at: string;
-  // };
-  // isActive: boolean;
-  // statusHistory: {
-  //   from: string;
-  //   to: string;
-  //   by: string;
-  //   at: string;
-  // };
-  // collection: string;
-  // productType: string;
-  // targetCost: string;
-  // retailPrice: string;
-  // upperMaterial: string;
-  // soleType: string;
-  // heelHeight: string;
-  // taskInc: string;
-  // requirements: string;
 }
 
 interface CreateProjectDialogProps {
@@ -145,6 +112,7 @@ export function CreateProjectDialog({
   const [countries, setCountries] = useState<CountryType[]>([]);
   const [assignPersons, setAssignPersons] = useState<AssignPersonType[]>([]);
   const [loadingMasters, setLoadingMasters] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   // form state
   const [newProject, setNewProject] = useState<NewProject>({
@@ -197,6 +165,14 @@ export function CreateProjectDialog({
   const [newCountryName, setNewCountryName] = useState("");
   const [newAssignPersonName, setNewAssignPersonName] = useState("");
 
+  // Check screen size
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   // ---- derived filters ----
   const filteredBrands = useMemo(
     () =>
@@ -205,9 +181,6 @@ export function CreateProjectDialog({
         : [],
     [brands, newProject.company]
   );
-  console.log(newProject, brands);
-
-  console.log(filteredBrands, "ff");
 
   const filteredCategories = useMemo(
     () =>
@@ -231,7 +204,6 @@ export function CreateProjectDialog({
       try {
         setLoadingMasters(true);
 
-        // 1) load all masters in parallel
         const [cRes, tRes, coRes, aRes] = await Promise.all([
           api.get("/companies"),
           api.get("/types"),
@@ -248,13 +220,10 @@ export function CreateProjectDialog({
         setCountries(cnt);
         setAssignPersons(aps);
 
-        // 2) reserve a new project code
         const seqRes = await api.post(`/sequences/PRJ/reserve`);
         const seq = seqRes.data.data;
 
         setSequenceId(seq._id);
-
-        // set display productCode from reserved code
         setNewProject((p) => ({
           ...p,
           autoCode: seq.code,
@@ -269,14 +238,13 @@ export function CreateProjectDialog({
 
   // ---- when company changes, fetch its brands ----
   useEffect(() => {
-    if (!newProject.company) return; // <-- important
+    if (!newProject.company) return;
     (async () => {
       try {
         const res = await api.get("/brands", {
           params: { company: newProject.company },
         });
         const list: BrandType[] = res.data?.items || res.data || [];
-        // console.log(list, "brands");
         setBrands(list);
       } catch (e: any) {
         setBrands([]);
@@ -286,7 +254,7 @@ export function CreateProjectDialog({
     })();
   }, [newProject.company, open]);
 
-  // ---- when brand changes, fetch categories under (company, brand) ----
+  // ---- when brand changes, fetch categories ----
   useEffect(() => {
     if (!newProject.company || !newProject.brand) {
       return;
@@ -296,9 +264,7 @@ export function CreateProjectDialog({
         const res = await api.get(
           `/companies/${newProject.company}/brands/${newProject.brand}/categories`
         );
-
         const arr: CategoryType[] = res.data?.items || [];
-
         setCategories(arr);
       } catch {
         setCategories([]);
@@ -377,7 +343,7 @@ export function CreateProjectDialog({
       dynamicInputRefs.current[index]!.value = "";
   };
 
-  // ---------- create masters (API) ----------
+  // ---------- create masters ----------
   const handleCreateNewCompany = async () => {
     if (!newCompanyName.trim())
       return toast.error("Please enter a company name");
@@ -407,18 +373,10 @@ export function CreateProjectDialog({
     if (!newProject.company)
       return toast.error("Please select a company first");
     try {
-      // BRAND CREATE API = /api/brands with { name, company }
-      // await api.post(`/companies/${companyId}/brands`, { name });
-
       const res = await api.post(`/companies/${newProject.company}/brands`, {
         name: newBrandName.trim(),
       });
-
-      console.log("Created brand response:", newProject.company);
-
       const createdBrandResponse = res.data?.data || res.data;
-      console.log(createdBrandResponse, "mmmmmmmmmmmm");
-      // const vm = mapBrand(created);
       setBrands((prev) => [createdBrandResponse, ...prev]);
       setNewProject((p) => ({ ...p, brand: createdBrandResponse._id }));
       toast.success(`Brand ${createdBrandResponse.name} created`);
@@ -442,13 +400,9 @@ export function CreateProjectDialog({
         `/companies/${newProject.company}/brands/${newProject.brand}/categories`,
         { name: newCategoryName.trim() }
       );
-
       const createdCategoryResponse = res.data?.data || res.data;
-      // const vm = mapCategory(created); // <---- updated
-
       setCategories((prev) => [createdCategoryResponse, ...prev]);
       setNewProject((p) => ({ ...p, category: createdCategoryResponse._id }));
-
       toast.success(`Category ${createdCategoryResponse.name} created`);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to create category");
@@ -464,7 +418,6 @@ export function CreateProjectDialog({
     try {
       const res = await api.post("/types", { name: newTypeName.trim() });
       const createdTypeResponse = res.data?.data || res.data;
-      // const vm = mapType(created);
       setTypes((prev) => [createdTypeResponse, ...prev]);
       setNewProject((p) => ({ ...p, type: createdTypeResponse._id }));
       toast.success(`Type "${createdTypeResponse.type}" created`);
@@ -483,7 +436,6 @@ export function CreateProjectDialog({
     try {
       const res = await api.post("/countries", { name: newCountryName.trim() });
       const createdCountryResponse = res.data?.data || res.data;
-      // const vm = mapCountry(created);
       setCountries((prev) => [createdCountryResponse, ...prev]);
       setNewProject((p) => ({ ...p, country: createdCountryResponse._id }));
       toast.success(`Country "${createdCountryResponse.country}" created`);
@@ -496,8 +448,6 @@ export function CreateProjectDialog({
     }
   };
 
-  // ---------- create assign person ----------
-
   const handleCreateNewAssignPerson = async () => {
     if (!newAssignPersonName.trim()) return toast.error("Enter name");
     try {
@@ -505,7 +455,6 @@ export function CreateProjectDialog({
         name: newAssignPersonName.trim(),
       });
       const createdAssignPersonResponse = res.data?.data || res.data;
-      // const vm = { id: created._id, name: created.name };
       setAssignPersons((prev) => [createdAssignPersonResponse, ...prev]);
       setNewProject((p) => ({
         ...p,
@@ -537,7 +486,6 @@ export function CreateProjectDialog({
 
     try {
       const fd = new FormData();
-      // textual fields matching your project schema
       fd.append("color", newProject.color);
       fd.append("company", newProject.company);
       fd.append("brand", newProject.brand);
@@ -545,7 +493,7 @@ export function CreateProjectDialog({
       fd.append("type", newProject.type);
       fd.append("country", newProject.country);
       fd.append("artName", newProject.artName || "");
-      // optional/renamed fields
+
       if (newProject.priority)
         fd.append("priority", newProject.priority.toLowerCase());
       if (newProject.productDesc)
@@ -576,11 +524,9 @@ export function CreateProjectDialog({
         headers: { "Content-Type": "multipart/form-data" },
       });
       const createdProjectResponse = res.data?.data || res.data;
-      console.log(createdProjectResponse, "Project create response");
-      onCreated && onCreated(); // <---- trigger reload
+      onCreated && onCreated();
       toast.success(`R&D Project created ✓`);
 
-      // reset form
       setNewProject({
         autoCode: "",
         company: "",
@@ -596,7 +542,6 @@ export function CreateProjectDialog({
         priority: "",
         productDesc: "",
         redSealTargetDate: "",
-
         coverImage: "",
         sampleImages: [""],
       });
@@ -608,115 +553,88 @@ export function CreateProjectDialog({
       toast.error(e?.response?.data?.message || "Failed to create project");
     }
   };
-  // // helper: safest way to extract an array from any API response shape
-  // const pickArray = (payload: any) => {
-  //   if (Array.isArray(payload?.data)) return payload.data; // { data: [...] }
-  //   if (Array.isArray(payload?.items)) return payload.items; // { items: [...] }
-  //   if (Array.isArray(payload)) return payload; // [...]
-  //   return []; // fallback
-  // };
 
-  // // useEffect(() => {
-  // //   // const savedCompany = localStorage.getItem("selectedCompanyId");
-  // //   if (!newProject.company) return;
-
-  // //   setNewProject((p) => ({ ...p, company: newProject.company }));
-
-  // //   (async () => {
-  // //     try {
-  // //       const res = await api.get("/brands", {
-  // //         params: { company: newProject.company },
-  // //       });
-  // //       const arr = pickArray(res.data);
-  // //       setBrands(arr);
-  // //     } catch (e) {
-  // //       console.error("Failed to load brands", e);
-  // //       setBrands([]); // graceful fallback
-  // //     }
-  // //   })();
-  // // }, []);
-
-  // --------- UI (unchanged except sources now use API state) ---------
   return (
-   <Dialog
-  open={open}
-  onOpenChange={(isOpen: boolean) => {
-    if (!isOpen) {
-      // Don't cancel the reserved sequence on modal close.
-      onClose();
-    }
-  }}
->
-
-      <DialogContent className="max-w-[96vw]! w-[96vw]! max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen: boolean) => {
+        if (!isOpen) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        className={`
+        ${
+          isMobile
+            ? "max-w-[95vw]! w-[95vw]! max-h-[95vh] top-[2.5vh] translate-y-0"
+            : "max-w-[96vw]! w-[96vw]! max-h-[95vh] top-[2.5vh] translate-y-0"
+        } overflow-hidden p-0 m-0 flex flex-col
+      `}
+      >
         {/* Sticky Header */}
-        <div className="sticky top-0 z-50 px-12 py-8 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
-              <div className="w-16 h-16 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
-                <Plus className="w-8 h-8 text-white" />
+        <div className="sticky top-0 z-50 px-4 md:px-8 lg:px-12 py-4 md:py-6 lg:py-8 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4 md:gap-6 lg:gap-8">
+              <div className="w-10 h-10 md:w-12 md:h-12 lg:w-16 lg:h-16 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg shrink-0">
+                <Plus className="w-5 h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 text-white" />
               </div>
-              <div>
-                <DialogTitle className="text-4xl font-semibold text-gray-900 mb-2">
+              <div className="min-w-0">
+                <DialogTitle className="text-xl md:text-2xl lg:text-3xl xl:text-4xl font-semibold text-gray-900 mb-1 md:mb-2 truncate">
                   Create New R&amp;D Project
                 </DialogTitle>
-                <DialogDescription className="text-xl text-gray-600">
-                  Initialize a comprehensive footwear design and development
-                  project
+                <DialogDescription className="text-sm md:text-base lg:text-lg xl:text-xl text-gray-600 truncate">
+                  Initialize a footwear design and development project
                 </DialogDescription>
               </div>
             </div>
-            <div className="flex items-center gap-6">
-              <div className="bg-linear-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-xl px-8 py-6 shadow-lg">
-                <div className="flex items-center gap-4">
-                  <CheckCircle className="w-6 h-6 text-blue-600" />
-                  <div className="text-right">
-                    <p className="text-base text-blue-600 font-semibold">
-                      Auto-Generated Project Code
+            <div className="flex items-center gap-3 md:gap-4 lg:gap-6">
+              <div className="bg-linear-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-lg md:rounded-xl px-4 py-3 md:px-6 md:py-4 lg:px-8 lg:py-6 shadow-lg">
+                <div className="flex items-center gap-2 md:gap-3 lg:gap-4">
+                  <CheckCircle className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-blue-600 shrink-0" />
+                  <div className="text-right min-w-0">
+                    <p className="text-xs md:text-sm lg:text-base text-blue-600 font-semibold truncate">
+                      Project Code
                     </p>
-                    <p className="text-2xl font-mono font-bold text-blue-800">
+                    <p className="text-base md:text-lg lg:text-xl xl:text-2xl font-mono font-bold text-blue-800 truncate">
                       {newProject.autoCode}
                     </p>
                   </div>
                 </div>
               </div>
               <Button
-  onClick={() => {
-    // simply close the modal locally — keep the reserved sequence
-    onClose();
-  }}
-  variant="ghost"
-  size="sm"
-  className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full"
->
-  <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
-</Button>
-
+                onClick={() => onClose()}
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 md:h-10 md:w-10 p-0 hover:bg-gray-100 rounded-full shrink-0"
+              >
+                <X className="w-4 h-4 md:w-5 md:h-5 text-gray-500 hover:text-gray-700" />
+              </Button>
             </div>
           </div>
         </div>
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-12 py-10 space-y-12">
+          <div className="px-4 md:px-6 lg:px-8 xl:px-12 py-4 md:py-6 lg:py-8 xl:py-10 space-y-6 md:space-y-8 lg:space-y-10 xl:space-y-12">
             {/* Product Development */}
-            <div className="space-y-8">
-              <div className="flex items-center gap-6">
-                <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                  <Target className="w-6 h-6 text-white" />
+            <div className="space-y-4 md:space-y-6 lg:space-y-8">
+              <div className="flex items-center gap-3 md:gap-4 lg:gap-6">
+                <div className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                  <Target className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-white" />
                 </div>
-                <h3 className="text-2xl font-semibold text-gray-900">
+                <h3 className="text-lg md:text-xl lg:text-2xl font-semibold text-gray-900">
                   Product Development Information
                 </h3>
-                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
+                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200 hidden sm:block"></div>
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-6 gap-8">
-                {/* 1. Art/Colour Name */}
-                <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 md:gap-6">
+                {/* 1. Art Name */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="art"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Article Name *
                   </Label>
@@ -730,13 +648,15 @@ export function CreateProjectDialog({
                       })
                     }
                     placeholder="e.g., Midnight Runner"
-                    className="h-12 text-base border-2 focus:border-[#0c9dcb]"
+                    className="h-10 md:h-12 text-sm md:text-base border-2 focus:border-[#0c9dcb]"
                   />
                 </div>
-                <div className="space-y-4">
+
+                {/* 2. Colour */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="colour"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Colour *
                   </Label>
@@ -750,36 +670,29 @@ export function CreateProjectDialog({
                       })
                     }
                     placeholder="e.g., Black"
-                    className="h-12 text-base border-2 focus:border-[#0c9dcb]"
+                    className="h-10 md:h-12 text-sm md:text-base border-2 focus:border-[#0c9dcb]"
                   />
                 </div>
 
-                {/* 2. Product Code (display) */}
-                <div className="space-y-4">
-                  <Label className="text-base font-semibold text-gray-700">
+                {/* 3. Product Code */}
+                <div className="space-y-2 md:space-y-4">
+                  <Label className="text-sm md:text-base font-semibold text-gray-700">
                     Product Code
                   </Label>
                   <Input
                     id="productCode"
-                    contentEditable={false}
                     value={newProject.autoCode}
                     readOnly
-                    // onChange={(e) =>
-                    //   setNewProject({
-                    //     ...newProject,
-                    //     productCode: e.target.value,
-                    //   })
-                    // }
                     placeholder="Auto-generated code"
-                    className="h-12 text-base border-2 focus:border-[#0c9dcb] font-mono font-bold"
+                    className="h-10 md:h-12 text-sm md:text-base border-2 focus:border-[#0c9dcb] font-mono font-bold"
                   />
                 </div>
 
-                {/* 3. Company */}
-                <div className="space-y-4">
+                {/* 4. Company */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="company"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Company *
                   </Label>
@@ -789,18 +702,21 @@ export function CreateProjectDialog({
                         variant="outline"
                         role="combobox"
                         aria-expanded={companyOpen}
-                        className="w-full h-12 justify-between"
+                        className="w-full h-10 md:h-12 justify-between"
                       >
-                        {newProject.company
-                          ? companies.find((c) => c._id === newProject.company)
-                              ?.name
-                          : loadingMasters
-                          ? "Loading..."
-                          : "Select company"}
-                        <ChevronDown className="h-4 w-4 opacity-50" />
+                        <span className="truncate">
+                          {newProject.company
+                            ? companies.find(
+                                (c) => c._id === newProject.company
+                              )?.name
+                            : loadingMasters
+                            ? "Loading..."
+                            : "Select company"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
+                    <PopoverContent className="w-full p-0" align="start">
                       <Command>
                         <CommandInput
                           placeholder="Search companies..."
@@ -823,20 +739,19 @@ export function CreateProjectDialog({
                                 setCompanyOpen(false);
                               }}
                             >
-                              <div className="flex items-center flex-1">
+                              <div className="flex items-center flex-1 min-w-0">
                                 <Check
-                                  className={`mr-2 h-4 w-4 ${
+                                  className={`mr-2 h-4 w-4 shrink-0 ${
                                     newProject.company === company._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
-                                {company.name}
+                                <span className="truncate">{company.name}</span>
                               </div>
-
                               <button
                                 type="button"
-                                className="p-1 hover:bg-red-50 rounded"
+                                className="p-1 hover:bg-red-50 rounded shrink-0"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -844,8 +759,6 @@ export function CreateProjectDialog({
                                 onClick={async (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-
-                                  // Uncomment when ready:
                                   try {
                                     await api.delete(
                                       `/companies/${company._id}`
@@ -865,7 +778,6 @@ export function CreateProjectDialog({
                           ))}
                         </CommandGroup>
 
-                        {/* Inline Create Company */}
                         <div className="border-t p-2">
                           {!addingNewCompany ? (
                             <Button
@@ -889,15 +801,16 @@ export function CreateProjectDialog({
                                   e.key === "Enter" && handleCreateNewCompany()
                                 }
                                 autoFocus
+                                className="text-sm"
                               />
                               <div className="flex gap-2">
                                 <Button
                                   type="button"
                                   size="sm"
                                   onClick={handleCreateNewCompany}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
+                                  <CheckCircle className="w-3 h-3 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -907,9 +820,9 @@ export function CreateProjectDialog({
                                     setAddingNewCompany(false);
                                     setNewCompanyName("");
                                   }}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <X className="w-4 h-4 mr-1" /> Cancel
+                                  <X className="w-3 h-3 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -920,11 +833,11 @@ export function CreateProjectDialog({
                   </Popover>
                 </div>
 
-                {/* 4. Brand */}
-                <div className="space-y-4">
+                {/* 5. Brand */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="brand"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Brand *
                   </Label>
@@ -935,19 +848,21 @@ export function CreateProjectDialog({
                         role="combobox"
                         aria-expanded={brandOpen}
                         disabled={!newProject.company}
-                        className="w-full h-12 justify-between"
+                        className="w-full h-10 md:h-12 justify-between"
                       >
-                        {newProject.brand
-                          ? filteredBrands.find(
-                              (b) => b._id === newProject.brand
-                            )?.name
-                          : newProject.company
-                          ? "Select brand"
-                          : "Select company first"}
-                        <ChevronDown className="h-4 w-4 opacity-50" />
+                        <span className="truncate">
+                          {newProject.brand
+                            ? filteredBrands.find(
+                                (b) => b._id === newProject.brand
+                              )?.name
+                            : newProject.company
+                            ? "Select brand"
+                            : "Select company first"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
+                    <PopoverContent className="w-full p-0" align="start">
                       <Command>
                         <CommandInput
                           placeholder="Search brands..."
@@ -967,20 +882,19 @@ export function CreateProjectDialog({
                                 setBrandOpen(false);
                               }}
                             >
-                              <div className="flex items-center flex-1">
+                              <div className="flex items-center flex-1 min-w-0">
                                 <Check
-                                  className={`mr-2 h-4 w-4 ${
+                                  className={`mr-2 h-4 w-4 shrink-0 ${
                                     newProject.brand === brand._id
                                       ? ""
                                       : "opacity-0"
                                   }`}
                                 />
-                                {brand.name}
+                                <span className="truncate">{brand.name}</span>
                               </div>
-
                               <button
                                 type="button"
-                                className="p-1 hover:bg-red-50 rounded"
+                                className="p-1 hover:bg-red-50 rounded shrink-0"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -988,8 +902,6 @@ export function CreateProjectDialog({
                                 onClick={async (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-
-                                  // Uncomment when ready:
                                   try {
                                     await api.delete(`/brands/${brand._id}`);
                                     setBrands((prev) =>
@@ -1007,7 +919,6 @@ export function CreateProjectDialog({
                           ))}
                         </CommandGroup>
 
-                        {/* Inline Create Brand */}
                         <div className="border-t p-2">
                           {!addingNewBrand ? (
                             <Button
@@ -1030,15 +941,16 @@ export function CreateProjectDialog({
                                   e.key === "Enter" && handleCreateNewBrand()
                                 }
                                 autoFocus
+                                className="text-sm"
                               />
                               <div className="flex gap-2">
                                 <Button
                                   type="button"
                                   size="sm"
                                   onClick={handleCreateNewBrand}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
+                                  <CheckCircle className="w-3 h-3 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -1048,9 +960,9 @@ export function CreateProjectDialog({
                                     setAddingNewBrand(false);
                                     setNewBrandName("");
                                   }}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <X className="w-4 h-4 mr-1" /> Cancel
+                                  <X className="w-3 h-3 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -1061,11 +973,11 @@ export function CreateProjectDialog({
                   </Popover>
                 </div>
 
-                {/* 5. Category */}
-                <div className="space-y-4">
+                {/* 6. Category */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="category"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Footwear Category *
                   </Label>
@@ -1076,21 +988,26 @@ export function CreateProjectDialog({
                         role="combobox"
                         aria-expanded={categoryOpen}
                         disabled={!newProject.brand}
-                        className="w-full h-12 justify-between"
+                        className="w-full h-10 md:h-12 justify-between"
                       >
-                        {newProject.category
-                          ? filteredCategories.find(
-                              (c) => c._id === newProject.category
-                            )?.name
-                          : newProject.brand
-                          ? "Select category"
-                          : "Select brand first"}
-                        <ChevronDown className="h-4 w-4 opacity-50" />
+                        <span className="truncate">
+                          {newProject.category
+                            ? filteredCategories.find(
+                                (c) => c._id === newProject.category
+                              )?.name
+                            : newProject.brand
+                            ? "Select category"
+                            : "Select brand first"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
+                    <PopoverContent className="w-full p-0" align="start">
                       <Command>
-                        <CommandInput placeholder="Search category..." />
+                        <CommandInput
+                          placeholder="Search category..."
+                          className="h-9"
+                        />
                         <CommandEmpty>No category found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-auto">
                           {filteredCategories.map((category) => (
@@ -1106,20 +1023,21 @@ export function CreateProjectDialog({
                                 setCategoryOpen(false);
                               }}
                             >
-                              <div className="flex items-center flex-1">
+                              <div className="flex items-center flex-1 min-w-0">
                                 <Check
-                                  className={`mr-2 h-4 w-4 ${
+                                  className={`mr-2 h-4 w-4 shrink-0 ${
                                     newProject.category === category._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
-                                {category.name}
+                                <span className="truncate">
+                                  {category.name}
+                                </span>
                               </div>
-
                               <button
                                 type="button"
-                                className="p-1 hover:bg-red-50 rounded"
+                                className="p-1 hover:bg-red-50 rounded shrink-0"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -1127,7 +1045,6 @@ export function CreateProjectDialog({
                                 onClick={async (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-
                                   try {
                                     await api.delete(
                                       `/companies/${newProject.company}/brands/${newProject.brand}/categories/${category._id}`
@@ -1150,7 +1067,6 @@ export function CreateProjectDialog({
                           ))}
                         </CommandGroup>
 
-                        {/* Inline Create Category */}
                         <div className="border-t p-2">
                           {!addingNewCategory ? (
                             <Button
@@ -1174,15 +1090,16 @@ export function CreateProjectDialog({
                                   e.key === "Enter" && handleCreateNewCategory()
                                 }
                                 autoFocus
+                                className="text-sm"
                               />
                               <div className="flex gap-2">
                                 <Button
                                   type="button"
                                   size="sm"
                                   onClick={handleCreateNewCategory}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
+                                  <CheckCircle className="w-3 h-3 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -1192,9 +1109,9 @@ export function CreateProjectDialog({
                                     setAddingNewCategory(false);
                                     setNewCategoryName("");
                                   }}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <X className="w-4 h-4 mr-1" /> Cancel
+                                  <X className="w-3 h-3 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -1205,11 +1122,15 @@ export function CreateProjectDialog({
                   </Popover>
                 </div>
 
-                {/* 6. Type */}
-                <div className="space-y-4">
+                {/* Continue with responsive grid for other fields... */}
+
+                {/* For space, I'll show the responsive pattern for one more field */}
+
+                {/* 7. Type */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="type"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Type *
                   </Label>
@@ -1219,15 +1140,17 @@ export function CreateProjectDialog({
                         variant="outline"
                         role="combobox"
                         aria-expanded={typeOpen}
-                        className="w-full h-12 justify-between"
+                        className="w-full h-10 md:h-12 justify-between"
                       >
-                        {newProject.type
-                          ? types.find((t) => t._id === newProject.type)?.name
-                          : "Select type"}
-                        <ChevronDown className="h-4 w-4 opacity-50" />
+                        <span className="truncate">
+                          {newProject.type
+                            ? types.find((t) => t._id === newProject.type)?.name
+                            : "Select type"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
+                    <PopoverContent className="w-full p-0" align="start">
                       <Command>
                         <CommandInput
                           placeholder="Search types..."
@@ -1248,20 +1171,19 @@ export function CreateProjectDialog({
                                 setTypeOpen(false);
                               }}
                             >
-                              <div className="flex flex-1 items-center">
+                              <div className="flex items-center flex-1 min-w-0">
                                 <Check
-                                  className={`mr-2 h-4 w-4 ${
+                                  className={`mr-2 h-4 w-4 shrink-0 ${
                                     newProject.type === type._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
-                                {type.name}
+                                <span className="truncate">{type.name}</span>
                               </div>
-
                               <button
                                 type="button"
-                                className="p-1 hover:bg-red-50 rounded"
+                                className="p-1 hover:bg-red-50 rounded shrink-0"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -1269,7 +1191,6 @@ export function CreateProjectDialog({
                                 onClick={async (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-
                                   try {
                                     await api.delete(`/types/${type._id}`);
                                     setTypes((prev) =>
@@ -1287,7 +1208,6 @@ export function CreateProjectDialog({
                           ))}
                         </CommandGroup>
 
-                        {/* Inline Create Type */}
                         <div className="border-t p-2">
                           {!addingNewType ? (
                             <Button
@@ -1308,15 +1228,16 @@ export function CreateProjectDialog({
                                   e.key === "Enter" && handleCreateNewType()
                                 }
                                 autoFocus
+                                className="text-sm"
                               />
                               <div className="flex gap-2">
                                 <Button
                                   type="button"
                                   size="sm"
                                   onClick={handleCreateNewType}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
+                                  <CheckCircle className="w-3 h-3 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -1326,9 +1247,9 @@ export function CreateProjectDialog({
                                     setAddingNewType(false);
                                     setNewTypeName("");
                                   }}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <X className="w-4 h-4 mr-1" /> Cancel
+                                  <X className="w-3 h-3 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -1339,11 +1260,11 @@ export function CreateProjectDialog({
                   </Popover>
                 </div>
 
-                {/* 7. Country */}
-                <div className="space-y-4">
+                {/* 8. Country */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="country"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Country *
                   </Label>
@@ -1353,16 +1274,19 @@ export function CreateProjectDialog({
                         variant="outline"
                         role="combobox"
                         aria-expanded={countryOpen}
-                        className="w-full h-12 justify-between"
+                        className="w-full h-10 md:h-12 justify-between"
                       >
-                        {newProject.country
-                          ? countries.find((c) => c._id === newProject.country)
-                              ?.name
-                          : "Select country"}
-                        <ChevronDown className="h-4 w-4 opacity-50" />
+                        <span className="truncate">
+                          {newProject.country
+                            ? countries.find(
+                                (c) => c._id === newProject.country
+                              )?.name
+                            : "Select country"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
+                    <PopoverContent className="w-full p-0" align="start">
                       <Command>
                         <CommandInput
                           placeholder="Search countries..."
@@ -1383,20 +1307,19 @@ export function CreateProjectDialog({
                                 setCountryOpen(false);
                               }}
                             >
-                              <div className="flex items-center flex-1">
+                              <div className="flex items-center flex-1 min-w-0">
                                 <Check
-                                  className={`mr-2 h-4 w-4 ${
+                                  className={`mr-2 h-4 w-4 shrink-0 ${
                                     newProject.country === country._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
-                                {country.name}
+                                <span className="truncate">{country.name}</span>
                               </div>
-
                               <button
                                 type="button"
-                                className="p-1 hover:bg-red-50 rounded"
+                                className="p-1 hover:bg-red-50 rounded shrink-0"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -1404,7 +1327,6 @@ export function CreateProjectDialog({
                                 onClick={async (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-
                                   try {
                                     await api.delete(
                                       `/countries/${country._id}`
@@ -1424,7 +1346,6 @@ export function CreateProjectDialog({
                           ))}
                         </CommandGroup>
 
-                        {/* Inline Create Country */}
                         <div className="border-t p-2">
                           {!addingNewCountry ? (
                             <Button
@@ -1448,15 +1369,16 @@ export function CreateProjectDialog({
                                   e.key === "Enter" && handleCreateNewCountry()
                                 }
                                 autoFocus
+                                className="text-sm"
                               />
                               <div className="flex gap-2">
                                 <Button
                                   type="button"
                                   size="sm"
                                   onClick={handleCreateNewCountry}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" /> Add
+                                  <CheckCircle className="w-3 h-3 mr-1" /> Add
                                 </Button>
                                 <Button
                                   type="button"
@@ -1466,9 +1388,9 @@ export function CreateProjectDialog({
                                     setAddingNewCountry(false);
                                     setNewCountryName("");
                                   }}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
-                                  <X className="w-4 h-4 mr-1" /> Cancel
+                                  <X className="w-3 h-3 mr-1" /> Cancel
                                 </Button>
                               </div>
                             </div>
@@ -1479,11 +1401,11 @@ export function CreateProjectDialog({
                   </Popover>
                 </div>
 
-                {/* 8. Size Range */}
-                <div className="space-y-4">
+                {/* 9. Size Range */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="sizeRange"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Size Range *
                   </Label>
@@ -1498,20 +1420,20 @@ export function CreateProjectDialog({
                       })
                     }
                     placeholder="e.g., Men's: 6-12 UK"
-                    className="h-12 text-base border-2 focus:border-[#0c9dcb]"
+                    className="h-10 md:h-12 text-sm md:text-base border-2 focus:border-[#0c9dcb]"
                   />
                 </div>
 
-                {/* 9. Target Gender */}
-                <div className="space-y-4">
+                {/* 10. Target Gender */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="gender"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Target Gender
                   </Label>
                   <select
-                    className="h-12 w-full border rounded-md px-3"
+                    className="h-10 md:h-12 w-full border rounded-md px-3 text-sm md:text-base"
                     value={newProject.gender}
                     onChange={(e) =>
                       setNewProject({
@@ -1528,11 +1450,11 @@ export function CreateProjectDialog({
                   </select>
                 </div>
 
-                {/* 10. Priority */}
-                <div className="space-y-4">
+                {/* 11. Priority */}
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="priority"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Priority *
                   </Label>
@@ -1542,13 +1464,15 @@ export function CreateProjectDialog({
                         variant="outline"
                         role="combobox"
                         aria-expanded={priorityOpen}
-                        className="w-full h-12 justify-between"
+                        className="w-full h-10 md:h-12 justify-between"
                       >
-                        {newProject.priority || "Select priority"}
-                        <ChevronDown className="h-4 w-4 opacity-50" />
+                        <span className="truncate">
+                          {newProject.priority || "Select priority"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
+                    <PopoverContent className="w-full p-0" align="start">
                       <Command>
                         <CommandGroup>
                           {["High", "Medium", "Low"].map((priority) => (
@@ -1559,6 +1483,7 @@ export function CreateProjectDialog({
                                 setNewProject({ ...newProject, priority });
                                 setPriorityOpen(false);
                               }}
+                              className="text-sm"
                             >
                               <Check
                                 className={`mr-2 h-4 w-4 ${
@@ -1576,14 +1501,11 @@ export function CreateProjectDialog({
                   </Popover>
                 </div>
 
-                {/* spacer */}
-                <div className="xl:col-span-2"></div>
-
-                {/* Description */}
-                <div className="xl:col-span-6 space-y-4">
+                {/* 12. Description (full width) */}
+                <div className="sm:col-span-2 lg:col-span-3 xl:col-span-6 space-y-2 md:space-y-4">
                   <Label
                     htmlFor="description"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Product Design Brief & Features
                   </Label>
@@ -1597,33 +1519,33 @@ export function CreateProjectDialog({
                       })
                     }
                     placeholder="Describe the product design concept…"
-                    rows={4}
-                    className="resize-none text-base border-2 focus:border-[#0c9dcb] leading-relaxed"
+                    rows={3}
+                    className="resize-none text-sm md:text-base border-2 focus:border-[#0c9dcb] leading-relaxed"
                   />
                 </div>
               </div>
             </div>
 
-            <Separator className="my-10" />
+            <Separator className="my-6 md:my-8 lg:my-10" />
 
             {/* Images Section */}
-            <div className="space-y-8">
-              <div className="flex items-center gap-6">
-                <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
-                  <ImageIcon className="w-6 h-6 text-white" />
+            <div className="space-y-4 md:space-y-6 lg:space-y-8">
+              <div className="flex items-center gap-3 md:gap-4 lg:gap-6">
+                <div className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                  <ImageIcon className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-white" />
                 </div>
-                <h3 className="text-2xl font-semibold text-gray-900">
+                <h3 className="text-lg md:text-xl lg:text-2xl font-semibold text-gray-900">
                   Image & Profile
                 </h3>
-                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
+                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200 hidden sm:block"></div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6">
+              <div className="grid grid-cols-1 gap-4 md:gap-6">
                 <div>
-                  <Label className="text-base font-semibold text-gray-700 mb-4 block">
+                  <Label className="text-sm md:text-base font-semibold text-gray-700 mb-3 md:mb-4 block">
                     Cover Photo
                   </Label>
-                  <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-3 md:gap-4 flex-wrap">
                     {/* Cover */}
                     <div className="shrink-0">
                       <input
@@ -1634,7 +1556,7 @@ export function CreateProjectDialog({
                         onChange={handleCoverPhotoUpload}
                       />
                       {coverPhoto ? (
-                        <div className="relative w-32 h-32 rounded-lg overflow-hidden group">
+                        <div className="relative w-24 h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 rounded-lg overflow-hidden group">
                           <img
                             src={coverPhoto}
                             alt="Cover"
@@ -1646,19 +1568,19 @@ export function CreateProjectDialog({
                               variant="destructive"
                               size="sm"
                               onClick={removeCoverPhoto}
-                              className="h-8 w-8 p-0"
+                              className="h-6 w-6 md:h-8 md:w-8 p-0"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
                             </Button>
                           </div>
                         </div>
                       ) : (
                         <div
                           onClick={() => coverInputRef.current?.click()}
-                          className="w-32 h-32 border-2 border-dashed border-blue-400 rounded-lg bg-blue-50/50 hover:bg-blue-50 transition-all cursor-pointer group flex flex-col items-center justify-center gap-2"
+                          className="w-24 h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 border-2 border-dashed border-blue-400 rounded-lg bg-blue-50/50 hover:bg-blue-50 transition-all cursor-pointer group flex flex-col items-center justify-center gap-2"
                         >
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200">
-                            <ImageIcon className="w-5 h-5 text-blue-600" />
+                          <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200">
+                            <ImageIcon className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
                           </div>
                           <div className="text-center px-2">
                             <p className="text-xs font-medium text-gray-700">
@@ -1684,7 +1606,7 @@ export function CreateProjectDialog({
                           onChange={(e) => handleAdditionalImageUpload(e, i)}
                         />
                         {additionalImages[i] ? (
-                          <div className="relative w-24 h-24 rounded-lg overflow-hidden group">
+                          <div className="relative w-16 h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 rounded-lg overflow-hidden group">
                             <img
                               src={additionalImages[i]}
                               alt={`Additional ${i + 1}`}
@@ -1696,9 +1618,9 @@ export function CreateProjectDialog({
                                 variant="destructive"
                                 size="sm"
                                 onClick={() => removeAdditionalImage(i)}
-                                className="h-8 w-8 p-0"
+                                className="h-6 w-6 md:h-8 md:w-8 p-0"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
                               </Button>
                             </div>
                           </div>
@@ -1707,9 +1629,9 @@ export function CreateProjectDialog({
                             onClick={() =>
                               additionalInputRefs.current[i]?.click()
                             }
-                            className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-blue-400 transition-all cursor-pointer flex items-center justify-center group"
+                            className="w-16 h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-blue-400 transition-all cursor-pointer flex items-center justify-center group"
                           >
-                            <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500" />
+                            <Upload className="w-4 h-4 md:w-5 md:h-5 text-gray-400 group-hover:text-blue-500" />
                           </div>
                         )}
                       </div>
@@ -1729,7 +1651,7 @@ export function CreateProjectDialog({
                           onChange={(e) => handleDynamicImageUpload(e, i)}
                         />
                         {image ? (
-                          <div className="relative w-24 h-24 rounded-lg overflow-hidden group">
+                          <div className="relative w-16 h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 rounded-lg overflow-hidden group">
                             <img
                               src={image}
                               alt={`Dynamic ${i + 1}`}
@@ -1741,18 +1663,18 @@ export function CreateProjectDialog({
                                 variant="destructive"
                                 size="sm"
                                 onClick={() => removeDynamicImage(i)}
-                                className="h-8 w-8 p-0"
+                                className="h-6 w-6 md:h-8 md:w-8 p-0"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
                               </Button>
                             </div>
                           </div>
                         ) : (
                           <div
                             onClick={() => dynamicInputRefs.current[i]?.click()}
-                            className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-blue-400 transition-all cursor-pointer flex items-center justify-center group"
+                            className="w-16 h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-blue-400 transition-all cursor-pointer flex items-center justify-center group"
                           >
-                            <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500" />
+                            <Upload className="w-4 h-4 md:w-5 md:h-5 text-gray-400 group-hover:text-blue-500" />
                           </div>
                         )}
                       </div>
@@ -1761,34 +1683,34 @@ export function CreateProjectDialog({
                     {/* add slot */}
                     <div
                       onClick={handleAddImageSlot}
-                      className="w-24 h-24 border-2 border-dashed border-blue-400 rounded-lg bg-blue-50/50 hover:bg-blue-100 transition-all cursor-pointer flex items-center justify-center group"
+                      className="w-16 h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 border-2 border-dashed border-blue-400 rounded-lg bg-blue-50/50 hover:bg-blue-100 transition-all cursor-pointer flex items-center justify-center group"
                     >
-                      <Plus className="w-6 h-6 text-blue-600 group-hover:text-blue-700" />
+                      <Plus className="w-5 h-5 md:w-6 md:h-6 text-blue-600 group-hover:text-blue-700" />
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <Separator className="my-10" />
+            <Separator className="my-6 md:my-8 lg:my-10" />
 
             {/* Timeline */}
-            <div className="space-y-8">
-              <div className="flex items-center gap-6">
-                <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
-                  <Calculator className="w-6 h-6 text-white" />
+            <div className="space-y-4 md:space-y-6 lg:space-y-8">
+              <div className="flex items-center gap-3 md:gap-4 lg:gap-6">
+                <div className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-purple-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                  <Calculator className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-white" />
                 </div>
-                <h3 className="text-2xl font-semibold text-gray-900">
+                <h3 className="text-lg md:text-xl lg:text-2xl font-semibold text-gray-900">
                   Cost Structure & Development Timeline
                 </h3>
-                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200"></div>
+                <div className="flex-1 h-px bg-linear-to-r from-gray-200 via-gray-400 to-gray-200 hidden sm:block"></div>
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-                <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="targetDate"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Red Seal Target Date
                   </Label>
@@ -1802,19 +1724,18 @@ export function CreateProjectDialog({
                         redSealTargetDate: e.target.value,
                       })
                     }
-                    className="h-12 text-base border-2 focus:border-[#0c9dcb]"
+                    className="h-10 md:h-12 text-sm md:text-base border-2 focus:border-[#0c9dcb]"
                     style={{ colorScheme: "light" }}
                   />
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-2 md:space-y-4">
                   <Label
                     htmlFor="taskInc"
-                    className="text-base font-semibold text-gray-700"
+                    className="text-sm md:text-base font-semibold text-gray-700"
                   >
                     Task-INC (Assigned Person)
                   </Label>
-                  {/* Task-INC */}
                   <Popover
                     open={assignPersonOpen}
                     onOpenChange={setAssignPersonOpen}
@@ -1824,17 +1745,19 @@ export function CreateProjectDialog({
                         variant="outline"
                         role="combobox"
                         aria-expanded={assignPersonOpen}
-                        className="w-full h-12 border-2 justify-between"
+                        className="w-full h-10 md:h-12 border-2 justify-between"
                       >
-                        {newProject.assignPerson
-                          ? assignPersons.find(
-                              (p) => p._id === newProject.assignPerson
-                            )?.name
-                          : "Select assignee"}
-                        <ChevronDown className="h-4 w-4 opacity-50" />
+                        <span className="truncate">
+                          {newProject.assignPerson
+                            ? assignPersons.find(
+                                (p) => p._id === newProject.assignPerson
+                              )?.name
+                            : "Select assignee"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                    <PopoverContent className="w-full p-0" align="start">
                       <Command>
                         <CommandInput
                           placeholder="Search person..."
@@ -1855,19 +1778,19 @@ export function CreateProjectDialog({
                                 setAssignPersonOpen(false);
                               }}
                             >
-                              <div className="flex items-center flex-1">
+                              <div className="flex items-center flex-1 min-w-0">
                                 <Check
-                                  className={`mr-2 h-4 w-4 ${
+                                  className={`mr-2 h-4 w-4 shrink-0 ${
                                     newProject.assignPerson === p._id
                                       ? "opacity-100"
                                       : "opacity-0"
                                   }`}
                                 />
-                                {p.name}
+                                <span className="truncate">{p.name}</span>
                               </div>
                               <button
                                 type="button"
-                                className="p-1 hover:bg-red-50 rounded"
+                                className="p-1 hover:bg-red-50 rounded shrink-0"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -1875,7 +1798,6 @@ export function CreateProjectDialog({
                                 onClick={async (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-
                                   try {
                                     await api.delete(
                                       `/assign-persons/${p._id}`
@@ -1895,7 +1817,6 @@ export function CreateProjectDialog({
                           ))}
                         </CommandGroup>
 
-                        {/* inline add new */}
                         <div className="border-t p-2">
                           {!addingNewAssignPerson ? (
                             <Button
@@ -1919,19 +1840,20 @@ export function CreateProjectDialog({
                                   handleCreateNewAssignPerson()
                                 }
                                 autoFocus
+                                className="text-sm"
                               />
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
                                   onClick={handleCreateNewAssignPerson}
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                 >
                                   Add
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="flex-1"
+                                  className="flex-1 text-xs"
                                   onClick={() => {
                                     setAddingNewAssignPerson(false);
                                     setNewAssignPersonName("");
@@ -1953,41 +1875,42 @@ export function CreateProjectDialog({
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-12 py-8 flex justify-between items-center shadow-lg z-50">
-          <div className="flex items-center gap-4">
-            <AlertCircle className="w-6 h-6 text-blue-600" />
-            <div>
-              <p className="text-base font-semibold text-gray-900">
-                Ready to Create Your R&amp;D Project?
-              </p>
-              <p className="text-sm text-gray-600">
-                Double-check all required fields marked with * before submission
-              </p>
+        <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-4 md:px-6 lg:px-8 xl:px-12 py-4 md:py-6 lg:py-8 shadow-lg z-50">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-3 md:gap-4 w-full sm:w-auto">
+              <AlertCircle className="w-5 h-5 md:w-6 md:h-6 text-blue-600 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm md:text-base font-semibold text-gray-900">
+                  Ready to Create Your R&amp;D Project?
+                </p>
+                <p className="text-xs md:text-sm text-gray-600">
+                  Double-check all required fields marked with * before
+                  submission
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-4">
-            <Button
-  variant="outline"
-  size="lg"
-  className="px-8 py-3 text-base border-2 hover:bg-gray-50"
-  onClick={() => {
-    // just close locally and keep the reserved sequence on server
-    onClose();
-  }}
-  type="button"
->
-  Cancel
-</Button>
+            <div className="flex flex-col sm:flex-row gap-3 md:gap-4 w-full sm:w-auto">
+              <Button
+                variant="outline"
+                size={isMobile ? "default" : "lg"}
+                className="px-4 md:px-6 lg:px-8 py-2 md:py-3 text-sm md:text-base border-2 hover:bg-gray-50 w-full"
+                onClick={() => onClose()}
+                type="button"
+              >
+                Cancel
+              </Button>
 
-            <Button
-              onClick={handleCreateProject}
-              size="lg"
-              className="px-8 py-3 text-base bg-[#0c9dcb] hover:bg-[#0c9dcb]/90"
-              type="button"
-            >
-              <Plus className="w-5 h-5 mr-3" /> Create R&amp;D Project
-            </Button>
+              <Button
+                onClick={handleCreateProject}
+                size={isMobile ? "default" : "lg"}
+                className="px-4 md:px-6 lg:px-8 py-2 md:py-3 text-sm md:text-base bg-[#0c9dcb] hover:bg-[#0c9dcb]/90 w-full"
+                type="button"
+              >
+                <Plus className="w-4 h-4 md:w-5 md:h-5 mr-2 md:mr-3" />
+                <span>Create R&amp;D Project</span>
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
