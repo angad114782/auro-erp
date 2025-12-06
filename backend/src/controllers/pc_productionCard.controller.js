@@ -1,6 +1,5 @@
 import { generateNextCardNumber, createProductionCardWithRequest } from "../services/pc_productionCard.service.js";
 import { PCProductionCard } from "../models/pc_productionCard.model.js";
-import { PCMaterialRequest } from "../models/pc_materialRequest.model.js";
 
 export async function createProductionCard(req, res) {
   try {
@@ -10,11 +9,11 @@ export async function createProductionCard(req, res) {
     if (!body.projectId) return res.status(400).json({ error: 'projectId is required' });
     if (!body.cardQuantity || body.cardQuantity <= 0) return res.status(400).json({ error: 'cardQuantity must be > 0' });
 
-    // toggle this to true only if your MongoDB is a replica set (supports transactions)
     const useTransaction = false;
-
     const result = await createProductionCardWithRequest(body, userName, useTransaction);
-    return res.status(201).json({ success: true, data: { productionCard: result.productionCard, materialRequest: result.materialRequest } });
+
+    // result.productionCard has materialRequests array (first request inside)
+    return res.status(201).json({ success: true, data: { productionCard: result.productionCard, project: result.project } });
   } catch (err) {
     console.error('createProductionCard error', err);
     if (err && err.name === "ValidationError") {
@@ -23,6 +22,7 @@ export async function createProductionCard(req, res) {
     return res.status(500).json({ error: 'Failed to create production card', details: err.message });
   }
 }
+
 
 export async function getProductionCards(req, res) {
   try {

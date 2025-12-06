@@ -21,6 +21,7 @@ import {
   fetchmateriallist,
   getMaterialRequests,
 } from "../controllers/pc_materialRequest.controller.js";
+import assignPlantRoutes from "./assignPlant.routes.js";
 const router = Router();
 
 router.get("/health", (req, res) => {
@@ -65,5 +66,7 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/projects/:projectId/production-cards", pcProdRoutes);
 router.use("/projects/:projectId/material-requests", pcMrRoutes);
 router.get("/material-requests/all", fetchmateriallist);
+router.use("/assign-plant", assignPlantRoutes);
+
 
 export default router;
