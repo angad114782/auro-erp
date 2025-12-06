@@ -25,6 +25,7 @@ import {
   MessageSquare,
   ChevronRight,
   ChevronLeft,
+  Download,
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
@@ -47,6 +48,8 @@ import { TentativeCostDialog } from "./TentativeCostDialog";
 import { useProjects } from "../hooks/useProjects";
 import { useERP } from "../lib/stores/erpContext";
 import { useRedirect } from "../hooks/useRedirect";
+import api from "../lib/api";
+import { generateProjectPDF } from "../utils/pdfDownload";
 
 export default function ProjectDetailsDialog(props: any) {
   const {
@@ -370,6 +373,80 @@ export default function ProjectDetailsDialog(props: any) {
 
   const coverImageUrl = getFullImageUrl(coverPhoto);
 
+  const handleDownloadPDF = async () => {
+    try {
+      if (!project) return;
+
+      // Load cost data
+      const [
+        summaryRes,
+        upperRes,
+        componentRes,
+        materialRes,
+        packagingRes,
+        miscRes,
+        labourRes,
+      ] = await Promise.all([
+        api.get(`/projects/${project._id}/costs`),
+        api.get(`/projects/${project._id}/costs/upper`),
+        api.get(`/projects/${project._id}/costs/component`),
+        api.get(`/projects/${project._id}/costs/material`),
+        api.get(`/projects/${project._id}/costs/packaging`),
+        api.get(`/projects/${project._id}/costs/miscellaneous`),
+        api.get(`/projects/${project._id}/costs/labour`),
+      ]);
+
+      const costData = {
+        upper: upperRes.data.rows || [],
+        component: componentRes.data.rows || [],
+        material: materialRes.data.rows || [],
+        packaging: packagingRes.data.rows || [],
+        miscellaneous: miscRes.data.rows || [],
+        labour: labourRes.data.labour || { directTotal: 0, items: [] },
+        // Only include summary if it exists
+        summary: summaryRes.data.hasCostData ? summaryRes.data.summary : null,
+      };
+
+      const pdfProject = {
+        autoCode: project.autoCode,
+        company: { name: project.company?.name || "-" },
+        brand: { name: project.brand?.name || "-" },
+        category: { name: project.category?.name || "-" },
+        type: { name: project.type?.name || "-" },
+        gender: project.gender || "-",
+        artName: project.artName || "-",
+        color: project.color || "-",
+        priority: project.priority || "-",
+        redSealTargetDate: project.redSealTargetDate || "",
+        assignPerson: { name: project.assignPerson?.name || "-" },
+        productDesc: project.productDesc || "-",
+        clientApproval: project.clientApproval || "-",
+        nextUpdate: {
+          date: project.nextUpdate?.date || "",
+          note: project.nextUpdate?.note || "",
+        },
+        coverImage: project.coverImage
+          ? getFullImageUrl(project.coverImage)
+          : null,
+        sampleImages: (project.sampleImages || []).map(getFullImageUrl),
+        costData,
+      };
+
+      const activeTab = project.status;
+
+      await generateProjectPDF({
+        project: pdfProject,
+        costData,
+        activeTab,
+      });
+
+      toast.success("PDF downloaded successfully!");
+    } catch (err) {
+      console.error("PDF Error:", err);
+      toast.error("PDF generation failed");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -406,6 +483,16 @@ export default function ProjectDetailsDialog(props: any) {
             </div>
 
             <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+              {/* In the header section, after the Edit/Save buttons and before the Advance button */}
+              <Button
+                onClick={handleDownloadPDF}
+                variant="outline"
+                className="bg-white hover:bg-gray-50 text-xs md:text-sm border-2"
+                size={isMobile ? "sm" : "default"}
+              >
+                <Download className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                {isMobile ? "PDF" : "Download PDF"}
+              </Button>
               {!isEditing ? (
                 <Button
                   onClick={() => setIsEditing(true)}

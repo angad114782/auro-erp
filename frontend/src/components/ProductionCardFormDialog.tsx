@@ -11,6 +11,8 @@ import {
   Plus,
   CheckCircle,
   Factory,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 import {
   Dialog,
@@ -35,6 +37,23 @@ import { toast } from "sonner";
 import { useERPStore, RDProject } from "../lib/data-store";
 import { useCostManagement } from "../hooks/useCostManagement";
 import api from "../lib/api";
+import { Badge } from "./ui/badge";
+import { Card, CardContent } from "./ui/card";
+
+// Media query hook
+const useMediaQuery = (query: string) => {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+    const listener = () => setMatches(media.matches);
+    window.addEventListener("resize", listener);
+    return () => window.removeEventListener("resize", listener);
+  }, [matches, query]);
+  return matches;
+};
 
 interface ProductionCardData {
   id: string;
@@ -59,7 +78,7 @@ interface ProductionCardFormDialogProps {
   onSave: (cardData: ProductionCardData) => void;
   selectedProject?: RDProject | null;
   editingCard?: ProductionCardData | null;
-  onCardCreated?: () => void; // Callback to refresh parent after card creation
+  onCardCreated?: () => void;
 }
 
 export function ProductionCardFormDialog({
@@ -70,6 +89,9 @@ export function ProductionCardFormDialog({
   editingCard,
   onCardCreated,
 }: ProductionCardFormDialogProps) {
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const isTablet = useMediaQuery("(min-width: 769px) and (max-width: 1024px)");
+
   const {
     brands,
     categories,
@@ -103,7 +125,6 @@ export function ProductionCardFormDialog({
 
   const projIdForCalc = getProjectIdFromSelected();
 
-  // Sum allocations from store production cards that belong to this project
   const allocatedUnits = (productionCards || [])
     .filter((c: any) => {
       const pid =
@@ -184,6 +205,7 @@ export function ProductionCardFormDialog({
       loadTentativeCost();
     }
   }, [open, selectedProject]);
+
   const [formData, setFormData] = useState({
     cardName: "",
     productionType: "",
@@ -210,24 +232,26 @@ export function ProductionCardFormDialog({
     [key: string]: { available: number; issued: number };
   }>({});
 
-  // Plants list and dialog state
-  // const [plantsList, setPlantsList] = useState<string[]>([
-  //   "Aura",
-  //   "Prime",
-  //   "Smith",
-  //   "Plant A - Main Factory",
-  //   "Plant B - North Unit",
-  // ]);
   const [addPlantDialogOpen, setAddPlantDialogOpen] = useState(false);
   const [newPlantName, setNewPlantName] = useState("");
+  const [currentSection, setCurrentSection] = useState(0);
+  const sections = ["allocation", "materials", "timeline", "details"];
+
+  // Mobile section navigation
+  const handleSectionChange = (direction: "prev" | "next") => {
+    if (direction === "prev" && currentSection > 0) {
+      setCurrentSection(currentSection - 1);
+    } else if (direction === "next" && currentSection < sections.length - 1) {
+      setCurrentSection(currentSection + 1);
+    }
+  };
 
   // Check for existing material request when dialog opens
-  React.useEffect(() => {
+  useEffect(() => {
     if (open && materialRequestId) {
       const existingRequest = getMaterialRequestByCardId(materialRequestId);
       if (existingRequest) {
         setRequestStatus(existingRequest.status as any);
-        // Load material data from existing request
         const materialDataMap: {
           [key: string]: { available: number; issued: number };
         } = {};
@@ -249,7 +273,7 @@ export function ProductionCardFormDialog({
   }, [open, materialRequestId]);
 
   // Prefill form when editing an existing card
-  React.useEffect(() => {
+  useEffect(() => {
     if (open && editingCard) {
       setFormData({
         cardName: editingCard.cardName,
@@ -266,7 +290,6 @@ export function ProductionCardFormDialog({
         assignPlant: editingCard.assignedPlant || "",
       });
     } else if (open && !editingCard) {
-      // Reset form for new card
       setFormData({
         cardName: "",
         productionType: "",
@@ -298,64 +321,24 @@ export function ProductionCardFormDialog({
     }));
   };
 
-  // Handler to save new plant
   const saveNewPlant = () => {
     if (!newPlantName.trim()) {
       toast.error("Please enter plant name");
       return;
     }
-
-    // if (plantsList.includes(newPlantName)) {
-    //   toast.error("Plant already exists");
-    //   return;
-    // }
-
-    // setPlantsList([...plantsList, newPlantName]);
     setFormData({ ...formData, assignPlant: newPlantName });
     setNewPlantName("");
     setAddPlantDialogOpen(false);
     toast.success("Plant added successfully");
   };
 
-  // Helper functions to get names from IDs
-  const getBrandName = (brandId: string) => {
-    const brand = brands.find((b) => b.id === brandId);
-    return brand ? brand.brandName : "Unknown Brand";
-  };
-
-  const getCategoryName = (categoryId: string) => {
-    const category = categories.find((c) => c.id === categoryId);
-    return category ? category.categoryName : "Unknown Category";
-  };
-
-  const getTypeName = (typeId: string) => {
-    const type = types.find((t) => t.id === typeId);
-    return type ? type.typeName : "Unknown Type";
-  };
-
-  const getColorName = (colorId: string) => {
-    const color = colors.find((c) => c.id === colorId);
-    return color ? color.colorName : "Unknown Color";
-  };
-
-  const getCountryName = (countryId: string) => {
-    const country = countries.find((c) => c.id === countryId);
-    return country ? country.countryName : "Unknown Country";
-  };
-
-  // Generate product name from project data
   const getProductName = () => {
     if (!selectedProject) return "No Product Selected";
-
-    const brand = getBrandName(selectedProject.brandId);
-    const category = getCategoryName(selectedProject.categoryId);
-    const type = getTypeName(selectedProject.typeId);
-    const color = getColorName(selectedProject.colorId);
-
-    return `${brand} ${category} - ${type} ${color}`;
+    return `${selectedProject.brandId || ""} ${
+      selectedProject.categoryId || ""
+    } - ${selectedProject.typeId || ""} ${selectedProject.colorId || ""}`;
   };
 
-  // Generate production card number
   const generateProductionCardNumber = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -369,12 +352,11 @@ export function ProductionCardFormDialog({
     const random = Math.floor(Math.random() * 1000);
     return `PC-${timestamp}-${random}`;
   };
-  // MATERIALS (upper + material)
+
   const materials = [];
   ["upper", "material"].forEach((section) => {
-    costData[section]?.forEach((row) => {
+    costData[section]?.forEach((row: any) => {
       const itemName = row.item;
-
       materials.push({
         id: row._id,
         name: row.item,
@@ -394,12 +376,10 @@ export function ProductionCardFormDialog({
     });
   });
 
-  // COMPONENTS (component + packaging + misc)
   const components = [];
   ["component", "packaging", "miscellaneous"].forEach((section) => {
-    costData[section]?.forEach((row) => {
+    costData[section]?.forEach((row: any) => {
       const itemName = row.item;
-
       components.push({
         id: row._id,
         name: row.item,
@@ -418,6 +398,7 @@ export function ProductionCardFormDialog({
       });
     });
   });
+
   const handleSave = async () => {
     if (
       !formData.cardQuantity ||
@@ -436,10 +417,7 @@ export function ProductionCardFormDialog({
     }
 
     const cardId = editingCard?.id || generateCardId();
-
     const cardNumber = generateProductionCardNumber();
-
-    // Resolve projectId (same logic you already use)
     const projectId =
       (selectedProject as any)?.project?._id ||
       (selectedProject as any)?.id ||
@@ -451,7 +429,6 @@ export function ProductionCardFormDialog({
       return;
     }
 
-    // Build payload for server (note: server expects route /projects/:projectId/production-cards)
     const payload = {
       cardNumber,
       projectId,
@@ -463,46 +440,36 @@ export function ProductionCardFormDialog({
       specialInstructions: formData.specialInstructions,
       status: "Draft",
       materialRequestStatus: requestStatus,
-      materials, // <-- FIXED
-      components, // <-- FIXED
+      materials,
+      components,
     };
 
     let serverCreated: any = null;
 
     try {
-      // NOTE: your api baseURL already contains /api (see api.ts)
       if (editingCard) {
-        // UPDATE existing card
         const res = await api.put(
           `/projects/${projectId}/production-cards/${editingCard.id}`,
           payload
         );
-
         toast.success("Production card updated");
         onSave(res.data.data);
         onClose();
         return;
       }
 
-      // CREATE new card
       const res = await api.post(
         `/projects/${projectId}/production-cards`,
         payload
       );
-
-      // server returns { success: true, data: { productionCard, materialRequest } }
       serverCreated = res?.data?.data || res?.data;
     } catch (err: any) {
-      console.error(
-        "Failed to save production card to server:",
-        err?.response?.data || err.message || err
-      );
+      console.error("Failed to save production card to server:", err);
       toast.error(
         "Server error while creating production card — saved locally."
       );
     }
 
-    // If server returned nested objects, normalize
     const createdProductionCard =
       serverCreated?.productionCard ||
       serverCreated?.productionCardDoc ||
@@ -512,7 +479,6 @@ export function ProductionCardFormDialog({
       serverCreated?.materialRequestDoc ||
       null;
 
-    // Update local store with created doc (or fallback)
     if (createdProductionCard) {
       addProductionCard({
         id: createdProductionCard._id || createdProductionCard.id || cardId,
@@ -541,7 +507,6 @@ export function ProductionCardFormDialog({
         components: createdProductionCard.components || payload.components,
       } as any);
     } else {
-      // fallback local add
       addProductionCard({
         ...payload,
         id: cardId,
@@ -550,7 +515,6 @@ export function ProductionCardFormDialog({
       } as any);
     }
 
-    // Prepare the cardData to pass to onSave (compat)
     const cardData: ProductionCardData = {
       id: createdProductionCard?._id || createdProductionCard?.id || cardId,
       cardName: createdProductionCard?.cardNumber || cardNumber,
@@ -568,7 +532,6 @@ export function ProductionCardFormDialog({
       createdAt: new Date().toISOString(),
     };
 
-    // --- Auto-send material request when saving (same logic as old button) ---
     try {
       const allocationQty = parseInt(formData.cardQuantity, 10);
       if (allocationQty > 0) {
@@ -584,8 +547,7 @@ export function ProductionCardFormDialog({
         const materials: any[] = [];
         const components: any[] = [];
 
-        const materialSections = ["upper", "material"];
-        materialSections.forEach((section) => {
+        ["upper", "material"].forEach((section) => {
           (costData[section as keyof typeof costData] as any[])?.forEach(
             (row: any) => {
               const itemName = row.item;
@@ -605,8 +567,7 @@ export function ProductionCardFormDialog({
           );
         });
 
-        const componentSections = ["component", "packaging", "miscellaneous"];
-        componentSections.forEach((section) => {
+        ["component", "packaging", "miscellaneous"].forEach((section) => {
           (costData[section as keyof typeof costData] as any[])?.forEach(
             (row: any) => {
               const itemName = row.item;
@@ -640,16 +601,12 @@ export function ProductionCardFormDialog({
           components,
         };
 
-        // Add to local store
         addMaterialRequest(materialRequestData);
         setMaterialRequestId(materialRequestData.productionCardId);
         setRequestStatus("Pending to Store");
 
-        // Optional: POST material request to server as well (recommended if you want persistent material requests)
         if (!createdMaterialRequest) {
           try {
-            // POST to /projects/:projectId/material-requests
-            // server expects projectId in route; include it here
             await api.post(`/projects/${projectId}/material-requests`, {
               productionCardId: productionCardIdForRequest,
               requestedBy: materialRequestData.requestedBy,
@@ -658,10 +615,7 @@ export function ProductionCardFormDialog({
               components: materialRequestData.components,
             });
           } catch (err) {
-            console.warn(
-              "Failed to POST material-request to server (non-fatal):",
-              err?.response?.data || err.message || err
-            );
+            console.warn("Failed to POST material-request to server:", err);
           }
         }
 
@@ -684,15 +638,9 @@ export function ProductionCardFormDialog({
       );
     }
 
-    // Call original onSave
     onSave(cardData);
+    if (onCardCreated) onCardCreated();
 
-    // Call parent refresh callback if present
-    if (onCardCreated) {
-      onCardCreated();
-    }
-
-    // Reset form
     setFormData({
       cardName: "",
       productionType: "",
@@ -707,7 +655,6 @@ export function ProductionCardFormDialog({
       cardQuantity: "",
       assignPlant: "",
     });
-
     onClose();
   };
 
@@ -718,6 +665,347 @@ export function ProductionCardFormDialog({
     }));
   };
 
+  // Determine dialog width based on screen size
+  const getDialogStyle = () => {
+    if (isMobile) {
+      return {
+        width: "95vw",
+        maxWidth: "95vw",
+        maxHeight: "98vh",
+      };
+    } else if (isTablet) {
+      return {
+        width: "90vw",
+        maxWidth: "90vw",
+        maxHeight: "95vh",
+      };
+    } else {
+      return {
+        width: "96vw",
+        maxWidth: "1400px",
+        maxHeight: "95vh",
+      };
+    }
+  };
+
+  // Mobile section navigation UI
+  const renderMobileNavigation = () => {
+    if (!isMobile) return null;
+
+    return (
+      <div className="sticky top-16 z-40 bg-white border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleSectionChange("prev")}
+            disabled={currentSection === 0}
+            className="h-8 w-8 p-0"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+
+          <div className="flex items-center gap-2">
+            {sections.map((section, index) => (
+              <div
+                key={section}
+                className={`w-2 h-2 rounded-full ${
+                  index === currentSection ? "bg-blue-500" : "bg-gray-300"
+                }`}
+              />
+            ))}
+          </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleSectionChange("next")}
+            disabled={currentSection === sections.length - 1}
+            className="h-8 w-8 p-0"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  // Render mobile section content
+  const renderMobileSection = () => {
+    if (!isMobile) return null;
+
+    switch (currentSection) {
+      case 0: // allocation
+        return renderAllocationSection();
+      case 1: // materials
+        return renderMaterialsSection();
+      case 2: // timeline
+        return renderTimelineSection();
+      case 3: // details
+        return renderDetailsSection();
+      default:
+        return null;
+    }
+  };
+
+  // Render allocation section for mobile
+  const renderAllocationSection = () => (
+    <div className="space-y-4 p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Package className="w-5 h-5 text-blue-500" />
+        <h3 className="text-lg font-semibold text-gray-900">Allocation</h3>
+      </div>
+
+      <Card className="border border-gray-200">
+        <CardContent className="p-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium text-gray-700">
+                Allocation Quantity
+              </Label>
+              <Input
+                type="number"
+                value={formData.cardQuantity || ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const maxQty =
+                    (selectedProject as any)?.po?.orderQuantity ||
+                    (selectedProject as any)?.poTarget ||
+                    1200;
+                  const numVal = parseInt(val, 10);
+
+                  if (numVal > maxQty) {
+                    toast.error(
+                      `Allocation cannot exceed maximum quantity of ${maxQty}`
+                    );
+                    handleInputChange("cardQuantity", String(maxQty));
+                  } else {
+                    handleInputChange("cardQuantity", val);
+                  }
+                }}
+                placeholder="0"
+                className="w-32 h-9 text-center border-2 border-gray-300"
+                min="1"
+              />
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Order Quantity:</span>
+                <span className="font-semibold">{orderQty || "N/A"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Already Allocated:</span>
+                <span className="font-semibold">{allocatedUnits}</span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-gray-200">
+                <span className="font-medium">Remaining:</span>
+                <span
+                  className={`font-bold ${
+                    remainingUnits === 0 ? "text-red-600" : "text-green-600"
+                  }`}
+                >
+                  {orderQty ? remainingUnits : "N/A"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // Render materials section for mobile
+  const renderMaterialsSection = () => (
+    <div className="space-y-4 p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Target className="w-5 h-5 text-blue-500" />
+        <h3 className="text-lg font-semibold text-gray-900">Materials</h3>
+      </div>
+
+      <div className="space-y-3">
+        {[
+          { label: "UPPER MATERIAL", key: "upper", color: "bg-cyan-100" },
+          { label: "MATERIAL USED", key: "material", color: "bg-cyan-200" },
+          {
+            label: "COMPONENTS USED",
+            key: "component",
+            color: "bg-purple-100",
+          },
+          { label: "PACKAGING USED", key: "packaging", color: "bg-yellow-100" },
+          {
+            label: "MISCELLANEOUS USED",
+            key: "miscellaneous",
+            color: "bg-rose-100",
+          },
+        ].map((section) => (
+          <div key={section.key}>
+            <div
+              className={`px-3 py-2 ${section.color} rounded-t-lg font-medium text-sm mb-2`}
+            >
+              {section.label}
+            </div>
+
+            {costData[section.key]?.slice(0, 3).map((row: any) => {
+              const itemName = row.item;
+              const available = materialData[itemName]?.available || 0;
+              const issued = materialData[itemName]?.issued || 0;
+
+              return (
+                <Card key={row._id} className="mb-2 border border-gray-200">
+                  <CardContent className="p-3">
+                    <div className="space-y-2">
+                      <div className="font-medium text-sm truncate">
+                        {row.item}
+                      </div>
+                      <div className="text-xs text-gray-600 truncate">
+                        {row.description}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="space-y-1">
+                          <div className="text-gray-500">Requirement</div>
+                          <div className="font-semibold">
+                            {parseFloat(
+                              String(row.consumption).match(/\d+\.?\d*/)?.[0] ||
+                                "0"
+                            ) * Number(formData.cardQuantity || 0)}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-gray-500">Available</div>
+                          <Input
+                            type="number"
+                            className="h-7 text-xs px-2"
+                            value={available}
+                            onChange={(e) =>
+                              handleMaterialDataChange(
+                                itemName,
+                                "available",
+                                parseFloat(e.target.value) || 0
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {costData[section.key]?.length > 3 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs text-blue-600"
+                onClick={() => {
+                  // Could implement expand/collapse here
+                }}
+              >
+                + {costData[section.key]?.length - 3} more items
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Render timeline section for mobile
+  const renderTimelineSection = () => (
+    <div className="space-y-4 p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Calendar className="w-5 h-5 text-blue-500" />
+        <h3 className="text-lg font-semibold text-gray-900">
+          Timeline & Plant
+        </h3>
+      </div>
+
+      <Card className="border border-gray-200">
+        <CardContent className="p-4 space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">
+              Start Date
+            </Label>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => handleInputChange("startDate", e.target.value)}
+                className="h-10 pl-10"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">
+              Assign Plant
+            </Label>
+            <Input
+              value={formData.assignPlant}
+              onChange={(e) => handleInputChange("assignPlant", e.target.value)}
+              className="h-10"
+              placeholder="Enter plant name"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-sm"
+              onClick={() => setAddPlantDialogOpen(true)}
+            >
+              <Plus className="w-3 h-3 mr-2" />
+              Add New Plant
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // Render details section for mobile
+  const renderDetailsSection = () => (
+    <div className="space-y-4 p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <AlertCircle className="w-5 h-5 text-blue-500" />
+        <h3 className="text-lg font-semibold text-gray-900">Details</h3>
+      </div>
+
+      <Card className="border border-gray-200">
+        <CardContent className="p-4 space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">
+              Description
+            </Label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => handleInputChange("description", e.target.value)}
+              placeholder="Describe the production process..."
+              rows={3}
+              className="text-sm"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">
+              Special Instructions
+            </Label>
+            <Textarea
+              value={formData.specialInstructions}
+              onChange={(e) =>
+                handleInputChange("specialInstructions", e.target.value)
+              }
+              placeholder="Any special instructions..."
+              rows={3}
+              className="text-sm"
+            />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   return (
     <Dialog
       open={open}
@@ -725,463 +1013,435 @@ export function ProductionCardFormDialog({
         if (!isOpen) onClose();
       }}
     >
-      <DialogContent className="!max-w-6xl !w-[90vw] max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
+      <DialogContent
+        className="overflow-hidden p-0 m-0 flex flex-col"
+        style={getDialogStyle()}
+      >
         {/* Header */}
-        <div className="sticky top-0 z-50 px-10 py-8 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b-2 border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
-              <div className="w-14 h-14 bg-linear-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                <Package className="w-7 h-7 text-white" />
+        <div className="sticky top-0 z-50 px-4 sm:px-6 md:px-8 py-4 sm:py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b-2 border-blue-200">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-6">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-linear-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Package className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-white" />
               </div>
-              <div>
-                <DialogTitle className="text-3xl font-semibold text-gray-900">
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 mb-1 truncate">
                   {editingCard
                     ? "Edit Production Card"
                     : "Create Production Card"}
                 </DialogTitle>
-                <DialogDescription className="text-lg text-gray-600 mt-2">
+                <DialogDescription className="text-sm sm:text-base text-gray-600">
                   {editingCard
                     ? "Update production workflow and requirements"
                     : "Define production workflow and requirements"}
                 </DialogDescription>
               </div>
             </div>
-            <div className="flex items-center gap-6">
-              {/* Quantity Allocation Input */}
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 min-w-[200px]">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4 text-blue-500" />
-                    <Label
-                      htmlFor="cardQuantity"
-                      className="text-sm font-medium text-gray-700 whitespace-nowrap"
-                    >
-                      Allocation
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Input
-                      id="cardQuantity"
-                      type="number"
-                      value={formData.cardQuantity || ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        const maxQty =
-                          (selectedProject as any)?.po?.orderQuantity ||
-                          (selectedProject as any)?.poTarget ||
-                          1200;
-                        const numVal = parseInt(val, 10);
 
-                        // Prevent exceeding max quantity
-                        if (numVal > maxQty) {
-                          toast.error(
-                            `Allocation cannot exceed maximum quantity of ${maxQty}`
-                          );
-                          handleInputChange("cardQuantity", String(maxQty));
-                        } else {
-                          handleInputChange("cardQuantity", val);
-                        }
-                      }}
-                      placeholder=""
-                      className="w-20 h-9 text-center border-2 border-gray-300 rounded-md bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 font-semibold text-gray-900 text-base hover:border-gray-400 transition-all duration-200"
-                      min="1"
-                    />
-                    <div className="text-sm text-gray-500">
-                      <span className="font-medium text-blue-600">
-                        /{" "}
-                        {(selectedProject as any)?.po?.orderQuantity ||
-                          (selectedProject as any)?.poTarget ||
-                          "N/A"}
-                      </span>
+            {!isMobile && (
+              <div className="flex items-center gap-4 self-end sm:self-center">
+                {/* Quantity Allocation Display for Desktop */}
+                <Card className="border border-gray-200 shadow-sm min-w-[200px]">
+                  <CardContent className="p-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium text-gray-700">
+                          Allocation
+                        </Label>
+                        <Input
+                          type="number"
+                          value={formData.cardQuantity || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const maxQty =
+                              (selectedProject as any)?.po?.orderQuantity ||
+                              (selectedProject as any)?.poTarget ||
+                              1200;
+                            const numVal = parseInt(val, 10);
+
+                            if (numVal > maxQty) {
+                              toast.error(
+                                `Allocation cannot exceed maximum quantity of ${maxQty}`
+                              );
+                              handleInputChange("cardQuantity", String(maxQty));
+                            } else {
+                              handleInputChange("cardQuantity", val);
+                            }
+                          }}
+                          placeholder="0"
+                          className="w-20 h-8 text-center border border-gray-300"
+                          min="1"
+                        />
+                      </div>
+
+                      <div className="text-xs text-gray-600 space-y-1">
+                        <div className="flex justify-between">
+                          <span>Order Qty:</span>
+                          <span className="font-semibold">
+                            {orderQty || "N/A"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Allocated:</span>
+                          <span className="font-semibold">
+                            {allocatedUnits}
+                          </span>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-gray-200">
+                          <span className="font-medium">Remaining:</span>
+                          <span
+                            className={`font-bold ${
+                              remainingUnits === 0
+                                ? "text-red-600"
+                                : "text-green-600"
+                            }`}
+                          >
+                            {orderQty ? remainingUnits : "N/A"}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <div className="mt-3 text-xs text-gray-500">
-                  <div>
-                    Order (PO) quantity:{" "}
-                    <span className="font-semibold text-gray-800">
-                      {orderQty || "Not specified"}
-                    </span>
-                  </div>
-                  <div>
-                    Allocated to cards:{" "}
-                    <span className="font-semibold text-gray-800">
-                      {allocatedUnits}
-                    </span>
-                  </div>
-                  <div className="mt-1">
-                    Remaining units:{" "}
-                    <span
-                      className={`font-bold ${
-                        remainingUnits === 0 ? "text-red-600" : "text-green-600"
-                      }`}
-                    >
-                      {orderQty ? remainingUnits : "Not specified"}
-                    </span>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
+
+                <Button
+                  onClick={onClose}
+                  variant="ghost"
+                  size="sm"
+                  className="h-10 w-10 p-0"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
               </div>
-              <Button
-                onClick={onClose}
-                variant="ghost"
-                size="sm"
-                className="h-12 w-12 p-0 hover:bg-gray-100 rounded-full"
-              >
-                <X className="w-6 h-6 text-gray-500" />
-              </Button>
-            </div>
+            )}
           </div>
-        </div>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-10 py-8 space-y-10">
-            {/* Tentative Cost Breakdown */}
-            <div className="space-y-8">
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-4">
-                <Target className="w-6 h-6 text-blue-500" />
-                Material Requirements & Allocation
-              </h3>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-8">
-                {/* Materials Requirements Table */}
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-100 border-b-2 border-gray-200">
-                          <th className="px-6 py-4 text-left font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
-                            ITEM
-                          </th>
-                          <th className="px-6 py-4 text-left font-semibold text-gray-900 border-r border-gray-300 min-w-[200px]">
-                            SPECIFICATION
-                          </th>
-                          <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
-                            REQUIREMENT
-                          </th>
-                          {/* <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
-                            COST
-                          </th> */}
-                          <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[120px]">
-                            AVAILABLE
-                          </th>
-                          <th className="px-6 py-4 text-center font-semibold text-gray-900 border-r border-gray-300 min-w-[100px]">
-                            ISSUED
-                          </th>
-                          <th className="px-6 py-4 text-center font-semibold text-gray-900 min-w-[100px]">
-                            BALANCE
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {/* LOOP SECTIONS */}
-                        {[
-                          {
-                            label: "UPPER MATERIAL",
-                            key: "upper",
-                            color: "bg-cyan-100 text-cyan-800",
-                          },
-                          {
-                            label: "MATERIAL USED",
-                            key: "material",
-                            color: "bg-cyan-200 text-cyan-900",
-                          },
-                          {
-                            label: "COMPONENTS USED",
-                            key: "component",
-                            color: "bg-purple-100 text-purple-800",
-                          },
-                          {
-                            label: "PACKAGING USED",
-                            key: "packaging",
-                            color: "bg-yellow-100 text-yellow-800",
-                          },
-                          {
-                            label: "MISCELLANEOUS USED",
-                            key: "miscellaneous",
-                            color: "bg-rose-100 text-rose-800",
-                          },
-                        ].map((section) => (
-                          <>
-                            {/* SECTION HEADER */}
-                            <tr
-                              className={`border-b border-gray-300 ${section.color}`}
-                            >
-                              <td
-                                colSpan={7}
-                                className="px-6 py-3 font-semibold"
-                              >
-                                {section.label}
-                              </td>
-                            </tr>
-
-                            {/* SECTION ROWS */}
-                            {costData[section.key]?.map((row: any) => {
-                              const itemName = row.item;
-                              const available =
-                                materialData[itemName]?.available || 0;
-                              const issued =
-                                materialData[itemName]?.issued || 0;
-
-                              // Extract numeric value from consumption (handles "test cons 1" → 1)
-                              const extractNumericValue = (
-                                value: any
-                              ): number => {
-                                if (typeof value === "number") return value;
-                                if (typeof value === "string") {
-                                  const match = value.match(/\d+\.?\d*/);
-                                  return match ? parseFloat(match[0]) : 0;
-                                }
-                                return 0;
-                              };
-
-                              const consumptionNum = extractNumericValue(
-                                row.consumption
-                              );
-                              const allocationQty =
-                                parseInt(formData.cardQuantity, 10) || 0;
-                              const actualRequirement =
-                                allocationQty > 0 && consumptionNum > 0
-                                  ? (consumptionNum * allocationQty).toFixed(2)
-                                  : consumptionNum.toFixed(2);
-
-                              return (
-                                <tr
-                                  key={row._id}
-                                  className="border-b hover:bg-gray-50"
-                                >
-                                  <td className="px-6 py-4 border-r font-medium">
-                                    {row.item}
-                                  </td>
-
-                                  {/* SPECIFICATION */}
-                                  <td className="px-6 py-4 border-r">
-                                    {row.description}
-                                  </td>
-
-                                  {/* REQUIREMENT - Multiplied by Allocation */}
-                                  <td className="px-6 py-4 text-center border-r font-medium bg-blue-50">
-                                    <div className="text-sm">
-                                      <span className="text-gray-600">
-                                        {consumptionNum}
-                                      </span>
-                                      <span className="mx-1 text-gray-400">
-                                        ×
-                                      </span>
-                                      <span className="font-semibold text-blue-600">
-                                        {allocationQty || 0}
-                                      </span>
-                                      <span className="mx-1 text-gray-400">
-                                        =
-                                      </span>
-                                      <span className="font-bold text-blue-700">
-                                        {actualRequirement}
-                                      </span>
-                                    </div>
-                                  </td>
-
-                                  {/* COST COLUMN (NEW) */}
-                                  {/* <td className="px-6 py-4 text-center border-r font-semibold text-blue-600">
-                                    {row.cost ?? "-"}
-                                  </td> */}
-
-                                  {/* AVAILABLE (Always editable) */}
-                                  <td className="px-6 py-4 text-center border-r">
-                                    <Input
-                                      type="number"
-                                      className="w-20 h-8 text-center border border-gray-300 rounded"
-                                      value={available}
-                                      onChange={(e) =>
-                                        handleMaterialDataChange(
-                                          itemName,
-                                          "available",
-                                          parseFloat(e.target.value) || 0
-                                        )
-                                      }
-                                      placeholder="0"
-                                      step="0.1"
-                                    />
-                                  </td>
-
-                                  {/* ISSUED */}
-                                  <td className="px-6 py-4 text-center border-r">
-                                    {requestStatus === "Issued" ||
-                                    requestStatus === "Partially Issued"
-                                      ? issued
-                                      : "-"}
-                                  </td>
-
-                                  {/* BALANCE */}
-                                  <td className="px-6 py-4 text-center">
-                                    {requestStatus === "Issued" ||
-                                    requestStatus === "Partially Issued"
-                                      ? Math.max(
-                                          0,
-                                          parseFloat(
-                                            actualRequirement.toString()
-                                          ) -
-                                            available -
-                                            issued
-                                        ).toFixed(2)
-                                      : "-"}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Quick Summary */}
-                <div className="mt-6 bg-white rounded-lg border border-blue-200 p-4">
+          {isMobile && (
+            <div className="mt-4">
+              <Card className="border border-gray-200">
+                <CardContent className="p-3">
                   <div className="flex items-center justify-between">
-                    {/* Left side - Status and Info */}
-                    <div className="flex items-center gap-8">
+                    <div>
+                      <div className="text-xs text-gray-500">Allocation</div>
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-700">
-                          Status:
-                        </span>
-                        <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium">
-                          {requestStatus}
+                        <Input
+                          type="number"
+                          value={formData.cardQuantity || ""}
+                          onChange={(e) =>
+                            handleInputChange("cardQuantity", e.target.value)
+                          }
+                          placeholder="0"
+                          className="w-20 h-8 text-center border border-gray-300"
+                          min="1"
+                        />
+                        <span className="text-sm text-gray-600">
+                          / {orderQty || "N/A"}
                         </span>
                       </div>
                     </div>
+                    <Button
+                      onClick={onClose}
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Navigation */}
+        {renderMobileNavigation()}
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto">
+          {isMobile ? (
+            renderMobileSection()
+          ) : (
+            <div className="px-4 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8 space-y-6 sm:space-y-8">
+              {/* Materials Section for Desktop */}
+              <div className="space-y-4">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-blue-500" />
+                  Material Requirements & Allocation
+                </h3>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6">
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[800px]">
+                        <thead>
+                          <tr className="bg-gray-100 border-b border-gray-200">
+                            <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-900 text-xs sm:text-sm">
+                              ITEM
+                            </th>
+                            <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-900 text-xs sm:text-sm">
+                              SPECIFICATION
+                            </th>
+                            <th className="px-3 sm:px-4 py-2 sm:py-3 text-center font-semibold text-gray-900 text-xs sm:text-sm">
+                              REQUIREMENT
+                            </th>
+                            <th className="px-3 sm:px-4 py-2 sm:py-3 text-center font-semibold text-gray-900 text-xs sm:text-sm">
+                              AVAILABLE
+                            </th>
+                            <th className="px-3 sm:px-4 py-2 sm:py-3 text-center font-semibold text-gray-900 text-xs sm:text-sm">
+                              ISSUED
+                            </th>
+                            <th className="px-3 sm:px-4 py-2 sm:py-3 text-center font-semibold text-gray-900 text-xs sm:text-sm">
+                              BALANCE
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            {
+                              label: "UPPER MATERIAL",
+                              key: "upper",
+                              color: "bg-cyan-100 text-cyan-800",
+                            },
+                            {
+                              label: "MATERIAL USED",
+                              key: "material",
+                              color: "bg-cyan-200 text-cyan-900",
+                            },
+                            {
+                              label: "COMPONENTS USED",
+                              key: "component",
+                              color: "bg-purple-100 text-purple-800",
+                            },
+                            {
+                              label: "PACKAGING USED",
+                              key: "packaging",
+                              color: "bg-yellow-100 text-yellow-800",
+                            },
+                            {
+                              label: "MISCELLANEOUS USED",
+                              key: "miscellaneous",
+                              color: "bg-rose-100 text-rose-800",
+                            },
+                          ].map((section) => (
+                            <>
+                              <tr className={section.color}>
+                                <td
+                                  colSpan={6}
+                                  className="px-3 sm:px-4 py-2 font-semibold text-xs sm:text-sm"
+                                >
+                                  {section.label}
+                                </td>
+                              </tr>
+                              {costData[section.key]?.map((row: any) => {
+                                const itemName = row.item;
+                                const available =
+                                  materialData[itemName]?.available || 0;
+                                const issued =
+                                  materialData[itemName]?.issued || 0;
+
+                                return (
+                                  <tr
+                                    key={row._id}
+                                    className="border-b hover:bg-gray-50"
+                                  >
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                                      {row.item}
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                                      {row.description}
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-medium">
+                                      {parseFloat(
+                                        String(row.consumption).match(
+                                          /\d+\.?\d*/
+                                        )?.[0] || "0"
+                                      ) * Number(formData.cardQuantity || 0)}
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
+                                      <Input
+                                        type="number"
+                                        className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs"
+                                        value={available}
+                                        onChange={(e) =>
+                                          handleMaterialDataChange(
+                                            itemName,
+                                            "available",
+                                            parseFloat(e.target.value) || 0
+                                          )
+                                        }
+                                      />
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm">
+                                      {issued}
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm">
+                                      {Math.max(
+                                        0,
+                                        parseFloat(
+                                          String(row.consumption).match(
+                                            /\d+\.?\d*/
+                                          )?.[0] || "0"
+                                        ) *
+                                          Number(formData.cardQuantity || 0) -
+                                          available -
+                                          issued
+                                      ).toFixed(2)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Timeline & Resources */}
-            <div className="space-y-8">
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-4">
-                <Calendar className="w-6 h-6 text-blue-500" />
-                Timeline & Resources
-              </h3>
+              {/* Timeline Section for Desktop */}
+              <div className="space-y-4">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-blue-500" />
+                  Timeline & Resources
+                </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-4">
-                  <Label
-                    htmlFor="startDate"
-                    className="text-base font-medium text-gray-700"
-                  >
-                    Start Date
-                  </Label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <Input
-                      id="startDate"
-                      type="date"
-                      value={formData.startDate}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">
+                      Start Date
+                    </Label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                      <Input
+                        type="date"
+                        value={formData.startDate}
+                        onChange={(e) =>
+                          handleInputChange("startDate", e.target.value)
+                        }
+                        className="h-10 sm:h-11 pl-10 sm:pl-12 text-sm sm:text-base"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">
+                      Assign Plant
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={formData.assignPlant}
+                        onChange={(e) =>
+                          handleInputChange("assignPlant", e.target.value)
+                        }
+                        className="h-10 sm:h-11 text-sm sm:text-base"
+                        placeholder="Select or enter plant"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAddPlantDialogOpen(true)}
+                        className="h-10 sm:h-11 px-3"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Details Section for Desktop */}
+              <div className="space-y-4">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-blue-500" />
+                  Additional Details
+                </h3>
+
+                <div className="space-y-4 sm:space-y-6">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">
+                      Description
+                    </Label>
+                    <Textarea
+                      value={formData.description}
                       onChange={(e) =>
-                        handleInputChange("startDate", e.target.value)
+                        handleInputChange("description", e.target.value)
                       }
-                      className="h-12 border-2 focus:border-blue-500 text-base pl-12 cursor-pointer"
+                      placeholder="Describe the production process and requirements..."
+                      rows={3}
+                      className="text-sm sm:text-base"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">
+                      Special Instructions
+                    </Label>
+                    <Textarea
+                      value={formData.specialInstructions}
+                      onChange={(e) =>
+                        handleInputChange("specialInstructions", e.target.value)
+                      }
+                      placeholder="Any special instructions or quality requirements..."
+                      rows={3}
+                      className="text-sm sm:text-base"
                     />
                   </div>
                 </div>
-
-                <div className="space-y-4">
-                  <Label
-                    htmlFor="assignPlant"
-                    className="text-base font-medium text-gray-700"
-                  >
-                    Assign Plant
-                  </Label>
-
-                  <Input
-                    id="assignPlant"
-                    type="text"
-                    value={formData.assignPlant}
-                    onChange={(e) =>
-                      handleInputChange("assignPlant", e.target.value)
-                    }
-                    className="h-12 border-2 focus:border-blue-500 text-base pl-12 cursor-pointer"
-                  />
-                </div>
               </div>
             </div>
-
-            {/* Additional Details */}
-            <div className="space-y-8">
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-4">
-                <AlertCircle className="w-6 h-6 text-blue-500" />
-                Additional Details
-              </h3>
-
-              <div className="space-y-8">
-                <div className="space-y-4">
-                  <Label
-                    htmlFor="description"
-                    className="text-base font-medium text-gray-700"
-                  >
-                    Description
-                  </Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) =>
-                      handleInputChange("description", e.target.value)
-                    }
-                    placeholder="Describe the production process and requirements..."
-                    rows={4}
-                    className="resize-none border-2 focus:border-blue-500 text-base"
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  <Label
-                    htmlFor="specialInstructions"
-                    className="text-base font-medium text-gray-700"
-                  >
-                    Special Instructions
-                  </Label>
-                  <Textarea
-                    id="specialInstructions"
-                    value={formData.specialInstructions}
-                    onChange={(e) =>
-                      handleInputChange("specialInstructions", e.target.value)
-                    }
-                    placeholder="Any special instructions or quality requirements..."
-                    rows={4}
-                    className="resize-none border-2 focus:border-blue-500 text-base"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-8 py-4 shadow-lg">
-          <div className="flex justify-between items-center">
-            <div className="flex gap-4">
+        <div className="sticky bottom-0 px-4 sm:px-6 md:px-8 py-4 bg-white/95 backdrop-blur-sm border-t border-gray-200">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            {isMobile && (
+              <div className="flex items-center justify-between w-full">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSectionChange("prev")}
+                  disabled={currentSection === 0}
+                  className="flex-1 mr-2"
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSectionChange("next")}
+                  disabled={currentSection === sections.length - 1}
+                  className="flex-1 ml-2"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            )}
+
+            <div
+              className={`${isMobile ? "mt-3 w-full" : "flex gap-3 ml-auto"}`}
+            >
               <Button
-                onClick={() => {
-                  // This would open the Start Production Manager dialog
-                  toast.info("Start Production Manager dialog would open here");
-                }}
+                onClick={onClose}
                 variant="outline"
-                className="px-6 py-2 border-green-500 text-green-600 hover:bg-green-50"
+                size={isMobile ? "sm" : "default"}
+                className={isMobile ? "w-full" : ""}
               >
-                <Target className="w-4 h-4 mr-2" />
-                Start Production
-              </Button>
-            </div>
-            <div className="flex gap-4">
-              <Button onClick={onClose} variant="outline" className="px-6 py-2">
                 Cancel
               </Button>
               <Button
                 onClick={handleSave}
-                className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white"
+                size={isMobile ? "sm" : "default"}
+                className={`${
+                  isMobile ? "w-full mt-2" : ""
+                } bg-blue-500 hover:bg-blue-600 text-white`}
               >
                 <Save className="w-4 h-4 mr-2" />
-                {editingCard
-                  ? "Update Production Card"
-                  : "Save Production Card"}
+                {editingCard ? "Update Card" : "Save Card"}
               </Button>
             </div>
           </div>
@@ -1190,13 +1450,13 @@ export function ProductionCardFormDialog({
 
       {/* Add New Plant Dialog */}
       <Dialog open={addPlantDialogOpen} onOpenChange={setAddPlantDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className={isMobile ? "max-w-[95vw]" : "max-w-md"}>
           <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
+            <DialogTitle className="text-lg sm:text-xl flex items-center gap-2">
               <Factory className="w-5 h-5 text-blue-600" />
               Add New Plant
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-sm sm:text-base">
               Enter the name of the new manufacturing plant
             </DialogDescription>
           </DialogHeader>
@@ -1210,29 +1470,28 @@ export function ProductionCardFormDialog({
                 onChange={(e) => setNewPlantName(e.target.value)}
                 placeholder="e.g., Plant F - Central Unit"
                 className="w-full"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    saveNewPlant();
-                  }
-                }}
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
             <Button
               variant="outline"
+              size={isMobile ? "sm" : "default"}
               onClick={() => {
                 setAddPlantDialogOpen(false);
                 setNewPlantName("");
               }}
+              className={isMobile ? "w-full" : ""}
             >
               Cancel
             </Button>
             <Button
               onClick={saveNewPlant}
-              className="bg-blue-600 hover:bg-blue-700"
+              size={isMobile ? "sm" : "default"}
+              className={`${
+                isMobile ? "w-full" : ""
+              } bg-blue-600 hover:bg-blue-700`}
             >
               <CheckCircle className="w-4 h-4 mr-2" />
               Add Plant

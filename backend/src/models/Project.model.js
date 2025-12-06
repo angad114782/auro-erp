@@ -2,6 +2,43 @@ import mongoose from "mongoose";
 
 /** ---------- Sub-schemas ---------- **/
 
+// one row in any cost table
+const costRowSchema = new mongoose.Schema(
+  {
+    item: { type: String, required: true },
+    description: { type: String, default: "" },
+    consumption: { type: String, default: "" },
+    cost: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
+// labour row
+const labourRowSchema = new mongoose.Schema(
+  {
+    name: String,
+    cost: Number,
+  },
+  { _id: false }
+);
+
+// summary schema
+const summarySchema = new mongoose.Schema(
+  {
+    upperTotal: Number,
+    materialTotal: Number,
+    componentTotal: Number,
+    packagingTotal: Number,
+    miscTotal: Number,
+    labourTotal: Number,
+    additionalCosts: Number,
+    profitMargin: Number,
+    profitAmount: Number,
+    tentativeCost: Number,
+  },
+  { _id: false }
+);
+
 const statusHistorySchema = new mongoose.Schema(
   {
     from: { type: String, default: null },
@@ -36,20 +73,32 @@ const colorVariantItemSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     desc: { type: String, default: "" },
     consumption: { type: String, default: "" },
+    cost: { type: Number, default: 0, min: 0 },
   },
   { _id: false }
 );
 
 const colorVariantSchema = new mongoose.Schema(
   {
-    materials: { type: [colorVariantItemSchema], default: [] },
-    components: { type: [colorVariantItemSchema], default: [] },
-    images: { type: [String], default: [] }, // file paths or URLs
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
+    materials: [colorVariantItemSchema],
+    components: [colorVariantItemSchema],
+    images: [String],
+
+    // NEW COST SECTIONS
+    costing: {
+      upper: [costRowSchema],
+      material: [costRowSchema],
+      component: [costRowSchema],
+      packaging: [costRowSchema],
+      misc: [costRowSchema],
+      labour: {
+        items: [labourRowSchema],
+        directTotal: { type: Number, default: 0 },
+      },
+      summary: summarySchema,
     },
+
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     updatedAt: { type: Date, default: Date.now },
   },
   { _id: false }

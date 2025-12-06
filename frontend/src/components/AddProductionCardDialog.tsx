@@ -1,8 +1,13 @@
-// AddProductionCardDialog.tsx  (UPDATED)
-// Replace your existing file with this.
-
 import React, { useState, useEffect, useRef } from "react";
-import { X, Package, Calendar, Building, FileText, Save } from "lucide-react";
+import {
+  X,
+  Package,
+  Calendar,
+  Building,
+  FileText,
+  Save,
+  Search,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,13 +20,28 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { toast } from "sonner";
-import api from "../lib/api"; // adjust path if needed
+import api from "../lib/api";
+
+// Media query hook
+const useMediaQuery = (query: string) => {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+    const listener = () => setMatches(media.matches);
+    window.addEventListener("resize", listener);
+    return () => window.removeEventListener("resize", listener);
+  }, [matches, query]);
+  return matches;
+};
 
 interface AddProductionCardDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedDate: string | null;
-  onSave: (cardData: any) => void; // parent will receive created calendar entry
+  onSave: (cardData: any) => void;
 }
 
 export function AddProductionCardDialog({
@@ -30,6 +50,9 @@ export function AddProductionCardDialog({
   selectedDate,
   onSave,
 }: AddProductionCardDialogProps) {
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const isTablet = useMediaQuery("(min-width: 769px) and (max-width: 1024px)");
+
   const [formData, setFormData] = useState({
     productName: "",
     productCode: "",
@@ -41,12 +64,9 @@ export function AddProductionCardDialog({
     country: "",
     gender: "",
     productionQuantity: "",
-    productionUnit: "",
     assignedPlant: "",
     productionDate: "",
     remarks: "",
-
-    // NEW: sole inputs (you requested them)
     soleFrom: "",
     soleColor: "",
     soleExpectedDate: "",
@@ -61,13 +81,10 @@ export function AddProductionCardDialog({
   const [selectedProjectSnapshot, setSelectedProjectSnapshot] = useState<
     any | null
   >(null);
-
   const [isSearching, setIsSearching] = useState(false);
 
-  // debounce ref
   const debounceRef = useRef<number | null>(null);
 
-  // Reset form on open or selectedDate change
   useEffect(() => {
     if (open) {
       setFormData((prev) => ({
@@ -76,7 +93,6 @@ export function AddProductionCardDialog({
       }));
 
       if (!selectedProjectSnapshot) {
-        // if no project selected, clear fields
         setFormData((prev) => ({
           ...prev,
           productName: "",
@@ -89,7 +105,6 @@ export function AddProductionCardDialog({
           country: "",
           gender: "",
           productionQuantity: "",
-          productionUnit: "",
           assignedPlant: "",
           productionDate: selectedDate || "",
           remarks: "",
@@ -102,10 +117,8 @@ export function AddProductionCardDialog({
       setSearchQuery("");
       setSearchResults([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, selectedDate]);
 
-  // Debounced search effect (calls your /api/projects/search)
   useEffect(() => {
     if (!searchQuery || searchQuery.trim().length < 2) {
       setSearchResults([]);
@@ -117,14 +130,9 @@ export function AddProductionCardDialog({
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(async () => {
       try {
-        // Using api axios instance so auth header is included if present
         const res = await api.get("/projects/search", {
           params: { query: searchQuery },
         });
-
-        // debug: show response in console
-        console.log("projects/search response:", res.data);
-
         const items = res.data?.data ?? res.data?.items ?? [];
         setSearchResults(items);
       } catch (err) {
@@ -140,7 +148,6 @@ export function AddProductionCardDialog({
     };
   }, [searchQuery]);
 
-  // When user selects a project from results - autofill & lock
   const handleSelectProduct = (p: any) => {
     const snapshot = {
       _id: p._id ?? p.id,
@@ -176,7 +183,6 @@ export function AddProductionCardDialog({
     setSearchResults([]);
   };
 
-  // Clear selection (unlock)
   const handleClearSelection = () => {
     setSelectedProjectId(null);
     setSelectedProjectSnapshot(null);
@@ -196,8 +202,6 @@ export function AddProductionCardDialog({
     }));
   };
 
-  // Submit handler: posts to /calendar (matches backend service keys)
-  // In AddProductionCardDialog.tsx - Update handleSubmit function
   const handleSubmit = async () => {
     if (
       !formData.productName ||
@@ -208,19 +212,12 @@ export function AddProductionCardDialog({
       return;
     }
 
-    // Build payload
     const payload: any = {
       projectId: selectedProjectId,
       projectSnapshot: selectedProjectSnapshot || {
         autoCode: formData.productCode,
         artName: formData.productName,
-        productDesc: "",
         color: formData.artColour,
-        size: "",
-        brand: null,
-        category: null,
-        poNumber: "",
-        poRef: null,
       },
       scheduling: {
         scheduleDate: formData.productionDate,
@@ -238,264 +235,178 @@ export function AddProductionCardDialog({
     };
 
     try {
-      console.log("POST /calendar payload:", payload);
       const res = await api.post("/calendar", payload);
-      console.log("POST /calendar response:", res.data);
       const created = res.data?.data ?? res.data;
-
       toast.success(`Production scheduled for ${formData.productName}`);
 
-      // IMPORTANT: Call onSave with the created data
       if (onSave) {
         onSave(created);
       }
 
-      // Reset and close
       handleClearSelection();
       onOpenChange(false);
     } catch (err: any) {
       console.error("Create calendar entry failed:", err);
       const msg =
         err?.response?.data?.message ??
-        err?.response?.data?.error ??
         err?.message ??
         "Failed to create entry";
       toast.error(msg);
     }
   };
 
+  const dialogWidth = isMobile ? "95vw" : isTablet ? "90vw" : "85vw";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-5xl !w-5xl max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
+      <DialogContent
+        className={`!max-w-[${dialogWidth}] !w-[${dialogWidth}] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col`}
+      >
         {/* Header */}
-        <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b shadow-sm flex justify-between">
-          <div className="flex gap-6 items-center">
-            <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-              <Package className="w-7 h-7 text-white" />
+        <div className="sticky top-0 z-50 px-4 sm:px-6 md:px-8 py-4 sm:py-6 bg-gradient-to-r from-blue-50 via-white to-blue-50 border-b">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-6">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-blue-600 rounded-xl flex items-center justify-center">
+                <Package className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 truncate">
+                  Add Production Card
+                </DialogTitle>
+                <DialogDescription className="text-sm sm:text-base text-gray-600">
+                  Schedule: {formData.productionDate || "Not selected"}
+                </DialogDescription>
+              </div>
             </div>
-
-            <div>
-              <DialogTitle className="text-3xl font-semibold">
-                Add Production Card
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                Create a new production card
-              </DialogDescription>
-              <p className="text-lg text-gray-600">
-                Schedule: {formData.productionDate || "Not selected"}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {isLocked && (
-              <button
-                onClick={handleClearSelection}
-                className="px-3 py-2 rounded-md border hover:bg-white"
-                title="Clear selected project"
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              {isLocked && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearSelection}
+                  className="text-xs sm:text-sm"
+                >
+                  Clear
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenChange(false)}
               >
-                Clear selection
-              </button>
-            )}
-            <button
-              onClick={() => onOpenChange(false)}
-              className="h-10 w-10 flex items-center justify-center hover:bg-gray-100 rounded-full"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
+                <X className="w-4 h-4 sm:w-5 sm:h-5" />
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-8 py-8 space-y-10 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8 space-y-6 sm:space-y-8">
           {/* Search */}
           <div className="space-y-2 relative">
-            <Label className="text-base font-semibold text-gray-700">
+            <Label className="text-sm sm:text-base font-semibold text-gray-700">
               Search Project (R&D)
             </Label>
-
             <Input
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-              }}
+              onChange={(e) => setSearchQuery(e.target.value)}
               disabled={isLocked}
               placeholder={
                 isLocked
-                  ? "Project locked - click Clear selection to change"
-                  : "Search by product name or auto code (min 2 chars)..."
+                  ? "Project locked - click Clear to change"
+                  : "Search by product name or code..."
               }
-              className="h-12 text-base border-2 focus:border-blue-500"
+              className="h-10 sm:h-12 text-sm sm:text-base"
             />
 
-            {/* Dropdown */}
-            {!isLocked && (
-              <div className="absolute left-0 right-0 z-999">
-                {isSearching && searchQuery.trim().length >= 2 && (
-                  <div className="bg-white border rounded-md shadow-xl p-3">
+            {/* Search Results Dropdown */}
+            {!isLocked && searchQuery.trim().length >= 2 && (
+              <div className="absolute left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {isSearching ? (
+                  <div className="p-4 text-center text-gray-500">
                     Searching...
                   </div>
-                )}
-
-                {!isSearching && searchQuery.trim().length >= 2 && (
-                  <div className="bg-white border rounded-md shadow-xl max-h-56 overflow-auto">
-                    {searchResults.length > 0 ? (
-                      searchResults.map((item) => (
-                        <div
-                          key={item._id ?? item.id}
-                          onClick={() => handleSelectProduct(item)}
-                          className="px-4 py-2 cursor-pointer hover:bg-blue-50 border-b"
-                        >
-                          <p className="font-medium">
-                            {item.artName ?? item.productName}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {item.autoCode ?? item.projectCode}
-                          </p>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="px-4 py-3 text-sm text-gray-500">
-                        No projects found
+                ) : searchResults.length > 0 ? (
+                  searchResults.slice(0, 5).map((item) => (
+                    <div
+                      key={item._id ?? item.id}
+                      onClick={() => handleSelectProduct(item)}
+                      className="p-3 border-b hover:bg-blue-50 cursor-pointer"
+                    >
+                      <div className="font-medium text-sm sm:text-base truncate">
+                        {item.artName ?? item.productName}
                       </div>
-                    )}
+                      <div className="text-xs sm:text-sm text-gray-600 truncate">
+                        {item.autoCode ?? item.projectCode}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-gray-500">
+                    No projects found
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          {/* Product Information (READONLY as requested) */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-5">
-              <div className="w-10 h-10 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
-                <Package className="w-5 h-5 text-white" />
+          {/* Product Information */}
+          <div className="space-y-4 sm:space-y-6">
+            <div className="flex items-center gap-3 sm:gap-5">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-500 rounded-xl flex items-center justify-center">
+                <Package className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900">
+              <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900">
                 Product Information
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
-                  Product Name
-                </Label>
-                <Input
-                  value={formData.productName}
-                  readOnly
-                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
-                  Product Code
-                </Label>
-                <Input
-                  value={formData.productCode}
-                  readOnly
-                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
-                  Art / Colour
-                </Label>
-                <Input
-                  value={formData.artColour}
-                  readOnly
-                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
-                  Company
-                </Label>
-                <Input
-                  value={formData.company}
-                  readOnly
-                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
-                  Brand
-                </Label>
-                <Input
-                  value={formData.brand}
-                  readOnly
-                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
-                  Category
-                </Label>
-                <Input
-                  value={formData.category}
-                  readOnly
-                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
-                  Type
-                </Label>
-                <Input
-                  value={formData.type}
-                  readOnly
-                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
-                  Country
-                </Label>
-                <Input
-                  value={formData.country}
-                  readOnly
-                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
-                  Gender
-                </Label>
-                <Input
-                  value={formData.gender}
-                  readOnly
-                  className="h-12 text-base border-2 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              {[
+                { label: "Product Name", key: "productName" },
+                { label: "Product Code", key: "productCode" },
+                { label: "Art / Colour", key: "artColour" },
+                { label: "Company", key: "company" },
+                { label: "Brand", key: "brand" },
+                { label: "Category", key: "category" },
+                { label: "Type", key: "type" },
+                { label: "Country", key: "country" },
+                { label: "Gender", key: "gender" },
+              ].map((field) => (
+                <div key={field.key} className="space-y-2">
+                  <Label className="text-sm sm:text-base font-semibold text-gray-700">
+                    {field.label}
+                  </Label>
+                  <Input
+                    value={
+                      formData[field.key as keyof typeof formData] as string
+                    }
+                    readOnly
+                    className="h-10 sm:h-12 text-sm sm:text-base bg-gray-50"
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Scheduling */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-5">
-              <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                <Calendar className="w-5 h-5 text-white" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="flex items-center gap-3 sm:gap-5">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-500 rounded-xl flex items-center justify-center">
+                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900">
+              <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900">
                 Scheduling Information
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
+                <Label className="text-sm sm:text-base font-semibold text-gray-700">
                   Schedule On *
                 </Label>
                 <div className="relative">
-                  <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none z-10" />
+                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
                     type="date"
                     value={formData.productionDate}
@@ -505,13 +416,13 @@ export function AddProductionCardDialog({
                         productionDate: e.target.value,
                       })
                     }
-                    className="pl-12 h-12 text-base border-2 focus:border-blue-500"
+                    className="pl-10 h-10 sm:h-12 text-sm sm:text-base"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
+                <Label className="text-sm sm:text-base font-semibold text-gray-700">
                   Assigned Plant
                 </Label>
                 <Input
@@ -519,13 +430,12 @@ export function AddProductionCardDialog({
                   onChange={(e) =>
                     setFormData({ ...formData, assignedPlant: e.target.value })
                   }
-                  className="h-12 text-base border-2 focus:border-blue-500"
+                  className="h-10 sm:h-12 text-sm sm:text-base"
                 />
               </div>
 
-              {/* NEW sole inputs */}
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
+                <Label className="text-sm sm:text-base font-semibold text-gray-700">
                   Sole From
                 </Label>
                 <Input
@@ -533,12 +443,12 @@ export function AddProductionCardDialog({
                   onChange={(e) =>
                     setFormData({ ...formData, soleFrom: e.target.value })
                   }
-                  className="h-12 text-base border-2 focus:border-blue-500"
+                  className="h-10 sm:h-12 text-sm sm:text-base"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
+                <Label className="text-sm sm:text-base font-semibold text-gray-700">
                   Sole Color
                 </Label>
                 <Input
@@ -546,12 +456,12 @@ export function AddProductionCardDialog({
                   onChange={(e) =>
                     setFormData({ ...formData, soleColor: e.target.value })
                   }
-                  className="h-12 text-base border-2 focus:border-blue-500"
+                  className="h-10 sm:h-12 text-sm sm:text-base"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
+                <Label className="text-sm sm:text-base font-semibold text-gray-700">
                   Sole Expected Date
                 </Label>
                 <Input
@@ -563,26 +473,26 @@ export function AddProductionCardDialog({
                       soleExpectedDate: e.target.value,
                     })
                   }
-                  className="h-12 text-base border-2 focus:border-blue-500"
+                  className="h-10 sm:h-12 text-sm sm:text-base"
                 />
               </div>
             </div>
           </div>
 
           {/* Production Details */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-5">
-              <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
-                <Building className="w-5 h-5 text-white" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="flex items-center gap-3 sm:gap-5">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
+                <Building className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900">
+              <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900">
                 Production Details
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-2">
-                <Label className="text-base font-semibold text-gray-700">
+                <Label className="text-sm sm:text-base font-semibold text-gray-700">
                   Production Quantity *
                 </Label>
                 <Input
@@ -595,25 +505,25 @@ export function AddProductionCardDialog({
                     })
                   }
                   placeholder="e.g. 1200"
-                  className="h-12 text-base border-2 focus:border-blue-500"
+                  className="h-10 sm:h-12 text-sm sm:text-base"
                 />
               </div>
             </div>
           </div>
 
           {/* Remarks */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-5">
-              <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
-                <FileText className="w-5 h-5 text-white" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="flex items-center gap-3 sm:gap-5">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-xl flex items-center justify-center">
+                <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900">
+              <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900">
                 Additional Information
               </h3>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-base font-semibold text-gray-700">
+              <Label className="text-sm sm:text-base font-semibold text-gray-700">
                 Remarks
               </Label>
               <Textarea
@@ -621,32 +531,30 @@ export function AddProductionCardDialog({
                 onChange={(e) =>
                   setFormData({ ...formData, remarks: e.target.value })
                 }
-                placeholder="Add any special instructions…"
-                rows={4}
-                className="resize-none text-base border-2 focus:border-blue-500 leading-relaxed"
+                placeholder="Add any special instructions..."
+                className="min-h-[100px] sm:min-h-[120px] text-sm sm:text-base resize-none"
               />
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t-2 border-gray-200 shadow-2xl shadow-gray-900/10 z-50">
-          <div className="px-8 py-6 flex justify-end gap-4">
+        <div className="sticky bottom-0 z-50 px-4 sm:px-6 md:px-8 py-4 sm:py-6 bg-gradient-to-r from-gray-50 to-gray-100 border-t-2 border-gray-200">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
             <Button
               onClick={() => onOpenChange(false)}
               variant="outline"
-              size="lg"
-              className="px-8 py-3 h-12 border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
+              size={isMobile ? "sm" : "default"}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
-
             <Button
               onClick={handleSubmit}
-              size="lg"
-              className="px-8 py-3 h-12 bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 border-0"
+              size={isMobile ? "sm" : "default"}
+              className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
             >
-              <Save className="w-5 h-5 mr-2" />
+              <Save className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
               Create Production Card
             </Button>
           </div>

@@ -44,10 +44,31 @@ export async function recomputeSummary(projectId) {
   const labour = await ensureLabour(projectId);
   const labourTotal = Number(labour.directTotal) || 0;
 
+  // Check if ALL costs are zero AND labour has no items
+  const hasNoCostData =
+    upperTotal === 0 &&
+    componentTotal === 0 &&
+    materialTotal === 0 &&
+    packagingTotal === 0 &&
+    miscTotal === 0 &&
+    labourTotal === 0 &&
+    (!labour.items || labour.items.length === 0);
+
+  // If no data exists, delete the summary to indicate no cost data
+  if (hasNoCostData) {
+    await CostSummary.deleteOne({ projectId });
+    return null;
+  }
+
   const summary = await ensureSummary(projectId);
 
   const totalAllCosts =
-    upperTotal + componentTotal + materialTotal + packagingTotal + miscTotal + labourTotal;
+    upperTotal +
+    componentTotal +
+    materialTotal +
+    packagingTotal +
+    miscTotal +
+    labourTotal;
 
   const additionalCosts = Number(summary.additionalCosts) || 0;
   const profitMargin = Number(summary.profitMargin) || 0;

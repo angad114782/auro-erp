@@ -6,9 +6,59 @@ import mongoose from "mongoose";
 export async function getSummary(req, res) {
   try {
     const { projectId } = req.params;
-    await ensureSummary(projectId);
+
+    // Check if any cost data exists first
+    const {
+      UpperCostRow,
+      ComponentCostRow,
+      MaterialCostRow,
+      PackagingCostRow,
+      MiscCostRow,
+    } = await import("../models/costRow.model.js");
+    const { LabourCost } = await import("../models/labourCost.model.js");
+
+    // Count all cost rows
+    const [
+      upperCount,
+      componentCount,
+      materialCount,
+      packagingCount,
+      miscCount,
+      labour,
+    ] = await Promise.all([
+      UpperCostRow.countDocuments({ projectId }),
+      ComponentCostRow.countDocuments({ projectId }),
+      MaterialCostRow.countDocuments({ projectId }),
+      PackagingCostRow.countDocuments({ projectId }),
+      MiscCostRow.countDocuments({ projectId }),
+      LabourCost.findOne({ projectId }),
+    ]);
+
+    const hasLabourItems = labour && labour.items && labour.items.length > 0;
+    const hasAnyCostData =
+      upperCount > 0 ||
+      componentCount > 0 ||
+      materialCount > 0 ||
+      packagingCount > 0 ||
+      miscCount > 0 ||
+      hasLabourItems;
+
+    if (!hasAnyCostData) {
+      // No cost data exists - return empty summary
+      return ok(res, {
+        summary: null,
+        hasCostData: false,
+        message: "No cost data available",
+      });
+    }
+
+    // Recompute summary
     const summary = await recomputeSummary(projectId);
-    return ok(res, { summary });
+
+    return ok(res, {
+      summary,
+      hasCostData: true,
+    });
   } catch (e) {
     return fail(res, e.message, 400);
   }
@@ -43,6 +93,11 @@ export async function approveSummary(req, res) {
     const { projectId } = req.params;
     const userId = req.user?._id; // optional if you have auth
     const summary = await recomputeSummary(projectId);
+
+    // Check if summary exists (might be null if no data)
+    if (!summary) {
+      return fail(res, "Cannot approve: No cost data exists", 400);
+    }
 
     if ((summary.tentativeCost || 0) <= 0) {
       return fail(res, "Tentative cost must be greater than 0");

@@ -13,6 +13,12 @@ import {
   Package,
   Plus,
   Trash2,
+  BarChart3,
+  Building,
+  Calendar,
+  FileText,
+  Play,
+  Pause,
 } from "lucide-react";
 import {
   Dialog,
@@ -32,37 +38,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "./ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Check, ChevronsUpDown } from "lucide-react";
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
-import { toast } from "sonner@2.0.3";
-import { useERPStore, RDProject } from "../lib/data-store";
+import { toast } from "sonner";
+import { useERPStore } from "../lib/data-store";
 import { ProductionCardFormDialog } from "./ProductionCardFormDialog";
 import { useProjects } from "../hooks/useProjects";
 import api from "../lib/api";
-interface ProductionCard {
-  productionName: string;
-  rdProject: string;
-  productionLine: string;
-  targetQuantity: string;
-  startDate: string;
-  endDate: string;
-  supervisor: string;
-  priority: string;
-  materialRequirements: string;
-  qualityStandards: string;
-  notes: string;
-  budgetAllocation: string;
-  workShift: string;
-}
+
+// Media query hook
+const useMediaQuery = (query: string) => {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+    const listener = () => setMatches(media.matches);
+    window.addEventListener("resize", listener);
+    return () => window.removeEventListener("resize", listener);
+  }, [matches, query]);
+  return matches;
+};
 
 interface ProductionCardData {
   id: string;
@@ -79,35 +76,26 @@ interface ProductionCardData {
   status: string;
   createdAt: string;
   assignPlant: string;
+  projectId?: string;
 }
 
 interface CreateProductionCardDialogProps {
   open: boolean;
   onClose: () => void;
-  selectedProductionCard?: any; // The production card that was clicked to start production
+  selectedProductionCard?: any;
+  onProductionCardCreated?: (createdCard: any) => void;
 }
 
 export function CreateProductionCardDialog({
   open,
   onClose,
   selectedProductionCard,
+  onProductionCardCreated,
 }: CreateProductionCardDialogProps) {
-  console.log("CreateProductionCardDialog rendered with props:", {
-    open,
-    selectedProductionCard,
-  });
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const isTablet = useMediaQuery("(min-width: 769px) and (max-width: 1024px)");
 
-  const {
-    //   rdProjects,
-    //   updateProject,
-    //   brands,
-    //   categories,
-    //   types,
-    //   colors,
-    //   countries,
-    productionCards: storeProductionCards,
-    //   updateProductionCard,
-  } = useERPStore();
+  const { productionCards: storeProductionCards } = useERPStore();
   const { projects, loadProjects } = useProjects();
 
   useEffect(() => {
@@ -115,30 +103,8 @@ export function CreateProductionCardDialog({
   }, []);
 
   const rdProjects = projects;
-  const [selectedProject, setSelectedProject] = useState<RDProject | null>(
-    null
-  );
+  const [selectedProject, setSelectedProject] = useState<any>(null);
 
-  const handleDeleteCard = async (card: any) => {
-    const projectId = card.projectId;
-
-    if (!projectId) {
-      console.error("❌ Cannot delete: projectId missing", card);
-      toast.error("Project ID missing for this card. Cannot delete.");
-      return;
-    }
-
-    try {
-      await api.delete(`/projects/${projectId}/production-cards/${card.id}`);
-      toast.success("Production card deleted");
-      fetchProductionCardsForProject(projectId);
-    } catch (err) {
-      toast.error("Failed to delete card");
-      console.error(err);
-    }
-  };
-
-  // ---------------------- State (place this BEFORE any useEffect or derived vars) ----------------------
   const [showProductionCardForm, setShowProductionCardForm] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<ProductionCardData | null>(
@@ -148,49 +114,24 @@ export function CreateProductionCardDialog({
   const [startingProduction, setStartingProduction] = useState<string | null>(
     null
   );
-
-  // Toggle to show all cards vs only cards for selected project
   const [showAllCards, setShowAllCards] = useState<boolean>(false);
-
-  // API-loaded cards (for selected project)
   const [apiCards, setApiCards] = useState<any[]>([]);
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-
-  // orderQuantity and others already in your file...
   const [orderQuantity, setOrderQuantity] = useState<number | null>(null);
 
-  // helper to extract order/po quantity from different shapes of selectedProductionCard
   const extractOrderQuantity = (src: any): number | null => {
     if (!src) return null;
-
-    // direct PO object
     if (src.po && src.po.orderQuantity != null)
       return Number(src.po.orderQuantity);
-
-    // project.po
     if (src.project && src.project.po && src.project.po.orderQuantity != null)
       return Number(src.project.po.orderQuantity);
-
-    // common top-level fields
     if (src.orderQuantity != null) return Number(src.orderQuantity);
     if (src.quantity != null) return Number(src.quantity);
     if (src.targetQuantity != null) return Number(src.targetQuantity);
-
-    // sometimes in raw snapshot
-    if (src.raw && src.raw.po && src.raw.po.orderQuantity != null)
-      return Number(src.raw.po.orderQuantity);
-    if (src.raw && src.raw.orderQuantity != null)
-      return Number(src.raw.orderQuantity);
-
-    // sometimes inside nested 'po' under different keys
-    if (src.poDetails && src.poDetails.orderQuantity != null)
-      return Number(src.poDetails.orderQuantity);
-
     return null;
   };
 
-  // Fetch production cards from backend for a project
   const fetchProductionCardsForProject = async (projectId: string) => {
     if (!projectId) {
       setApiCards([]);
@@ -200,105 +141,72 @@ export function CreateProductionCardDialog({
     setApiError(null);
     try {
       const res = await api.get(`/projects/${projectId}/production-cards`);
-      // response shape: { success: true, data: { items: [...], total } }
       const items =
         res?.data?.data?.items ?? res?.data?.items ?? res?.data?.data ?? [];
-      // normalize: if items is object with items property, try that
       const normalized = Array.isArray(items)
         ? items
         : Array.isArray(res?.data)
         ? res.data
         : [];
       setApiCards(normalized);
-      console.log("Fetched API cards:", normalized);
     } catch (err: any) {
       console.error("Failed to fetch production cards:", err);
       setApiError(
         err?.response?.data?.error || err?.message || "Unknown error"
       );
       setApiCards([]);
-      // optional user feedback:
-      // toast.error("Failed to load production cards from server");
     } finally {
       setApiLoading(false);
     }
   };
 
-  // Trigger fetch when selectedProject changes (and only when not showing all cards)
   useEffect(() => {
     const projId =
-      (selectedProject as any)?.project?._id ||
-      (selectedProject as any)?.id ||
-      (selectedProject as any)?._id ||
-      (selectedProject as any)?.projectId;
+      selectedProject?.project?._id ||
+      selectedProject?.id ||
+      selectedProject?._id;
     if (!showAllCards && projId) {
       fetchProductionCardsForProject(String(projId));
     } else {
-      // when showing all cards or no project, clear API cards
       setApiCards([]);
       setApiError(null);
       setApiLoading(false);
     }
   }, [selectedProject, showAllCards]);
 
-  // Effect to set selectedProject when selectedProductionCard changes
   useEffect(() => {
-    console.log("CreateProductionCardDialog useEffect triggered");
-    console.log("selectedProductionCard:", selectedProductionCard);
-    console.log("rdProjects:", rdProjects);
-    console.log("storeProductionCards:", storeProductionCards);
-
-    // If we have a specific production card selected, use it
     let cardToUse = selectedProductionCard;
-
-    // If no specific card is selected but we have production cards, use the first one for testing
     if (!cardToUse && storeProductionCards.length > 0) {
-      console.log(
-        "No specific card selected, using first production card for testing"
-      );
       cardToUse = storeProductionCards[0];
     }
 
-    // extract project id from multiple possible fields
     const projectIdFromCard =
       cardToUse?.projectId ||
       cardToUse?.rdProjectId ||
       (cardToUse?.project && (cardToUse.project._id || cardToUse.project.id));
 
     if (cardToUse && rdProjects && rdProjects.length > 0 && projectIdFromCard) {
-      console.log("Looking for project with ID:", projectIdFromCard);
-      // Find the RD project associated with this production card - try multiple matching keys
       const associatedProject = rdProjects.find(
         (project: any) =>
-          project.id === projectIdFromCard ||
-          project._id === projectIdFromCard ||
-          String(project._id) === String(projectIdFromCard)
+          project.id === projectIdFromCard || project._id === projectIdFromCard
       );
-      console.log("Found associatedProject:", associatedProject);
       if (associatedProject) {
         setSelectedProject(associatedProject);
-        console.log("Set selectedProject to:", associatedProject);
       } else {
-        console.log("No matching project found");
         setSelectedProject(null);
       }
     } else {
-      console.log("Setting selectedProject to null - missing data");
       setSelectedProject(null);
     }
 
-    // set order quantity from the card payload (handles many shapes)
     const qty = extractOrderQuantity(cardToUse);
     if (qty != null && !Number.isNaN(qty)) {
       setOrderQuantity(Number(qty));
-      console.log("Extracted orderQuantity:", qty);
     } else {
       setOrderQuantity(null);
-      console.log("No order quantity found on cardToUse");
     }
   }, [selectedProductionCard, rdProjects, storeProductionCards]);
-  // Convert store production cards to the format expected by this component
-  // Normalize helper to get projectId string from various card shapes
+
   const normalizeCardProjectId = (card: any) => {
     return (
       card.projectId ||
@@ -310,13 +218,7 @@ export function CreateProductionCardDialog({
     );
   };
 
-  // Decide source list: if apiCards loaded (and not empty) AND not showing all, use apiCards.
-  // otherwise use filtered store cards (existing behaviour).
-  const projId =
-    (selectedProject as any)?.id ||
-    (selectedProject as any)?._id ||
-    (selectedProject as any)?.projectId;
-
+  const projId = selectedProject?.id || selectedProject?._id;
   const storeFiltered = storeProductionCards.filter((card: any) => {
     if (showAllCards) return true;
     if (!selectedProject) return false;
@@ -325,7 +227,6 @@ export function CreateProductionCardDialog({
     return String(projIdFromCard) === String(projId);
   });
 
-  // use apiCards if available for the project and user isn't asking for "all cards"
   const sourceCards =
     !showAllCards && apiCards && apiCards.length > 0 ? apiCards : storeFiltered;
 
@@ -349,126 +250,28 @@ export function CreateProductionCardDialog({
     })
   );
 
-  const [productionCard, setProductionCard] = useState<ProductionCard>({
-    productionName: "",
-    rdProject: "",
-    productionLine: "",
-    targetQuantity: "",
-    startDate: "",
-    endDate: "",
-    supervisor: "",
-    priority: "",
-    materialRequirements: "",
-    qualityStandards: "",
-    notes: "",
-    budgetAllocation: "",
-    workShift: "",
-  });
-
-  const generateProductionCode = () => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const nextYear = currentYear + 1;
-    const month = (now.getMonth() + 1).toString().padStart(2, "0");
-
-    // Generate PROD code similar to RND
-    const currentYearPrefix = `PROD/${currentYear
-      .toString()
-      .slice(-2)}-${nextYear.toString().slice(-2)}/${month}/`;
-
-    // Mock existing production cards count
-    const existingProductionCards = 150; // This would come from actual production data
-
-    return `PROD/${currentYear.toString().slice(-2)}-${nextYear
-      .toString()
-      .slice(-2)}/${month}/${(existingProductionCards + 1)
-      .toString()
-      .padStart(3, "0")}`;
-  };
-
-  const handleCreateProductionCard = async () => {
-    if (
-      !productionCard.productionName ||
-      !productionCard.rdProject ||
-      !productionCard.targetQuantity
-    ) {
-      toast.error("Please fill in all required fields");
+  const handleDeleteCard = async (card: any) => {
+    const projectId = card.projectId;
+    if (!projectId) {
+      toast.error("Project ID missing for this card");
       return;
     }
-
-    // Mock production card creation
-    toast.success("Production Card created successfully!");
-
-    // Reset form
-    setProductionCard({
-      productionName: "",
-      rdProject: "",
-      productionLine: "",
-      targetQuantity: "",
-      startDate: "",
-      endDate: "",
-      supervisor: "",
-      priority: "",
-      materialRequirements: "",
-      qualityStandards: "",
-      notes: "",
-      budgetAllocation: "",
-      workShift: "",
-    });
-
-    onClose();
-  };
-
-  const handleSaveProductionCard = (cardData: ProductionCardData) => {
-    // For now, we'll just show a success message since we need to integrate with the store properly
-    toast.success("Production Card saved successfully!");
-    console.log("Production card saved:", cardData);
-    // refresh list
-    const projId =
-      selectedProject?.project?._id ||
-      selectedProject?.id ||
-      selectedProject?._id ||
-      selectedProject?.projectId;
-
-    if (projId) fetchProductionCardsForProject(projId);
-
-    if (editingCard) {
-      setEditingCard(null);
+    try {
+      await api.delete(`/projects/${projectId}/production-cards/${card.id}`);
+      toast.success("Production card deleted");
+      fetchProductionCardsForProject(projectId);
+    } catch (err) {
+      toast.error("Failed to delete card");
     }
-
-    // Reload production cards from server after successful save
-    // loadServerProductionCards();
-  };
-
-  const handleEditCard = (card: ProductionCardData) => {
-    setEditingCard(card);
-    setShowProductionCardForm(true);
   };
 
   const handleStartProduction = async (card: ProductionCardData) => {
     setStartingProduction(card.id);
-
     try {
-      // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update the production card status to "In Progress"
-      // if (updateProductionCard) {
-      //   updateProductionCard(card.id, {
-      //     ...card,
-      //     status: "In Progress",
-      //     startDate: new Date().toISOString(),
-      //   });
-      // }
-
       toast.success(`Production started for ${card.cardName}!`);
-      console.log("Production started for card:", card.cardName);
-
-      // Optional: Close dialog and navigate to production tracking
-      // onClose();
     } catch (error) {
-      toast.error("Failed to start production. Please try again.");
-      console.error("Error starting production:", error);
+      toast.error("Failed to start production");
     } finally {
       setStartingProduction(null);
     }
@@ -476,27 +279,31 @@ export function CreateProductionCardDialog({
 
   const handleStopProduction = async (card: ProductionCardData) => {
     setLoadingCardId(card.id);
-
     try {
-      // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update the production card status back to "Ready to Start"
-      // if (updateProductionCard) {
-      //   updateProductionCard(card.id, {
-      //     ...card,
-      //     status: "Ready to Start",
-      //   });
-      // }
-
       toast.success(`Production stopped for ${card.cardName}`);
-      console.log("Production stopped for card:", card.cardName);
     } catch (error) {
-      toast.error("Failed to stop production. Please try again.");
-      console.error("Error stopping production:", error);
+      toast.error("Failed to stop production");
     } finally {
       setLoadingCardId(null);
     }
+  };
+
+  const handleSaveProductionCard = (cardData: ProductionCardData) => {
+    toast.success("Production Card saved successfully!");
+    const projId =
+      selectedProject?.project?._id ||
+      selectedProject?.id ||
+      selectedProject?._id;
+    if (projId) fetchProductionCardsForProject(projId);
+    if (editingCard) {
+      setEditingCard(null);
+    }
+  };
+
+  const handleEditCard = (card: ProductionCardData) => {
+    setEditingCard(card);
+    setShowProductionCardForm(true);
   };
 
   const getCardActionButtons = (card: ProductionCardData) => {
@@ -507,63 +314,92 @@ export function CreateProductionCardDialog({
     if (isInProgress) {
       return (
         <>
-          <button
+          <Button
             onClick={() => handleStopProduction(card)}
             disabled={isLoading}
-            className="flex-1 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 text-sm"
+            variant="destructive"
+            size="sm"
+            className="flex-1 text-xs"
           >
             {isLoading ? (
               <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 Stopping...
               </>
             ) : (
               <>
-                <AlertCircle className="w-4 h-4" />
-                Stop Production
+                <AlertCircle className="w-3 h-3" />
+                Stop
               </>
             )}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => handleEditCard(card)}
-            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 text-sm"
+            variant="secondary"
+            size="sm"
+            className="flex-1 text-xs"
           >
-            <Target className="w-4 h-4" />
-            Edit Card
-          </button>
+            <Target className="w-3 h-3" />
+            Edit
+          </Button>
         </>
       );
     }
 
     return (
-      <>
-        <button
+      <div className="flex gap-2 w-full">
+        <Button
           onClick={() => handleStartProduction(card)}
           disabled={isStarting}
-          className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+          size="sm"
+          className="flex-1 bg-green-500 hover:bg-green-600 text-xs"
         >
-          <Factory className="w-4 h-4" />
+          <Play className="w-3 h-3" />
           Start
-        </button>
-
-        <button
+        </Button>
+        <Button
           onClick={() => handleEditCard(card)}
-          className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+          variant="secondary"
+          size="sm"
+          className="flex-1 text-xs"
         >
-          <Target className="w-4 h-4" />
+          <Target className="w-3 h-3" />
           Edit
-        </button>
-
-        {/* 🔥 DELETE BUTTON FIXED & ADDED */}
-        <button
+        </Button>
+        <Button
           onClick={() => handleDeleteCard(card)}
-          className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+          variant="destructive"
+          size="sm"
+          className="flex-1 text-xs"
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="w-3 h-3" />
           Delete
-        </button>
-      </>
+        </Button>
+      </div>
     );
+  };
+
+  // Determine dialog width based on screen size
+  const getDialogStyle = () => {
+    if (isMobile) {
+      return {
+        width: "95vw",
+        maxWidth: "95vw",
+        maxHeight: "98vh",
+      };
+    } else if (isTablet) {
+      return {
+        width: "90vw",
+        maxWidth: "90vw",
+        maxHeight: "95vh",
+      };
+    } else {
+      return {
+        width: "96vw",
+        maxWidth: "1400px",
+        maxHeight: "95vh",
+      };
+    }
   };
 
   return (
@@ -573,33 +409,35 @@ export function CreateProductionCardDialog({
         if (!isOpen) onClose();
       }}
     >
-      <DialogContent className="max-w-[96vw]! w-[96vw]! max-h-[95vh] overflow-hidden p-0 m-0 top-[2.5vh] translate-y-0 flex flex-col">
-        {/* Sticky Header Section */}
-        <div className="sticky top-0 z-50 px-12 py-8 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
-              <div className="w-16 h-16 bg-linear-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
-                <Factory className="w-8 h-8 text-white" />
+      <DialogContent
+        className="overflow-hidden p-0 m-0 flex flex-col"
+        style={getDialogStyle()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 z-50 px-4 sm:px-6 md:px-8 lg:px-12 py-4 sm:py-6 md:py-8 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b-2 border-gray-200">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-6 md:gap-8">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-linear-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
+                <Factory className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-white" />
               </div>
-              <div>
-                <DialogTitle className="text-4xl font-semibold text-gray-900 mb-2">
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-semibold text-gray-900 mb-1 sm:mb-2">
                   Start Production Manager
                 </DialogTitle>
-                <DialogDescription className="text-xl text-gray-600">
-                  Initialize a comprehensive production planning and management
-                  card with resource allocation and timeline tracking
+                <DialogDescription className="text-sm sm:text-base md:text-lg lg:text-xl text-gray-600">
+                  Initialize comprehensive production planning and management
                 </DialogDescription>
               </div>
             </div>
-            <div className="flex items-center gap-6">
-              <div className="bg-linear-to-br from-green-50 to-emerald-100 border border-green-200 rounded-xl px-8 py-6 shadow-lg">
-                <div className="flex items-center gap-4">
-                  <CheckCircle className="w-6 h-6 text-green-600" />
-                  <div className="text-right">
-                    <p className="text-base text-green-600 font-semibold">
+            <div className="flex items-center gap-3 sm:gap-4 md:gap-6 self-end sm:self-center">
+              <div className="bg-linear-to-br from-green-50 to-emerald-100 border border-green-200 rounded-lg sm:rounded-xl px-3 py-2 sm:px-6 sm:py-4">
+                <div className="flex items-center gap-2 sm:gap-4">
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-600" />
+                  <div>
+                    <p className="text-xs sm:text-sm md:text-base text-green-600 font-semibold">
                       Order Quantity
                     </p>
-                    <p className="text-2xl font-mono font-bold text-green-800">
+                    <p className="text-sm sm:text-base md:text-lg lg:text-xl font-mono font-bold text-green-800">
                       {orderQuantity
                         ? `${Number(orderQuantity).toLocaleString(
                             "en-IN"
@@ -613,99 +451,80 @@ export function CreateProductionCardDialog({
                 onClick={onClose}
                 variant="ghost"
                 size="sm"
-                className="h-10 w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center"
-                type="button"
+                className="h-8 w-8 sm:h-10 sm:w-10 p-0"
               >
-                <X className="w-5 h-5 text-gray-500 hover:text-gray-700" />
+                <X className="w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             </div>
           </div>
         </div>
 
-        {/* Scrollable Main Content */}
-        <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-12 py-10 space-y-8">
+        {/* Main Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-4 sm:px-6 md:px-8 lg:px-12 py-4 sm:py-6 md:py-8 lg:py-10 space-y-6">
             {/* Production Cards Section */}
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-xl font-semibold text-gray-900">
+                  <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900">
                     Production Cards
                   </h3>
-                  <p className="text-sm text-gray-600 mt-1">
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
                     Manage production workflow and resource allocation
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setShowAllCards((s) => !s)}
-                    className="px-3 py-2 mr-2"
-                    title={
-                      showAllCards
-                        ? "Showing all projects — click to show only selected project"
-                        : "Show only this project's cards"
-                    }
+                    className="text-xs sm:text-sm"
                   >
                     {showAllCards ? "Showing: All" : "Showing: This Project"}
                   </Button>
-
                   <Button
-                    className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white px-6 py-2.5"
+                    className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white text-xs sm:text-sm"
                     onClick={() => setShowProductionCardForm(true)}
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Production Card
+                    <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                    Create Card
                   </Button>
-
-                  {/* status */}
-                  <div className="ml-3 text-xs text-gray-500">
-                    {apiLoading
-                      ? "Loading..."
-                      : apiError
-                      ? `API error`
-                      : apiCards.length
-                      ? `${apiCards.length} from API`
-                      : ""}
-                  </div>
                 </div>
               </div>
+
               {/* Production Cards Display */}
               {displayProductionCards.filter(
                 (card) =>
-                  // Filter out demo/sample cards - exclude cards with IDs '1' and '2' and demo card numbers
                   !["1", "2"].includes(card.id) &&
                   !card.cardName?.startsWith("PROD/25-26/09/00")
               ).length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {displayProductionCards
                     .filter(
                       (card) =>
-                        // Filter out demo/sample cards - exclude cards with IDs '1' and '2' and demo card numbers
                         !["1", "2"].includes(card.id) &&
                         !card.cardName?.startsWith("PROD/25-26/09/00")
                     )
                     .map((card) => (
                       <div
                         key={card.id}
-                        className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col justify-between"
+                        className="bg-white rounded-lg sm:rounded-xl border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-all"
                       >
-                        {/* Header Section */}
-                        <div className="flex flex-col space-y-4">
+                        {/* Header */}
+                        <div className="flex flex-col space-y-3 sm:space-y-4">
                           <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <h4 className="text-lg font-semibold text-gray-900 mb-2 leading-tight">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-1 sm:mb-2 truncate">
                                 {card.cardName}
                               </h4>
-                              <p className="text-sm text-gray-600 mb-3">
+                              <p className="text-xs sm:text-sm text-gray-600 truncate">
                                 {card.productionType}
                               </p>
                             </div>
                           </div>
 
                           {/* Status Badge */}
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-1 sm:gap-2">
                             <Badge
                               variant="outline"
                               className={`text-xs ${
@@ -723,80 +542,67 @@ export function CreateProductionCardDialog({
                                 variant="outline"
                                 className="text-xs bg-orange-50 text-orange-700 border-orange-200"
                               >
-                                <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse mr-1" />
+                                <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-orange-500 rounded-full animate-pulse mr-1" />
                                 Live
                               </Badge>
                             )}
                           </div>
 
-                          {/* Key Info Section */}
-                          <div className="space-y-3 pt-2">
-                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                              <span className="text-xs text-gray-500">
-                                Production Quantity
-                              </span>
-                              <span className="text-sm font-semibold text-gray-900">
-                                {card.targetQuantity} units
-                              </span>
-                            </div>
-
-                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                              <span className="text-xs text-gray-500">
-                                Plant Assignment
-                              </span>
-                              <span className="text-sm font-medium text-gray-900">
-                                {card.assignPlant || "Not assigned"}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                              <span className="text-xs text-gray-500">
-                                Start Date
-                              </span>
-                              <span className="text-sm font-medium text-gray-900">
-                                {card.startDate
+                          {/* Key Info */}
+                          <div className="space-y-2 sm:space-y-3 pt-2">
+                            {[
+                              {
+                                label: "Production Quantity",
+                                value: `${card.targetQuantity} units`,
+                              },
+                              {
+                                label: "Plant Assignment",
+                                value: card.assignPlant || "Not assigned",
+                              },
+                              {
+                                label: "Start Date",
+                                value: card.startDate
                                   ? new Date(
                                       card.startDate
                                     ).toLocaleDateString()
-                                  : "Not set"}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                              <span className="text-xs text-gray-500">
-                                Card Number
-                              </span>
-                              <span className="text-sm font-medium text-blue-600">
-                                {card.cardName}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center justify-between py-2">
-                              <span className="text-xs text-gray-500">
-                                Created
-                              </span>
-                              <span className="text-sm font-medium text-gray-900">
-                                {new Date(card.createdAt).toLocaleDateString()}
-                              </span>
-                            </div>
+                                  : "Not set",
+                              },
+                              { label: "Card Number", value: card.cardName },
+                              {
+                                label: "Created",
+                                value: new Date(
+                                  card.createdAt
+                                ).toLocaleDateString(),
+                              },
+                            ].map((item, index) => (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between py-1 sm:py-2 border-b border-gray-100"
+                              >
+                                <span className="text-xs text-gray-500">
+                                  {item.label}
+                                </span>
+                                <span className="text-xs sm:text-sm font-medium text-gray-900 truncate ml-2">
+                                  {item.value}
+                                </span>
+                              </div>
+                            ))}
                           </div>
-                        </div>
 
-                        {/* Description Section */}
-                        {card.description && (
-                          <div className="mt-4 pt-4 border-t border-gray-200">
-                            <p className="text-xs text-gray-500 mb-2">
-                              Production Notes
-                            </p>
-                            <p className="text-sm text-gray-700 leading-relaxed line-clamp-2">
-                              {card.description}
-                            </p>
-                          </div>
-                        )}
+                          {/* Description */}
+                          {card.description && (
+                            <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-200">
+                              <p className="text-xs text-gray-500 mb-2">
+                                Production Notes
+                              </p>
+                              <p className="text-xs sm:text-sm text-gray-700 line-clamp-2">
+                                {card.description}
+                              </p>
+                            </div>
+                          )}
 
-                        {/* Action Buttons Footer */}
-                        <div className="mt-6 pt-4 border-t border-gray-100">
-                          <div className="flex items-center gap-3">
+                          {/* Action Buttons */}
+                          <div className="mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-gray-100">
                             {getCardActionButtons(card)}
                           </div>
                         </div>
@@ -804,49 +610,48 @@ export function CreateProductionCardDialog({
                     ))}
                 </div>
               ) : (
-                <div className="bg-white rounded-xl border-2 border-dashed border-gray-200 p-12 text-center">
-                  <div className="w-20 h-20 bg-linear-to-br from-blue-50 to-blue-100 rounded-xl flex items-center justify-center mx-auto mb-6">
-                    <Package className="w-10 h-10 text-blue-500" />
+                <div className="bg-white rounded-xl border-2 border-dashed border-gray-200 p-8 sm:p-12 text-center">
+                  <div className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4 sm:mb-6">
+                    <Package className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-blue-500" />
                   </div>
-                  <h4 className="text-xl font-semibold text-gray-900 mb-3">
+                  <h4 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 mb-2 sm:mb-3">
                     No Production Cards
                   </h4>
-                  <p className="text-gray-600 mb-8 max-w-md mx-auto leading-relaxed">
+                  <p className="text-sm text-gray-600 mb-6 sm:mb-8 max-w-md mx-auto">
                     Create production cards to organise and track different
                     aspects of production.
                   </p>
                   <Button
-                    className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white px-6 py-3 text-base"
+                    className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white text-sm sm:text-base"
                     onClick={() => setShowProductionCardForm(true)}
                   >
-                    <Plus className="w-5 h-5 mr-2" />
+                    <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                     Create Your First Card
                   </Button>
                 </div>
               )}
-
-              {/* Sticky Action Buttons */}
-              <div className="sticky bottom-0 mt-5 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200/80 shadow-2xl shadow-gray-900/10 z-50">
-                <div className="px-12 py-6 flex justify-end gap-4">
-                  <Button
-                    onClick={onClose}
-                    variant="outline"
-                    size="lg"
-                    className="px-8 py-3 h-12 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 shadow-sm"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleCreateProductionCard}
-                    size="lg"
-                    className="px-8 py-3 h-12 bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 border-0"
-                  >
-                    <Factory className="w-5 h-5 mr-2" />
-                    Start Production
-                  </Button>
-                </div>
-              </div>
             </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="sticky bottom-0 px-4 sm:px-6 md:px-8 lg:px-12 py-4 sm:py-6 bg-white/95 backdrop-blur-sm border-t border-gray-200">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
+            <Button
+              onClick={onClose}
+              variant="outline"
+              size={isMobile ? "sm" : "default"}
+              className="w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              size={isMobile ? "sm" : "default"}
+              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
+            >
+              <Factory className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+              Start Production
+            </Button>
           </div>
         </div>
       </DialogContent>
@@ -865,9 +670,7 @@ export function CreateProductionCardDialog({
           const projId =
             selectedProject?.project?._id ||
             selectedProject?.id ||
-            selectedProject?._id ||
-            selectedProject?.projectId;
-
+            selectedProject?._id;
           if (projId) fetchProductionCardsForProject(projId);
         }}
       />

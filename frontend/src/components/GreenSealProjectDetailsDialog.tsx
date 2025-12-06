@@ -25,6 +25,7 @@ import {
   Workflow,
   X,
   Palette,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -60,6 +61,11 @@ import {
   formatDateDisplay,
   getStage,
 } from "../lib/utils";
+import api from "../lib/api";
+import CostTable from "./CostTable";
+import LabourTable from "./LabourTable";
+import SummaryTable from "./SummaryTable";
+import { generateProjectPDF } from "../utils/pdfDownload";
 
 export type Props = {
   open: boolean;
@@ -137,6 +143,17 @@ export function GreenSealProjectDetailsDialog(props: Props) {
   const [editedProject, setEditedProject] = useState<ProductDevelopment | null>(
     null
   );
+
+  const [costData, setCostData] = useState({
+    upper: [],
+    component: [],
+    material: [],
+    packaging: [],
+    misc: [],
+    labour: { items: [], directTotal: 0 },
+    summary: {},
+  });
+
   const [isLoading, setIsLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState("details");
@@ -345,29 +362,29 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     setSampleFiles((s) => s.filter((_, idx) => idx !== i));
   }, []);
 
-  const getActiveColorVariant = useCallback((): ColorVariantDataType | null => {
-    if (!localColorVariants || localColorVariants.size === 0) return null;
-    if (!activeColorTab) return null;
-    return localColorVariants.get(activeColorTab) || null;
-  }, [localColorVariants, activeColorTab]);
+  // const getActiveColorVariant = useCallback((): ColorVariantDataType | null => {
+  //   if (!localColorVariants || localColorVariants.size === 0) return null;
+  //   if (!activeColorTab) return null;
+  //   return localColorVariants.get(activeColorTab) || null;
+  // }, [localColorVariants, activeColorTab]);
 
-  const getActiveColorMaterials = useCallback((): Material[] => {
-    const v = getActiveColorVariant();
-    if (v && Array.isArray(v.materials) && v.materials.length > 0)
-      return v.materials;
-    if (project?.color && activeColorTab === project.color)
-      return DEFAULT_MATERIALS();
-    return [];
-  }, [getActiveColorVariant, project?.color, activeColorTab]);
+  // const getActiveColorMaterials = useCallback((): Material[] => {
+  //   const v = getActiveColorVariant();
+  //   if (v && Array.isArray(v.materials) && v.materials.length > 0)
+  //     return v.materials;
+  //   if (project?.color && activeColorTab === project.color)
+  //     return DEFAULT_MATERIALS();
+  //   return [];
+  // }, [getActiveColorVariant, project?.color, activeColorTab]);
 
-  const getActiveColorComponents = useCallback((): CompType[] => {
-    const v = getActiveColorVariant();
-    if (v && Array.isArray(v.components) && v.components.length > 0)
-      return v.components;
-    if (project?.color && activeColorTab === project.color)
-      return DEFAULT_COMPONENTS();
-    return [];
-  }, [getActiveColorVariant, project?.color, activeColorTab]);
+  // const getActiveColorComponents = useCallback((): CompType[] => {
+  //   const v = getActiveColorVariant();
+  //   if (v && Array.isArray(v.components) && v.components.length > 0)
+  //     return v.components;
+  //   if (project?.color && activeColorTab === project.color)
+  //     return DEFAULT_COMPONENTS();
+  //   return [];
+  // }, [getActiveColorVariant, project?.color, activeColorTab]);
 
   const shouldShowDefaultData = useCallback(() => {
     return (
@@ -547,8 +564,220 @@ export function GreenSealProjectDetailsDialog(props: Props) {
     }
   }, [project]);
 
-  if (!project || !editedProject) return null;
+  // Update loadCostData to fetch from color variants
+  const loadCostData = async () => {
+    if (!project?._id) return;
 
+    try {
+      // Check if we have color variants and an active color tab
+      if (localColorVariants && localColorVariants.size > 0 && activeColorTab) {
+        const variant = localColorVariants.get(activeColorTab);
+        if (variant?.costing) {
+          setCostData({
+            upper: variant.costing.upper || [],
+            component: variant.costing.component || [],
+            material: variant.costing.material || [],
+            packaging: variant.costing.packaging || [],
+            misc: variant.costing.misc || [],
+            labour: variant.costing.labour || { items: [], directTotal: 0 },
+            summary: variant.costing.summary || getEmptySummary(),
+          });
+          return;
+        }
+      }
+
+      // Fallback to default API calls
+      const [summary, upper, component, material, packaging, misc, labour] =
+        await Promise.all([
+          api.get(`/projects/${project._id}/costs`),
+          api.get(`/projects/${project._id}/costs/upper`),
+          api.get(`/projects/${project._id}/costs/component`),
+          api.get(`/projects/${project._id}/costs/material`),
+          api.get(`/projects/${project._id}/costs/packaging`),
+          api.get(`/projects/${project._id}/costs/miscellaneous`),
+          api.get(`/projects/${project._id}/costs/labour`),
+        ]);
+
+      setCostData({
+        upper: upper.data.rows,
+        component: component.data.rows,
+        material: material.data.rows,
+        packaging: packaging.data.rows,
+        misc: misc.data.rows,
+        labour: labour.data.labour,
+        summary: summary.data.summary,
+      });
+    } catch (error) {
+      console.error("Error loading cost data:", error);
+      toast.error("Failed to load cost data");
+    }
+  };
+
+  // Add this helper function
+  const getEmptySummary = () => ({
+    upperTotal: 0,
+    componentTotal: 0,
+    materialTotal: 0,
+    packagingTotal: 0,
+    miscTotal: 0,
+    labourTotal: 0,
+    additionalCosts: 0,
+    profitMargin: 0,
+    profitAmount: 0,
+    tentativeCost: 0,
+  });
+
+  // Update the effect to reload when color tab changes
+  useEffect(() => {
+    if (open && project?._id) {
+      loadCostData();
+    }
+  }, [open, project?._id, activeColorTab]); // Added activeColorTab dependency
+
+  // Update convertColorVariants to include costing
+  function convertColorVariants(projectData: any): Map<string, any> {
+    const variantsMap = new Map<string, any>();
+    if (!projectData?.colorVariants) return variantsMap;
+
+    const getEmptyCosting = () => ({
+      upper: [],
+      material: [],
+      component: [],
+      packaging: [],
+      misc: [],
+      labour: { items: [], directTotal: 0 },
+      summary: getEmptySummary(),
+    });
+
+    if (projectData.colorVariants instanceof Map) {
+      for (const [k, v] of projectData.colorVariants.entries()) {
+        variantsMap.set(k, {
+          materials: Array.isArray(v?.materials) ? v.materials : [],
+          components: Array.isArray(v?.components) ? v.components : [],
+          images: Array.isArray(v?.images) ? v.images : [],
+          costing: v?.costing || getEmptyCosting(),
+          updatedBy: v?.updatedBy || null,
+          updatedAt: v?.updatedAt ? new Date(v.updatedAt) : new Date(),
+        });
+      }
+      return variantsMap;
+    }
+
+    for (const [k, v] of Object.entries(projectData.colorVariants || {})) {
+      const val: any = v;
+      variantsMap.set(k, {
+        materials: Array.isArray(val?.materials) ? val.materials : [],
+        components: Array.isArray(val?.components) ? val.components : [],
+        images: Array.isArray(val?.images) ? val.images : [],
+        costing: val?.costing || getEmptyCosting(),
+        updatedBy: val?.updatedBy || null,
+        updatedAt: val?.updatedAt ? new Date(val.updatedAt) : new Date(),
+      });
+    }
+    return variantsMap;
+  }
+  // Add this function inside the GreenSealProjectDetailsDialog component
+
+  const handleDownloadPDF = async () => {
+    try {
+      if (!project) return;
+
+      // Get cost data for the DEFAULT/MAIN color (from API)
+      const [
+        summaryRes,
+        upperRes,
+        componentRes,
+        materialRes,
+        packagingRes,
+        miscRes,
+        labourRes,
+      ] = await Promise.all([
+        api.get(`/projects/${project._id}/costs`),
+        api.get(`/projects/${project._id}/costs/upper`),
+        api.get(`/projects/${project._id}/costs/component`),
+        api.get(`/projects/${project._id}/costs/material`),
+        api.get(`/projects/${project._id}/costs/packaging`),
+        api.get(`/projects/${project._id}/costs/miscellaneous`),
+        api.get(`/projects/${project._id}/costs/labour`),
+      ]);
+
+      // Prepare DEFAULT cost data
+      const defaultCostData = {
+        upper: upperRes.data.rows || [],
+        component: componentRes.data.rows || [],
+        material: materialRes.data.rows || [],
+        packaging: packagingRes.data.rows || [],
+        miscellaneous: miscRes.data.rows || [],
+        labour: labourRes.data.labour || { directTotal: 0, items: [] },
+        summary: summaryRes.data.hasCostData ? summaryRes.data.summary : null,
+      };
+
+      // Prepare COLOR VARIANTS data from localColorVariants
+      const colorVariantsData: Record<string, any> = {};
+
+      // Collect cost data for each color variant from localColorVariants
+      for (const colorId of colorVariantTabs) {
+        const variant = localColorVariants.get(colorId);
+        if (variant?.costing) {
+          colorVariantsData[colorId] = {
+            color: colorId,
+            costing: {
+              upper: variant.costing.upper || [],
+              component: variant.costing.component || [],
+              material: variant.costing.material || [],
+              packaging: variant.costing.packaging || [],
+              misc: variant.costing.misc || [],
+              labour: variant.costing.labour || { directTotal: 0, items: [] },
+              summary: variant.costing.summary || getEmptySummary(),
+            },
+            materials: variant.materials || [],
+            components: variant.components || [],
+            images: variant.images || [],
+          };
+        }
+      }
+
+      const pdfProject = {
+        autoCode: project.autoCode,
+        company: { name: project.company?.name || "-" },
+        brand: { name: project.brand?.name || "-" },
+        category: { name: project.category?.name || "-" },
+        type: { name: project.type?.name || "-" },
+        gender: project.gender || "-",
+        artName: project.artName || "-",
+        color: project.color || "-",
+        priority: project.priority || "-",
+        redSealTargetDate: project.redSealTargetDate || "",
+        assignPerson: { name: project.assignPerson?.name || "-" },
+        productDesc: project.productDesc || "-",
+        clientApproval: project.clientApproval || "-",
+        nextUpdate: {
+          date: project.nextUpdate?.date || "",
+          note: project.nextUpdate?.note || "",
+        },
+        coverImage: project.coverImage
+          ? getFullImageUrl(project.coverImage)
+          : null,
+        sampleImages: (project.sampleImages || []).map(getFullImageUrl),
+        costData: defaultCostData,
+      };
+
+      const activeTab = project.status;
+
+      await generateProjectPDF({
+        project: pdfProject,
+        costData: defaultCostData,
+        activeTab,
+        colorVariants: colorVariantsData, // Pass actual color variant data
+      });
+
+      toast.success("PDF downloaded successfully!");
+    } catch (err) {
+      console.error("PDF Error:", err);
+      toast.error("PDF generation failed");
+    }
+  };
+  if (!editedProject || !project) return null;
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -600,6 +829,17 @@ export function GreenSealProjectDetailsDialog(props: Props) {
               </div>
 
               <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+                {/* Add PDF Download Button */}
+                <Button
+                  onClick={handleDownloadPDF}
+                  variant="outline"
+                  className="bg-white hover:bg-gray-50 text-xs md:text-sm border-2"
+                  size={isMobile ? "sm" : "default"}
+                >
+                  <Download className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  {isMobile ? "PDF" : "Download PDF"}
+                </Button>
+
                 {!isEditing ? (
                   <>
                     <Button
@@ -1470,103 +1710,108 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                     )}
                   </div>
 
-                  {(colorVariantTabs.length > 0 || shouldShowDefaultData()) && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                      <div className="bg-white border-2 border-purple-200 rounded-xl p-4 md:p-6">
-                        <h4 className="text-base md:text-lg font-semibold text-purple-900 mb-3 md:mb-4">
-                          Components Used
-                        </h4>
-                        <div className="space-y-2 md:space-y-3">
-                          <div className="grid grid-cols-3 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
-                            <div>COMPONENT</div>
-                            <div>DESCRIPTION</div>
-                            <div>CONSUMPTION</div>
+                  {(colorVariantTabs.length > 0 || shouldShowDefaultData()) &&
+                    (() => {
+                      // Count how many cost tables have data
+                      const costTableCount = [
+                        costData.upper,
+                        costData.component,
+                        costData.material,
+                        costData.packaging,
+                        costData.misc,
+                      ].filter((table) => table.length > 0).length;
+
+                      const hasLabour =
+                        costData.labour.items &&
+                        costData.labour.items.length > 0;
+                      const totalItems = costTableCount + (hasLabour ? 1 : 0);
+
+                      // No data at all
+                      if (totalItems === 0) {
+                        return (
+                          <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
+                            <Calculator className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+                            <p className="text-base font-medium text-gray-600">
+                              No costing data available
+                            </p>
+                            <p className="text-sm mt-1 text-gray-500">
+                              Add cost details for this color variant
+                            </p>
                           </div>
-                          <div className="space-y-1 md:space-y-2 max-h-48 md:max-h-64 overflow-y-auto">
-                            {getActiveColorComponents().length > 0 ? (
-                              getActiveColorComponents().map(
-                                (component, index) => (
-                                  <div
-                                    key={index}
-                                    className="grid grid-cols-3 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b border-gray-200"
-                                  >
-                                    <div className="font-medium truncate">
-                                      {component.name}
-                                    </div>
-                                    <div className="text-gray-600 truncate">
-                                      {component.desc}
-                                    </div>
-                                    <div className="text-gray-600 truncate">
-                                      {component.consumption}
-                                    </div>
-                                  </div>
-                                )
-                              )
-                            ) : (
-                              <div className="text-center py-4 text-gray-500 text-sm">
-                                No components data available
-                              </div>
-                            )}
-                          </div>
-                          <div className="bg-purple-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
-                            <div className="text-xs md:text-sm text-purple-800">
-                              <strong>Total Components:</strong>{" "}
-                              {getActiveColorComponents().length} different
-                              components used in production
+                        );
+                      }
+
+                      // If we have 1-3 items total, use single column
+                      // If we have 4+ items, use two columns
+                      const useTwoColumns = totalItems >= 4;
+
+                      return (
+                        <div
+                          className={`grid gap-4 md:gap-6 ${
+                            useTwoColumns
+                              ? "grid-cols-1 lg:grid-cols-2"
+                              : "grid-cols-1"
+                          }`}
+                        >
+                          {/* Left Column - Always show cost tables here if they exist */}
+                          {costTableCount > 0 && (
+                            <div className="space-y-4 md:space-y-6">
+                              {costData.upper.length > 0 && (
+                                <CostTable
+                                  title="Upper Cost"
+                                  rows={costData.upper}
+                                />
+                              )}
+                              {costData.component.length > 0 && (
+                                <CostTable
+                                  title="Component Cost"
+                                  rows={costData.component}
+                                />
+                              )}
+                              {costData.material.length > 0 && (
+                                <CostTable
+                                  title="Material Cost"
+                                  rows={costData.material}
+                                />
+                              )}
+                              {costData.packaging.length > 0 && (
+                                <CostTable
+                                  title="Packaging Cost"
+                                  rows={costData.packaging}
+                                />
+                              )}
+                              {costData.misc.length > 0 && (
+                                <CostTable
+                                  title="Miscellaneous Cost"
+                                  rows={costData.misc}
+                                />
+                              )}
                             </div>
-                          </div>
-                        </div>
-                      </div>
+                          )}
 
-                      <div className="bg-white border-2 border-teal-200 rounded-xl p-4 md:p-6">
-                        <h4 className="text-base md:text-lg font-semibold text-teal-900 mb-3 md:mb-4">
-                          Materials Used
-                        </h4>
-                        <div className="space-y-2 md:space-y-3">
-                          <div className="grid grid-cols-3 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-teal-50 p-2 rounded">
-                            <div>MATERIAL</div>
-                            <div>DESCRIPTION</div>
-                            <div>CONSUMPTION</div>
-                          </div>
+                          {/* Right Column - Show labour table */}
+                          {hasLabour && (
+                            <div className="space-y-4 md:space-y-6">
+                              <LabourTable labour={costData.labour} />
 
-                          <div className="space-y-1 md:space-y-2 max-h-48 md:max-h-64 overflow-y-auto">
-                            {getActiveColorMaterials().length > 0 ? (
-                              getActiveColorMaterials().map(
-                                (material, index) => (
-                                  <div
-                                    key={index}
-                                    className="grid grid-cols-3 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b border-gray-200"
-                                  >
-                                    <div className="font-medium truncate">
-                                      {material.name}
-                                    </div>
-                                    <div className="text-gray-600 truncate">
-                                      {material.desc}
-                                    </div>
-                                    <div className="text-gray-600 truncate">
-                                      {material.consumption}
-                                    </div>
-                                  </div>
-                                )
-                              )
-                            ) : (
-                              <div className="text-center py-4 text-gray-500 text-sm">
-                                No materials data available
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="bg-teal-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
-                            <div className="text-xs md:text-sm text-teal-800">
-                              <strong>Total Materials:</strong>{" "}
-                              {getActiveColorMaterials().length} different
-                              materials used in production
+                              {/* If labour is alone in right column with no left column content */}
+                              {costTableCount === 0 && useTwoColumns && (
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+                                  <p className="text-sm text-gray-500">
+                                    Add cost tables to see complete analysis
+                                  </p>
+                                </div>
+                              )}
                             </div>
-                          </div>
+                          )}
+
+                          {/* If we're using single column but labour should come after cost tables
+                          {!useTwoColumns && hasLabour && (
+                            <LabourTable labour={costData.labour} />
+                          )} */}
                         </div>
-                      </div>
-                    </div>
-                  )}
+                      );
+                    })()}
                 </div>
               )}
 
@@ -1885,9 +2130,33 @@ const DEFAULT_COMPONENTS = (): CompType[] => [
   { name: "Welding", desc: "-", consumption: "-" },
 ];
 
+// Update convertColorVariants function in GreenSealProjectDetailsDialog
+
 function convertColorVariants(projectData: any): Map<string, any> {
   const variantsMap = new Map<string, any>();
   if (!projectData?.colorVariants) return variantsMap;
+
+  // Helper function to get empty costing structure
+  const getEmptyCosting = () => ({
+    upper: [],
+    material: [],
+    component: [],
+    packaging: [],
+    misc: [],
+    labour: { items: [], directTotal: 0 },
+    summary: {
+      upperTotal: 0,
+      componentTotal: 0,
+      materialTotal: 0,
+      packagingTotal: 0,
+      miscTotal: 0,
+      labourTotal: 0,
+      additionalCosts: 0,
+      profitMargin: 0,
+      profitAmount: 0,
+      tentativeCost: 0,
+    },
+  });
 
   if (projectData.colorVariants instanceof Map) {
     for (const [k, v] of projectData.colorVariants.entries()) {
@@ -1895,6 +2164,7 @@ function convertColorVariants(projectData: any): Map<string, any> {
         materials: Array.isArray(v?.materials) ? v.materials : [],
         components: Array.isArray(v?.components) ? v.components : [],
         images: Array.isArray(v?.images) ? v.images : [],
+        costing: v?.costing || getEmptyCosting(),
         updatedBy: v?.updatedBy || null,
         updatedAt: v?.updatedAt ? new Date(v.updatedAt) : new Date(),
       });
@@ -1908,6 +2178,7 @@ function convertColorVariants(projectData: any): Map<string, any> {
       materials: Array.isArray(val?.materials) ? val.materials : [],
       components: Array.isArray(val?.components) ? val.components : [],
       images: Array.isArray(val?.images) ? val.images : [],
+      costing: val?.costing || getEmptyCosting(),
       updatedBy: val?.updatedBy || null,
       updatedAt: val?.updatedAt ? new Date(val.updatedAt) : new Date(),
     });

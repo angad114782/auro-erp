@@ -18,6 +18,7 @@ import {
   Upload,
   Workflow,
   X,
+  Download,
 } from "lucide-react";
 import React, {
   useCallback,
@@ -48,6 +49,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Separator } from "./ui/separator";
+import { generateProjectPDF } from "../utils/pdfDownload";
 
 function dataUrlToFile(dataUrl: string, filename: string) {
   const arr = dataUrl.split(",");
@@ -527,6 +529,86 @@ export function POPendingProjectDetailsDialog(props: Props) {
     );
   }, [project]);
 
+  // PDF Download Handler
+  const handleDownloadPDF = async () => {
+    try {
+      if (!project) return;
+
+      // Fetch cost data for PDF
+      let costData = null;
+      try {
+        const [summaryRes, materialsRes, componentsRes] = await Promise.all([
+          api.get(`/projects/${project._id}/costs`),
+          api.get(`/projects/${project._id}/costs/material`),
+          api.get(`/projects/${project._id}/costs/component`),
+        ]);
+
+        costData = {
+          material: materialsRes.data.rows || [],
+          component: componentsRes.data.rows || [],
+          summary: summaryRes.data.hasCostData ? summaryRes.data.summary : null,
+        };
+      } catch (error) {
+        console.warn("Could not load cost data for PDF:", error);
+        costData = {
+          material: project.materials || [],
+          component: project.components || [],
+          summary: null,
+        };
+      }
+
+      // Prepare PO details
+      const poDetails = {
+        poNumber: (project as any)?.poNumber || project.poNumber || "",
+        orderQuantity:
+          (project as any)?.orderQuantity || project.orderQuantity || 0,
+        unitPrice: (project as any)?.unitPrice || project.unitPrice || 0,
+        totalAmount: (project as any)?.poValue || project.poValue || 0,
+        deliveryDate: project.redSealTargetDate || "",
+        paymentTerms: "Standard 30 days",
+      };
+
+      const pdfProject = {
+        ...project,
+        po: poDetails,
+        costData: {
+          material: costData.material,
+          component: costData.component,
+          summary: costData.summary || {
+            materialTotal:
+              costData.material.reduce(
+                (sum: number, m: any) => sum + (m.cost || 0),
+                0
+              ) || 0,
+            componentTotal:
+              costData.component.reduce(
+                (sum: number, c: any) => sum + (c.cost || 0),
+                0
+              ) || 0,
+            tentativeCost: (project as any)?.poValue || 0,
+          },
+        },
+        // Ensure images are full URLs
+        coverImage: project.coverImage
+          ? getFullImageUrl(project.coverImage)
+          : null,
+        sampleImages: (project.sampleImages || []).map(getFullImageUrl),
+      };
+
+      await generateProjectPDF({
+        project: pdfProject,
+        costData: pdfProject.costData,
+        activeTab: "po_pending",
+        colorVariants: {}, // No color variants for PO Pending
+      });
+
+      toast.success("PDF downloaded successfully!");
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      toast.error("Failed to generate PDF");
+    }
+  };
+
   // Responsive grid classes
   const responsiveGridClass = isMobile
     ? "grid grid-cols-2 gap-3"
@@ -583,6 +665,17 @@ export function POPendingProjectDetailsDialog(props: Props) {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {/* PDF Download Button */}
+              <Button
+                onClick={handleDownloadPDF}
+                variant="outline"
+                className="bg-white hover:bg-gray-50 text-xs md:text-sm border-2"
+                size={isMobile ? "sm" : "default"}
+              >
+                <Download className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                {isMobile ? "PDF" : "Download PDF"}
+              </Button>
+
               <Button
                 onClick={handleAdvanceToPOApproved}
                 disabled={!editedProject?.poNumber}

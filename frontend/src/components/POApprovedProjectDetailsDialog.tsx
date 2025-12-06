@@ -1,6 +1,7 @@
 // src/components/POApprovedProjectDetailsDialog.tsx
 import {
   CheckCircle,
+  Download,
   Edit2,
   Factory,
   ImageIcon,
@@ -48,6 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { generateProjectPDF } from "../utils/pdfDownload";
 
 type ProductDevelopment = {
   _id?: string;
@@ -465,6 +467,114 @@ export function POApprovedProjectDetailsDialog({
     }
   }, [editedProject, onOpenChange, reloadProjects]);
 
+  // Add this import at the top
+
+  // Add this function inside the component
+  const handleDownloadPDF = async () => {
+    try {
+      if (!project) return;
+
+      toast.loading("Generating PDF...");
+
+      // Fetch cost data
+      const [
+        summaryRes,
+        upperRes,
+        componentRes,
+        materialRes,
+        packagingRes,
+        miscRes,
+        labourRes,
+      ] = await Promise.all([
+        api
+          .get(`/projects/${project._id}/costs`)
+          .catch(() => ({ data: { hasCostData: false, summary: null } })),
+        api
+          .get(`/projects/${project._id}/costs/upper`)
+          .catch(() => ({ data: { rows: [] } })),
+        api
+          .get(`/projects/${project._id}/costs/component`)
+          .catch(() => ({ data: { rows: [] } })),
+        api
+          .get(`/projects/${project._id}/costs/material`)
+          .catch(() => ({ data: { rows: [] } })),
+        api
+          .get(`/projects/${project._id}/costs/packaging`)
+          .catch(() => ({ data: { rows: [] } })),
+        api
+          .get(`/projects/${project._id}/costs/miscellaneous`)
+          .catch(() => ({ data: { rows: [] } })),
+        api
+          .get(`/projects/${project._id}/costs/labour`)
+          .catch(() => ({ data: { labour: { directTotal: 0, items: [] } } })),
+      ]);
+
+      const costData = {
+        upper: upperRes.data.rows || [],
+        component: componentRes.data.rows || [],
+        material: materialRes.data.rows || [],
+        packaging: packagingRes.data.rows || [],
+        miscellaneous: miscRes.data.rows || [],
+        labour: labourRes.data.labour || { directTotal: 0, items: [] },
+        summary: summaryRes.data.hasCostData ? summaryRes.data.summary : null,
+      };
+
+      // Prepare PO details
+      const pdfProject = {
+        autoCode: project.autoCode,
+        company: { name: project.company?.name || "-" },
+        brand: { name: project.brand?.name || "-" },
+        category: { name: project.category?.name || "-" },
+        type: { name: project.type?.name || "-" },
+        gender: project.gender || "-",
+        artName: project.artName || "-",
+        color: project.color || "-",
+        priority: project.priority || "-",
+        redSealTargetDate: project.redSealTargetDate || "",
+        assignPerson: { name: project.assignPerson?.name || "-" },
+        productDesc: project.productDesc || "-",
+        clientApproval: project.clientApproval || "-",
+        nextUpdate: {
+          date: project.nextUpdate?.date || "",
+          note: project.nextUpdate?.note || "",
+        },
+        po: {
+          poNumber: project.po?.poNumber || project.poNumber || "",
+          orderQuantity:
+            project.po?.orderQuantity || project.orderQuantity || 0,
+          unitPrice: project.po?.unitPrice || project.unitPrice || 0,
+          totalAmount: project.po?.totalAmount || project.poValue || 0,
+          deliveryDate: project.redSealTargetDate || "",
+          paymentTerms: "Standard 30 days",
+        },
+        coverImage: project.coverImage
+          ? getFullImageUrl(project.coverImage)
+          : null,
+        sampleImages: (project.sampleImages || []).map(getFullImageUrl),
+        costData,
+        // Include materials and components if available
+        materials: project.materials || [],
+        components: project.components || [],
+      };
+
+      const activeTab = "po_approved";
+
+      await generateProjectPDF({
+        project: pdfProject,
+        costData,
+        activeTab,
+        colorVariants: {},
+      });
+
+      toast.dismiss();
+      toast.success("PDF downloaded successfully!");
+    } catch (err) {
+      console.error("PDF Error:", err);
+      toast.dismiss();
+      toast.error("PDF generation failed");
+    }
+  };
+
   if (!project) return null;
 
   // Responsive grid classes
@@ -480,8 +590,8 @@ export function POApprovedProjectDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`!max-w-[95vw] !w-[95vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col ${
-          isMobile ? "!max-w-full !w-full mx-0 my-0" : ""
+        className={`max-w-[95vw]! w-[95vw]! max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col ${
+          isMobile ? "max-w-[96vw]! w-full! mx-0 my-0" : ""
         }`}
       >
         {/* Sticky Header Section */}
@@ -517,6 +627,15 @@ export function POApprovedProjectDetailsDialog({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={handleDownloadPDF}
+                variant="outline"
+                className="bg-white hover:bg-gray-50 text-xs md:text-sm border-2"
+                size={isMobile ? "sm" : "default"}
+              >
+                <Download className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                {isMobile ? "PDF" : "Download PDF"}
+              </Button>
               <Button
                 onClick={handleAdvanceToProduction}
                 className="bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-xs md:text-sm"

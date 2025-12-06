@@ -10,8 +10,16 @@ import {
   Plus,
   CheckCircle,
   Calculator,
+  Building,
+  Package,
+  IndianRupee,
+  Users,
+  Target,
+  BarChart3,
+  ChevronRight,
+  AlertCircle,
+  Clock,
 } from "lucide-react";
-
 import {
   Dialog,
   DialogContent,
@@ -19,7 +27,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "./ui/dialog";
-
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
@@ -32,18 +39,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-
 import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
-import { toast } from "sonner@2.0.3";
-import api from "../lib/api"; // REQUIRED
-
-// <-- NEW: import create dialog -->
+import { toast } from "sonner";
+import api from "../lib/api";
 import { CreateProductionCardDialog } from "./CreateProductionCardDialog";
 
-// ============================================
-// READ-ONLY COST CATEGORY COMPONENT (6 tables)
-// ============================================
+// Media query hook
+const useMediaQuery = (query: string) => {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+    const listener = () => setMatches(media.matches);
+    window.addEventListener("resize", listener);
+    return () => window.removeEventListener("resize", listener);
+  }, [matches, query]);
+  return matches;
+};
+
 interface CostItem {
   _id: string;
   item: string;
@@ -52,7 +68,7 @@ interface CostItem {
   cost: number;
 }
 
-interface readOnlyCostCategoryProps {
+interface ReadOnlyCostCategoryProps {
   title: string;
   color: "orange" | "purple" | "teal" | "rose" | "gray" | "amber";
   items: CostItem[];
@@ -62,7 +78,8 @@ const ReadOnlyCostCategory = ({
   title,
   color,
   items,
-}: readOnlyCostCategoryProps) => {
+}: ReadOnlyCostCategoryProps) => {
+  const isMobile = useMediaQuery("(max-width: 768px)");
   const total = items.reduce((s, i) => s + (Number(i.cost) || 0), 0);
 
   const colorClasses = {
@@ -77,39 +94,68 @@ const ReadOnlyCostCategory = ({
   return (
     <Card className={`rounded-lg border ${colorClasses[color]}`}>
       <CardContent className="p-0">
-        {/* Header */}
-        <div className="p-3 flex items-center gap-2 font-semibold">
+        <div className="p-2 flex items-center gap-2 font-semibold text-sm">
           <Calculator className="w-4 h-4" />
           {title}
         </div>
 
-        {/* Table header */}
-        <div className="grid grid-cols-12 p-2 bg-gray-100 text-xs font-medium border-b">
-          <div className="col-span-3 text-center">ITEM</div>
-          <div className="col-span-4 text-center">DESCRIPTION</div>
-          <div className="col-span-2 text-center">CONSUMPTION</div>
-          <div className="col-span-3 text-center">COST</div>
-        </div>
-
-        {/* Rows */}
-        <div className="max-h-56 overflow-y-auto">
-          {items.map((row) => (
-            <div
-              key={row._id}
-              className="grid grid-cols-12 text-xs p-2 border-b"
-            >
-              <div className="col-span-3 text-center">{row.item}</div>
-              <div className="col-span-4 text-center">{row.description}</div>
-              <div className="col-span-2 text-center">{row.consumption}</div>
-              <div className="col-span-3 text-center font-semibold">
-                ₹{Number(row.cost || 0).toFixed(2)}
-              </div>
+        {/* MOBILE TABLE */}
+        {isMobile ? (
+          <div className="p-2 space-y-3">
+            <div className="grid grid-cols-4 text-[10px] font-semibold text-gray-700 bg-gray-100 p-2 rounded-md border">
+              <div className="text-center">ITEM</div>
+              <div className="text-center">DESC</div>
+              <div className="text-center">CONS</div>
+              <div className="text-center">COST</div>
             </div>
-          ))}
-        </div>
 
-        {/* Footer */}
-        <div className="p-3 font-semibold flex justify-between">
+            {items.map((row) => (
+              <div
+                key={row._id}
+                className="grid grid-cols-4 text-[11px] p-2 border rounded-md bg-white shadow-sm"
+              >
+                <div className="text-center truncate">{row.item}</div>
+                <div className="text-center truncate">{row.description}</div>
+                <div className="text-center">{row.consumption}</div>
+                <div className="text-center font-semibold">
+                  ₹{Number(row.cost || 0).toFixed(0)}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-12 p-2 bg-gray-100 text-xs font-medium border-b">
+              <div className="col-span-3 text-center">ITEM</div>
+              <div className="col-span-4 text-center">DESCRIPTION</div>
+              <div className="col-span-2 text-center">CONSUMPTION</div>
+              <div className="col-span-3 text-center">COST</div>
+            </div>
+            <div className="max-h-56 overflow-y-auto">
+              {items.map((row) => (
+                <div
+                  key={row._id}
+                  className="grid grid-cols-12 text-xs p-2 border-b"
+                >
+                  <div className="col-span-3 text-center truncate">
+                    {row.item}
+                  </div>
+                  <div className="col-span-4 text-center truncate">
+                    {row.description}
+                  </div>
+                  <div className="col-span-2 text-center">
+                    {row.consumption}
+                  </div>
+                  <div className="col-span-3 text-center font-semibold">
+                    ₹{Number(row.cost || 0).toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="p-2 font-semibold flex justify-between text-sm">
           <span>Total</span>
           <span>₹{total.toFixed(2)}</span>
         </div>
@@ -117,10 +163,6 @@ const ReadOnlyCostCategory = ({
     </Card>
   );
 };
-
-// ==========================================
-// MAIN COMPONENT START
-// ==========================================
 
 interface ProductionPlan {
   id: string;
@@ -143,7 +185,12 @@ interface ProductionPlan {
   status: string;
   priority: string;
   remarks?: string;
-  project: { _id: string }; // IMPORTANT
+  project: { _id: string };
+  artNameSnapshot?: string;
+  colorSnapshot?: string;
+  coverImageSnapshot?: string;
+  po?: any;
+  quantitySnapshot?: number;
 }
 
 interface Props {
@@ -159,7 +206,9 @@ export function ProductionPlanDetailsDialog({
   plan,
   onStartProduction,
 }: Props) {
-  // Tentative Cost States
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const isTablet = useMediaQuery("(min-width: 769px) and (max-width: 1024px)");
+
   const [costData, setCostData] = useState({
     upper: [],
     component: [],
@@ -173,74 +222,71 @@ export function ProductionPlanDetailsDialog({
     tentativeCost: 0,
   });
 
-  // Load Tentative Cost API
-  const loadTentativeCost = async () => {
-    try {
-      const id = plan?.project?._id;
-      if (!id) return;
+  const [productionPlanningData, setProductionPlanningData] = useState({
+    assignedPlant: "Plant A - Main Factory",
+    sendDate: "2025-01-15",
+    receivedDate: "2025-01-18",
+    soleVendor: "Rubber Solutions Ltd.",
+    soleColor: "Black",
+    soleReceivedDate: "2025-01-20",
+  });
 
-      const sumRes = await api.get(`/projects/${id}/costs`);
-      const s = sumRes.data.summary;
-
-      const sections = [
-        "upper",
-        "component",
-        "material",
-        "packaging",
-        "miscellaneous",
-      ];
-      const results = await Promise.all(
-        sections.map((sec) => api.get(`/projects/${id}/costs/${sec}`))
-      );
-
-      const labourRes = await api.get(`/projects/${id}/costs/labour`);
-
-      setCostData({
-        upper: results[0].data.rows,
-        component: results[1].data.rows,
-        material: results[2].data.rows,
-        packaging: results[3].data.rows,
-        miscellaneous: results[4].data.rows,
-        labour: labourRes.data.items,
-      });
-
-      setSummary({
-        tentativeCost: s.tentativeCost || 0,
-      });
-    } catch (err) {
-      console.error("Failed to load tentative cost:", err);
-    }
-  };
+  const [isEditingRemarks, setIsEditingRemarks] = useState(false);
+  const [editedRemarks, setEditedRemarks] = useState("");
+  const [openCreateCardDialog, setOpenCreateCardDialog] = useState(false);
+  const [isScheduleLoading, setIsScheduleLoading] = useState(false);
 
   useEffect(() => {
+    const loadTentativeCost = async () => {
+      try {
+        const id = plan?.project?._id;
+        if (!id) return;
+
+        const sumRes = await api.get(`/projects/${id}/costs`);
+        const s = sumRes.data.summary;
+
+        const sections = [
+          "upper",
+          "component",
+          "material",
+          "packaging",
+          "miscellaneous",
+        ];
+        const results = await Promise.all(
+          sections.map((sec) => api.get(`/projects/${id}/costs/${sec}`))
+        );
+
+        const labourRes = await api.get(`/projects/${id}/costs/labour`);
+
+        setCostData({
+          upper: results[0].data.rows,
+          component: results[1].data.rows,
+          material: results[2].data.rows,
+          packaging: results[3].data.rows,
+          miscellaneous: results[4].data.rows,
+          labour: labourRes.data.items,
+        });
+
+        setSummary({
+          tentativeCost: s.tentativeCost || 0,
+        });
+      } catch (err) {
+        console.error("Failed to load tentative cost:", err);
+      }
+    };
+
     if (open && plan?.project?._id) {
       loadTentativeCost();
     }
-  }, [open]);
-
-  // -----------------------------------------
-  // Your existing component state continues…
-  // -----------------------------------------
-
-  // open state for CreateProductionCardDialog
-  const [openCreateCardDialog, setOpenCreateCardDialog] = useState(false);
-  // store which production plan (or plan.raw) we're using to prefill the create dialog
-  const [selectedProductionCardForCreate, setSelectedProductionCardForCreate] =
-    useState<any | null>(null);
-
-  // inside ProductionPlanDetailsDialog - example (useEffect)
-  const [isScheduleLoading, setIsScheduleLoading] = useState(false);
+  }, [open, plan?.project?._id]);
 
   useEffect(() => {
     const loadSchedule = async () => {
       try {
         if (!plan?.project?._id) return;
         setIsScheduleLoading(true);
-
-        // call new endpoint
         const res = await api.get(`/projects/${plan.project._id}/schedule`);
         const payload = res.data?.data ?? res.data;
-        // payload.items is an array of calendar docs
         const first =
           Array.isArray(payload.items) && payload.items.length > 0
             ? payload.items[0]
@@ -263,8 +309,6 @@ export function ProductionPlanDetailsDialog({
               ? new Date(sched.soleExpectedDate).toISOString().slice(0, 10)
               : prev.soleReceivedDate,
           }));
-        } else {
-          // no schedule found — keep defaults or set to empty values
         }
       } catch (err) {
         console.error("Failed to load project schedule:", err);
@@ -278,42 +322,6 @@ export function ProductionPlanDetailsDialog({
       loadSchedule();
     }
   }, [open, plan?.project?._id]);
-
-  const [productionPlanningData, setProductionPlanningData] = useState({
-    assignedPlant: "Plant A - Main Factory",
-    sendDate: "2025-01-15",
-    receivedDate: "2025-01-18",
-    soleVendor: "Rubber Solutions Ltd.",
-    soleColor: "Black",
-    soleReceivedDate: "2025-01-20",
-  });
-
-  const [plantsList, setPlantsList] = useState<string[]>([
-    "Plant A - Main Factory",
-    "Plant B - North Unit",
-    "Plant C - South Unit",
-    "Plant D - Export Hub",
-  ]);
-
-  const [vendorsList, setVendorsList] = useState<string[]>([
-    "Rubber Solutions Ltd.",
-    "Elite Sole Manufacturing",
-    "Premium Footwear Materials",
-    "Global Sole Suppliers",
-  ]);
-
-  const [addPlantDialogOpen, setAddPlantDialogOpen] = useState(false);
-  const [addVendorDialogOpen, setAddVendorDialogOpen] = useState(false);
-
-  const [newPlantName, setNewPlantName] = useState("");
-  const [newVendorName, setNewVendorName] = useState("");
-
-  const [isEditingRemarks, setIsEditingRemarks] = useState(false);
-  const [editedRemarks, setEditedRemarks] = useState("");
-
-  // -----------------------------------------
-  // MAIN JSX BEGINS
-  // -----------------------------------------
 
   if (!plan) return null;
 
@@ -351,268 +359,278 @@ export function ProductionPlanDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
-        {/* HEADER */}
-        <div className="sticky top-0 z-50 px-8 py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b-2 border-blue-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div className="w-14 h-14 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
-                <Factory className="w-7 h-7 text-white" />
+      <DialogContent
+        className="max-h-[90vh] overflow-hidden p-0 m-0 flex flex-col"
+        style={{
+          width: isMobile ? "95vw" : isTablet ? "90vw" : "85vw",
+          maxWidth: "1400px",
+        }}
+      >
+        {/* HEADER - Fixed at top */}
+        <div className="sticky top-0 z-50 px-4 sm:px-6 md:px-8 py-4 sm:py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b-2 border-blue-200 shrink-0">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-6">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-xl flex items-center justify-center shadow-lg">
+                <Factory className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-white" />
               </div>
-
-              <div>
-                <DialogTitle className="text-3xl font-semibold text-gray-900 mb-1">
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 truncate">
                   {plan.planName}
                 </DialogTitle>
-
-                <div className="flex items-center gap-4">
-                  <span className="text-lg font-mono text-blue-600">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm sm:text-base md:text-lg font-mono text-blue-600 truncate">
                     {plan.projectCode}
                   </span>
-
                   <Badge
-                    className={`${getPriorityColor(plan.priority)} text-sm px-3 py-1`}
+                    className={`${getPriorityColor(
+                      plan.priority
+                    )} text-xs sm:text-sm px-2 sm:px-3 py-1`}
                   >
                     {plan.priority}
                   </Badge>
                 </div>
               </div>
             </div>
-
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => onOpenChange(false)}
-              className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-gray-100"
+              className="self-end sm:self-center"
             >
-              <X className="w-5 h-5 text-gray-600" />
-            </button>
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
+            </Button>
           </div>
         </div>
 
-        {/* BODY SCROLL */}
+        {/* SCROLLABLE CONTENT AREA */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-8 py-8 space-y-6">
-            {/* PRODUCT INFORMATION + MANUFACTURING */}
+          <div className="px-4 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8 space-y-4 sm:space-y-6">
+            {/* Product Information + Manufacturing */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Product Information */}
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                <h4 className="text-sm font-semibold text-gray-800 mb-3">
+              <div className="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <Package className="w-4 h-4" />
                   Product Information
                 </h4>
-
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Art</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {plan?.artNameSnapshot || "N/A"}
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {plan.artNameSnapshot || "N/A"}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Gender</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {plan?.project?.gender}
+                      {plan?.project?.gender || "N/A"}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Color</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {plan.color || "N/A"}
+                      {plan.colorSnapshot || "N/A"}
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Manufacturing Assignment */}
-              <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
-                <h4 className="text-sm font-semibold text-orange-800 mb-3">
+              <div className="bg-orange-50 rounded-lg p-3 sm:p-4 border border-orange-200">
+                <h4 className="text-sm font-semibold text-orange-800 mb-3 flex items-center gap-2">
+                  <Building className="w-4 h-4" />
                   Manufacturing Assignment
                 </h4>
-
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div>
                     <p className="text-xs text-green-600 mb-1">Quantity</p>
                     <p className="text-sm font-medium text-green-900">
-                      {plan?.quantity?.toLocaleString("en-IN")} units
+                      {(plan.quantity || 0).toLocaleString("en-IN")} units
                     </p>
                   </div>
-
                   <div>
-                    <p className="text-xs text-orange-600 mb-1">Task Coordinator</p>
-                    <p className="text-sm font-medium text-orange-900">
-                      {plan?.assignPerson}
+                    <p className="text-xs text-orange-600 mb-1">
+                      Task Coordinator
+                    </p>
+                    <p className="text-sm font-medium text-orange-900 truncate">
+                      {plan.assignPerson || "N/A"}
                     </p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* PRODUCTION PLANNING (READ-ONLY) */}
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-              <h4 className="text-sm font-semibold text-blue-800 mb-3">
+            {/* Production Planning */}
+            <div className="bg-blue-50 rounded-lg p-3 sm:p-4 border border-blue-200">
+              <h4 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
                 Production Planning
               </h4>
-
-              <div className="grid grid-cols-3 gap-4">
-                {/* Assigned Plant (readonly) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Assigned Plant</p>
-
-                  <div className="relative">
-                    <Input
-                      value={productionPlanningData.assignedPlant}
-                      readOnly
-                      className="h-9 pl-3 pr-3 text-sm border-blue-200 bg-white cursor-default"
-                      aria-readonly="true"
-                    />
-                  </div>
+                  <Input
+                    value={productionPlanningData.assignedPlant}
+                    readOnly
+                    className="h-8 sm:h-9 text-sm border-blue-200 bg-white"
+                  />
                 </div>
-
-                {/* Send Date (readonly) */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Send Date</p>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
                     <Input
                       type="date"
                       value={productionPlanningData.sendDate}
                       readOnly
-                      className="h-9 pl-9 text-sm border-blue-200 bg-white cursor-default"
-                      style={{ colorScheme: "light" }}
-                      aria-readonly="true"
+                      className="h-8 sm:h-9 pl-8 sm:pl-10 text-sm border-blue-200 bg-white"
                     />
                   </div>
                 </div>
-
-                {/* Received Date (readonly) */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Received Date</p>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
                     <Input
                       type="date"
                       value={productionPlanningData.receivedDate}
                       readOnly
-                      className="h-9 pl-9 text-sm border-blue-200 bg-white cursor-default"
-                      style={{ colorScheme: "light" }}
-                      aria-readonly="true"
+                      className="h-8 sm:h-9 pl-8 sm:pl-10 text-sm border-blue-200 bg-white"
                     />
                   </div>
                 </div>
-
-                {/* Sole Vendor (readonly) */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Sole Vendor</p>
-                  <div className="relative">
-                    <Input
-                      value={productionPlanningData.soleVendor}
-                      readOnly
-                      className="h-9 pl-3 pr-3 text-sm border-blue-200 bg-white cursor-default"
-                      aria-readonly="true"
-                    />
-                  </div>
+                  <Input
+                    value={productionPlanningData.soleVendor}
+                    readOnly
+                    className="h-8 sm:h-9 text-sm border-blue-200 bg-white"
+                  />
                 </div>
-
-                {/* Sole Color (already readonly) */}
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Sole Color</p>
-                  <div className="relative">
-                    <Input
-                      value={productionPlanningData.soleColor}
-                      readOnly
-                      className="h-9 pl-3 pr-3 text-sm border-blue-200 bg-white cursor-default"
-                      aria-readonly="true"
-                    />
-                  </div>
+                  <Input
+                    value={productionPlanningData.soleColor}
+                    readOnly
+                    className="h-8 sm:h-9 text-sm border-blue-200 bg-white"
+                  />
                 </div>
-
-                {/* Sole Received Date (readonly) */}
                 <div>
-                  <p className="text-xs text-blue-600 mb-1">Sole Received Date</p>
-
+                  <p className="text-xs text-blue-600 mb-1">
+                    Sole Received Date
+                  </p>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
                     <Input
                       type="date"
                       value={productionPlanningData.soleReceivedDate}
                       readOnly
-                      className="h-9 pl-9 text-sm border-blue-200 bg-white cursor-default"
-                      style={{ colorScheme: "light" }}
-                      aria-readonly="true"
+                      className="h-8 sm:h-9 pl-8 sm:pl-10 text-sm border-blue-200 bg-white"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* ================================
-                 TENTATIVE COST BREAKDOWN (API)
-               ================================ */}
-            <div className="bg-green-50 border border-green-300 rounded-lg p-4 space-y-6">
-              <h4 className="text-lg font-semibold text-green-800 flex items-center gap-2">
-                <Calculator className="w-5 h-5" /> Tentative Cost Breakdown
+            {/* Tentative Cost Breakdown */}
+            <div className="bg-green-50 border border-green-300 rounded-lg p-3 sm:p-4 space-y-4 sm:space-y-6">
+              <h4 className="text-base sm:text-lg font-semibold text-green-800 flex items-center gap-2">
+                <Calculator className="w-4 h-4 sm:w-5 sm:h-5" />
+                Tentative Cost Breakdown
               </h4>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <ReadOnlyCostCategory title="Upper Cost" color="orange" items={costData.upper} />
-
-                <ReadOnlyCostCategory title="Component Cost" color="purple" items={costData.component} />
-
-                <ReadOnlyCostCategory title="Material Cost" color="teal" items={costData.material} />
-
-                <ReadOnlyCostCategory title="Packaging Cost" color="rose" items={costData.packaging} />
-
-                <ReadOnlyCostCategory title="Miscellaneous Cost" color="gray" items={costData.miscellaneous} />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+                <ReadOnlyCostCategory
+                  title="Upper Cost"
+                  color="orange"
+                  items={costData.upper}
+                />
+                <ReadOnlyCostCategory
+                  title="Component Cost"
+                  color="purple"
+                  items={costData.component}
+                />
+                <ReadOnlyCostCategory
+                  title="Material Cost"
+                  color="teal"
+                  items={costData.material}
+                />
+                <ReadOnlyCostCategory
+                  title="Packaging Cost"
+                  color="rose"
+                  items={costData.packaging}
+                />
+                <ReadOnlyCostCategory
+                  title="Miscellaneous Cost"
+                  color="gray"
+                  items={costData.miscellaneous}
+                />
               </div>
-
-              <div className="p-4 bg-white rounded-lg border border-green-400 flex justify-between font-semibold text-green-900">
+              <div className="p-3 sm:p-4 bg-white rounded-lg border border-green-400 flex justify-between font-semibold text-green-900 text-sm sm:text-base">
                 <span>Total Tentative Cost</span>
                 <span>₹{summary.tentativeCost?.toFixed(2)}</span>
               </div>
             </div>
 
-            {/* =====================================
-                 REMARKS SECTION (unchanged)
-               ===================================== */}
-            {/* REMARKS */}
+            {/* Remarks */}
             {plan.remarks && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                 {!isEditingRemarks ? (
                   <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm text-green-800 flex-1">
-                      <span className="font-medium">Remarks: </span>
-                      {plan.remarks || "No remarks added"}
-                    </p>
-
-                    <button
+                    <div className="flex-1">
+                      <p className="text-xs sm:text-sm text-green-800">
+                        <span className="font-medium">Remarks: </span>
+                        {plan.remarks || "No remarks added"}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => {
                         setEditedRemarks(plan.remarks || "");
                         setIsEditingRemarks(true);
                       }}
-                      className="w-7 h-7 flex items-center justify-center rounded-md bg-green-600 hover:bg-green-700 text-white"
+                      className="h-7 w-7 sm:h-8 sm:w-auto sm:px-3"
                     >
-                      <Edit className="w-3.5 h-3.5" />
-                    </button>
+                      <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                      {!isMobile && (
+                        <span className="ml-2 hidden sm:inline">Edit</span>
+                      )}
+                    </Button>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <div>
-                      <Label className="text-sm font-medium text-green-800 mb-2 block">Edit Remarks</Label>
-
+                      <Label className="text-sm font-medium text-green-800 mb-2 block">
+                        Edit Remarks
+                      </Label>
                       <Textarea
                         value={editedRemarks}
                         onChange={(e) => setEditedRemarks(e.target.value)}
-                        placeholder="Enter remarks..."
-                        className="min-h-[80px] bg-white border-green-300 focus:border-green-500 focus:ring-green-500 text-sm resize-none"
+                        className="min-h-20 bg-white text-sm"
                         autoFocus
                       />
                     </div>
-
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => { setIsEditingRemarks(false); setEditedRemarks(""); }} className="h-8 px-3 text-xs">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsEditingRemarks(false);
+                          setEditedRemarks("");
+                        }}
+                        className="h-8 px-3 text-xs"
+                      >
                         Cancel
                       </Button>
-
-                      <Button size="sm" onClick={() => { plan.remarks = editedRemarks; setIsEditingRemarks(false); toast.success("Remarks updated successfully"); }} className="h-8 px-3 text-xs bg-green-600 hover:bg-green-700">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          plan.remarks = editedRemarks;
+                          setIsEditingRemarks(false);
+                          toast.success("Remarks updated successfully");
+                        }}
+                        className="h-8 px-3 text-xs bg-green-600 hover:bg-green-700"
+                      >
                         <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
                         Save
                       </Button>
@@ -621,72 +639,52 @@ export function ProductionPlanDetailsDialog({
                 )}
               </div>
             )}
+          </div>
+        </div>
 
-            {/* ACTION BUTTONS */}
-            <div className="flex items-center justify-end pt-4 border-t border-gray-200">
-              <div className="flex items-center gap-2">
-                {(plan.status === "Planning" ||
-                  plan.status === "Capacity Allocated" ||
-                  plan.status === "Manufacturing Assigned" ||
-                  plan.status === "Process Defined" ||
-                  plan.status === "Ready for Production") &&
-                  onStartProduction && (
-                    <Button
-                      size="sm"
-                      className="bg-green-500 hover:bg-green-600 text-white"
-                      onClick={() => {
-                        // open create dialog and pass plan.raw if available (contains PO/project snapshot)
-                        setSelectedProductionCardForCreate(plan.raw || plan);
-                        setOpenCreateCardDialog(true);
-                      }}
-                    >
-                      <Play className="w-4 h-4 mr-1" />
-                      Start Production
-                    </Button>
-                  )}
+        {/* FOOTER - Fixed at bottom */}
+        <div className="sticky bottom-0 z-50 px-4 sm:px-6 md:px-8 py-4 bg-white border-t border-gray-200 shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 w-full">
+            {(plan.status === "Planning" ||
+              plan.status === "Capacity Allocated" ||
+              plan.status === "Manufacturing Assigned" ||
+              plan.status === "Process Defined" ||
+              plan.status === "Ready for Production") &&
+              onStartProduction && (
+                <Button
+                  size={isMobile ? "sm" : "default"}
+                  className="bg-green-500 hover:bg-green-600 text-white w-full sm:w-auto"
+                  onClick={() => {
+                    setOpenCreateCardDialog(true);
+                  }}
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  Start Production
+                </Button>
+              )}
 
-                {plan.status === "In Production" && (
-                  <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50">
-                    <Pause className="w-4 h-4 mr-1" />
-                    Pause Production
-                  </Button>
-                )}
-              </div>
-            </div>
+            {plan.status === "In Production" && (
+              <Button
+                size={isMobile ? "sm" : "default"}
+                variant="outline"
+                className="border-red-300 text-red-600 hover:bg-red-50 w-full sm:w-auto"
+              >
+                <Pause className="w-4 h-4 mr-2" />
+                Pause Production
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>
 
-      {/* ---------------------------
-          CREATE PRODUCTION DIALOG
-          --------------------------- */}
+      {/* Create Production Dialog */}
       <CreateProductionCardDialog
         open={openCreateCardDialog}
         onClose={() => {
           setOpenCreateCardDialog(false);
-          setSelectedProductionCardForCreate(null);
+          // Remove onOpenChange(false) - only close the child dialog
         }}
-        selectedProductionCard={selectedProductionCardForCreate}
-        // when user creates the production card we optionally start production (keeps previous behavior)
-        onProductionCardCreated={(createdCard) => {
-          // close create dialog
-          setOpenCreateCardDialog(false);
-          setSelectedProductionCardForCreate(null);
-
-          // close plan details dialog (optional, but matches previous behaviour)
-          onOpenChange(false);
-
-          // call parent's start production callback if provided
-          if (onStartProduction) {
-            try {
-              onStartProduction(plan);
-            } catch (e) {
-              console.error("onStartProduction callback failed:", e);
-            }
-          }
-
-          toast.success("Production card created & production started");
-        }}
+        selectedProductionCard={plan}
       />
     </Dialog>
   );

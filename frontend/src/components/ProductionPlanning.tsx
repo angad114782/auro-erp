@@ -1084,7 +1084,7 @@ export function ProductionPlanning() {
       return;
     }
 
-    // prepare doc id (calendar entry id)
+    // Prepare doc id (calendar entry id)
     const docId =
       selectedProductionForDateChange.id ??
       selectedProductionForDateChange._id ??
@@ -1100,7 +1100,7 @@ export function ProductionPlanning() {
             ...plan,
             startDate: newProductionDate,
             endDate: newProductionDate,
-            updatedDate: new Date().toISOString().split("T")[0],
+            updatedDate: dateToLocalYMD(new Date()),
           };
         }
         return plan;
@@ -1146,14 +1146,12 @@ export function ProductionPlanning() {
             ? {
                 ...e,
                 startDate: updated.scheduling?.scheduleDate
-                  ? new Date(updated.scheduling.scheduleDate)
-                      .toISOString()
-                      .split("T")[0]
+                  ? dateToLocalYMD(new Date(updated.scheduling.scheduleDate))
                   : newProductionDate,
                 endDate: updated.scheduling?.soleExpectedDate
-                  ? new Date(updated.scheduling.soleExpectedDate)
-                      .toISOString()
-                      .split("T")[0]
+                  ? dateToLocalYMD(
+                      new Date(updated.scheduling.soleExpectedDate)
+                    )
                   : updated.endDate || newProductionDate,
                 remarks: updated.additional?.remarks ?? e.remarks,
                 raw: updated,
@@ -1170,14 +1168,12 @@ export function ProductionPlanning() {
             ? {
                 ...p,
                 startDate: updated.scheduling?.scheduleDate
-                  ? new Date(updated.scheduling.scheduleDate)
-                      .toISOString()
-                      .split("T")[0]
+                  ? dateToLocalYMD(new Date(updated.scheduling.scheduleDate))
                   : p.startDate,
                 endDate: updated.scheduling?.soleExpectedDate
-                  ? new Date(updated.scheduling.soleExpectedDate)
-                      .toISOString()
-                      .split("T")[0]
+                  ? dateToLocalYMD(
+                      new Date(updated.scheduling.soleExpectedDate)
+                    )
                   : p.endDate,
               }
             : p
@@ -2727,7 +2723,6 @@ export function ProductionPlanning() {
         onStartProduction={handleStartProduction}
       />
 
-      {/* Change Production Date Dialog */}
       <Dialog
         open={isDateChangeDialogOpen}
         onOpenChange={setIsDateChangeDialogOpen}
@@ -2779,17 +2774,23 @@ export function ProductionPlanning() {
                   }
                   onSelect={(date: Date | undefined) => {
                     if (date) {
-                      const y = date.getUTCFullYear();
-                      const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-                      const d = String(date.getUTCDate()).padStart(2, "0");
+                      // FIX: Use local date, not UTC
+                      const y = date.getFullYear();
+                      const m = String(date.getMonth() + 1).padStart(2, "0");
+                      const d = String(date.getDate()).padStart(2, "0");
                       setNewProductionDate(`${y}-${m}-${d}`);
                     }
                   }}
                   className="rounded-md border-0"
-                  disabled={(date: Date | undefined) =>
-                    Boolean(date) &&
-                    date < new Date(new Date().setHours(0, 0, 0, 0) - 86400000)
-                  }
+                  disabled={(date: Date | undefined) => {
+                    if (!date) return false;
+                    // Compare dates without time component
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const selectedDate = new Date(date);
+                    selectedDate.setHours(0, 0, 0, 0);
+                    return selectedDate < today;
+                  }}
                 />
               </div>
               <div className="flex items-start gap-2 bg-blue-50 rounded-lg p-3 border border-blue-200">
@@ -2815,11 +2816,39 @@ export function ProductionPlanning() {
             </Button>
             <Button
               onClick={handleProductionDateChange}
-              disabled={!newProductionDate}
+              disabled={!newProductionDate || isSavingCalendarChange}
               className="bg-blue-600 hover:bg-blue-700"
             >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Update Date
+              {isSavingCalendarChange ? (
+                <>
+                  <svg
+                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Update Date
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>

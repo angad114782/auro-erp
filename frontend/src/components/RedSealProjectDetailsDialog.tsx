@@ -30,6 +30,7 @@ import {
   Plus,
   ChevronRight,
   ChevronLeft,
+  Download,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -59,6 +60,7 @@ import {
 import { useCostManagement } from "../hooks/useCostManagement";
 import { Project, projectService } from "../components/services/projectService";
 import { useRedirect } from "../hooks/useRedirect";
+import { generateProjectPDF } from "../utils/pdfDownload";
 
 /**
  * AddNewItemDialog - same UI you had (kept small & functional)
@@ -376,6 +378,7 @@ export function RedSealProjectDetailsDialog(props: any) {
     material: false,
     packaging: false,
     miscellaneous: false,
+    labour: false,
   });
 
   const [dialogForms, setDialogForms] = useState({
@@ -384,6 +387,7 @@ export function RedSealProjectDetailsDialog(props: any) {
     material: { item: "", description: "", consumption: "", cost: 0 },
     packaging: { item: "", description: "", consumption: "", cost: 0 },
     miscellaneous: { item: "", description: "", consumption: "", cost: 0 },
+    labour: { item: "", cost: 0 },
   });
 
   const openAddItemDialog = (category: string) =>
@@ -392,7 +396,10 @@ export function RedSealProjectDetailsDialog(props: any) {
     setAddItemDialogs((p) => ({ ...p, [category]: false }));
     setDialogForms((prev) => ({
       ...prev,
-      [category]: { item: "", description: "", consumption: "", cost: 0 },
+      [category]:
+        category === "labour"
+          ? { item: "", cost: 0 }
+          : { item: "", description: "", consumption: "", cost: 0 },
     }));
   };
 
@@ -409,7 +416,30 @@ export function RedSealProjectDetailsDialog(props: any) {
 
   const handleAddItem = async (category: string) => {
     if (!project) return;
-    const form = dialogForms[category as keyof typeof dialogForms];
+
+    if (category === "labour") {
+      const form = dialogForms.labour;
+      if (!form.item.trim()) {
+        toast.error("Please enter a labour item name");
+        return;
+      }
+      try {
+        const newItems = [
+          ...labourCost.items,
+          { name: form.item, cost: Number(form.cost) || 0 },
+        ];
+        await updateLabourCost({ items: newItems });
+        await loadAllCostData();
+        closeAddItemDialog(category);
+        toast.success("New labour item added successfully!");
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to add labour item");
+      }
+      return;
+    }
+
+    const form = dialogForms[category as keyof typeof dialogForms] as any;
     if (!form.item.trim()) {
       toast.error("Please enter an item name");
       return;
@@ -613,8 +643,81 @@ export function RedSealProjectDetailsDialog(props: any) {
     setEditProfitMargin(Number(costSummary.profitMargin || 0));
   }, [project, costSummary]);
 
-  // cost item operations use hook functions (updateItemCost, deleteCostItem etc.)
-  // (Assuming useCostManagement provides them.)
+  const handleDownloadPDF = async () => {
+    try {
+      if (!project) return;
+
+      // load cost data
+      const [
+        summaryRes,
+        upperRes,
+        componentRes,
+        materialRes,
+        packagingRes,
+        miscRes,
+        labourRes,
+      ] = await Promise.all([
+        api.get(`/projects/${project._id}/costs`),
+        api.get(`/projects/${project._id}/costs/upper`),
+        api.get(`/projects/${project._id}/costs/component`),
+        api.get(`/projects/${project._id}/costs/material`),
+        api.get(`/projects/${project._id}/costs/packaging`),
+        api.get(`/projects/${project._id}/costs/miscellaneous`),
+        api.get(`/projects/${project._id}/costs/labour`),
+      ]);
+
+      const costData = {
+        upper: upperRes.data.rows || [],
+        component: componentRes.data.rows || [],
+        material: materialRes.data.rows || [],
+        packaging: packagingRes.data.rows || [],
+        miscellaneous: miscRes.data.rows || [],
+        labour: labourRes.data.labour || { directTotal: 0, items: [] },
+        summary: summaryRes.data.summary || summaryRes.data,
+      };
+      const pdfProject = {
+        autoCode: project.autoCode,
+        company: { name: project.company?.name || "-" },
+        brand: { name: project.brand?.name || "-" },
+        category: { name: project.category?.name || "-" },
+        type: { name: project.type?.name || "-" },
+        gender: project.gender || "-",
+        artName: project.artName || "-",
+        color: project.color || "-",
+        priority: project.priority || "-",
+        redSealTargetDate: project.redSealTargetDate || "",
+        assignPerson: { name: project.assignPerson?.name || "-" },
+        productDesc: project.productDesc || "-",
+        clientApproval: project.clientApproval || "-",
+        nextUpdate: {
+          date: project.nextUpdate?.date || "",
+          note: project.nextUpdate?.note || "",
+        },
+
+        coverImage: project.coverImage
+          ? getFullImageUrl(project.coverImage)
+          : null,
+
+        sampleImages: (project.sampleImages || []).map(getFullImageUrl),
+
+        costData,
+      };
+
+      // ALWAYS use actual project stage as PDF template selector
+      const activeTab = project.status; // "red_seal", "prototype", etc.
+
+      await generateProjectPDF({
+        project: pdfProject,
+        costData,
+        activeTab,
+      });
+
+      toast.success("PDF downloaded successfully!");
+    } catch (err) {
+      console.error("PDF Error:", err);
+      toast.error("PDF generation failed");
+    }
+  };
 
   if (!project || !editedProject) return null;
 
@@ -652,6 +755,15 @@ export function RedSealProjectDetailsDialog(props: any) {
             </div>
 
             <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+              <Button
+                onClick={handleDownloadPDF}
+                variant="outline"
+                className="bg-white hover:bg-gray-50 text-xs md:text-sm border-2"
+                size={isMobile ? "sm" : "default"}
+              >
+                <Download className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                {isMobile ? "PDF" : "Download PDF"}
+              </Button>
               {!isEditing ? (
                 <>
                   <Button
@@ -738,16 +850,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                 >
                   Feedback
                 </button>
-                <button
-                  onClick={() => setActiveTab("costs")}
-                  className={`pb-2 px-1 text-sm font-medium whitespace-nowrap ${
-                    activeTab === "costs"
-                      ? "border-b-2 border-red-500 text-red-600"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  Costs
-                </button>
+                {/* REMOVED: No "costs" tab - tables show always */}
               </div>
             </div>
           )}
@@ -1650,527 +1753,848 @@ export function RedSealProjectDetailsDialog(props: any) {
               </div>
             )}
 
-            {/* Cost Breakdown - Show only on costs tab on mobile */}
-            {(!isMobile || activeTab === "costs") && (
-              <div className="space-y-4 md:space-y-6">
-                <div className="flex items-center gap-4 md:gap-5">
-                  <div className="w-8 h-8 md:w-10 md:h-10 bg-green-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
-                    <Calculator className="w-4 h-4 md:w-5 md:h-5 text-white" />
-                  </div>
-                  <h3 className="text-lg md:text-xl font-semibold text-gray-900">
-                    Cost Breakdown & Final Tentative Cost
-                  </h3>
+            {/* Cost Breakdown - Show ALWAYS (on both mobile and desktop) */}
+            <div className="space-y-4 md:space-y-6">
+              <div className="flex items-center gap-4 md:gap-5">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-green-500 rounded-xl flex items-center justify-center shadow-md shrink-0">
+                  <Calculator className="w-4 h-4 md:w-5 md:h-5 text-white" />
                 </div>
-
-                <div className="bg-white border-2 border-green-200 rounded-xl p-4 md:p-6">
-                  <h4 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">
-                    Cost Analysis & Final Calculations
-                  </h4>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-6">
-                    <div className="text-center p-4 md:p-6 bg-linear-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 shadow-sm">
-                      <div className="flex items-center justify-center gap-2 mb-2 md:mb-3">
-                        <Calculator className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
-                        <div className="text-xs md:text-sm text-green-700 font-semibold tracking-wide uppercase">
-                          Tentative Cost
-                        </div>
-                      </div>
-                      <div className="text-2xl md:text-3xl font-bold text-green-800 tracking-tight">
-                        ₹{(realtime.tentative || 0).toLocaleString()}
-                      </div>
-                    </div>
-
-                    <div className="text-center p-4 md:p-6 bg-linear-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 shadow-sm">
-                      <div className="flex items-center justify-center gap-2 mb-2 md:mb-3">
-                        <Award className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
-                        <div className="text-xs md:text-sm text-blue-700 font-semibold tracking-wide uppercase">
-                          Brand Final Cost
-                        </div>
-                      </div>
-                      {isEditing ? (
-                        <div className="relative flex items-center justify-center gap-1">
-                          <span className="text-2xl md:text-3xl font-bold text-blue-800">
-                            ₹
-                          </span>
-                          <Input
-                            type="number"
-                            value={editedProject.clientFinalCost || ""}
-                            onChange={(e) =>
-                              setEditedProject({
-                                ...editedProject,
-                                clientFinalCost: e.target.value,
-                              })
-                            }
-                            className="text-center text-2xl md:text-3xl font-bold text-blue-800 bg-white/50 border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg h-auto w-32 md:w-48 px-2 py-1 shadow-inner"
-                            placeholder="0"
-                          />
-                        </div>
-                      ) : (
-                        <div className="text-2xl md:text-3xl font-bold text-blue-800 tracking-tight">
-                          ₹{project?.clientFinalCost?.toLocaleString()}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Summary box */}
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 md:p-4">
-                    <h5 className="font-semibold text-gray-900 mb-2 md:mb-3 text-sm md:text-base">
-                      Cost Breakdown Summary
-                    </h5>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 text-xs md:text-sm mb-3 md:mb-4">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Upper Cost:</span>
-                        <span className="font-medium">
-                          ₹{Number(costSummary.upperTotal || 0).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Component Cost:</span>
-                        <span className="font-medium">
-                          ₹{Number(costSummary.componentTotal || 0).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Material Cost:</span>
-                        <span className="font-medium">
-                          ₹{Number(costSummary.materialTotal || 0).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Packaging Cost:</span>
-                        <span className="font-medium">
-                          ₹{Number(costSummary.packagingTotal || 0).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Labour + OH:</span>
-                        <span className="font-medium">
-                          ₹{Number(costSummary.labourTotal || 0).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Miscellaneous:</span>
-                        <span className="font-medium">
-                          ₹{Number(costSummary.miscTotal || 0).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <Separator className="my-2 md:my-3" />
-                    <div className="flex justify-between font-semibold mb-2 md:mb-3 text-sm">
-                      <span>Total All Costs:</span>
-                      <span>
-                        ₹{Number(costSummary.totalAllCosts || 0).toFixed(2)}
-                      </span>
-                    </div>
-
-                    {/* Additional Costs */}
-                    <div className="flex justify-between items-center mb-2 text-sm">
-                      <span className="text-gray-600">Additional Costs:</span>
-                      {!isEditing ? (
-                        <span className="font-medium">
-                          ₹{Number(costSummary.additionalCosts || 0).toFixed(2)}
-                        </span>
-                      ) : (
-                        <div className="relative w-20 md:w-28">
-                          <Input
-                            type="number"
-                            value={editAdditionalCosts}
-                            onChange={(e) =>
-                              setEditAdditionalCosts(
-                                Number(e.target.value) || 0
-                              )
-                            }
-                            className="h-7 md:h-8 text-xs"
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Profit Margin (%) */}
-                    <div className="flex justify-between items-center mb-2 text-sm">
-                      <span className="text-gray-600">Profit Margin (%):</span>
-                      {!isEditing ? (
-                        <span className="font-medium">
-                          {Number(costSummary.profitMargin || 0)}%
-                        </span>
-                      ) : (
-                        <div className="relative w-16 md:w-20">
-                          <Input
-                            type="number"
-                            value={editProfitMargin}
-                            min={0}
-                            max={100}
-                            onChange={(e) => {
-                              let val = Number(e.target.value);
-                              if (isNaN(val) || val < 0) val = 0;
-                              if (val > 100) val = 100;
-                              setEditProfitMargin(val);
-                            }}
-                            className="h-7 md:h-8 text-xs"
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Profit Amount */}
-                    <div className="flex justify-between text-xs md:text-sm mb-2">
-                      <span className="text-gray-600">
-                        Profit (
-                        {isEditing
-                          ? editProfitMargin
-                          : costSummary.profitMargin}
-                        %):
-                      </span>
-                      <span className="font-medium">
-                        +₹
-                        {(isEditing
-                          ? localProfitAmount
-                          : Number(costSummary.profitAmount || 0)
-                        ).toFixed(2)}
-                      </span>
-                    </div>
-
-                    <Separator />
-
-                    {/* Tentative Cost */}
-                    <div className="flex justify-between font-bold text-base md:text-lg text-green-700">
-                      <span>Total Tentative Cost:</span>
-                      <span>
-                        ₹
-                        {(isEditing
-                          ? localTentativeCost
-                          : Number(costSummary.tentativeCost || 0)
-                        ).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cost Breakdown Cards */}
-                {(!isMobile || activeTab === "costs") && (
-                  <>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                      {/* Upper card */}
-                      <div className="bg-white border-2 border-orange-200 rounded-xl p-4 md:p-6">
-                        <h4 className="text-base md:text-lg font-semibold text-orange-900 mb-3 md:mb-4">
-                          Upper Cost Breakdown
-                        </h4>
-                        <div className="space-y-2 md:space-y-3">
-                          <div className="grid grid-cols-4 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-orange-50 p-2 rounded">
-                            <div>ITEM</div>
-                            <div>DESCRIPTION</div>
-                            <div>CONSUMPTION</div>
-                            <div>
-                              COST{" "}
-                              {isEditing && (
-                                <span className="ml-1 hidden md:inline">
-                                  / ACTION
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-1 md:space-y-2">
-                            {costRows.upper.map((item) => (
-                              <div
-                                key={item._id}
-                                className="grid grid-cols-4 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b items-center"
-                              >
-                                {isEditing ? (
-                                  <>
-                                    <Input
-                                      value={item.item}
-                                      readOnly
-                                      className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
-                                    />
-                                    <Input
-                                      value={item.description}
-                                      readOnly
-                                      className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
-                                    />
-                                    <Input
-                                      value={item.consumption}
-                                      readOnly
-                                      className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
-                                    />
-                                    <div className="flex items-center gap-1">
-                                      <div className="relative flex-1">
-                                        <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2 md:w-3 md:h-3" />
-                                        <Input
-                                          type="number"
-                                          value={item.cost}
-                                          onChange={(e) =>
-                                            updateItemCost(
-                                              item._id,
-                                              Number(e.target.value) || 0
-                                            )
-                                          }
-                                          className="pl-5 md:pl-6 text-xs md:text-sm h-6 md:h-8"
-                                        />
-                                      </div>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => deleteCostItem(item._id)}
-                                        className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                                      >
-                                        <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
-                                      </Button>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="font-medium truncate">
-                                      {item.item}
-                                    </div>
-                                    <div className="text-gray-600 truncate">
-                                      {item.description || "-"}
-                                    </div>
-                                    <div className="text-gray-600 truncate">
-                                      {item.consumption || "-"}
-                                    </div>
-                                    <div className="font-medium">
-                                      ₹{item.cost.toFixed(2)}
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-
-                          {isEditing && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-full text-orange-600 border-orange-200 hover:bg-orange-50 text-xs"
-                              onClick={() => openAddItemDialog("upper")}
-                            >
-                              <Plus className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />{" "}
-                              Add New Item
-                            </Button>
-                          )}
-
-                          <div className="bg-orange-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
-                            <div className="flex justify-between font-semibold text-orange-900 text-sm">
-                              <span>Total Upper Cost:</span>
-                              <span>₹{calculateTotal("upper").toFixed(2)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Component card */}
-                      <div className="bg-white border-2 border-purple-200 rounded-xl p-4 md:p-6">
-                        <h4 className="text-base md:text-lg font-semibold text-purple-900 mb-3 md:mb-4">
-                          Component Cost Breakdown
-                        </h4>
-                        <div className="space-y-2 md:space-y-3">
-                          <div className="grid grid-cols-4 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
-                            <div>COMPONENT</div>
-                            <div>DESCRIPTION</div>
-                            <div>CONSUMPTION</div>
-                            <div>
-                              COST{" "}
-                              {isEditing && (
-                                <span className="ml-1 hidden md:inline">
-                                  / ACTION
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-1 md:space-y-2">
-                            {costRows.component.map((item) => (
-                              <div
-                                key={item._id}
-                                className="grid grid-cols-4 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b items-center"
-                              >
-                                {isEditing ? (
-                                  <>
-                                    <Input
-                                      value={item.item}
-                                      readOnly
-                                      className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
-                                    />
-                                    <Input
-                                      value={item.description}
-                                      readOnly
-                                      className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
-                                    />
-                                    <Input
-                                      value={item.consumption}
-                                      readOnly
-                                      className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
-                                    />
-                                    <div className="flex items-center gap-1">
-                                      <div className="relative flex-1">
-                                        <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2 md:w-3 md:h-3" />
-                                        <Input
-                                          type="number"
-                                          value={item.cost}
-                                          onChange={(e) =>
-                                            updateItemCost(
-                                              item._id,
-                                              Number(e.target.value) || 0
-                                            )
-                                          }
-                                          className="pl-5 md:pl-6 text-xs md:text-sm h-6 md:h-8"
-                                        />
-                                      </div>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => deleteCostItem(item._id)}
-                                        className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                                      >
-                                        <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
-                                      </Button>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="font-medium truncate">
-                                      {item.item}
-                                    </div>
-                                    <div className="text-gray-600 truncate">
-                                      {item.description || "-"}
-                                    </div>
-                                    <div className="text-gray-600 truncate">
-                                      {item.consumption || "-"}
-                                    </div>
-                                    <div className="font-medium">
-                                      ₹{item.cost.toFixed(2)}
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-
-                          {isEditing && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-full text-purple-600 border-purple-200 hover:bg-purple-50 text-xs"
-                              onClick={() => openAddItemDialog("component")}
-                            >
-                              <Plus className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />{" "}
-                              Add New Component
-                            </Button>
-                          )}
-
-                          <div className="bg-purple-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
-                            <div className="flex justify-between font-semibold text-purple-900 text-sm">
-                              <span>Total Component Cost:</span>
-                              <span>
-                                ₹{calculateTotal("component").toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Material, Packaging, Labour sections - adjust similarly */}
-                    {/* ... similar responsive adjustments for other cost sections ... */}
-
-                    {/* Final Calculation Summary & Approval Notes */}
-                    <div className="bg-linear-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-xl p-4 md:p-6">
-                      <h4 className="text-lg md:text-xl font-semibold text-gray-900 mb-3 md:mb-4 flex items-center gap-2">
-                        <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-600" />
-                        Final Tentative Cost Calculation
-                      </h4>
-                      <div className="space-y-2 md:space-y-3">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">
-                            Total Production Cost:
-                          </span>
-                          <span className="font-medium">
-                            ₹{Number(costSummary.totalAllCosts || 0).toFixed(2)}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">
-                            Additional Costs:
-                          </span>
-                          <span className="font-medium">
-                            ₹
-                            {isEditing
-                              ? editAdditionalCosts.toFixed(2)
-                              : Number(
-                                  costSummary.additionalCosts || 0
-                                ).toFixed(2)}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">
-                            Profit (
-                            {isEditing
-                              ? editProfitMargin
-                              : costSummary.profitMargin}
-                            %):
-                          </span>
-                          <span className="font-medium">
-                            +₹
-                            {isEditing
-                              ? localProfitAmount.toFixed(2)
-                              : Number(costSummary.profitAmount || 0).toFixed(
-                                  2
-                                )}
-                          </span>
-                        </div>
-
-                        <Separator />
-
-                        <div className="flex justify-between font-bold text-lg text-green-700">
-                          <span>Final Tentative Cost:</span>
-                          <span>
-                            ₹
-                            {isEditing
-                              ? localTentativeCost.toFixed(2)
-                              : Number(costSummary.tentativeCost || 0).toFixed(
-                                  2
-                                )}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-white border-2 border-gray-200 rounded-xl p-4 md:p-6">
-                      <h4 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">
-                        Tentative Cost Approval Notes
-                      </h4>
-                      <div className="space-y-2 md:space-y-3">
-                        <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                          <div className="text-xs md:text-sm text-gray-700">
-                            <strong>Cost Calculation Summary:</strong>{" "}
-                            {costSummary.remarks || "No remarks added."}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs md:text-sm">
-                          <CheckCircle className="w-3 h-3 md:w-4 md:h-4 text-green-600" />
-                          <span className="text-green-700 font-medium">
-                            Tentative cost approved and ready for Red Seal
-                            development stage
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs md:text-sm">
-                          <Calendar className="w-3 h-3 md:w-4 md:h-4 text-blue-600" />
-                          <span className="text-gray-600">
-                            Approved on:{" "}
-                            {new Date().toLocaleDateString("en-GB")}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900">
+                  Cost Breakdown & Final Tentative Cost
+                </h3>
               </div>
-            )}
+
+              {/* All Cost Tables - Show in responsive grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                {/* Upper Cost Table */}
+                <div className="bg-white border-2 border-orange-200 rounded-xl p-4 md:p-6">
+                  <div className="flex justify-between items-center mb-3 md:mb-4">
+                    <h4 className="text-base md:text-lg font-semibold text-orange-900">
+                      Upper Cost Breakdown
+                    </h4>
+                    {isEditing && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-orange-600 border-orange-200 hover:bg-orange-50 text-xs"
+                        onClick={() => openAddItemDialog("upper")}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2 md:space-y-3">
+                    <div className="grid grid-cols-4 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-orange-50 p-2 rounded">
+                      <div>ITEM</div>
+                      <div>DESCRIPTION</div>
+                      <div>CONSUMPTION</div>
+                      <div>
+                        COST{" "}
+                        {isEditing && (
+                          <span className="ml-1 hidden md:inline">
+                            / ACTION
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-1 md:space-y-2">
+                      {costRows.upper.map((item) => (
+                        <div
+                          key={item._id}
+                          className="grid grid-cols-4 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b items-center"
+                        >
+                          {isEditing ? (
+                            <>
+                              <Input
+                                value={item.item}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.description}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.consumption}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <div className="flex items-center gap-1">
+                                <div className="relative flex-1">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2 md:w-3 md:h-3" />
+                                  <Input
+                                    type="number"
+                                    value={item.cost}
+                                    onChange={(e) =>
+                                      updateItemCost(
+                                        item._id,
+                                        Number(e.target.value) || 0
+                                      )
+                                    }
+                                    className="pl-5 md:pl-6 text-xs md:text-sm h-6 md:h-8"
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteCostItem(item._id)}
+                                  className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-medium truncate">
+                                {item.item}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.description || "-"}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.consumption || "-"}
+                              </div>
+                              <div className="font-medium">
+                                ₹{item.cost.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-orange-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                      <div className="flex justify-between font-semibold text-orange-900 text-sm">
+                        <span>Total Upper Cost:</span>
+                        <span>₹{calculateTotal("upper").toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Component Cost Table */}
+                <div className="bg-white border-2 border-purple-200 rounded-xl p-4 md:p-6">
+                  <div className="flex justify-between items-center mb-3 md:mb-4">
+                    <h4 className="text-base md:text-lg font-semibold text-purple-900">
+                      Component Cost Breakdown
+                    </h4>
+                    {isEditing && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-purple-600 border-purple-200 hover:bg-purple-50 text-xs"
+                        onClick={() => openAddItemDialog("component")}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2 md:space-y-3">
+                    <div className="grid grid-cols-4 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-purple-50 p-2 rounded">
+                      <div>COMPONENT</div>
+                      <div>DESCRIPTION</div>
+                      <div>CONSUMPTION</div>
+                      <div>
+                        COST{" "}
+                        {isEditing && (
+                          <span className="ml-1 hidden md:inline">
+                            / ACTION
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-1 md:space-y-2">
+                      {costRows.component.map((item) => (
+                        <div
+                          key={item._id}
+                          className="grid grid-cols-4 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b items-center"
+                        >
+                          {isEditing ? (
+                            <>
+                              <Input
+                                value={item.item}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.description}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.consumption}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <div className="flex items-center gap-1">
+                                <div className="relative flex-1">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2 md:w-3 md:h-3" />
+                                  <Input
+                                    type="number"
+                                    value={item.cost}
+                                    onChange={(e) =>
+                                      updateItemCost(
+                                        item._id,
+                                        Number(e.target.value) || 0
+                                      )
+                                    }
+                                    className="pl-5 md:pl-6 text-xs md:text-sm h-6 md:h-8"
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteCostItem(item._id)}
+                                  className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-medium truncate">
+                                {item.item}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.description || "-"}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.consumption || "-"}
+                              </div>
+                              <div className="font-medium">
+                                ₹{item.cost.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-purple-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                      <div className="flex justify-between font-semibold text-purple-900 text-sm">
+                        <span>Total Component Cost:</span>
+                        <span>₹{calculateTotal("component").toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Material Cost Table */}
+                <div className="bg-white border-2 border-blue-200 rounded-xl p-4 md:p-6">
+                  <div className="flex justify-between items-center mb-3 md:mb-4">
+                    <h4 className="text-base md:text-lg font-semibold text-blue-900">
+                      Material Cost Breakdown
+                    </h4>
+                    {isEditing && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 border-blue-200 hover:bg-blue-50 text-xs"
+                        onClick={() => openAddItemDialog("material")}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2 md:space-y-3">
+                    <div className="grid grid-cols-4 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-blue-50 p-2 rounded">
+                      <div>MATERIAL</div>
+                      <div>DESCRIPTION</div>
+                      <div>CONSUMPTION</div>
+                      <div>
+                        COST{" "}
+                        {isEditing && (
+                          <span className="ml-1 hidden md:inline">
+                            / ACTION
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-1 md:space-y-2">
+                      {costRows.material.map((item) => (
+                        <div
+                          key={item._id}
+                          className="grid grid-cols-4 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b items-center"
+                        >
+                          {isEditing ? (
+                            <>
+                              <Input
+                                value={item.item}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.description}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.consumption}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <div className="flex items-center gap-1">
+                                <div className="relative flex-1">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2 md:w-3 md:h-3" />
+                                  <Input
+                                    type="number"
+                                    value={item.cost}
+                                    onChange={(e) =>
+                                      updateItemCost(
+                                        item._id,
+                                        Number(e.target.value) || 0
+                                      )
+                                    }
+                                    className="pl-5 md:pl-6 text-xs md:text-sm h-6 md:h-8"
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteCostItem(item._id)}
+                                  className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-medium truncate">
+                                {item.item}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.description || "-"}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.consumption || "-"}
+                              </div>
+                              <div className="font-medium">
+                                ₹{item.cost.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-blue-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                      <div className="flex justify-between font-semibold text-blue-900 text-sm">
+                        <span>Total Material Cost:</span>
+                        <span>₹{calculateTotal("material").toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Packaging Cost Table */}
+                <div className="bg-white border-2 border-pink-200 rounded-xl p-4 md:p-6">
+                  <div className="flex justify-between items-center mb-3 md:mb-4">
+                    <h4 className="text-base md:text-lg font-semibold text-pink-900">
+                      Packaging Cost Breakdown
+                    </h4>
+                    {isEditing && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-pink-600 border-pink-200 hover:bg-pink-50 text-xs"
+                        onClick={() => openAddItemDialog("packaging")}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2 md:space-y-3">
+                    <div className="grid grid-cols-4 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-pink-50 p-2 rounded">
+                      <div>PACKAGING</div>
+                      <div>DESCRIPTION</div>
+                      <div>CONSUMPTION</div>
+                      <div>
+                        COST{" "}
+                        {isEditing && (
+                          <span className="ml-1 hidden md:inline">
+                            / ACTION
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-1 md:space-y-2">
+                      {costRows.packaging.map((item) => (
+                        <div
+                          key={item._id}
+                          className="grid grid-cols-4 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b items-center"
+                        >
+                          {isEditing ? (
+                            <>
+                              <Input
+                                value={item.item}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.description}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.consumption}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <div className="flex items-center gap-1">
+                                <div className="relative flex-1">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2 md:w-3 md:h-3" />
+                                  <Input
+                                    type="number"
+                                    value={item.cost}
+                                    onChange={(e) =>
+                                      updateItemCost(
+                                        item._id,
+                                        Number(e.target.value) || 0
+                                      )
+                                    }
+                                    className="pl-5 md:pl-6 text-xs md:text-sm h-6 md:h-8"
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteCostItem(item._id)}
+                                  className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-medium truncate">
+                                {item.item}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.description || "-"}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.consumption || "-"}
+                              </div>
+                              <div className="font-medium">
+                                ₹{item.cost.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-pink-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                      <div className="flex justify-between font-semibold text-pink-900 text-sm">
+                        <span>Total Packaging Cost:</span>
+                        <span>₹{calculateTotal("packaging").toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Miscellaneous Cost Table */}
+                <div className="bg-white border-2 border-gray-200 rounded-xl p-4 md:p-6">
+                  <div className="flex justify-between items-center mb-3 md:mb-4">
+                    <h4 className="text-base md:text-lg font-semibold text-gray-900">
+                      Miscellaneous Cost Breakdown
+                    </h4>
+                    {isEditing && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-gray-600 border-gray-200 hover:bg-gray-50 text-xs"
+                        onClick={() => openAddItemDialog("miscellaneous")}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2 md:space-y-3">
+                    <div className="grid grid-cols-4 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-gray-50 p-2 rounded">
+                      <div>ITEM</div>
+                      <div>DESCRIPTION</div>
+                      <div>CONSUMPTION</div>
+                      <div>
+                        COST{" "}
+                        {isEditing && (
+                          <span className="ml-1 hidden md:inline">
+                            / ACTION
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-1 md:space-y-2">
+                      {costRows.miscellaneous.map((item) => (
+                        <div
+                          key={item._id}
+                          className="grid grid-cols-4 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b items-center"
+                        >
+                          {isEditing ? (
+                            <>
+                              <Input
+                                value={item.item}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.description}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <Input
+                                value={item.consumption}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <div className="flex items-center gap-1">
+                                <div className="relative flex-1">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2 md:w-3 md:h-3" />
+                                  <Input
+                                    type="number"
+                                    value={item.cost}
+                                    onChange={(e) =>
+                                      updateItemCost(
+                                        item._id,
+                                        Number(e.target.value) || 0
+                                      )
+                                    }
+                                    className="pl-5 md:pl-6 text-xs md:text-sm h-6 md:h-8"
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteCostItem(item._id)}
+                                  className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-medium truncate">
+                                {item.item}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.description || "-"}
+                              </div>
+                              <div className="text-gray-600 truncate">
+                                {item.consumption || "-"}
+                              </div>
+                              <div className="font-medium">
+                                ₹{item.cost.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-gray-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                      <div className="flex justify-between font-semibold text-gray-900 text-sm">
+                        <span>Total Miscellaneous Cost:</span>
+                        <span>
+                          ₹{calculateTotal("miscellaneous").toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Labour Cost Table */}
+                <div className="bg-white border-2 border-yellow-200 rounded-xl p-4 md:p-6">
+                  <div className="flex justify-between items-center mb-3 md:mb-4">
+                    <h4 className="text-base md:text-lg font-semibold text-yellow-900">
+                      Labour Cost Breakdown
+                    </h4>
+                    {isEditing && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-yellow-600 border-yellow-200 hover:bg-yellow-50 text-xs"
+                        onClick={() => openAddItemDialog("labour")}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2 md:space-y-3">
+                    <div className="grid grid-cols-2 gap-1 md:gap-2 text-[10px] md:text-xs font-medium text-gray-600 bg-yellow-50 p-2 rounded">
+                      <div>LABOUR ITEM</div>
+                      <div>
+                        COST{" "}
+                        {isEditing && (
+                          <span className="ml-1 hidden md:inline">
+                            / ACTION
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-1 md:space-y-2">
+                      {labourCost.items.map((item, index) => (
+                        <div
+                          key={index}
+                          className="grid grid-cols-2 gap-1 md:gap-2 text-xs md:text-sm py-1 md:py-2 border-b items-center"
+                        >
+                          {isEditing ? (
+                            <>
+                              <Input
+                                value={item.name}
+                                readOnly
+                                className="text-xs md:text-sm h-6 md:h-8 bg-gray-50"
+                              />
+                              <div className="flex items-center gap-1">
+                                <div className="relative flex-1">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2 md:w-3 md:h-3" />
+                                  <Input
+                                    type="number"
+                                    value={item.cost}
+                                    onChange={(e) => {
+                                      const newItems = [...labourCost.items];
+                                      newItems[index] = {
+                                        ...newItems[index],
+                                        cost: Number(e.target.value) || 0,
+                                      };
+                                      updateLabourCost({ items: newItems });
+                                    }}
+                                    className="pl-5 md:pl-6 text-xs md:text-sm h-6 md:h-8"
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newItems = labourCost.items.filter(
+                                      (_, i) => i !== index
+                                    );
+                                    updateLabourCost({ items: newItems });
+                                  }}
+                                  className="h-6 w-6 md:h-8 md:w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-medium truncate">
+                                {item.name}
+                              </div>
+                              <div className="font-medium">
+                                ₹{item.cost.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-yellow-50 p-2 md:p-3 rounded-lg mt-2 md:mt-3">
+                      <div className="flex justify-between font-semibold text-yellow-900 text-sm">
+                        <span>Total Labour Cost:</span>
+                        <span>₹{labourCost.directTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Summary Calculation Section */}
+              <div className="bg-white border-2 border-green-200 rounded-xl p-4 md:p-6">
+                <h4 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">
+                  Cost Analysis & Final Calculations
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-6">
+                  <div className="text-center p-4 md:p-6 bg-linear-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 shadow-sm">
+                    <div className="flex items-center justify-center gap-2 mb-2 md:mb-3">
+                      <Calculator className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
+                      <div className="text-xs md:text-sm text-green-700 font-semibold tracking-wide uppercase">
+                        Tentative Cost
+                      </div>
+                    </div>
+                    <div className="text-2xl md:text-3xl font-bold text-green-800 tracking-tight">
+                      ₹{(realtime.tentative || 0).toLocaleString()}
+                    </div>
+                  </div>
+
+                  <div className="text-center p-4 md:p-6 bg-linear-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 shadow-sm">
+                    <div className="flex items-center justify-center gap-2 mb-2 md:mb-3">
+                      <Award className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+                      <div className="text-xs md:text-sm text-blue-700 font-semibold tracking-wide uppercase">
+                        Brand Final Cost
+                      </div>
+                    </div>
+                    {isEditing ? (
+                      <div className="relative flex items-center justify-center gap-1">
+                        <span className="text-2xl md:text-3xl font-bold text-blue-800">
+                          ₹
+                        </span>
+                        <Input
+                          type="number"
+                          value={editedProject.clientFinalCost || ""}
+                          onChange={(e) =>
+                            setEditedProject({
+                              ...editedProject,
+                              clientFinalCost: e.target.value,
+                            })
+                          }
+                          className="text-center text-2xl md:text-3xl font-bold text-blue-800 bg-white/50 border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg h-auto w-32 md:w-48 px-2 py-1 shadow-inner"
+                          placeholder="0"
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-2xl md:text-3xl font-bold text-blue-800 tracking-tight">
+                        ₹{project?.clientFinalCost?.toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Summary box */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 md:p-4">
+                  <h5 className="font-semibold text-gray-900 mb-2 md:mb-3 text-sm md:text-base">
+                    Cost Breakdown Summary
+                  </h5>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 text-xs md:text-sm mb-3 md:mb-4">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Upper Cost:</span>
+                      <span className="font-medium">
+                        ₹{Number(costSummary.upperTotal || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Component Cost:</span>
+                      <span className="font-medium">
+                        ₹{Number(costSummary.componentTotal || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Material Cost:</span>
+                      <span className="font-medium">
+                        ₹{Number(costSummary.materialTotal || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Packaging Cost:</span>
+                      <span className="font-medium">
+                        ₹{Number(costSummary.packagingTotal || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Labour + OH:</span>
+                      <span className="font-medium">
+                        ₹{Number(costSummary.labourTotal || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Miscellaneous:</span>
+                      <span className="font-medium">
+                        ₹{Number(costSummary.miscTotal || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Separator className="my-2 md:my-3" />
+                  <div className="flex justify-between font-semibold mb-2 md:mb-3 text-sm">
+                    <span>Total All Costs:</span>
+                    <span>
+                      ₹{Number(costSummary.totalAllCosts || 0).toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Additional Costs */}
+                  <div className="flex justify-between items-center mb-2 text-sm">
+                    <span className="text-gray-600">Additional Costs:</span>
+                    {!isEditing ? (
+                      <span className="font-medium">
+                        ₹{Number(costSummary.additionalCosts || 0).toFixed(2)}
+                      </span>
+                    ) : (
+                      <div className="relative w-20 md:w-28">
+                        <Input
+                          type="number"
+                          value={editAdditionalCosts}
+                          onChange={(e) =>
+                            setEditAdditionalCosts(Number(e.target.value) || 0)
+                          }
+                          className="h-7 md:h-8 text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Profit Margin (%) */}
+                  <div className="flex justify-between items-center mb-2 text-sm">
+                    <span className="text-gray-600">Profit Margin (%):</span>
+                    {!isEditing ? (
+                      <span className="font-medium">
+                        {Number(costSummary.profitMargin || 0)}%
+                      </span>
+                    ) : (
+                      <div className="relative w-16 md:w-20">
+                        <Input
+                          type="number"
+                          value={editProfitMargin}
+                          min={0}
+                          max={100}
+                          onChange={(e) => {
+                            let val = Number(e.target.value);
+                            if (isNaN(val) || val < 0) val = 0;
+                            if (val > 100) val = 100;
+                            setEditProfitMargin(val);
+                          }}
+                          className="h-7 md:h-8 text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Profit Amount */}
+                  <div className="flex justify-between text-xs md:text-sm mb-2">
+                    <span className="text-gray-600">
+                      Profit (
+                      {isEditing ? editProfitMargin : costSummary.profitMargin}
+                      %):
+                    </span>
+                    <span className="font-medium">
+                      +₹
+                      {(isEditing
+                        ? localProfitAmount
+                        : Number(costSummary.profitAmount || 0)
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <Separator />
+
+                  {/* Tentative Cost */}
+                  <div className="flex justify-between font-bold text-base md:text-lg text-green-700">
+                    <span>Total Tentative Cost:</span>
+                    <span>
+                      ₹
+                      {(isEditing
+                        ? localTentativeCost
+                        : Number(costSummary.tentativeCost || 0)
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
