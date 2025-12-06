@@ -14,13 +14,11 @@ import {
   Trash2,
   Wrench,
   X,
-  ChevronRight,
-  ChevronLeft,
-  Menu,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { RDProject } from "../lib/data-store";
+import { useRedirect } from "../hooks/useRedirect";
+import api from "../lib/api";
 import { useERPStore } from "../lib/data-store";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -35,11 +33,6 @@ import {
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
-import { Textarea } from "./ui/textarea";
-import api from "../lib/api";
-import { ProductDevelopment } from "./ProjectDetailsDialog";
-import { useERP } from "../lib/stores/erpContext";
-import { useRedirect } from "../hooks/useRedirect";
 import {
   Sheet,
   SheetContent,
@@ -48,11 +41,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "./ui/sheet";
+import { Textarea } from "./ui/textarea";
 
 interface TentativeCostDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  project: ProductDevelopment | null;
+  project: any | null;
   onApproved: () => void;
 }
 
@@ -61,7 +55,7 @@ export interface CostItem {
   _id: string;
   item: string;
   description: string;
-  consumption: string;
+  consumption: number; // Changed from string to number
   cost: number;
   department?: string;
   createdAt?: string;
@@ -151,102 +145,190 @@ const AddNewItemDialog = ({
   formData: {
     item: string;
     description: string;
-    consumption: string;
+    consumption: number;
     cost: number;
   };
   onFormChange: (field: string, value: string | number) => void;
   onAddItem: () => void;
-}) => (
-  <Dialog open={isOpen} onOpenChange={onClose}>
-    <DialogContent className="max-w-md w-[95vw] sm:w-full">
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
-          <Plus className="w-5 h-5" />
-          Add New {category.charAt(0).toUpperCase() + category.slice(1)} Item
-        </DialogTitle>
-        <DialogDescription className="text-sm sm:text-base">
-          Add a new item to the {category} cost breakdown
-        </DialogDescription>
-      </DialogHeader>
-      <div className="space-y-4">
-        <div>
-          <Label htmlFor={`item-${category}`} className="text-sm sm:text-base">
-            Item Name *
-          </Label>
-          <Input
-            id={`item-${category}`}
-            value={formData.item}
-            onChange={(e) => onFormChange("item", e.target.value)}
-            placeholder="Enter item name"
-            className="mt-1 h-10 sm:h-12 text-sm sm:text-base"
-          />
-        </div>
-        <div>
-          <Label
-            htmlFor={`description-${category}`}
-            className="text-sm sm:text-base"
-          >
-            Description
-          </Label>
-          <Input
-            id={`description-${category}`}
-            value={formData.description}
-            onChange={(e) => onFormChange("description", e.target.value)}
-            placeholder="Enter description (optional)"
-            className="mt-1 h-10 sm:h-12 text-sm sm:text-base"
-          />
-        </div>
-        <div>
-          <Label
-            htmlFor={`consumption-${category}`}
-            className="text-sm sm:text-base"
-          >
-            Consumption
-          </Label>
-          <Input
-            id={`consumption-${category}`}
-            value={formData.consumption}
-            onChange={(e) => onFormChange("consumption", e.target.value)}
-            placeholder="Enter consumption details (optional)"
-            className="mt-1 h-10 sm:h-12 text-sm sm:text-base"
-          />
-        </div>
-        <div>
-          <Label htmlFor={`cost-${category}`} className="text-sm sm:text-base">
-            Cost *
-          </Label>
-          <div className="relative mt-1">
-            <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+}) => {
+  const [errors, setErrors] = useState<{
+    item?: string;
+    consumption?: string;
+    cost?: string;
+  }>({});
+
+  const validateForm = () => {
+    const newErrors: {
+      item?: string;
+      consumption?: string;
+      cost?: string;
+    } = {};
+
+    if (!formData.item.trim()) {
+      newErrors.item = "Item name is required";
+    }
+
+    if (
+      formData.consumption === undefined ||
+      formData.consumption === null ||
+      isNaN(formData.consumption)
+    ) {
+      newErrors.consumption = "Consumption is required and must be a number";
+    } else if (formData.consumption < 0) {
+      newErrors.consumption = "Consumption cannot be negative";
+    }
+
+    if (
+      formData.cost === undefined ||
+      formData.cost === null ||
+      isNaN(formData.cost)
+    ) {
+      newErrors.cost = "Cost is required";
+    } else if (formData.cost < 0) {
+      newErrors.cost = "Cost cannot be negative";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = () => {
+    if (validateForm()) {
+      onAddItem();
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-md w-[95vw] sm:w-full">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <Plus className="w-5 h-5" />
+            Add New {category.charAt(0).toUpperCase() + category.slice(1)} Item
+          </DialogTitle>
+          <DialogDescription className="text-sm sm:text-base">
+            Add a new item to the {category} cost breakdown
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label
+              htmlFor={`item-${category}`}
+              className="text-sm sm:text-base"
+            >
+              Item Name *
+            </Label>
             <Input
-              id={`cost-${category}`}
-              type="number"
-              value={formData.cost || ""}
-              onChange={(e) =>
-                onFormChange("cost", Number(e.target.value) || 0)
-              }
-              placeholder="0.00"
-              className="pl-10 h-10 sm:h-12 text-sm sm:text-base"
-              min="0"
-              step="0.01"
+              id={`item-${category}`}
+              value={formData.item}
+              onChange={(e) => {
+                onFormChange("item", e.target.value);
+                if (errors.item) setErrors({ ...errors, item: undefined });
+              }}
+              placeholder="Enter item name"
+              className={`mt-1 h-10 sm:h-12 text-sm sm:text-base ${
+                errors.item ? "border-red-500" : ""
+              }`}
+            />
+            {errors.item && (
+              <p className="text-xs text-red-500 mt-1">{errors.item}</p>
+            )}
+          </div>
+          <div>
+            <Label
+              htmlFor={`description-${category}`}
+              className="text-sm sm:text-base"
+            >
+              Description
+            </Label>
+            <Input
+              id={`description-${category}`}
+              value={formData.description}
+              onChange={(e) => onFormChange("description", e.target.value)}
+              placeholder="Enter description (optional)"
+              className="mt-1 h-10 sm:h-12 text-sm sm:text-base"
             />
           </div>
+          <div>
+            <Label
+              htmlFor={`consumption-${category}`}
+              className="text-sm sm:text-base"
+            >
+              Consumption *
+            </Label>
+            <Input
+              id={`consumption-${category}`}
+              type="number"
+              step="0.01"
+              min="0"
+              value={formData.consumption || ""}
+              onChange={(e) => {
+                const value =
+                  e.target.value === "" ? 0 : Number(e.target.value);
+                onFormChange("consumption", value);
+                if (errors.consumption)
+                  setErrors({ ...errors, consumption: undefined });
+              }}
+              placeholder="Enter consumption amount"
+              className={`mt-1 h-10 sm:h-12 text-sm sm:text-base ${
+                errors.consumption ? "border-red-500" : ""
+              }`}
+            />
+            {errors.consumption && (
+              <p className="text-xs text-red-500 mt-1">{errors.consumption}</p>
+            )}
+          </div>
+          <div>
+            <Label
+              htmlFor={`cost-${category}`}
+              className="text-sm sm:text-base"
+            >
+              Cost *
+            </Label>
+            <div className="relative mt-1">
+              <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                id={`cost-${category}`}
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.cost || ""}
+                onChange={(e) => {
+                  const value =
+                    e.target.value === "" ? 0 : Number(e.target.value);
+                  onFormChange("cost", value);
+                  if (errors.cost) setErrors({ ...errors, cost: undefined });
+                }}
+                placeholder="0.00"
+                className={`pl-10 h-10 sm:h-12 text-sm sm:text-base ${
+                  errors.cost ? "border-red-500" : ""
+                }`}
+              />
+            </div>
+            {errors.cost && (
+              <p className="text-xs text-red-500 mt-1">{errors.cost}</p>
+            )}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="w-full sm:flex-1 h-10 sm:h-12"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              className="w-full sm:flex-1 h-10 sm:h-12"
+            >
+              Add Item
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 pt-4">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="w-full sm:flex-1 h-10 sm:h-12"
-          >
-            Cancel
-          </Button>
-          <Button onClick={onAddItem} className="w-full sm:flex-1 h-10 sm:h-12">
-            Add Item
-          </Button>
-        </div>
-      </div>
-    </DialogContent>
-  </Dialog>
-);
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 // Stage Selector Component (Mobile Optimized)
 const StageSelector = ({
@@ -399,6 +481,7 @@ const CostCategoryCard = ({
   category,
   items,
   onUpdateCost,
+  onUpdateConsumption,
   onDeleteItem,
   onAddItem,
   onStageSelect,
@@ -409,6 +492,7 @@ const CostCategoryCard = ({
   category: string;
   items: CostItem[];
   onUpdateCost: (itemId: string, cost: number) => void;
+  onUpdateConsumption: (itemId: string, consumption: number) => void;
   onDeleteItem: (itemId: string) => void;
   onAddItem: () => void;
   onStageSelect: (itemId: string, department: string) => void;
@@ -497,11 +581,6 @@ const CostCategoryCard = ({
                           {item.description}
                         </div>
                       )}
-                      {item.consumption && (
-                        <div className="text-xs text-gray-500">
-                          {item.consumption}
-                        </div>
-                      )}
                     </div>
                     <div className="flex items-center gap-1">
                       <Button
@@ -520,17 +599,41 @@ const CostCategoryCard = ({
                       />
                     </div>
                   </div>
-                  <div className="relative">
-                    <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                    <Input
-                      type="number"
-                      value={item.cost || ""}
-                      onChange={(e) =>
-                        onUpdateCost(item._id, Number(e.target.value) || 0)
-                      }
-                      className="pl-7 text-sm h-8"
-                      placeholder="0.00"
-                    />
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="space-y-1">
+                      <div className="text-gray-500">Consumption *</div>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={item.consumption || ""}
+                        onChange={(e) => {
+                          const value =
+                            e.target.value === "" ? 0 : Number(e.target.value);
+                          onUpdateConsumption(item._id, value);
+                        }}
+                        className="h-7 text-xs px-2"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-gray-500">Cost *</div>
+                      <div className="relative">
+                        <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2" />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="h-7 text-xs pl-5"
+                          value={item.cost || ""}
+                          onChange={(e) =>
+                            onUpdateCost(item._id, Number(e.target.value) || 0)
+                          }
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -586,10 +689,10 @@ const CostCategoryCard = ({
                 ? "PACKING"
                 : "ITEM"}
             </div>
-            <div className="col-span-4 text-center">DESCRIPTION</div>
-            <div className="col-span-2 text-center">CONSUMPTION</div>
-            <div className="col-span-2 text-center">COST</div>
-            <div className="col-span-1 text-center"></div>
+            <div className="col-span-3 text-center">DESCRIPTION</div>
+            <div className="col-span-2 text-center">CONSUMPTION *</div>
+            <div className="col-span-2 text-center">COST *</div>
+            <div className="col-span-2 text-center">ACTIONS</div>
           </div>
 
           {/* Scrollable Table Content */}
@@ -606,7 +709,7 @@ const CostCategoryCard = ({
                     className="text-center text-sm bg-gray-50 h-8"
                   />
                 </div>
-                <div className="col-span-4">
+                <div className="col-span-3">
                   <Input
                     value={item.description || ""}
                     readOnly
@@ -615,9 +718,17 @@ const CostCategoryCard = ({
                 </div>
                 <div className="col-span-2">
                   <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
                     value={item.consumption || ""}
-                    readOnly
-                    className="text-sm bg-gray-50 h-8"
+                    onChange={(e) => {
+                      const value =
+                        e.target.value === "" ? 0 : Number(e.target.value);
+                      onUpdateConsumption(item._id, value);
+                    }}
+                    className="text-sm h-8 text-center"
+                    placeholder="0.00"
                   />
                 </div>
                 <div className="col-span-2">
@@ -625,6 +736,8 @@ const CostCategoryCard = ({
                     <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                     <Input
                       type="number"
+                      step="0.01"
+                      min="0"
                       value={item.cost || ""}
                       onChange={(e) =>
                         onUpdateCost(item._id, Number(e.target.value) || 0)
@@ -634,7 +747,7 @@ const CostCategoryCard = ({
                     />
                   </div>
                 </div>
-                <div className="col-span-1 flex justify-center gap-1">
+                <div className="col-span-2 flex justify-center gap-1">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -709,6 +822,8 @@ const MobileLabourCostCard = ({
                 <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-amber-600 w-3 h-3" />
                 <Input
                   type="number"
+                  step="0.01"
+                  min="0"
                   value={labourCost.directTotal || 0}
                   onChange={(e) =>
                     updateLabourCost({
@@ -736,6 +851,8 @@ const MobileLabourCostCard = ({
                     <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                     <Input
                       type="number"
+                      step="0.01"
+                      min="0"
                       value={item.cost || 0}
                       onChange={(e) => {
                         const updatedItems = labourCost.items.map(
@@ -866,12 +983,12 @@ export function TentativeCostDialog({
   });
 
   const [dialogForms, setDialogForms] = useState({
-    upper: { item: "", description: "", consumption: "", cost: 0 },
-    component: { item: "", description: "", consumption: "", cost: 0 },
-    material: { item: "", description: "", consumption: "", cost: 0 },
-    packaging: { item: "", description: "", consumption: "", cost: 0 },
-    labour: { item: "", description: "", consumption: "", cost: 0 },
-    miscellaneous: { item: "", description: "", consumption: "", cost: 0 },
+    upper: { item: "", description: "", consumption: 0, cost: 0 },
+    component: { item: "", description: "", consumption: 0, cost: 0 },
+    material: { item: "", description: "", consumption: 0, cost: 0 },
+    packaging: { item: "", description: "", consumption: 0, cost: 0 },
+    labour: { item: "", description: "", consumption: 0, cost: 0 },
+    miscellaneous: { item: "", description: "", consumption: 0, cost: 0 },
   });
 
   // Check screen size
@@ -961,7 +1078,7 @@ export function TentativeCostDialog({
               _id: item._id || `upper_${Date.now()}_${Math.random()}`,
               item: item.item || "",
               description: item.description || "",
-              consumption: item.consumption || "",
+              consumption: Number(item.consumption) || 0,
               cost: Number(item.cost) || 0,
               department: item.department || "",
             }))
@@ -971,7 +1088,7 @@ export function TentativeCostDialog({
               _id: item._id || `component_${Date.now()}_${Math.random()}`,
               item: item.item || "",
               description: item.description || "",
-              consumption: item.consumption || "",
+              consumption: Number(item.consumption) || 0,
               cost: Number(item.cost) || 0,
               department: item.department || "",
             }))
@@ -981,7 +1098,7 @@ export function TentativeCostDialog({
               _id: item._id || `material_${Date.now()}_${Math.random()}`,
               item: item.item || "",
               description: item.description || "",
-              consumption: item.consumption || "",
+              consumption: Number(item.consumption) || 0,
               cost: Number(item.cost) || 0,
             }))
           : [],
@@ -990,7 +1107,7 @@ export function TentativeCostDialog({
               _id: item._id || `packaging_${Date.now()}_${Math.random()}`,
               item: item.item || "",
               description: item.description || "",
-              consumption: item.consumption || "",
+              consumption: Number(item.consumption) || 0,
               cost: Number(item.cost) || 0,
             }))
           : [],
@@ -999,7 +1116,7 @@ export function TentativeCostDialog({
               _id: item._id || `misc_${Date.now()}_${Math.random()}`,
               item: item.item || "",
               description: item.description || "",
-              consumption: item.consumption || "",
+              consumption: Number(item.consumption) || 0,
               cost: Number(item.cost) || 0,
             }))
           : [],
@@ -1176,6 +1293,43 @@ export function TentativeCostDialog({
     }
   };
 
+  const updateItemConsumption = async (itemId: string, consumption: number) => {
+    if (!project) return;
+
+    try {
+      let section: string | null = null;
+      for (const [sec, items] of Object.entries(costRows)) {
+        if (items.find((item) => item._id === itemId)) {
+          section = sec;
+          break;
+        }
+      }
+
+      if (!section) {
+        toast.error("Item not found");
+        return;
+      }
+
+      await api.patch(`/projects/${project._id}/costs/${section}/${itemId}`, {
+        consumption: Number(consumption) || 0,
+      });
+
+      setCostRows((prev) => ({
+        ...prev,
+        [section as string]: prev[section as keyof typeof prev].map((item) =>
+          item._id === itemId
+            ? { ...item, consumption: Number(consumption) || 0 }
+            : item
+        ),
+      }));
+
+      await loadSummary();
+    } catch (error) {
+      console.error("Failed to update item consumption:", error);
+      toast.error("Failed to update item consumption");
+    }
+  };
+
   const deleteItem = async (itemId: string) => {
     if (!project) return;
 
@@ -1253,7 +1407,7 @@ export function TentativeCostDialog({
     setAddItemDialogs((prev) => ({ ...prev, [category]: true }));
     setDialogForms((prev) => ({
       ...prev,
-      [category]: { item: "", description: "", consumption: "", cost: 0 },
+      [category]: { item: "", description: "", consumption: 0, cost: 0 },
     }));
   };
 
@@ -1279,8 +1433,40 @@ export function TentativeCostDialog({
     if (!project) return;
 
     const currentForm = dialogForms[category as keyof typeof dialogForms];
+
+    // Validate required fields
     if (!currentForm.item.trim()) {
       toast.error("Please enter an item name");
+      return;
+    }
+
+    // Validate consumption
+    if (
+      currentForm.consumption === undefined ||
+      currentForm.consumption === null ||
+      isNaN(currentForm.consumption)
+    ) {
+      toast.error("Please enter a valid consumption amount");
+      return;
+    }
+
+    if (currentForm.consumption < 0) {
+      toast.error("Consumption cannot be negative");
+      return;
+    }
+
+    // Validate cost
+    if (
+      currentForm.cost === undefined ||
+      currentForm.cost === null ||
+      isNaN(currentForm.cost)
+    ) {
+      toast.error("Please enter a valid cost");
+      return;
+    }
+
+    if (currentForm.cost < 0) {
+      toast.error("Cost cannot be negative");
       return;
     }
 
@@ -1288,7 +1474,7 @@ export function TentativeCostDialog({
       const payload = {
         item: currentForm.item.trim(),
         description: currentForm.description || "",
-        consumption: currentForm.consumption || "",
+        consumption: Number(currentForm.consumption) || 0,
         cost: Number(currentForm.cost) || 0,
       };
 
@@ -1306,7 +1492,7 @@ export function TentativeCostDialog({
               _id: response.data.row._id,
               item: response.data.row.item || "",
               description: response.data.row.description || "",
-              consumption: response.data.row.consumption || "",
+              consumption: Number(response.data.row.consumption) || 0,
               cost: Number(response.data.row.cost) || 0,
               department: response.data.row.department || "",
             },
@@ -1544,6 +1730,7 @@ export function TentativeCostDialog({
                     category="upper"
                     items={costRows.upper}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("upper")}
                     onStageSelect={setItemDepartment}
@@ -1559,6 +1746,7 @@ export function TentativeCostDialog({
                     category="component"
                     items={costRows.component}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("component")}
                     onStageSelect={setItemDepartment}
@@ -1574,6 +1762,7 @@ export function TentativeCostDialog({
                     category="material"
                     items={costRows.material}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("material")}
                     onStageSelect={setItemDepartment}
@@ -1589,6 +1778,7 @@ export function TentativeCostDialog({
                     category="packaging"
                     items={costRows.packaging}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("packaging")}
                     onStageSelect={setItemDepartment}
@@ -1604,6 +1794,7 @@ export function TentativeCostDialog({
                     category="miscellaneous"
                     items={costRows.miscellaneous}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("miscellaneous")}
                     onStageSelect={setItemDepartment}
@@ -1638,6 +1829,8 @@ export function TentativeCostDialog({
                           <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                           <Input
                             type="number"
+                            step="0.01"
+                            min="0"
                             value={displaySummary.additionalCosts || 0}
                             onChange={(e) =>
                               handleAdditionalCostsChange(
@@ -1658,15 +1851,15 @@ export function TentativeCostDialog({
                           <Percent className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                           <Input
                             type="number"
+                            step="0.1"
+                            min="0"
+                            max="100"
                             value={displaySummary.profitMargin ?? 0}
                             onChange={(e) =>
                               handleProfitMarginChange(e.target.value)
                             }
                             className="pl-8 h-9 text-sm"
                             placeholder="Profit margin %"
-                            min="0"
-                            max="100"
-                            step="0.1"
                           />
                         </div>
                       </div>
@@ -1790,6 +1983,7 @@ export function TentativeCostDialog({
                     category="upper"
                     items={costRows.upper}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("upper")}
                     onStageSelect={setItemDepartment}
@@ -1802,6 +1996,7 @@ export function TentativeCostDialog({
                     category="component"
                     items={costRows.component}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("component")}
                     onStageSelect={setItemDepartment}
@@ -1814,6 +2009,7 @@ export function TentativeCostDialog({
                     category="material"
                     items={costRows.material}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("material")}
                     onStageSelect={setItemDepartment}
@@ -1826,6 +2022,7 @@ export function TentativeCostDialog({
                     category="packaging"
                     items={costRows.packaging}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("packaging")}
                     onStageSelect={setItemDepartment}
@@ -1838,6 +2035,7 @@ export function TentativeCostDialog({
                     category="miscellaneous"
                     items={costRows.miscellaneous}
                     onUpdateCost={updateItemCost}
+                    onUpdateConsumption={updateItemConsumption}
                     onDeleteItem={deleteItem}
                     onAddItem={() => openAddItemDialog("miscellaneous")}
                     onStageSelect={setItemDepartment}
@@ -1867,6 +2065,8 @@ export function TentativeCostDialog({
                               <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-amber-600 w-4 h-4" />
                               <Input
                                 type="number"
+                                step="0.01"
+                                min="0"
                                 value={labourCost.directTotal || 0}
                                 onChange={(e) =>
                                   updateLabourCost({
@@ -1899,6 +2099,8 @@ export function TentativeCostDialog({
                                 <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                                 <Input
                                   type="number"
+                                  step="0.01"
+                                  min="0"
                                   value={item.cost || 0}
                                   onChange={(e) => {
                                     const updatedItems = labourCost.items.map(
@@ -1980,6 +2182,8 @@ export function TentativeCostDialog({
                           <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                           <Input
                             type="number"
+                            step="0.01"
+                            min="0"
                             value={displaySummary.additionalCosts || 0}
                             onChange={(e) =>
                               handleAdditionalCostsChange(
@@ -2000,15 +2204,15 @@ export function TentativeCostDialog({
                           <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                           <Input
                             type="number"
+                            step="0.1"
+                            min="0"
+                            max="100"
                             value={displaySummary.profitMargin ?? 0}
                             onChange={(e) =>
                               handleProfitMarginChange(e.target.value)
                             }
                             className="pl-10 h-10 md:h-12"
                             placeholder="Enter profit margin %"
-                            min="0"
-                            max="100"
-                            step="0.1"
                           />
                         </div>
                       </div>
@@ -2163,11 +2367,7 @@ export function TentativeCostDialog({
               <Button
                 onClick={handleApprove}
                 className="bg-[rgba(0,188,125,1)] hover:bg-green-600 w-full sm:w-auto h-10 md:h-12"
-                disabled={
-                  displaySummary.tentativeCost === 0 ||
-                  isLoading ||
-                  displaySummary.status !== "ready_for_red_seal"
-                }
+                disabled={displaySummary.tentativeCost === 0 || isLoading}
               >
                 <ArrowRight className="w-4 h-4 mr-2" />
                 {isLoading ? "Processing..." : "Approve & Advance"}

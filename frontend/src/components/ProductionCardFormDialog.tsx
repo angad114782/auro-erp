@@ -13,7 +13,22 @@ import {
   Factory,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  Check,
 } from "lucide-react";
+// Add these imports at the top
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "./ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Trash2 } from "lucide-react";
+
+// Add this interface after other interfaces
+
 import {
   Dialog,
   DialogContent,
@@ -54,6 +69,12 @@ const useMediaQuery = (query: string) => {
   }, [matches, query]);
   return matches;
 };
+
+interface PlantType {
+  _id: string;
+  name: string;
+  isActive: boolean;
+}
 
 interface ProductionCardData {
   id: string;
@@ -231,9 +252,12 @@ export function ProductionCardFormDialog({
   const [materialData, setMaterialData] = useState<{
     [key: string]: { available: number; issued: number };
   }>({});
-
-  const [addPlantDialogOpen, setAddPlantDialogOpen] = useState(false);
+  // Add to the component state declarations
+  const [plants, setPlants] = useState<PlantType[]>([]);
+  const [plantOpen, setPlantOpen] = useState(false);
+  const [addingNewPlant, setAddingNewPlant] = useState(false);
   const [newPlantName, setNewPlantName] = useState("");
+  const [loadingPlants, setLoadingPlants] = useState(false);
   const [currentSection, setCurrentSection] = useState(0);
   const sections = ["allocation", "materials", "timeline", "details"];
 
@@ -243,6 +267,51 @@ export function ProductionCardFormDialog({
       setCurrentSection(currentSection - 1);
     } else if (direction === "next" && currentSection < sections.length - 1) {
       setCurrentSection(currentSection + 1);
+    }
+  };
+
+  // Add this useEffect after other useEffect hooks
+  useEffect(() => {
+    if (!open) return;
+
+    const loadPlants = async () => {
+      try {
+        setLoadingPlants(true);
+        const res = await api.get("/assign-plant");
+        const plantsData: PlantType[] = res.data?.items || res.data?.data || [];
+        setPlants(plantsData);
+      } catch (e: any) {
+        console.error("Failed loading plants:", e);
+        toast.error(e?.response?.data?.message || "Failed to load plants");
+      } finally {
+        setLoadingPlants(false);
+      }
+    };
+
+    loadPlants();
+  }, [open]);
+
+  // Add this function after other handlers
+  const handleCreateNewPlant = async () => {
+    if (!newPlantName.trim()) return toast.error("Please enter a plant name");
+
+    try {
+      const res = await api.post("/assign-plant", {
+        name: newPlantName.trim(),
+      });
+      const createdPlantResponse = res.data?.data || res.data;
+      setPlants((prev) => [createdPlantResponse, ...prev]);
+      setFormData((prev) => ({
+        ...prev,
+        assignPlant: createdPlantResponse._id,
+      }));
+      toast.success(`Plant "${createdPlantResponse.name}" created`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create plant");
+    } finally {
+      setNewPlantName("");
+      setAddingNewPlant(false);
+      setPlantOpen(false);
     }
   };
 
@@ -926,7 +995,7 @@ export function ProductionCardFormDialog({
         <CardContent className="p-4 space-y-4">
           <div className="space-y-2">
             <Label className="text-sm font-medium text-gray-700">
-              Start Date
+              Start Date *
             </Label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -941,23 +1010,144 @@ export function ProductionCardFormDialog({
 
           <div className="space-y-2">
             <Label className="text-sm font-medium text-gray-700">
-              Assign Plant
+              Assign Plant *
             </Label>
-            <Input
-              value={formData.assignPlant}
-              onChange={(e) => handleInputChange("assignPlant", e.target.value)}
-              className="h-10"
-              placeholder="Enter plant name"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full text-sm"
-              onClick={() => setAddPlantDialogOpen(true)}
-            >
-              <Plus className="w-3 h-3 mr-2" />
-              Add New Plant
-            </Button>
+            <Popover open={plantOpen} onOpenChange={setPlantOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={plantOpen}
+                  className="w-full h-10 justify-between"
+                >
+                  <span className="truncate">
+                    {formData.assignPlant
+                      ? plants.find((p) => p._id === formData.assignPlant)?.name
+                      : loadingPlants
+                      ? "Loading..."
+                      : "Select plant"}
+                  </span>
+                  <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <Command>
+                  <CommandInput
+                    placeholder="Search plants..."
+                    className="h-9"
+                  />
+                  <CommandEmpty>No plant found.</CommandEmpty>
+                  <CommandGroup className="max-h-64 overflow-auto">
+                    {plants.map((plant) => (
+                      <CommandItem
+                        key={plant._id}
+                        value={plant.name}
+                        className="flex items-center justify-between"
+                        onSelect={() => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            assignPlant: plant._id,
+                          }));
+                          setPlantOpen(false);
+                        }}
+                      >
+                        <div className="flex items-center flex-1 min-w-0">
+                          <Check
+                            className={`mr-2 h-4 w-4 shrink-0 ${
+                              formData.assignPlant === plant._id
+                                ? "opacity-100"
+                                : "opacity-0"
+                            }`}
+                          />
+                          <span className="truncate">{plant.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="p-1 hover:bg-red-50 rounded shrink-0"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            try {
+                              await api.delete(`/assign-plants/${plant._id}`);
+                              setPlants((prev) =>
+                                prev.filter((p) => p._id !== plant._id)
+                              );
+                              // Clear selection if deleting currently selected plant
+                              if (formData.assignPlant === plant._id) {
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  assignPlant: "",
+                                }));
+                              }
+                              toast.success("Plant removed");
+                            } catch (err: any) {
+                              toast.error(
+                                err?.response?.data?.message ||
+                                  "Failed to remove plant"
+                              );
+                            }
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                        </button>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+
+                  <div className="border-t p-2">
+                    {!addingNewPlant ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="w-full justify-start text-blue-600"
+                        onClick={() => setAddingNewPlant(true)}
+                      >
+                        <Plus className="w-4 h-4 mr-2" /> Create New Plant
+                      </Button>
+                    ) : (
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="Enter new plant name..."
+                          value={newPlantName}
+                          onChange={(e) => setNewPlantName(e.target.value)}
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && handleCreateNewPlant()
+                          }
+                          autoFocus
+                          className="text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleCreateNewPlant}
+                            className="flex-1 text-xs"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" /> Add
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setAddingNewPlant(false);
+                              setNewPlantName("");
+                            }}
+                            className="flex-1 text-xs"
+                          >
+                            <X className="w-3 h-3 mr-1" /> Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
         </CardContent>
       </Card>
@@ -1327,26 +1517,151 @@ export function ProductionCardFormDialog({
 
                   <div className="space-y-2">
                     <Label className="text-sm font-medium text-gray-700">
-                      Assign Plant
+                      Assign Plant *
                     </Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value={formData.assignPlant}
-                        onChange={(e) =>
-                          handleInputChange("assignPlant", e.target.value)
-                        }
-                        className="h-10 sm:h-11 text-sm sm:text-base"
-                        placeholder="Select or enter plant"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setAddPlantDialogOpen(true)}
-                        className="h-10 sm:h-11 px-3"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    <Popover open={plantOpen} onOpenChange={setPlantOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={plantOpen}
+                          className="w-full h-10 md:h-12 justify-between"
+                        >
+                          <span className="truncate">
+                            {formData.assignPlant
+                              ? plants.find(
+                                  (p) => p._id === formData.assignPlant
+                                )?.name
+                              : loadingPlants
+                              ? "Loading..."
+                              : "Select plant"}
+                          </span>
+                          <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0" align="start">
+                        <Command>
+                          <CommandInput
+                            placeholder="Search plants..."
+                            className="h-9"
+                          />
+                          <CommandEmpty>No plant found.</CommandEmpty>
+                          <CommandGroup className="max-h-64 overflow-auto">
+                            {plants.map((plant) => (
+                              <CommandItem
+                                key={plant._id}
+                                value={plant.name}
+                                className="flex items-center justify-between"
+                                onSelect={() => {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    assignPlant: plant._id,
+                                  }));
+                                  setPlantOpen(false);
+                                }}
+                              >
+                                <div className="flex items-center flex-1 min-w-0">
+                                  <Check
+                                    className={`mr-2 h-4 w-4 shrink-0 ${
+                                      formData.assignPlant === plant._id
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    }`}
+                                  />
+                                  <span className="truncate">{plant.name}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="p-1 hover:bg-red-50 rounded shrink-0"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onClick={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    try {
+                                      await api.delete(
+                                        `/assign-plants/${plant._id}`
+                                      );
+                                      setPlants((prev) =>
+                                        prev.filter((p) => p._id !== plant._id)
+                                      );
+                                      // Clear selection if deleting currently selected plant
+                                      if (formData.assignPlant === plant._id) {
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          assignPlant: "",
+                                        }));
+                                      }
+                                      toast.success("Plant removed");
+                                    } catch (err: any) {
+                                      toast.error(
+                                        err?.response?.data?.message ||
+                                          "Failed to remove plant"
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                                </button>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+
+                          <div className="border-t p-2">
+                            {!addingNewPlant ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="w-full justify-start text-blue-600"
+                                onClick={() => setAddingNewPlant(true)}
+                              >
+                                <Plus className="w-4 h-4 mr-2" /> Create New
+                                Plant
+                              </Button>
+                            ) : (
+                              <div className="space-y-2">
+                                <Input
+                                  placeholder="Enter new plant name..."
+                                  value={newPlantName}
+                                  onChange={(e) =>
+                                    setNewPlantName(e.target.value)
+                                  }
+                                  onKeyDown={(e) =>
+                                    e.key === "Enter" && handleCreateNewPlant()
+                                  }
+                                  autoFocus
+                                  className="text-sm"
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={handleCreateNewPlant}
+                                    className="flex-1 text-xs"
+                                  >
+                                    <CheckCircle className="w-3 h-3 mr-1" /> Add
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setAddingNewPlant(false);
+                                      setNewPlantName("");
+                                    }}
+                                    className="flex-1 text-xs"
+                                  >
+                                    <X className="w-3 h-3 mr-1" /> Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
               </div>
@@ -1447,58 +1762,6 @@ export function ProductionCardFormDialog({
           </div>
         </div>
       </DialogContent>
-
-      {/* Add New Plant Dialog */}
-      <Dialog open={addPlantDialogOpen} onOpenChange={setAddPlantDialogOpen}>
-        <DialogContent className={isMobile ? "max-w-[95vw]" : "max-w-md"}>
-          <DialogHeader>
-            <DialogTitle className="text-lg sm:text-xl flex items-center gap-2">
-              <Factory className="w-5 h-5 text-blue-600" />
-              Add New Plant
-            </DialogTitle>
-            <DialogDescription className="text-sm sm:text-base">
-              Enter the name of the new manufacturing plant
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="plantName">Plant Name *</Label>
-              <Input
-                id="plantName"
-                value={newPlantName}
-                onChange={(e) => setNewPlantName(e.target.value)}
-                placeholder="e.g., Plant F - Central Unit"
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
-            <Button
-              variant="outline"
-              size={isMobile ? "sm" : "default"}
-              onClick={() => {
-                setAddPlantDialogOpen(false);
-                setNewPlantName("");
-              }}
-              className={isMobile ? "w-full" : ""}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={saveNewPlant}
-              size={isMobile ? "sm" : "default"}
-              className={`${
-                isMobile ? "w-full" : ""
-              } bg-blue-600 hover:bg-blue-700`}
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Add Plant
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </Dialog>
   );
 }

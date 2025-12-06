@@ -12,6 +12,8 @@ import {
   Search,
   Check,
   ChevronsUpDown,
+  ChevronDown,
+  Trash2,
 } from "lucide-react";
 import {
   Dialog,
@@ -24,13 +26,6 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner";
 import api from "../lib/api";
@@ -58,6 +53,12 @@ const useMediaQuery = (query: string) => {
   }, [matches, query]);
   return matches;
 };
+
+interface PlantType {
+  _id: string;
+  name: string;
+  isActive: boolean;
+}
 
 interface ProductionPlan {
   _id?: string;
@@ -106,17 +107,75 @@ export function ViewProductionCardDialog({
     soleExpectedDate: "",
   });
 
-  const [plantsList, setPlantsList] = useState<string[]>([
-    "Plant A - China",
-    "Plant B - Bangladesh",
-    "Plant C - India",
-    "Plant D - Vietnam",
-    "Plant E - Thailand",
-  ]);
-
-  const [addPlantDialogOpen, setAddPlantDialogOpen] = useState(false);
-  const [newPlantName, setNewPlantName] = useState("");
+  const [plants, setPlants] = useState<PlantType[]>([]);
   const [openPlantsDropdown, setOpenPlantsDropdown] = useState(false);
+  const [addingNewPlant, setAddingNewPlant] = useState(false);
+  const [newPlantName, setNewPlantName] = useState("");
+  const [loadingPlants, setLoadingPlants] = useState(false);
+
+  // Load plants when dialog opens
+  useEffect(() => {
+    if (!open) return;
+
+    const loadPlants = async () => {
+      try {
+        setLoadingPlants(true);
+        const res = await api.get("/assign-plant");
+        const plantsData: PlantType[] = res.data?.items || res.data?.data || [];
+        setPlants(plantsData);
+      } catch (e: any) {
+        console.error("Failed loading plants:", e);
+        toast.error(e?.response?.data?.message || "Failed to load plants");
+      } finally {
+        setLoadingPlants(false);
+      }
+    };
+
+    loadPlants();
+  }, [open]);
+
+  // Handle creating new plant
+  const handleCreateNewPlant = async () => {
+    if (!newPlantName.trim()) return toast.error("Please enter a plant name");
+
+    try {
+      const res = await api.post("/assign-plants", {
+        name: newPlantName.trim(),
+      });
+      const createdPlantResponse = res.data?.data || res.data;
+      setPlants((prev) => [createdPlantResponse, ...prev]);
+      setFormData((prev) => ({
+        ...prev,
+        assignedPlant: createdPlantResponse._id,
+      }));
+      toast.success(`Plant "${createdPlantResponse.name}" created`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create plant");
+    } finally {
+      setNewPlantName("");
+      setAddingNewPlant(false);
+    }
+  };
+
+  // Handle deleting a plant
+  const handleDeletePlant = async (plantId: string, plantName: string) => {
+    try {
+      await api.delete(`/assign-plants/${plantId}`);
+      setPlants((prev) => prev.filter((p) => p._id !== plantId));
+
+      // Clear selection if deleting currently selected plant
+      if (formData.assignedPlant === plantId) {
+        setFormData((prev) => ({
+          ...prev,
+          assignedPlant: "",
+        }));
+      }
+
+      toast.success(`Plant "${plantName}" removed`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to remove plant");
+    }
+  };
 
   useEffect(() => {
     if (open && productionData) {
@@ -140,22 +199,6 @@ export function ViewProductionCardDialog({
   }, [open, productionData]);
 
   if (!productionData) return null;
-
-  const saveNewPlant = () => {
-    if (!newPlantName.trim()) {
-      toast.error("Please enter plant name");
-      return;
-    }
-    if (plantsList.includes(newPlantName)) {
-      toast.error("Plant already exists");
-      return;
-    }
-    setPlantsList([...plantsList, newPlantName]);
-    setFormData({ ...formData, assignedPlant: newPlantName });
-    setNewPlantName("");
-    setAddPlantDialogOpen(false);
-    toast.success("Plant added successfully");
-  };
 
   const handleSave = async () => {
     if (!formData.scheduleDate) {
@@ -285,40 +328,114 @@ export function ViewProductionCardDialog({
                       aria-expanded={openPlantsDropdown}
                       className="w-full h-10 sm:h-12 justify-between text-sm sm:text-base"
                     >
-                      {formData.assignedPlant || "Select plant..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      <span className="truncate">
+                        {formData.assignedPlant
+                          ? plants.find((p) => p._id === formData.assignedPlant)
+                              ?.name
+                          : loadingPlants
+                          ? "Loading..."
+                          : "Select plant..."}
+                      </span>
+                      <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                  <PopoverContent className="w-full p-0" align="start">
                     <Command>
                       <CommandInput placeholder="Search plants..." />
                       <CommandList>
                         <CommandEmpty>No plant found.</CommandEmpty>
-                        <CommandGroup>
-                          {plantsList.map((plant) => (
+                        <CommandGroup className="max-h-64 overflow-auto">
+                          {plants.map((plant) => (
                             <CommandItem
-                              key={plant}
-                              value={plant}
+                              key={plant._id}
+                              value={plant.name}
+                              className="flex items-center justify-between"
                               onSelect={() => {
                                 setFormData({
                                   ...formData,
-                                  assignedPlant: plant,
+                                  assignedPlant: plant._id,
                                 });
                                 setOpenPlantsDropdown(false);
                               }}
                             >
-                              <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  formData.assignedPlant === plant
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {plant}
+                              <div className="flex items-center flex-1 min-w-0">
+                                <Check
+                                  className={`mr-2 h-4 w-4 shrink-0 ${
+                                    formData.assignedPlant === plant._id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                <span className="truncate">{plant.name}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="p-1 hover:bg-red-50 rounded shrink-0"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleDeletePlant(plant._id, plant.name);
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                              </button>
                             </CommandItem>
                           ))}
                         </CommandGroup>
                       </CommandList>
+
+                      {/* Create New Plant Section */}
+                      <div className="border-t p-2">
+                        {!addingNewPlant ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="w-full justify-start text-blue-600"
+                            onClick={() => setAddingNewPlant(true)}
+                          >
+                            <Plus className="w-4 h-4 mr-2" /> Create New Plant
+                          </Button>
+                        ) : (
+                          <div className="space-y-2">
+                            <Input
+                              placeholder="Enter new plant name..."
+                              value={newPlantName}
+                              onChange={(e) => setNewPlantName(e.target.value)}
+                              onKeyDown={(e) =>
+                                e.key === "Enter" && handleCreateNewPlant()
+                              }
+                              autoFocus
+                              className="text-sm"
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={handleCreateNewPlant}
+                                className="flex-1 text-xs"
+                              >
+                                <CheckCircle className="w-3 h-3 mr-1" /> Add
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setAddingNewPlant(false);
+                                  setNewPlantName("");
+                                }}
+                                className="flex-1 text-xs"
+                              >
+                                <X className="w-3 h-3 mr-1" /> Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </Command>
                   </PopoverContent>
                 </Popover>
@@ -475,46 +592,6 @@ export function ViewProductionCardDialog({
           </div>
         </div>
       </DialogContent>
-
-      {/* Add New Plant Dialog */}
-      <Dialog open={addPlantDialogOpen} onOpenChange={setAddPlantDialogOpen}>
-        <DialogContent className="max-w-md">
-          <div className="p-4 sm:p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Factory className="w-5 h-5 text-blue-600" />
-              <DialogTitle className="text-lg sm:text-xl">
-                Add New Plant
-              </DialogTitle>
-            </div>
-            <div className="space-y-4 py-2">
-              <Label htmlFor="plantName">Plant Name *</Label>
-              <Input
-                id="plantName"
-                value={newPlantName}
-                onChange={(e) => setNewPlantName(e.target.value)}
-                placeholder="e.g., Plant F - Indonesia"
-                className="w-full h-10"
-              />
-            </div>
-            <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => setAddPlantDialogOpen(false)}
-                className="w-full sm:w-auto"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={saveNewPlant}
-                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700"
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Add Plant
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </Dialog>
   );
 }

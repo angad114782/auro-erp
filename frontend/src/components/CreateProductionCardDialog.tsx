@@ -557,7 +557,8 @@ export function CreateProductionCardDialog({
                               },
                               {
                                 label: "Plant Assignment",
-                                value: card.assignPlant || "Not assigned",
+                                value:
+                                  card?.assignPlant?.name || "Not assigned",
                               },
                               {
                                 label: "Start Date",
