@@ -25,6 +25,7 @@ import {
   Target,
   Search,
   X,
+  MonitorPlay,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -130,6 +131,11 @@ export function FigmaSidebar({
           id: "rd-dashboard",
           name: "R&D Dashboard",
           icon: <LayoutDashboard className="w-4 h-4" />,
+        },
+        {
+          id: "all-projects",
+          name: "All Projects",
+          icon: <MonitorPlay className="w-4 h-4" />,
         },
         {
           id: "project",

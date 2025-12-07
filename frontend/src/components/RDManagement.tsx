@@ -8,6 +8,7 @@ import { RedSeal } from "./RedSeal";
 import { GreenSeal } from "./GreenSeal";
 import { POTargetDate } from "./POTargetDate";
 import { CreateProjectDialog } from "./CreateProjectDialog";
+import AllProjects from "./AllProjects";
 
 export function RDManagement() {
   const { currentSubModule, handleModuleChange } = useERP();
@@ -29,6 +30,8 @@ export function RDManagement() {
 
     case "project":
       return <ProjectDevelopment />;
+    case "all-projects":
+      return <AllProjects />;
 
     case "red-seal":
       return <RedSeal />;
