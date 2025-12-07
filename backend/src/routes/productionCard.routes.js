@@ -1,11 +1,11 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import {
   createProductionCard,
   listProductionCards,
   getProductionCard,
 } from "../controllers/productionCard.controller.js";
 
-const router = Router();
+const router = express.Router({ mergeParams: true });
 
 router.post("/", createProductionCard);
 router.get("/", listProductionCards);

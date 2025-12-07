@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Search,
   Trash2,
@@ -7,11 +7,9 @@ import {
   Package,
   Send,
   X,
-  Target,
   ChevronDown,
   ChevronUp,
   MoreVertical,
-  AlertCircle,
 } from "lucide-react";
 
 import { Button } from "./ui/button";
@@ -53,8 +51,9 @@ export function IssueMaterial({
   // Fetch all material requests
   const fetchMaterialList = async () => {
     try {
-      const res = await api.get(`/material-requests/all`);
-      setMaterialRequisitions(res.data.data || []);
+      const res = await api.get(`/material-requests`);
+      console.log("Fetched material requisitions:", res.data);
+      setMaterialRequisitions(res.data.items || []);
     } catch (err) {
       console.error("Failed to fetch material list", err);
     }
@@ -66,11 +65,11 @@ export function IssueMaterial({
 
   const filteredData = () => {
     return materialRequisitions.filter((req) => {
-      const card = req.productionCardId?.cardNumber || "";
-      const product = req.productionCardId?.productName || "";
+      const card = req.cardNumber || "";
+      const project = req.projectId?.productName || "";
       return (
         card.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.toLowerCase().includes(searchTerm.toLowerCase())
+        project.toLowerCase().includes(searchTerm.toLowerCase())
       );
     });
   };
@@ -89,87 +88,32 @@ export function IssueMaterial({
 
   /* =====================================================
    MaterialIssueDialog - opens for a single requisition
-   - fetches project's cost sections and maps items into the 5
-     sections by matching IDs against those cost rows.
-  ======================================================*/
+   ======================================================*/
   const MaterialIssueDialog = ({ requisition, open, onOpenChange }: any) => {
     const [issuedQuantities, setIssuedQuantities] = useState<
       Record<string, number>
     >({});
-    const [costLists, setCostLists] = useState<any>({
-      upper: [],
-      material: [],
-      component: [],
-      packaging: [],
-      miscellaneous: [],
-    });
-    const [loadingCosts, setLoadingCosts] = useState(false);
 
     useEffect(() => {
-      // reset when different requisition opens
-      setIssuedQuantities({});
-      setCostLists({
-        upper: [],
-        material: [],
-        component: [],
-        packaging: [],
-        miscellaneous: [],
-      });
-      if (open && requisition) {
-        loadCostsForProject(requisition);
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, requisition]);
+      // Initialize issued quantities from existing issued values
+      if (requisition) {
+        const initialQuantities: Record<string, number> = {};
 
-    const loadCostsForProject = async (req: any) => {
-      if (!req) return;
-      const projectId =
-        req.projectId?._id ||
-        req.projectId ||
-        (req.productionCardId?.projectId ?? null);
-
-      if (!projectId) {
-        console.warn(
-          "No projectId found on requisition; cannot load cost rows"
-        );
-        return;
-      }
-
-      try {
-        setLoadingCosts(true);
-        // fetch five sections in parallel
-        const [upperRes, componentRes, materialRes, packagingRes, miscRes] =
-          await Promise.all([
-            api
-              .get(`/projects/${projectId}/costs/upper`)
-              .catch(() => ({ data: { rows: [] } })),
-            api
-              .get(`/projects/${projectId}/costs/component`)
-              .catch(() => ({ data: { rows: [] } })),
-            api
-              .get(`/projects/${projectId}/costs/material`)
-              .catch(() => ({ data: { rows: [] } })),
-            api
-              .get(`/projects/${projectId}/costs/packaging`)
-              .catch(() => ({ data: { rows: [] } })),
-            api
-              .get(`/projects/${projectId}/costs/miscellaneous`)
-              .catch(() => ({ data: { rows: [] } })),
-          ]);
-
-        setCostLists({
-          upper: upperRes?.data?.rows || [],
-          component: componentRes?.data?.rows || [],
-          material: materialRes?.data?.rows || [],
-          packaging: packagingRes?.data?.rows || [],
-          miscellaneous: miscRes?.data?.rows || [],
+        // Initialize from materials
+        (requisition.materials || []).forEach((item: any) => {
+          const itemId = String(item.itemId || item._id);
+          initialQuantities[itemId] = Number(item.issued || 0);
         });
-      } catch (err) {
-        console.error("Failed to load project costs", err);
-      } finally {
-        setLoadingCosts(false);
+
+        // Initialize from components
+        (requisition.components || []).forEach((item: any) => {
+          const itemId = String(item.itemId || item._id);
+          initialQuantities[itemId] = Number(item.issued || 0);
+        });
+
+        setIssuedQuantities(initialQuantities);
       }
-    };
+    }, [requisition]);
 
     const handleIssueQuantityChange = (id: string, qty: number) => {
       setIssuedQuantities((prev) => ({
@@ -178,8 +122,8 @@ export function IssueMaterial({
       }));
     };
 
-    // Build lists by matching IDs (preferred) — fallback to name heuristics if missing
-    const sections = useMemo(() => {
+    // Organize items into 5 sections based on name heuristics
+    const getCategorizedSections = () => {
       if (!requisition) {
         return {
           upper: [],
@@ -190,125 +134,94 @@ export function IssueMaterial({
         };
       }
 
-      const mats: any[] = requisition.materials || [];
-      const comps: any[] = requisition.components || [];
+      const upper: any[] = [];
+      const material: any[] = [];
+      const component: any[] = [];
+      const packaging: any[] = [];
+      const miscellaneous: any[] = [];
 
-      // create sets of cost ids for quick matching
-      const upperIds = new Set(
-        (costLists.upper || []).map((r: any) => String(r._id))
-      );
-      const materialIds = new Set(
-        (costLists.material || []).map((r: any) => String(r._id))
-      );
-      const componentIds = new Set(
-        (costLists.component || []).map((r: any) => String(r._id))
-      );
-      const packagingIds = new Set(
-        (costLists.packaging || []).map((r: any) => String(r._id))
-      );
-      const miscIds = new Set(
-        (costLists.miscellaneous || []).map((r: any) => String(r._id))
-      );
-
-      // map function: try to match by id string, else fallback to name heuristics
-      const classifyMaterial = (m: any) => {
-        const idStr = String(m.id || m._id || m.idStr || "");
-        if (upperIds.has(idStr)) return "upper";
-        if (materialIds.has(idStr)) return "material";
-        // fallback: if name contains "upper" treat as upper
-        if ((m.name || "").toLowerCase().includes("upper")) return "upper";
-        // else default to material
-        return "material";
-      };
-
-      const classifyComponent = (c: any) => {
-        const idStr = String(c.id || c._id || c.idStr || "");
-        if (componentIds.has(idStr)) return "component";
-        if (packagingIds.has(idStr)) return "packaging";
-        if (miscIds.has(idStr)) return "miscellaneous";
-        // fallback heuristics
-        const name = (c.name || "").toLowerCase();
-        if (name.startsWith("c ")) return "component";
-        if (name.includes("pack")) return "packaging";
-        return "miscellaneous";
-      };
-
-      const outUpper: any[] = [];
-      const outMaterial: any[] = [];
-      const outComponent: any[] = [];
-      const outPackaging: any[] = [];
-      const outMisc: any[] = [];
-
-      mats.forEach((m) => {
-        const bucket = classifyMaterial(m);
-        if (bucket === "upper") outUpper.push(m);
-        else outMaterial.push(m);
+      // Categorize materials
+      (requisition.materials || []).forEach((item: any) => {
+        const name = (item.name || "").toLowerCase();
+        if (name.includes("upper")) {
+          upper.push(item);
+        } else {
+          material.push(item);
+        }
       });
 
-      comps.forEach((c) => {
-        const bucket = classifyComponent(c);
-        if (bucket === "component") outComponent.push(c);
-        else if (bucket === "packaging") outPackaging.push(c);
-        else outMisc.push(c);
+      // Categorize components
+      (requisition.components || []).forEach((item: any) => {
+        const name = (item.name || "").toLowerCase();
+        if (name.includes("pack") || name.includes("packaging")) {
+          packaging.push(item);
+        } else if (name.includes("component") || name.startsWith("c ")) {
+          component.push(item);
+        } else {
+          miscellaneous.push(item);
+        }
       });
 
-      return {
-        upper: outUpper,
-        material: outMaterial,
-        component: outComponent,
-        packaging: outPackaging,
-        miscellaneous: outMisc,
-      };
-    }, [requisition, costLists]);
+      return { upper, material, component, packaging, miscellaneous };
+    };
 
     // Issue materials: compute updated arrays and call API
     const handleIssueMaterials = async () => {
       if (!requisition) return;
       try {
         const reqId = requisition._id;
-        const projectId =
-          requisition.projectId?._id ||
-          requisition.projectId ||
-          (requisition.productionCardId?.projectId ?? null);
 
-        if (!projectId) {
-          throw new Error("projectId missing on requisition");
-        }
-
+        // Update materials with issued quantities
         const updatedMaterials = (requisition.materials || []).map(
           (item: any) => {
-            const issued = Number(issuedQuantities[String(item.id)] || 0);
-
+            const itemId = item.itemId || item._id;
+            const issued = Number(issuedQuantities[String(itemId)] || 0);
             const available = Number(item.available || 0);
             const requirement = Number(item.requirement || 0);
+            const balance = Math.max(0, requirement - (available + issued));
+
             return {
               ...item,
               issued,
-              available,
-              balance: Math.max(0, requirement - (available + issued)),
+              balance,
             };
           }
         );
 
+        // Update components with issued quantities
         const updatedComponents = (requisition.components || []).map(
           (item: any) => {
-            const issued = Number(issuedQuantities[item.id] || 0);
+            const itemId = item.itemId || item._id;
+            const issued = Number(issuedQuantities[String(itemId)] || 0);
             const available = Number(item.available || 0);
             const requirement = Number(item.requirement || 0);
+            const balance = Math.max(0, requirement - (available + issued));
+
             return {
               ...item,
               issued,
-              available,
-              balance: Math.max(0, requirement - (available + issued)),
+              balance,
             };
           }
         );
 
-        // decide status
-        const allIssued = [...updatedMaterials, ...updatedComponents].every(
-          (i) => Number(i.issued || 0) >= Number(i.requirement || 0)
+        // Determine new status
+        const allItems = [...updatedMaterials, ...updatedComponents];
+        const totalRequired = allItems.reduce(
+          (sum, item) => sum + Number(item.requirement || 0),
+          0
         );
-        const newStatus = allIssued ? "Issued" : "Partially Issued";
+        const totalIssued = allItems.reduce(
+          (sum, item) => sum + Number(item.issued || 0),
+          0
+        );
+
+        let newStatus = requisition.status;
+        if (totalIssued >= totalRequired) {
+          newStatus = "Issued";
+        } else if (totalIssued > 0) {
+          newStatus = "Partially Issued";
+        }
 
         const body = {
           materials: updatedMaterials,
@@ -316,12 +229,9 @@ export function IssueMaterial({
           status: newStatus,
         };
 
-        await api.put(
-          `/projects/${projectId}/material-requests/${reqId}`,
-          body
-        );
+        await api.put(`/material-requests/${reqId}`, body);
 
-        // refresh list and close
+        // Refresh list and close
         await fetchMaterialList();
         onOpenChange(false);
         setSelectedRequisition(null);
@@ -333,6 +243,8 @@ export function IssueMaterial({
     };
 
     if (!requisition) return null;
+
+    const sections = getCategorizedSections();
 
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -349,7 +261,7 @@ export function IssueMaterial({
                   Issue Material
                 </DialogTitle>
                 <DialogDescription className="text-gray-600 text-sm md:text-lg line-clamp-1">
-                  Issue materials for this production card
+                  Issue materials for {requisition.cardNumber}
                 </DialogDescription>
               </div>
             </div>
@@ -377,21 +289,23 @@ export function IssueMaterial({
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-                  <Info
-                    label="Card Number"
-                    value={requisition?.productionCardId?.cardNumber}
-                  />
+                  <Info label="Card Number" value={requisition?.cardNumber} />
                   <Info
                     label="Product"
-                    value={requisition?.projectId?.artName || "-"}
+                    value={requisition?.projectId?.productName || "-"}
                   />
                   <Info label="Requested By" value={requisition?.requestedBy} />
-                  <Info label="Status" value={requisition?.status} highlight />
+                  <Info
+                    label="Status"
+                    value={requisition?.status}
+                    highlight
+                    status={requisition?.status}
+                  />
                 </div>
               </CardContent>
             </Card>
 
-            {/* Material sections - Mobile cards, Desktop table */}
+            {/* Material sections - 5 categories */}
             <MaterialSections
               sections={[
                 {
@@ -422,7 +336,6 @@ export function IssueMaterial({
               ]}
               issuedQuantities={issuedQuantities}
               onIssueChange={handleIssueQuantityChange}
-              loadingCosts={loadingCosts}
             />
           </div>
 
@@ -452,12 +365,20 @@ export function IssueMaterial({
   /* ----------------------
      Small subcomponents
   ------------------------*/
-  const Info = ({ label, value, highlight = false }: any) => (
+  const Info = ({ label, value, highlight = false, status }: any) => (
     <div className="min-w-0">
       <p className="text-gray-500 text-xs md:text-sm mb-1 truncate">{label}</p>
       <p
         className={`font-semibold text-sm md:text-base truncate ${
-          highlight ? "text-blue-600" : "text-gray-900"
+          highlight
+            ? status === "Issued"
+              ? "text-green-600"
+              : status === "Partially Issued"
+              ? "text-yellow-600"
+              : status === "Pending to Store"
+              ? "text-red-600"
+              : "text-blue-600"
+            : "text-gray-900"
         }`}
       >
         {value ?? "-"}
@@ -469,16 +390,9 @@ export function IssueMaterial({
     sections,
     issuedQuantities,
     onIssueChange,
-    loadingCosts,
   }: any) => {
     return (
       <div className="space-y-6">
-        {loadingCosts && (
-          <div className="text-center py-8 text-gray-500">
-            Loading cost mapping...
-          </div>
-        )}
-
         {/* Mobile View - Cards */}
         <div className="md:hidden space-y-4">
           {sections.map((sec: any) => (
@@ -500,7 +414,7 @@ export function IssueMaterial({
                   <div className="divide-y">
                     {sec.items.map((item: any) => (
                       <MobileIssueItem
-                        key={item.id || item._id}
+                        key={item.itemId || item._id}
                         item={item}
                         issuedQuantities={issuedQuantities}
                         onIssueChange={onIssueChange}
@@ -525,8 +439,11 @@ export function IssueMaterial({
                   </th>
                   <th className="px-6 py-3 border-r text-center">REQUIRED</th>
                   <th className="px-6 py-3 border-r text-center">AVAILABLE</th>
+                  <th className="px-6 py-3 border-r text-center">
+                    ALREADY ISSUED
+                  </th>
                   <th className="px-6 py-3 border-r text-center">ISSUE NOW</th>
-                  <th className="px-6 py-3 text-center">BALANCE</th>
+                  <th className="px-6 py-3 text-center">BALANCE AFTER ISSUE</th>
                 </tr>
               </thead>
 
@@ -534,7 +451,7 @@ export function IssueMaterial({
                 {sections.map((sec: any) => (
                   <React.Fragment key={sec.label}>
                     <tr className={`${sec.color} border-y`}>
-                      <td colSpan={6} className="px-6 py-2 font-semibold">
+                      <td colSpan={7} className="px-6 py-2 font-semibold">
                         {sec.label}
                       </td>
                     </tr>
@@ -542,7 +459,7 @@ export function IssueMaterial({
                     {sec.items.length === 0 && (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={7}
                           className="px-6 py-3 text-center text-gray-400"
                         >
                           No items
@@ -552,7 +469,7 @@ export function IssueMaterial({
 
                     {sec.items.map((item: any) => (
                       <IssueRow
-                        key={item.id || item._id}
+                        key={item.itemId || item._id}
                         item={item}
                         issuedQuantities={issuedQuantities}
                         onIssueChange={onIssueChange}
@@ -569,11 +486,13 @@ export function IssueMaterial({
   };
 
   const MobileIssueItem = ({ item, issuedQuantities, onIssueChange }: any) => {
-    const id = String(item.id || item._id);
+    const itemId = String(item.itemId || item._id);
     const req = Number(item.requirement || 0);
     const avail = Number(item.available || 0);
-    const issued = Number(issuedQuantities[id] || 0);
-    const balance = Math.max(0, req - (avail + issued));
+    const alreadyIssued = Number(item.issued || 0);
+    const issueNow = Number(issuedQuantities[itemId] || 0);
+    const totalIssued = alreadyIssued + issueNow;
+    const balance = Math.max(0, req - (avail + totalIssued));
 
     return (
       <div className="p-4 space-y-3">
@@ -592,7 +511,7 @@ export function IssueMaterial({
           </Badge>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-2">
           <div>
             <p className="text-xs text-gray-500 mb-1">Required</p>
             <p className="font-semibold text-blue-700">{req}</p>
@@ -601,23 +520,36 @@ export function IssueMaterial({
             <p className="text-xs text-gray-500 mb-1">Available</p>
             <p className="font-semibold">{avail}</p>
           </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Already Issued</p>
+            <p className="font-semibold text-green-600">{alreadyIssued}</p>
+          </div>
         </div>
 
         <div className="pt-2">
-          <p className="text-xs text-gray-500 mb-2">Issue Quantity</p>
+          <p className="text-xs text-gray-500 mb-2">
+            Issue Additional Quantity
+          </p>
           <div className="flex items-center gap-3">
             <Input
               type="number"
               min={0}
-              max={req}
-              value={issued}
-              onChange={(e) => onIssueChange(id, Number(e.target.value) || 0)}
+              max={req - alreadyIssued}
+              value={issueNow}
+              onChange={(e) =>
+                onIssueChange(itemId, Number(e.target.value) || 0)
+              }
               className="flex-1 text-center"
             />
             <span className="text-sm text-gray-500 whitespace-nowrap">
-              Max: {req}
+              Max: {req - alreadyIssued}
             </span>
           </div>
+        </div>
+
+        <div className="pt-2">
+          <p className="text-xs text-gray-500 mb-1">Total Issued After This</p>
+          <p className="font-semibold text-green-700">{totalIssued}</p>
         </div>
 
         <Separator className="mt-4" />
@@ -626,20 +558,18 @@ export function IssueMaterial({
   };
 
   const IssueRow = ({ item, issuedQuantities, onIssueChange }: any) => {
-    const id = String(item.id || item._id); // ✅ MUST STRINGIFY
+    const itemId = String(item.itemId || item._id);
     const req = Number(item.requirement || 0);
     const avail = Number(item.available || 0);
-
-    // 🔥 FIX: ensure correct quantity is read
-    const issued = Number(issuedQuantities[id] || 0);
-
-    // 🔥 FIX: correct live balance calculation
-    const balance = Math.max(0, req - (avail + issued));
+    const alreadyIssued = Number(item.issued || 0);
+    const issueNow = Number(issuedQuantities[itemId] || 0);
+    const totalIssued = alreadyIssued + issueNow;
+    const balance = Math.max(0, req - (avail + totalIssued));
 
     return (
       <tr className="border-b hover:bg-gray-50">
         <td className="px-6 py-3 border-r">{item.name}</td>
-        <td className="px-6 py-3 border-r">{item.specification}</td>
+        <td className="px-6 py-3 border-r">{item.specification || "-"}</td>
 
         <td className="px-6 py-3 border-r text-center font-semibold text-blue-700">
           {req}
@@ -647,19 +577,26 @@ export function IssueMaterial({
 
         <td className="px-6 py-3 border-r text-center">{avail}</td>
 
+        <td className="px-6 py-3 border-r text-center font-semibold text-green-600">
+          {alreadyIssued}
+        </td>
+
         <td className="px-6 py-3 border-r text-center">
           <Input
             type="number"
             min={0}
-            value={issued}
+            max={req - alreadyIssued}
+            value={issueNow}
             className="w-20 text-center"
-            onChange={
-              (e) => onIssueChange(id, Number(e.target.value) || 0) // 🔥 ID FIXED
-            }
+            onChange={(e) => onIssueChange(itemId, Number(e.target.value) || 0)}
           />
         </td>
 
-        <td className="px-6 py-3 text-center font-semibold">{balance}</td>
+        <td className="px-6 py-3 text-center font-semibold">
+          <span className={balance === 0 ? "text-green-600" : "text-red-600"}>
+            {balance}
+          </span>
+        </td>
       </tr>
     );
   };
@@ -708,6 +645,23 @@ export function IssueMaterial({
         ) : (
           filteredData().map((req) => {
             const isExpanded = expandedCards.has(req._id);
+
+            // Calculate total issued for summary
+            const totalItems = [
+              ...(req.materials || []),
+              ...(req.components || []),
+            ];
+            const totalRequired = totalItems.reduce(
+              (sum, item) => sum + Number(item.requirement || 0),
+              0
+            );
+            const totalIssued = totalItems.reduce(
+              (sum, item) => sum + Number(item.issued || 0),
+              0
+            );
+            const progress =
+              totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
+
             return (
               <Card key={req._id} className="overflow-hidden">
                 <CardHeader
@@ -721,21 +675,40 @@ export function IssueMaterial({
                       </div>
                       <div className="flex-1 min-w-0">
                         <CardTitle className="text-base font-semibold truncate">
-                          {req.productionCardId?.cardNumber || "N/A"}
+                          {req.cardNumber || "N/A"}
                         </CardTitle>
                         <p className="text-sm text-gray-600 truncate">
-                          {req.projectId?.artName || "-"}
+                          {req.projectId?.productName || "-"}
                         </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                            <div
+                              className={`h-1.5 rounded-full ${
+                                progress >= 100
+                                  ? "bg-green-500"
+                                  : progress > 0
+                                  ? "bg-yellow-500"
+                                  : "bg-red-500"
+                              }`}
+                              style={{ width: `${Math.min(progress, 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500">
+                            {totalIssued}/{totalRequired}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge
                         variant={
-                          req.status === "Pending"
+                          req.status === "Pending to Store"
                             ? "destructive"
                             : req.status === "Issued"
                             ? "default"
-                            : "secondary"
+                            : req.status === "Partially Issued"
+                            ? "secondary"
+                            : "outline"
                         }
                         className="text-xs"
                       >
@@ -772,6 +745,31 @@ export function IssueMaterial({
                         </div>
                       </div>
 
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">
+                            Materials
+                          </p>
+                          <p className="text-sm font-medium">
+                            {req.materials?.length || 0}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">
+                            Components
+                          </p>
+                          <p className="text-sm font-medium">
+                            {req.components?.length || 0}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Issued</p>
+                          <p className="text-sm font-medium text-green-600">
+                            {totalIssued}/{totalRequired}
+                          </p>
+                        </div>
+                      </div>
+
                       <Separator />
 
                       <div className="flex gap-2">
@@ -780,7 +778,8 @@ export function IssueMaterial({
                           className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                           onClick={() => setSelectedRequisition(req)}
                         >
-                          <Send className="w-4 h-4 mr-2" /> Issue
+                          <Send className="w-4 h-4 mr-2" />
+                          {req.status === "Issued" ? "View/Update" : "Issue"}
                         </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -791,8 +790,21 @@ export function IssueMaterial({
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               className="text-red-600"
-                              onClick={() => {
-                                // Handle delete
+                              onClick={async () => {
+                                if (
+                                  window.confirm(
+                                    "Are you sure you want to delete this material request?"
+                                  )
+                                ) {
+                                  try {
+                                    await api.delete(
+                                      `/material-requests/${req._id}`
+                                    );
+                                    fetchMaterialList();
+                                  } catch (err) {
+                                    console.error("Delete failed", err);
+                                  }
+                                }
                               }}
                             >
                               <Trash2 className="w-4 h-4 mr-2" />
@@ -830,6 +842,9 @@ export function IssueMaterial({
                   Requested By
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                  Issued Progress
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
                   Status
                 </th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">
@@ -841,7 +856,7 @@ export function IssueMaterial({
             <tbody className="divide-y divide-gray-200">
               {filteredData().length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center">
+                  <td colSpan={6} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Package className="w-12 h-12 text-gray-300 mb-3" />
                       <p className="text-gray-500">
@@ -854,78 +869,135 @@ export function IssueMaterial({
                   </td>
                 </tr>
               ) : (
-                filteredData().map((req) => (
-                  <tr
-                    key={req._id}
-                    className="hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
-                          <FileText className="text-blue-600 w-5 h-5" />
+                filteredData().map((req) => {
+                  // Calculate progress
+                  const totalItems = [
+                    ...(req.materials || []),
+                    ...(req.components || []),
+                  ];
+                  const totalRequired = totalItems.reduce(
+                    (sum, item) => sum + Number(item.requirement || 0),
+                    0
+                  );
+                  const totalIssued = totalItems.reduce(
+                    (sum, item) => sum + Number(item.issued || 0),
+                    0
+                  );
+                  const progress =
+                    totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
+
+                  return (
+                    <tr
+                      key={req._id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
+                            <FileText className="text-blue-600 w-5 h-5" />
+                          </div>
+                          <div className="font-medium">{req.cardNumber}</div>
                         </div>
-                        <div className="font-medium">
-                          {req.productionCardId?.cardNumber}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="max-w-xs">
+                          <p className="font-medium truncate">
+                            {req.projectId?.productName || "-"}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {req.materials?.length || 0} materials,{" "}
+                            {req.components?.length || 0} components
+                          </p>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-6 py-4">
-                      <div className="max-w-xs">
-                        <p className="font-medium truncate">
-                          {req.projectId?.artName || "-"}
+                      <td className="px-6 py-4">
+                        <p className="font-medium">{req.requestedBy}</p>
+                        <p className="text-sm text-gray-500">
+                          {new Date(req.createdAt).toLocaleDateString()}
                         </p>
-                        <p className="text-sm text-gray-500 truncate">
-                          {req.productionCardId?.productName || ""}
-                        </p>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-6 py-4">
-                      <p className="font-medium">{req.requestedBy}</p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(req.createdAt).toLocaleDateString()}
-                      </p>
-                    </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${
+                                progress >= 100
+                                  ? "bg-green-500"
+                                  : progress > 0
+                                  ? "bg-yellow-500"
+                                  : "bg-red-500"
+                              }`}
+                              style={{ width: `${Math.min(progress, 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-sm text-gray-700 min-w-[60px]">
+                            {totalIssued}/{totalRequired}
+                          </span>
+                        </div>
+                      </td>
 
-                    <td className="px-6 py-4">
-                      <Badge
-                        variant={
-                          req.status === "Pending"
-                            ? "destructive"
-                            : req.status === "Issued"
-                            ? "default"
-                            : "secondary"
-                        }
-                        className="font-semibold"
-                      >
-                        {req.status}
-                      </Badge>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <div className="flex justify-end items-center gap-2">
-                        <Button
-                          size="sm"
-                          className="bg-green-600 text-white hover:bg-green-700"
-                          onClick={() => setSelectedRequisition(req)}
+                      <td className="px-6 py-4">
+                        <Badge
+                          variant={
+                            req.status === "Pending to Store"
+                              ? "destructive"
+                              : req.status === "Issued"
+                              ? "default"
+                              : req.status === "Partially Issued"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          className="font-semibold"
                         >
-                          <Send className="w-4 h-4 mr-1" /> Issue
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 hover:text-red-700"
-                          onClick={() => {
-                            // Handle delete
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          {req.status}
+                        </Badge>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex justify-end items-center gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 text-white hover:bg-green-700"
+                            onClick={() => setSelectedRequisition(req)}
+                          >
+                            <Send className="w-4 h-4 mr-1" />
+                            {req.status === "Issued"
+                              ? "View/Update"
+                              : req.status === "Partially Issued"
+                              ? "Issue More"
+                              : "Issue"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={async () => {
+                              if (
+                                window.confirm(
+                                  "Are you sure you want to delete this material request?"
+                                )
+                              ) {
+                                try {
+                                  await api.delete(
+                                    `/material-requests/${req._id}`
+                                  );
+                                  fetchMaterialList();
+                                } catch (err) {
+                                  console.error("Delete failed", err);
+                                }
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

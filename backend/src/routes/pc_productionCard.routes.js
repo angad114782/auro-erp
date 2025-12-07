@@ -6,6 +6,7 @@ const router = express.Router({ mergeParams: true });
 // POST /projects/:projectId/production-cards/skeleton
 router.post("/skeleton", ctrl.createSkeleton);
 
+router.get("/", ctrl.getProductionCards);
 // preview next number
 router.get("/preview-next-number", ctrl.previewNextCardNumber);
 

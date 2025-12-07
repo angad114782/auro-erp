@@ -45,6 +45,7 @@ import { useERPStore } from "../lib/data-store";
 import { ProductionCardFormDialog } from "./ProductionCardFormDialog";
 import { useProjects } from "../hooks/useProjects";
 import api from "../lib/api";
+import { set } from "mongoose";
 
 // Media query hook
 const useMediaQuery = (query: string) => {
@@ -141,6 +142,8 @@ export function CreateProductionCardDialog({
     setApiError(null);
     try {
       const res = await api.get(`/projects/${projectId}/production-cards`);
+
+      console.log(res, "Production Cards API Response");
       const items =
         res?.data?.data?.items ?? res?.data?.items ?? res?.data?.data ?? [];
       const normalized = Array.isArray(items)
@@ -298,6 +301,25 @@ export function CreateProductionCardDialog({
     if (projId) fetchProductionCardsForProject(projId);
     if (editingCard) {
       setEditingCard(null);
+    }
+  };
+  const [productionCardCreated, setProductionCardCreated] = useState<any>(null);
+  const OpenCard = async () => {
+    try {
+      const res = await api.post(
+        `/projects/${projId}/production-cards/skeleton`
+      );
+      console.log(
+        "API response for skeleton creation:",
+        res.data.productionCard
+      );
+      setProductionCardCreated(res.data.productionCard);
+      setShowProductionCardForm(true);
+      console.log("Created production card skeleton:", res.data);
+      toast.success("Production card skeleton created");
+    } catch (error) {
+      toast.error("Failed to create production card skeleton");
+      console.error("Error creating production card skeleton:", error);
     }
   };
 
@@ -484,7 +506,7 @@ export function CreateProductionCardDialog({
                   </Button>
                   <Button
                     className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white text-xs sm:text-sm"
-                    onClick={() => setShowProductionCardForm(true)}
+                    onClick={OpenCard}
                   >
                     <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                     Create Card
@@ -624,7 +646,7 @@ export function CreateProductionCardDialog({
                   </p>
                   <Button
                     className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white text-sm sm:text-base"
-                    onClick={() => setShowProductionCardForm(true)}
+                    onClick={OpenCard}
                   >
                     <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                     Create Your First Card
@@ -665,7 +687,8 @@ export function CreateProductionCardDialog({
           setEditingCard(null);
         }}
         onSave={handleSaveProductionCard}
-        selectedProject={selectedProductionCard}
+        selectedProject={selectedProject}
+        productionCardCreated={productionCardCreated}
         editingCard={editingCard}
         onCardCreated={() => {
           const projId =

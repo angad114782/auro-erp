@@ -59,12 +59,9 @@ router.use("/inventory", inventoryRoutes);
 router.use("/vendors", vendorRoutes);
 router.use("/", productionCalendarRouter);
 router.use("/dashboard", dashboardRoutes);
-router.use("/projects/:projectId/production-cards", pcProdRoutes);
-router.use("/projects/:projectId/material-requests", pcMrRoutes);
 router.use("/assign-plant", assignPlantRoutes);
 
-
 router.use("/projects/:projectId/production-cards", pcProdRoutes);
-router.use("/", pcMrRoutes); 
+router.use("/", pcMrRoutes);
 
 export default router;

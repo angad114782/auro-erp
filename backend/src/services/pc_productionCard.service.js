@@ -18,36 +18,62 @@ function isObjectIdLike(id) {
 }
 
 async function incrementNamedCounter(Model, projectId, session = null) {
-  if (!isObjectIdLike(projectId)) throw new Error("incrementNamedCounter: invalid projectId");
-  const projectObjectId = projectId instanceof mongoose.Types.ObjectId ? projectId : new mongoose.Types.ObjectId(String(projectId));
+  if (!isObjectIdLike(projectId))
+    throw new Error("incrementNamedCounter: invalid projectId");
+  const projectObjectId =
+    projectId instanceof mongoose.Types.ObjectId
+      ? projectId
+      : new mongoose.Types.ObjectId(String(projectId));
   const query = { projectId: projectObjectId };
   const update = { $inc: { seq: 1 } };
   const opts = { new: true, upsert: true, setDefaultsOnInsert: true };
   if (session) opts.session = session;
   const updated = await Model.findOneAndUpdate(query, update, opts);
-  if (!updated || typeof updated.seq === "undefined") throw new Error("incrementNamedCounter: failed");
+  if (!updated || typeof updated.seq === "undefined")
+    throw new Error("incrementNamedCounter: failed");
   return updated.seq;
 }
 
 export async function generateNextCardNumber(projectOrId, session = null) {
-  const projectId = (typeof projectOrId === "object" && projectOrId?._id) ? projectOrId._id : projectOrId;
+  const projectId =
+    typeof projectOrId === "object" && projectOrId?._id
+      ? projectOrId._id
+      : projectOrId;
   if (!projectId) throw new Error("projectId required for card number");
 
-  const project = await Project.findById(projectId).lean().catch(()=>null);
+  const project = await Project.findById(projectId)
+    .lean()
+    .catch(() => null);
 
   let projectSeq;
-  try { projectSeq = await incrementNamedCounter(PCProjectCounter, projectId, session); } catch (e) { return `PC-FALLBACK-${Date.now()}`; }
+  try {
+    projectSeq = await incrementNamedCounter(
+      PCProjectCounter,
+      projectId,
+      session
+    );
+  } catch (e) {
+    return `PC-FALLBACK-${Date.now()}`;
+  }
   if (!PCCardCounter) return `PC-FALLBACK-${Date.now()}`;
   let cardSeq;
-  try { cardSeq = await incrementNamedCounter(PCCardCounter, projectId, session); } catch (e) { return `PC-FALLBACK-${Date.now()}`; }
+  try {
+    cardSeq = await incrementNamedCounter(PCCardCounter, projectId, session);
+  } catch (e) {
+    return `PC-FALLBACK-${Date.now()}`;
+  }
 
   const now = new Date();
   const yy = String(now.getFullYear()).slice(-2);
   const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const projectCodeRaw = (project && project.autoCode) ? String(project.autoCode).trim() : "PRJ";
+  const projectCodeRaw =
+    project && project.autoCode ? String(project.autoCode).trim() : "PRJ";
   const projectSeqPadded = String(projectSeq).padStart(4, "0");
   const cardSeqPadded = String(cardSeq).padStart(3, "0");
-  const prefix = projectCodeRaw.includes('/') && projectCodeRaw.toUpperCase().includes('PC') ? projectCodeRaw : `${projectCodeRaw}/PC/${projectSeqPadded}`;
+  const prefix =
+    projectCodeRaw.includes("/") && projectCodeRaw.toUpperCase().includes("PC")
+      ? projectCodeRaw
+      : `${projectCodeRaw}/PC/${projectSeqPadded}`;
   return `${prefix}/${yy}${mm}/${cardSeqPadded}`;
 }
 
@@ -60,19 +86,40 @@ function extractNumeric(v) {
 }
 
 /* computeMaterialsFromProject accepts project object or id */
-export async function computeMaterialsFromProject(projectOrId, allocationQty, provided = { materials: [], components: [] }) {
-  const projectId = (typeof projectOrId === "object" && projectOrId?._id) ? String(projectOrId._id) : String(projectOrId);
+export async function computeMaterialsFromProject(
+  projectOrId,
+  allocationQty,
+  provided = { materials: [], components: [] }
+) {
+  const projectId =
+    typeof projectOrId === "object" && projectOrId?._id
+      ? String(projectOrId._id)
+      : String(projectOrId);
   if (Array.isArray(provided.materials) && provided.materials.length > 0) {
-    return { materials: provided.materials, components: provided.components || [] };
+    return {
+      materials: provided.materials,
+      components: provided.components || [],
+    };
   }
 
-  const [upperRows, componentRows, materialRows, packagingRows, miscRows] = await Promise.all([
-    UpperCostRow.find({ projectId }).lean().catch(()=>[]),
-    ComponentCostRow.find({ projectId }).lean().catch(()=>[]),
-    MaterialCostRow.find({ projectId }).lean().catch(()=>[]),
-    PackagingCostRow.find({ projectId }).lean().catch(()=>[]),
-    MiscCostRow.find({ projectId }).lean().catch(()=>[]),
-  ]);
+  const [upperRows, componentRows, materialRows, packagingRows, miscRows] =
+    await Promise.all([
+      UpperCostRow.find({ projectId })
+        .lean()
+        .catch(() => []),
+      ComponentCostRow.find({ projectId })
+        .lean()
+        .catch(() => []),
+      MaterialCostRow.find({ projectId })
+        .lean()
+        .catch(() => []),
+      PackagingCostRow.find({ projectId })
+        .lean()
+        .catch(() => []),
+      MiscCostRow.find({ projectId })
+        .lean()
+        .catch(() => []),
+    ]);
 
   const materials = [];
   const components = [];
@@ -92,17 +139,21 @@ export async function computeMaterialsFromProject(projectOrId, allocationQty, pr
     });
   };
 
-  upperRows.forEach(r => pushItem(r, materials));
-  materialRows.forEach(r => pushItem(r, materials));
-  componentRows.forEach(r => pushItem(r, components));
-  packagingRows.forEach(r => pushItem(r, components));
-  miscRows.forEach(r => pushItem(r, components));
+  upperRows.forEach((r) => pushItem(r, materials));
+  materialRows.forEach((r) => pushItem(r, materials));
+  componentRows.forEach((r) => pushItem(r, components));
+  packagingRows.forEach((r) => pushItem(r, components));
+  miscRows.forEach((r) => pushItem(r, components));
 
   return { materials, components };
 }
 
 /* Create skeleton card (single click) - transactional if desired */
-export async function createProductionCardSkeleton(projectId, createdBy = "Production Manager", useTransaction = true) {
+export async function createProductionCardSkeleton(
+  projectId,
+  createdBy = "Production Manager",
+  useTransaction = true
+) {
   if (!projectId) throw new Error("projectId required");
   if (useTransaction) {
     const session = await mongoose.startSession();
@@ -112,14 +163,19 @@ export async function createProductionCardSkeleton(projectId, createdBy = "Produ
       if (!project) throw new Error("Project not found");
 
       const cardNumber = await generateNextCardNumber(projectId, session);
-      const [productionCard] = await PCProductionCard.create([{
-        cardNumber,
-        projectId,
-        status: "Draft",
-        createdBy,
-        materialRequestStatus: "Not Requested",
-        assignedPlant: null
-      }], { session });
+      const [productionCard] = await PCProductionCard.create(
+        [
+          {
+            cardNumber,
+            projectId,
+            status: "Draft",
+            createdBy,
+            materialRequestStatus: "Not Requested",
+            assignedPlant: null,
+          },
+        ],
+        { session }
+      );
 
       await session.commitTransaction();
       session.endSession();
@@ -141,7 +197,7 @@ export async function createProductionCardSkeleton(projectId, createdBy = "Produ
     status: "Draft",
     createdBy,
     materialRequestStatus: "Not Requested",
-    assignedPlant: null
+    assignedPlant: null,
   });
   return productionCard;
 }
@@ -150,7 +206,10 @@ export async function createProductionCardSkeleton(projectId, createdBy = "Produ
 export async function getCardById(cardId) {
   if (!isObjectIdLike(cardId)) throw new Error("Invalid cardId");
   const card = await PCProductionCard.findById(cardId)
-    .populate({ path: "projectId", select: "autoCode productName brand allocationQty defaultPlant" })
+    .populate({
+      path: "projectId",
+      select: "autoCode productName brand allocationQty defaultPlant",
+    })
     .populate({ path: "assignedPlant", select: "name" })
     .populate({ path: "materialRequests" });
   if (!card) throw new Error("Card not found");
@@ -158,24 +217,52 @@ export async function getCardById(cardId) {
 }
 
 /* update production card (PUT) */
-export async function updateProductionCard(cardId, updates = {}, options = { computeMaterialsIfMissing: false }) {
+export async function updateProductionCard(
+  cardId,
+  updates = {},
+  options = { computeMaterialsIfMissing: false }
+) {
   if (!isObjectIdLike(cardId)) throw new Error("Invalid cardId");
-  const allowed = ["productName","cardQuantity","startDate","assignedPlant","description","specialInstructions","status","materials","components","materialRequestStatus","stage"];
+  const allowed = [
+    "productName",
+    "cardQuantity",
+    "startDate",
+    "assignedPlant",
+    "description",
+    "specialInstructions",
+    "status",
+    "materials",
+    "components",
+    "materialRequestStatus",
+    "stage",
+  ];
   const payload = {};
-  for (const k of allowed) if (typeof updates[k] !== "undefined") payload[k] = updates[k];
+  for (const k of allowed)
+    if (typeof updates[k] !== "undefined") payload[k] = updates[k];
 
-  if (options.computeMaterialsIfMissing && (!Array.isArray(payload.materials) || payload.materials.length === 0)) {
+  if (
+    options.computeMaterialsIfMissing &&
+    (!Array.isArray(payload.materials) || payload.materials.length === 0)
+  ) {
     const card = await PCProductionCard.findById(cardId).lean();
     if (!card) throw new Error("Production card not found");
     const allocationQty = updates.allocationQty ?? card.cardQuantity ?? 0;
-    const computed = await computeMaterialsFromProject(card.projectId, allocationQty);
+    const computed = await computeMaterialsFromProject(
+      card.projectId,
+      allocationQty
+    );
     payload.materials = computed.materials;
     payload.components = computed.components;
   }
 
-  if (payload.assignedPlant && !isObjectIdLike(payload.assignedPlant)) throw new Error("assignedPlant must be a valid ObjectId");
+  if (payload.assignedPlant && !isObjectIdLike(payload.assignedPlant))
+    throw new Error("assignedPlant must be a valid ObjectId");
 
-  const updated = await PCProductionCard.findByIdAndUpdate(cardId, { $set: payload }, { new: true, runValidators: true })
+  const updated = await PCProductionCard.findByIdAndUpdate(
+    cardId,
+    { $set: payload },
+    { new: true, runValidators: true }
+  )
     .populate({ path: "assignedPlant", select: "name" })
     .populate({ path: "materialRequests" });
 
@@ -184,7 +271,11 @@ export async function updateProductionCard(cardId, updates = {}, options = { com
 }
 
 /* Create top-level MR and link to card transactionally */
-export async function createMaterialRequestForCard(cardId, mrPayload = {}, requestedBy = "Production Manager") {
+export async function createMaterialRequestForCard(
+  cardId,
+  mrPayload = {},
+  requestedBy = "Production Manager"
+) {
   if (!isObjectIdLike(cardId)) throw new Error("cardId required");
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -193,20 +284,31 @@ export async function createMaterialRequestForCard(cardId, mrPayload = {}, reque
     if (!card) throw new Error("Card not found");
 
     // if client didn't provide materials, use card snapshot or compute
-    let materials = Array.isArray(mrPayload.materials) && mrPayload.materials.length ? mrPayload.materials : (card.materials || []);
-    let components = Array.isArray(mrPayload.components) && mrPayload.components.length ? mrPayload.components : (card.components || []);
+    let materials =
+      Array.isArray(mrPayload.materials) && mrPayload.materials.length
+        ? mrPayload.materials
+        : card.materials || [];
+    let components =
+      Array.isArray(mrPayload.components) && mrPayload.components.length
+        ? mrPayload.components
+        : card.components || [];
 
     // create MR doc
-    const [mr] = await PCMaterialRequest.create([{
-      productionCardId: card._id,
-      projectId: card.projectId,
-      cardNumber: card.cardNumber || "",
-      requestedBy: requestedBy,
-      status: mrPayload.status || "Pending to Store",
-      materials,
-      components,
-      notes: mrPayload.notes || ""
-    }], { session });
+    const [mr] = await PCMaterialRequest.create(
+      [
+        {
+          productionCardId: card._id,
+          projectId: card.projectId,
+          cardNumber: card.cardNumber || "",
+          requestedBy: requestedBy,
+          status: mrPayload.status || "Pending to Store",
+          materials,
+          components,
+          notes: mrPayload.notes || "",
+        },
+      ],
+      { session }
+    );
 
     // push MR id into card materialRequests and update snapshot/status
     card.materialRequests.push(mr._id);
@@ -226,32 +328,51 @@ export async function createMaterialRequestForCard(cardId, mrPayload = {}, reque
 }
 
 /* list material requests (filters) */
-export async function listMaterialRequests(filter = {}, options = { page:1, limit:50 }) {
+export async function listMaterialRequests(
+  filter = {},
+  options = { page: 1, limit: 50 }
+) {
   const q = { isDeleted: false };
   if (filter.projectId) q.projectId = filter.projectId;
   if (filter.status) q.status = filter.status;
   const skip = (options.page - 1) * options.limit;
-  const docs = await PCMaterialRequest.find(q).sort({ createdAt: -1 }).skip(skip).limit(Number(options.limit)).lean();
+  const docs = await PCMaterialRequest.find(q)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(Number(options.limit))
+    .lean();
   const total = await PCMaterialRequest.countDocuments(q);
   return { items: docs, total };
 }
 
 /* Update MR and sync card snapshot inside transaction */
-export async function updateMaterialRequest(mrId, mrUpdates = {}, options = { syncCard: true }) {
+export async function updateMaterialRequest(
+  mrId,
+  mrUpdates = {},
+  options = { syncCard: true }
+) {
   if (!isObjectIdLike(mrId)) throw new Error("Invalid mrId");
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const mr = await PCMaterialRequest.findByIdAndUpdate(mrId, { $set: mrUpdates }, { new: true, session });
+    const mr = await PCMaterialRequest.findByIdAndUpdate(
+      mrId,
+      { $set: mrUpdates },
+      { new: true, session }
+    );
     if (!mr) throw new Error("MR not found");
 
     let card = null;
     if (options.syncCard && mr.productionCardId) {
-      card = await PCProductionCard.findById(mr.productionCardId).session(session);
+      card = await PCProductionCard.findById(mr.productionCardId).session(
+        session
+      );
       if (card) {
         card.materialRequestStatus = mr.status || card.materialRequestStatus;
-        if (Array.isArray(mr.materials) && mr.materials.length) card.materials = mr.materials;
-        if (Array.isArray(mr.components) && mr.components.length) card.components = mr.components;
+        if (Array.isArray(mr.materials) && mr.materials.length)
+          card.materials = mr.materials;
+        if (Array.isArray(mr.components) && mr.components.length)
+          card.components = mr.components;
         await card.save({ session });
       }
     }
@@ -267,7 +388,10 @@ export async function updateMaterialRequest(mrId, mrUpdates = {}, options = { sy
 }
 
 /* Soft-delete MR and unlink from card */
-export async function softDeleteMaterialRequest(mrId, options = { removeFromCard: true }) {
+export async function softDeleteMaterialRequest(
+  mrId,
+  options = { removeFromCard: true }
+) {
   if (!isObjectIdLike(mrId)) throw new Error("Invalid mrId");
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -280,13 +404,19 @@ export async function softDeleteMaterialRequest(mrId, options = { removeFromCard
 
     let card = null;
     if (options.removeFromCard && mr.productionCardId) {
-      card = await PCProductionCard.findById(mr.productionCardId).session(session);
+      card = await PCProductionCard.findById(mr.productionCardId).session(
+        session
+      );
       if (card) {
-        card.materialRequests = (card.materialRequests || []).filter(id => String(id) !== String(mr._id));
+        card.materialRequests = (card.materialRequests || []).filter(
+          (id) => String(id) !== String(mr._id)
+        );
         // adjust materialRequestStatus using last MR if any
         const lastMrId = card.materialRequests.slice(-1)[0];
         if (lastMrId) {
-          const lastMr = await PCMaterialRequest.findById(lastMrId).session(session);
+          const lastMr = await PCMaterialRequest.findById(lastMrId).session(
+            session
+          );
           card.materialRequestStatus = lastMr ? lastMr.status : "Not Requested";
         } else {
           card.materialRequestStatus = "Not Requested";
@@ -305,7 +435,6 @@ export async function softDeleteMaterialRequest(mrId, options = { removeFromCard
   }
 }
 
-
 // add near other exports in pc_productionCard.service.js
 export async function getMaterialRequestById(mrId) {
   if (!isObjectIdLike(mrId)) throw new Error("Invalid mrId");
@@ -314,12 +443,62 @@ export async function getMaterialRequestById(mrId) {
   const mr = await PCMaterialRequest.findById(mrId)
     .populate({
       path: "productionCardId",
-      select: "_id cardNumber projectId productName cardQuantity assignedPlant materials components",
-      populate: { path: "assignedPlant", select: "name" }
+      select:
+        "_id cardNumber projectId productName cardQuantity assignedPlant materials components",
+      populate: { path: "assignedPlant", select: "name" },
     })
     .populate({ path: "projectId", select: "autoCode productName" })
     .lean();
 
   if (!mr || mr.isDeleted) throw new Error("Material request not found");
   return mr;
+}
+
+export async function fetchProductionCardsForProject(projectId, opts = {}) {
+  if (!projectId) throw new Error("projectId required");
+  // basic ObjectId check
+  if (!mongoose.Types.ObjectId.isValid(String(projectId)))
+    throw new Error("Invalid projectId");
+
+  const page = Math.max(Number(opts.page || 1), 1);
+  const limit = Math.min(Math.max(Number(opts.limit || 25), 1), 500);
+  const status = opts.status;
+  const search = (opts.search || "").trim();
+  const sortQuery = opts.sort || "createdAt:desc";
+
+  const q = { projectId: new mongoose.Types.ObjectId(String(projectId)) };
+  if (status) q.status = status;
+
+  if (search) {
+    const safe = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    q.$or = [
+      { cardNumber: { $regex: safe, $options: "i" } },
+      { productName: { $regex: safe, $options: "i" } },
+    ];
+  }
+
+  const [sortField, sortDir] = String(sortQuery).split(":");
+  const sort = {};
+  sort[sortField || "createdAt"] = sortDir === "asc" ? 1 : -1;
+
+  const skip = (page - 1) * limit;
+
+  const [items, total] = await Promise.all([
+    PCProductionCard.find(q)
+      .populate({ path: "assignedPlant", select: "name" })
+      .populate({ path: "materialRequests", select: "_id status createdAt" })
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    PCProductionCard.countDocuments(q),
+  ]);
+
+  return {
+    items,
+    total,
+    page,
+    limit,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  };
 }
