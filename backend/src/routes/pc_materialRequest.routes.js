@@ -1,19 +1,20 @@
 import express from "express";
-import * as ctrl from "../controllers/pc_materialRequest.controller.js";
+import * as mrController from "../controllers/pc_materialRequest.controller.js";
 
-const router = express.Router({ mergeParams: true });
+const router = express.Router();
 
-// GET /api/projects/:projectId/material-requests
-router.get("/", ctrl.getMaterialRequests);
+// create MR for a card (mounted at root in app -> POST /production-cards/:cardId/material-requests)
+router.post("/production-cards/:cardId/material-requests", mrController.createMR);
 
-// GET single
-router.get("/:requestId", ctrl.getMaterialRequestById);
+// list MRs (global) -> GET /material-requests
+router.get("/material-requests", mrController.listMRs);
 
-// PUT update
-router.put("/:requestId", ctrl.updateMaterialRequest);
+router.get("/material-requests/:mrId", mrController.getMR);
 
-// DELETE
-router.delete("/:requestId", ctrl.deleteMaterialRequest);
+// update MR -> PUT /material-requests/:mrId
+router.put("/material-requests/:mrId", mrController.updateMR);
 
-// router.get("/all/requests", ctrl.fetchmateriallist);
+// soft-delete MR -> DELETE /material-requests/:mrId
+router.delete("/material-requests/:mrId", mrController.softDeleteMR);
+
 export default router;

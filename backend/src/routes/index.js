@@ -17,10 +17,6 @@ import productionCalendarRouter from "./productionCalendar.routes.js";
 import vendorRoutes from "./vendor.route.js";
 import pcProdRoutes from "./pc_productionCard.routes.js";
 import pcMrRoutes from "./pc_materialRequest.routes.js";
-import {
-  fetchmateriallist,
-  getMaterialRequests,
-} from "../controllers/pc_materialRequest.controller.js";
 import assignPlantRoutes from "./assignPlant.routes.js";
 const router = Router();
 
@@ -65,8 +61,10 @@ router.use("/", productionCalendarRouter);
 router.use("/dashboard", dashboardRoutes);
 router.use("/projects/:projectId/production-cards", pcProdRoutes);
 router.use("/projects/:projectId/material-requests", pcMrRoutes);
-router.get("/material-requests/all", fetchmateriallist);
 router.use("/assign-plant", assignPlantRoutes);
 
+
+router.use("/projects/:projectId/production-cards", pcProdRoutes);
+router.use("/", pcMrRoutes); 
 
 export default router;

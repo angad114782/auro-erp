@@ -1,130 +1,50 @@
-import {
-  generateNextCardNumber,
-  createProductionCardWithRequest,
-} from "../services/pc_productionCard.service.js";
-import { PCProductionCard } from "../models/pc_productionCard.model.js";
+import * as service from "../services/pc_productionCard.service.js";
 
-export async function createProductionCard(req, res) {
+export async function createSkeleton(req, res) {
   try {
-    const body = req.body;
-    const userName = req.user?.name || "Production Manager";
-
-    if (!body.projectId)
-      return res.status(400).json({ error: "projectId is required" });
-    if (!body.cardQuantity || body.cardQuantity <= 0)
-      return res.status(400).json({ error: "cardQuantity must be > 0" });
-
-    const useTransaction = false;
-    const result = await createProductionCardWithRequest(
-      body,
-      userName,
-      useTransaction
-    );
-
-    // result.productionCard has materialRequests array (first request inside)
-    return res
-      .status(201)
-      .json({
-        success: true,
-        data: {
-          productionCard: result.productionCard,
-          project: result.project,
-        },
-      });
+    const projectId = req.params.projectId;
+    if (!projectId) return res.status(400).json({ error: "projectId required in URL" });
+    const createdBy = req.user?.name || "Production Manager";
+    const productionCard = await service.createProductionCardSkeleton(projectId, createdBy, true);
+    return res.status(201).json({ success: true, productionCard });
   } catch (err) {
-    console.error("createProductionCard error", err);
-    if (err && err.name === "ValidationError") {
-      return res
-        .status(400)
-        .json({ error: "ValidationError", details: err.errors });
-    }
-    return res
-      .status(500)
-      .json({
-        error: "Failed to create production card",
-        details: err.message,
-      });
+    console.error("createSkeleton error", err);
+    return res.status(500).json({ error: err.message || "Server error" });
   }
 }
 
-export async function getProductionCards(req, res) {
+export async function updateCard(req, res) {
   try {
-    const { projectId } = req.params;
-    const { page = 1, limit = 25, status } = req.query;
-    const q = { projectId };
-    if (status) q.status = status;
-
-    const docs = await PCProductionCard.find(q)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit))
-      .lean();
-
-    const total = await PCProductionCard.countDocuments(q);
-    return res.json({ success: true, data: { items: docs, total } });
+    const cardId = req.params.cardId;
+    const updates = req.body || {};
+    const computeMaterialsIfMissing = !!req.query.computeMaterials;
+    const updated = await service.updateProductionCard(cardId, updates, { computeMaterialsIfMissing });
+    return res.json({ success: true, productionCard: updated });
   } catch (err) {
-    console.error("getProductionCards error", err);
-    return res.status(500).json({ error: err.message });
+    console.error("updateCard error", err);
+    return res.status(500).json({ error: err.message || "Server error" });
   }
 }
 
-export async function getProductionCardById(req, res) {
+export async function getCard(req, res) {
   try {
-    const { projectId, cardId } = req.params;
-    const doc = await PCProductionCard.findOne({ _id: cardId, projectId })
-      .populate("assignPlant")
-      .lean();
-    if (!doc) return res.status(404).json({ error: "Not found" });
-    return res.json({ success: true, data: doc });
+    const cardId = req.params.cardId;
+    const card = await service.getCardById(cardId);
+    return res.json({ success: true, productionCard: card });
   } catch (err) {
-    console.error("getProductionCardById error", err);
-    return res.status(500).json({ error: err.message });
-  }
-}
-
-export async function updateProductionCard(req, res) {
-  try {
-    const { projectId, cardId } = req.params;
-    const body = req.body;
-    const updated = await PCProductionCard.findOneAndUpdate(
-      { _id: cardId, projectId },
-      { $set: body },
-      { new: true }
-    );
-    if (!updated) return res.status(404).json({ error: "Not found" });
-    return res.json({ success: true, data: updated });
-  } catch (err) {
-    console.error("updateProductionCard error", err);
-    return res.status(500).json({ error: err.message });
-  }
-}
-
-export async function deleteProductionCard(req, res) {
-  try {
-    const { projectId, cardId } = req.params;
-    const removed = await PCProductionCard.findOneAndDelete({
-      _id: cardId,
-      projectId,
-    });
-    if (!removed) return res.status(404).json({ error: "Not found" });
-    // cascade delete material requests
-    await PCMaterialRequest.deleteMany({ productionCardId: removed._id });
-    return res.json({ success: true, data: removed });
-  } catch (err) {
-    console.error("deleteProductionCard error", err);
-    return res.status(500).json({ error: err.message });
+    console.error("getCard error", err);
+    return res.status(500).json({ error: err.message || "Server error" });
   }
 }
 
 export async function previewNextCardNumber(req, res) {
   try {
-    const { projectId } = req.params;
-    if (!projectId)
-      return res.status(400).json({ error: "projectId required" });
-    const next = await generateNextCardNumber(projectId);
-    return res.json({ success: true, data: { next } });
+    const projectId = req.params.projectId;
+    if (!projectId) return res.status(400).json({ error: "projectId required" });
+    const next = await service.generateNextCardNumber(projectId);
+    return res.json({ success: true, next });
   } catch (err) {
     console.error("previewNextCardNumber error", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || "Server error" });
   }
 }
