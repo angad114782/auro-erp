@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { use, useEffect, useState } from "react";
 import {
   X,
   Save,
@@ -110,6 +110,8 @@ export function ProductionCardFormDialog({
   const isTablet = useMediaQuery("(min-width: 769px) and (max-width: 1024px)");
   const [productionCards, setProductionCards] = useState<any[]>([]);
   // const { productionCards } = useERPStore();
+
+  console.log(editingCard, "EDITING CARDDDDDD");
 
   const fetcProduction = async () => {
     try {
@@ -296,20 +298,27 @@ export function ProductionCardFormDialog({
   useEffect(() => {
     if (open && editingCard) {
       setFormData({
-        cardName: editingCard.cardName,
-        productionType: editingCard.productionType,
-        priority: editingCard.priority,
-        targetQuantity: editingCard.targetQuantity,
-        startDate: editingCard.startDate,
-        endDate: editingCard.endDate,
-        supervisor: editingCard.supervisor,
-        workShift: editingCard.workShift,
-        description: editingCard.description,
-        specialInstructions: editingCard.specialInstructions,
-        cardQuantity: editingCard.cardQuantity,
-        assignPlant: editingCard.assignedPlant || "",
+        cardName: editingCard.cardNumber || "",
+        productionType: "Production Card",
+        priority: "Medium",
+        targetQuantity: String(editingCard.cardQuantity || ""),
+        startDate: editingCard.startDate?.slice(0, 10) || "",
+        endDate: "",
+        supervisor: editingCard.createdBy || "",
+        workShift: editingCard.workShift || "",
+        description: editingCard.description || "",
+        specialInstructions: editingCard.specialInstructions || "",
+        cardQuantity: String(editingCard.cardQuantity || ""),
+        assignPlant:
+          typeof editingCard.assignedPlant === "string"
+            ? editingCard.assignedPlant
+            : editingCard.assignedPlant?._id || "",
       });
-    } else if (open && !editingCard) {
+
+      setRequestStatus(editingCard.materialRequestStatus || "Not Requested");
+    }
+
+    if (open && !editingCard) {
       setFormData({
         cardName: "",
         productionType: "",
@@ -324,6 +333,7 @@ export function ProductionCardFormDialog({
         cardQuantity: "",
         assignPlant: "",
       });
+
       setRequestStatus("Not Requested");
       setCreatedCardId("");
       setMaterialData({});
@@ -379,19 +389,65 @@ export function ProductionCardFormDialog({
     return 0;
   };
 
-  // Function to send material request to backend
+  const loadMaterialRequestForEdit = async (mrId: string) => {
+    try {
+      const res = await api.get(`/material-requests/${mrId}`);
+
+      console.log(res, "RESRESRESCCCCCCCCCCCCCCCCCCCCCCCCCC");
+
+      if (!res.data?.success || !res.data.data) return;
+
+      const mr = res.data.data;
+
+      const issuedMap: any = {};
+
+      [...(mr.materials || []), ...(mr.components || [])].forEach(
+        (item: any) => {
+          issuedMap[item.name] = {
+            available: Number(item.available || 0),
+            issued: Number(item.issued || 0),
+          };
+        }
+      );
+
+      setMaterialData(issuedMap);
+
+      // ✅ Sync allocation from MR → Card
+      setFormData((prev) => ({
+        ...prev,
+        cardQuantity: String(mr.productionCardId?.cardQuantity || ""),
+      }));
+
+      setRequestStatus(mr.status);
+    } catch (err) {
+      console.error("Failed to load material request for edit", err);
+    }
+  };
+
+  useEffect(() => {
+    const mrIdToUse = editingCard?.materialRequests?.[0]?._id;
+
+    if (open && mrIdToUse) {
+      loadMaterialRequestForEdit(mrIdToUse);
+    }
+  }, [open, editingCard]);
+
+  // useEffect(() => {
+  //   const mrIdToUse = editingCard?.materialRequests?.[0]?._id || mrId;
+
+  //   if (open && mrIdToUse) {
+  //     loadMaterialRequestForEdit(mrIdToUse);
+  //   }
+  // }, [open, editingCard, mrId]);
+
+  // const [mrId, setMrId] = useState<string>("");
   const handleSendToStoreManager = async () => {
     if (!formData.cardQuantity || parseInt(formData.cardQuantity) === 0) {
       toast.error("Please enter production allocation quantity first");
       return;
     }
 
-    // Get the card ID - use createdCardId if available, otherwise check productionCardCreated
-    let cardIdToUse = createdCardId;
-
-    if (!cardIdToUse && productionCardCreated) {
-      cardIdToUse = productionCardCreated._id;
-    }
+    let cardIdToUse = createdCardId || productionCardCreated?._id;
 
     if (!cardIdToUse) {
       toast.error("Please save the production card first");
@@ -400,101 +456,81 @@ export function ProductionCardFormDialog({
 
     const allocationQty = parseInt(formData.cardQuantity, 10);
 
-    // Build materials and components from costData
+    const projectId = getProjectIdFromSelected();
+
+    if (!projectId) {
+      toast.error("Project not found");
+      return;
+    }
+
+    // ✅ Persist allocation using SAME SAVE-CARD API
+    await api.put(`/projects/${projectId}/production-cards/${cardIdToUse}`, {
+      cardQuantity: allocationQty,
+    });
+
     const materials: any[] = [];
     const components: any[] = [];
 
-    // Process materials (upper + material)
     ["upper", "material"].forEach((section) => {
-      (costData[section as keyof typeof costData] as any[])?.forEach(
-        (row: any) => {
-          const itemName = row.item;
-          const consumptionNum = extractConsumptionValue(row);
-          const actualReq =
-            formData.cardQuantity === ""
-              ? consumptionNum
-              : consumptionNum * allocationQty;
+      costData[section]?.forEach((row: any) => {
+        const itemName = row.item;
+        const consumptionNum = extractConsumptionValue(row);
+        const actualReq = consumptionNum * allocationQty;
 
-          console.log(row, "hghggggggggggggggggggggggggggggggggggggggg");
-
-          materials.push({
-            itemId: row._id,
-            name: row.item,
-            specification: row.description,
-            requirement: actualReq,
-            unit: row.unit || "unit",
-            available: materialData[itemName]?.available || 0,
-            issued: 0,
-            balance: Math.max(
-              0,
-              actualReq - (materialData[itemName]?.available || 0)
-            ),
-          });
-        }
-      );
+        materials.push({
+          itemId: row._id,
+          name: row.item,
+          specification: row.description,
+          requirement: actualReq,
+          unit: row.unit || "unit",
+          available: materialData[itemName]?.available || 0,
+          issued: 0,
+          balance: Math.max(
+            0,
+            actualReq - (materialData[itemName]?.available || 0)
+          ),
+        });
+      });
     });
 
-    // Process components
     ["component", "packaging", "miscellaneous"].forEach((section) => {
-      (costData[section as keyof typeof costData] as any[])?.forEach(
-        (row: any) => {
-          const itemName = row.item;
-          const consumptionNum = extractConsumptionValue(row);
-          const actualReq =
-            formData.cardQuantity === ""
-              ? consumptionNum
-              : consumptionNum * Number(formData.cardQuantity || 0);
+      costData[section]?.forEach((row: any) => {
+        const itemName = row.item;
+        const consumptionNum = extractConsumptionValue(row);
+        const actualReq = consumptionNum * allocationQty;
 
-          console.log(row, "hghggggggggggggggggggg");
-
-          components.push({
-            itemId: row._id,
-            name: row.item,
-            specification: row.description,
-            requirement: actualReq,
-            unit: row.unit || "unit",
-            available: materialData[itemName]?.available || 0,
-            issued: 0,
-            balance: Math.max(
-              0,
-              actualReq - (materialData[itemName]?.available || 0)
-            ),
-          });
-        }
-      );
+        components.push({
+          itemId: row._id,
+          name: row.item,
+          specification: row.description,
+          requirement: actualReq,
+          unit: row.unit || "unit",
+          available: materialData[itemName]?.available || 0,
+          issued: 0,
+          balance: Math.max(
+            0,
+            actualReq - (materialData[itemName]?.available || 0)
+          ),
+        });
+      });
     });
 
-    try {
-      // Use the correct card ID in the API call
-      const response = await api.post(
-        `/production-cards/${cardIdToUse}/material-requests`,
-        {
-          status: "Pending to Store",
-          materials,
-          components,
-          notes: "Material request created from production card",
-        }
-      );
-
-      if (response.data.success) {
-        setRequestStatus("Pending to Store");
-        toast.success("Material request sent to Store Manager successfully!");
-
-        if (onCardCreated) {
-          onCardCreated();
-        }
-      } else {
-        throw new Error(
-          response.data.error || "Failed to create material request"
-        );
+    const response = await api.post(
+      `/production-cards/${cardIdToUse}/material-requests`,
+      {
+        status: "Pending to Store",
+        materials,
+        components,
+        notes: "Material request created from production card",
       }
-    } catch (err: any) {
-      console.error("Failed to create material request:", err);
-      toast.error(
-        err?.response?.data?.error ||
-          err.message ||
-          "Failed to send material request"
-      );
+    );
+    setMrId(response?.data?.mr?._id);
+    console.log(response.data.mr._id, "RESPONSENENEN");
+
+    if (response.data.success) {
+      setRequestStatus("Pending to Store");
+      toast.success("Material request sent to Store Manager successfully!");
+      onCardCreated?.();
     }
   };
 
@@ -513,6 +549,13 @@ export function ProductionCardFormDialog({
     if (!selectedProject) {
       toast.error("No project selected for production card");
       return;
+    }
+
+    // Get the card ID - use createdCardId if available, otherwise check productionCardCreated
+    let cardIdToUse = createdCardId;
+
+    if (!cardIdToUse && productionCardCreated) {
+      cardIdToUse = productionCardCreated?._id;
     }
 
     const cardNumber = generateProductionCardNumber();
@@ -592,35 +635,35 @@ export function ProductionCardFormDialog({
       let response;
       if (editingCard) {
         response = await api.put(
-          `/projects/${projectId}/production-cards/${editingCard.id}`,
+          `/projects/${projectId}/production-cards/${editingCard?._id}`,
           payload
         );
         toast.success("Production card updated");
       } else {
-        response = await api.post(
-          `/projects/${projectId}/production-cards`,
+        response = await api.put(
+          `/projects/${projectId}/production-cards/${cardIdToUse}`,
           payload
         );
         toast.success("Production card created successfully!");
       }
 
       const createdCard = response.data.data;
-      setCreatedCardId(createdCard._id);
+      setCreatedCardId(createdCard?._id);
 
       // Create card data for onSave callback
       const cardData: ProductionCardData = {
-        id: createdCard._id,
-        cardName: createdCard.cardNumber || cardNumber,
+        id: createdCard?._id,
+        cardName: createdCard?.cardNumber || cardNumber,
         productionType: "Production Card",
         priority: "Medium",
-        targetQuantity: formData.cardQuantity,
-        cardQuantity: formData.cardQuantity,
-        startDate: formData.startDate,
+        targetQuantity: formData?.cardQuantity,
+        cardQuantity: formData?.cardQuantity,
+        startDate: formData?.startDate,
         endDate: "",
         supervisor: "",
         workShift: "",
-        description: formData.description,
-        specialInstructions: formData.specialInstructions,
+        description: formData?.description,
+        specialInstructions: formData?.specialInstructions,
         status: "Active",
         createdAt: new Date().toISOString(),
       };
@@ -663,6 +706,8 @@ export function ProductionCardFormDialog({
       };
     }
   };
+
+  console.log(editingCard, "test dedededed");
 
   // Render mobile section content
   const renderMobileSection = () => {
@@ -806,13 +851,15 @@ export function ProductionCardFormDialog({
                                 <div className="text-gray-500">Available</div>
                                 <Input
                                   type="number"
-                                  className="h-7 text-xs px-2"
-                                  value={available}
+                                  className="h-7 text-xs px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  value={available === 0 ? "" : available}
                                   onChange={(e) =>
                                     handleMaterialDataChange(
                                       itemName,
                                       "available",
-                                      parseFloat(e.target.value) || 0
+                                      e.target.value === ""
+                                        ? 0
+                                        : parseFloat(e.target.value)
                                     )
                                   }
                                 />
@@ -1346,12 +1393,14 @@ export function ProductionCardFormDialog({
                                       <Input
                                         type="number"
                                         className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs"
-                                        value={available}
+                                        value={available === 0 ? "" : available} // 👈 shows empty instead of 0
                                         onChange={(e) =>
                                           handleMaterialDataChange(
                                             itemName,
                                             "available",
-                                            parseFloat(e.target.value) || 0
+                                            e.target.value === ""
+                                              ? 0
+                                              : parseFloat(e.target.value)
                                           )
                                         }
                                       />

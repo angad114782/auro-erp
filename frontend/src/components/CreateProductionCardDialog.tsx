@@ -323,8 +323,17 @@ export function CreateProductionCardDialog({
     }
   };
 
+  console.log(productionCardCreated, "Production Card Created State");
+
   const handleEditCard = (card: ProductionCardData) => {
-    setEditingCard(card);
+    const fullCard = apiCards.find((c: any) => (c._id || c.id) === card.id);
+
+    if (!fullCard) {
+      toast.error("Failed to load full card data");
+      return;
+    }
+
+    setEditingCard(fullCard); // ✅ REAL DB CARD
     setShowProductionCardForm(true);
   };
 
