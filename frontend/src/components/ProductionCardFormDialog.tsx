@@ -524,8 +524,6 @@ export function ProductionCardFormDialog({
         notes: "Material request created from production card",
       }
     );
-    setMrId(response?.data?.mr?._id);
-    console.log(response.data.mr._id, "RESPONSENENEN");
 
     if (response.data.success) {
       setRequestStatus("Pending to Store");
@@ -872,6 +870,29 @@ export function ProductionCardFormDialog({
                   })}
                 </div>
               ))}
+            </div>
+            {/* ✅ SEND TO STORE BUTTON FOR MOBILE */}
+            <div className="mt-4 bg-white rounded-lg border border-blue-200 p-3">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-gray-700 text-sm">
+                    Status:
+                  </span>
+                  <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                    {requestStatus}
+                  </span>
+                </div>
+
+                <Button
+                  onClick={handleSendToStoreManager}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 text-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  {requestStatus === "Not Requested"
+                    ? "Send to Store Manager"
+                    : "Request Sent"}
+                </Button>
+              </div>
             </div>
           </div>
         );

@@ -535,7 +535,7 @@ export function IssueMaterial({
               type="number"
               min={0}
               max={req - alreadyIssued}
-              value={issueNow}
+              value={issueNow === 0 ? "" : issueNow}
               onChange={(e) =>
                 onIssueChange(itemId, Number(e.target.value) || 0)
               }
@@ -586,7 +586,7 @@ export function IssueMaterial({
             type="number"
             min={0}
             max={req - alreadyIssued}
-            value={issueNow}
+            value={issueNow === 0 ? "" : issueNow}
             className="w-20 text-center"
             onChange={(e) => onIssueChange(itemId, Number(e.target.value) || 0)}
           />
