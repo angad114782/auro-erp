@@ -258,11 +258,12 @@ export async function updateProductionCard(
   if (payload.assignedPlant && !isObjectIdLike(payload.assignedPlant))
     throw new Error("assignedPlant must be a valid ObjectId");
 
-  const updated = await PCProductionCard.findByIdAndUpdate(
-    cardId,
+  const updated = await PCProductionCard.findOneAndUpdate(
+    { _id: cardId, isActive: true }, // ✅ prevents updating deleted cards
     { $set: payload },
     { new: true, runValidators: true }
   )
+
     .populate({ path: "assignedPlant", select: "name" })
     .populate({ path: "materialRequests" });
 
@@ -456,7 +457,6 @@ export async function getMaterialRequestById(mrId) {
 
 export async function fetchProductionCardsForProject(projectId, opts = {}) {
   if (!projectId) throw new Error("projectId required");
-  // basic ObjectId check
   if (!mongoose.Types.ObjectId.isValid(String(projectId)))
     throw new Error("Invalid projectId");
 
@@ -466,7 +466,11 @@ export async function fetchProductionCardsForProject(projectId, opts = {}) {
   const search = (opts.search || "").trim();
   const sortQuery = opts.sort || "createdAt:desc";
 
-  const q = { projectId: new mongoose.Types.ObjectId(String(projectId)) };
+  const q = {
+    projectId: new mongoose.Types.ObjectId(String(projectId)),
+    isActive: true, // ✅ ONLY ACTIVE CARDS
+  };
+
   if (status) q.status = status;
 
   if (search) {
@@ -491,6 +495,7 @@ export async function fetchProductionCardsForProject(projectId, opts = {}) {
       .skip(skip)
       .limit(limit)
       .lean(),
+
     PCProductionCard.countDocuments(q),
   ]);
 
@@ -501,4 +506,50 @@ export async function fetchProductionCardsForProject(projectId, opts = {}) {
     limit,
     pages: Math.max(1, Math.ceil(total / limit)),
   };
+}
+
+export async function softDeleteProductionCard(cardId, deletedBy = "System") {
+  if (!isObjectIdLike(cardId)) throw new Error("Invalid cardId");
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const card = await PCProductionCard.findOne({
+      _id: cardId,
+      isActive: true, // ✅ prevent double delete
+    }).session(session);
+
+    if (!card) throw new Error("Card not found or already deleted");
+
+    // ✅ Soft delete the card
+    card.isActive = false;
+
+    await card.save({ session });
+
+    // ✅ Soft delete & cancel ALL linked material requests
+    await PCMaterialRequest.updateMany(
+      {
+        productionCardId: card._id,
+        isDeleted: false,
+      },
+      {
+        $set: {
+          isDeleted: true,
+          status: "Cancelled",
+          cancelledAt: new Date(),
+        },
+      },
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return card;
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    throw err;
+  }
 }

@@ -45,7 +45,6 @@ import { useERPStore } from "../lib/data-store";
 import { ProductionCardFormDialog } from "./ProductionCardFormDialog";
 import { useProjects } from "../hooks/useProjects";
 import api from "../lib/api";
-import { set } from "mongoose";
 
 // Media query hook
 const useMediaQuery = (query: string) => {
@@ -78,6 +77,7 @@ interface ProductionCardData {
   createdAt: string;
   assignPlant: string;
   projectId?: string;
+  cardQuantity?: string;
 }
 
 interface CreateProductionCardDialogProps {
@@ -241,6 +241,7 @@ export function CreateProductionCardDialog({
       productionType: card.description || "Production",
       priority: "Medium",
       targetQuantity: card.cardQuantity?.toString?.() ?? "",
+      cardQuantity: card.cardQuantity?.toString?.() ?? "",
       startDate: card.startDate,
       endDate: "",
       supervisor: card.createdBy,
@@ -252,6 +253,42 @@ export function CreateProductionCardDialog({
       assignPlant: card.assignedPlant,
     })
   );
+
+  // Calculate total allocation summary
+  const calculateTotalAllocation = () => {
+    if (!selectedProject)
+      return { totalOrderQty: 0, totalAllocated: 0, totalAvailable: 0 };
+
+    const projectId = selectedProject.id || selectedProject._id;
+
+    // Sum all production card quantities for this project
+    const totalAllocated = displayProductionCards.reduce((sum, card) => {
+      // Make sure we're only counting cards for this project
+      const cardProjectId =
+        card.projectId ||
+        (selectedProject?.id ? String(selectedProject.id) : null);
+
+      if (cardProjectId && projectId && cardProjectId === String(projectId)) {
+        const quantity =
+          parseFloat(card.cardQuantity) || parseFloat(card.targetQuantity) || 0;
+        return sum + quantity;
+      }
+      return sum;
+    }, 0);
+
+    const totalOrderQty =
+      orderQuantity ||
+      (selectedProject as any)?.po?.orderQuantity ||
+      (selectedProject as any)?.poTarget ||
+      0;
+
+    const totalAvailable = Math.max(0, totalOrderQty - totalAllocated);
+
+    return { totalOrderQty, totalAllocated, totalAvailable };
+  };
+
+  const { totalOrderQty, totalAllocated, totalAvailable } =
+    calculateTotalAllocation();
 
   const handleDeleteCard = async (card: any) => {
     const projectId = card.projectId;
@@ -303,8 +340,15 @@ export function CreateProductionCardDialog({
       setEditingCard(null);
     }
   };
+
   const [productionCardCreated, setProductionCardCreated] = useState<any>(null);
+
   const OpenCard = async () => {
+    if (!projId) {
+      toast.error("Please select a project first");
+      return;
+    }
+
     try {
       const res = await api.post(
         `/projects/${projId}/production-cards/skeleton`
@@ -315,15 +359,16 @@ export function CreateProductionCardDialog({
       );
       setProductionCardCreated(res.data.productionCard);
       setShowProductionCardForm(true);
-      console.log("Created production card skeleton:", res.data);
+
+      // Immediately fetch cards after skeleton creation
+      fetchProductionCardsForProject(String(projId));
+
       toast.success("Production card skeleton created");
     } catch (error) {
       toast.error("Failed to create production card skeleton");
       console.error("Error creating production card skeleton:", error);
     }
   };
-
-  console.log(productionCardCreated, "Production Card Created State");
 
   const handleEditCard = (card: ProductionCardData) => {
     const fullCard = apiCards.find((c: any) => (c._id || c.id) === card.id);
@@ -333,7 +378,7 @@ export function CreateProductionCardDialog({
       return;
     }
 
-    setEditingCard(fullCard); // ✅ REAL DB CARD
+    setEditingCard(fullCard);
     setShowProductionCardForm(true);
   };
 
@@ -433,11 +478,23 @@ export function CreateProductionCardDialog({
     }
   };
 
+  const handleDialogClose = () => {
+    // Reset the state
+    setProductionCardCreated(null);
+
+    // Close the form dialog if open
+    setShowProductionCardForm(false);
+    setEditingCard(null);
+
+    // Close the main dialog
+    onClose();
+  };
+
   return (
     <Dialog
       open={open}
       onOpenChange={(isOpen) => {
-        if (!isOpen) onClose();
+        if (!isOpen) handleDialogClose();
       }}
     >
       <DialogContent
@@ -461,25 +518,38 @@ export function CreateProductionCardDialog({
               </div>
             </div>
             <div className="flex items-center gap-3 sm:gap-4 md:gap-6 self-end sm:self-center">
+              {/* Allocation Summary in Header */}
               <div className="bg-linear-to-br from-green-50 to-emerald-100 border border-green-200 rounded-lg sm:rounded-xl px-3 py-2 sm:px-6 sm:py-4">
                 <div className="flex items-center gap-2 sm:gap-4">
                   <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-600" />
                   <div>
                     <p className="text-xs sm:text-sm md:text-base text-green-600 font-semibold">
-                      Order Quantity
+                      Order & Allocation Summary
                     </p>
-                    <p className="text-sm sm:text-base md:text-lg lg:text-xl font-mono font-bold text-green-800">
-                      {orderQuantity
-                        ? `${Number(orderQuantity).toLocaleString(
-                            "en-IN"
-                          )} Units`
-                        : "No Order"}
-                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mt-1">
+                      <div className="text-sm font-mono font-bold text-green-800">
+                        Order: {totalOrderQty.toLocaleString("en-IN")} Units
+                      </div>
+                      <div className="text-sm font-mono font-bold text-blue-700">
+                        Allocated: {totalAllocated.toLocaleString("en-IN")}{" "}
+                        Units
+                      </div>
+                      <div
+                        className={`text-sm font-mono font-bold ${
+                          totalAvailable === 0
+                            ? "text-red-600"
+                            : "text-green-800"
+                        }`}
+                      >
+                        Available: {totalAvailable.toLocaleString("en-IN")}{" "}
+                        Units
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
               <Button
-                onClick={onClose}
+                onClick={handleDialogClose}
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 sm:h-10 sm:w-10 p-0"
@@ -493,6 +563,129 @@ export function CreateProductionCardDialog({
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto">
           <div className="px-4 sm:px-6 md:px-8 lg:px-12 py-4 sm:py-6 md:py-8 lg:py-10 space-y-6">
+            {/* Detailed Allocation Summary */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Allocation Summary
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Total Order */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-blue-600 font-medium">
+                        Total Order
+                      </p>
+                      <p className="text-2xl font-bold text-blue-800 mt-1">
+                        {totalOrderQty.toLocaleString("en-IN")}
+                      </p>
+                      <p className="text-xs text-blue-500 mt-1">Units</p>
+                    </div>
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Package className="w-5 h-5 text-blue-600" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Total Allocated */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-purple-600 font-medium">
+                        Total Allocated
+                      </p>
+                      <p className="text-2xl font-bold text-purple-800 mt-1">
+                        {totalAllocated.toLocaleString("en-IN")}
+                      </p>
+                      <p className="text-xs text-purple-500 mt-1">
+                        Across{" "}
+                        {
+                          displayProductionCards.filter(
+                            (card) =>
+                              card.projectId ===
+                              (selectedProject?.id || selectedProject?._id)
+                          ).length
+                        }{" "}
+                        cards
+                      </p>
+                    </div>
+                    <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                      <Target className="w-5 h-5 text-purple-600" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Available for Allocation */}
+                <div
+                  className={`border rounded-lg p-4 ${
+                    totalAvailable === 0
+                      ? "bg-red-50 border-red-200"
+                      : "bg-green-50 border-green-200"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium mb-1">
+                        Available for Allocation
+                      </p>
+                      <p
+                        className={`text-2xl font-bold mt-1 ${
+                          totalAvailable === 0
+                            ? "text-red-800"
+                            : "text-green-800"
+                        }`}
+                      >
+                        {totalAvailable.toLocaleString("en-IN")}
+                      </p>
+                      <p className="text-xs opacity-75 mt-1">Remaining units</p>
+                    </div>
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        totalAvailable === 0 ? "bg-red-100" : "bg-green-100"
+                      }`}
+                    >
+                      {totalAvailable === 0 ? (
+                        <X className="w-5 h-5 text-red-600" />
+                      ) : (
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="mt-6">
+                <div className="flex justify-between text-sm text-gray-600 mb-2">
+                  <span>Allocation Progress</span>
+                  <span>
+                    {totalOrderQty > 0
+                      ? ((totalAllocated / totalOrderQty) * 100).toFixed(1)
+                      : "0"}
+                    %
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div
+                    className="bg-gradient-to-r from-blue-500 to-purple-600 h-2.5 rounded-full"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        totalOrderQty > 0
+                          ? (totalAllocated / totalOrderQty) * 100
+                          : 0
+                      )}%`,
+                    }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>0 Units</span>
+                  <span>{totalOrderQty.toLocaleString("en-IN")} Units</span>
+                </div>
+              </div>
+            </div>
+
             {/* Production Cards Section */}
             <div className="space-y-4 sm:space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -516,9 +709,11 @@ export function CreateProductionCardDialog({
                   <Button
                     className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white text-xs sm:text-sm"
                     onClick={OpenCard}
+                    disabled={totalAvailable === 0}
                   >
                     <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                    Create Card
+                    Create Card{" "}
+                    {totalAvailable > 0 ? `(${totalAvailable} avail.)` : ""}
                   </Button>
                 </div>
               </div>
@@ -552,6 +747,12 @@ export function CreateProductionCardDialog({
                                 {card.productionType}
                               </p>
                             </div>
+                            <Badge
+                              variant="outline"
+                              className="bg-blue-50 text-blue-700 border-blue-200 text-xs"
+                            >
+                              {card.cardQuantity || card.targetQuantity} units
+                            </Badge>
                           </div>
 
                           {/* Status Badge */}
@@ -584,7 +785,9 @@ export function CreateProductionCardDialog({
                             {[
                               {
                                 label: "Production Quantity",
-                                value: `${card.targetQuantity} units`,
+                                value: `${
+                                  card.cardQuantity || card.targetQuantity
+                                } units`,
                               },
                               {
                                 label: "Plant Assignment",
@@ -650,16 +853,19 @@ export function CreateProductionCardDialog({
                     No Production Cards
                   </h4>
                   <p className="text-sm text-gray-600 mb-6 sm:mb-8 max-w-md mx-auto">
-                    Create production cards to organise and track different
-                    aspects of production.
+                    {totalAvailable > 0
+                      ? `Create production cards to allocate the available ${totalAvailable} units.`
+                      : "All units have been allocated. No available units for new cards."}
                   </p>
-                  <Button
-                    className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white text-sm sm:text-base"
-                    onClick={OpenCard}
-                  >
-                    <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                    Create Your First Card
-                  </Button>
+                  {totalAvailable > 0 && (
+                    <Button
+                      className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white text-sm sm:text-base"
+                      onClick={OpenCard}
+                    >
+                      <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                      Create Your First Card
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -670,7 +876,7 @@ export function CreateProductionCardDialog({
         <div className="sticky bottom-0 px-4 sm:px-6 md:px-8 lg:px-12 py-4 sm:py-6 bg-white/95 backdrop-blur-sm border-t border-gray-200">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
             <Button
-              onClick={onClose}
+              onClick={handleDialogClose}
               variant="outline"
               size={isMobile ? "sm" : "default"}
               className="w-full sm:w-auto"

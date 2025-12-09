@@ -33,15 +33,22 @@ export async function updateCard(req, res) {
   }
 }
 
-export async function getCard(req, res) {
-  try {
-    const cardId = req.params.cardId;
-    const card = await service.getCardById(cardId);
-    return res.json({ success: true, productionCard: card });
-  } catch (err) {
-    console.error("getCard error", err);
-    return res.status(500).json({ error: err.message || "Server error" });
-  }
+export async function getCard(cardId) {
+  if (!isObjectIdLike(cardId)) throw new Error("Invalid cardId");
+
+  const card = await PCProductionCard.findOne({
+    _id: cardId,
+    isActive: true, // ✅ BLOCK DELETED
+  })
+    .populate({
+      path: "projectId",
+      select: "autoCode productName brand allocationQty defaultPlant",
+    })
+    .populate({ path: "assignedPlant", select: "name" })
+    .populate({ path: "materialRequests" });
+
+  if (!card) throw new Error("Card not found");
+  return card;
 }
 
 export async function previewNextCardNumber(req, res) {
@@ -84,5 +91,30 @@ export async function getProductionCards(req, res) {
       return res.status(400).json({ error: err.message });
     }
     return res.status(500).json({ error: err.message || "Server error" });
+  }
+}
+
+// export async function deleteCard(req, res) {
+//   try {
+//   } catch (error) {}
+// }
+
+export async function deleteCard(req, res) {
+  try {
+    const { cardId } = req.params;
+    const deletedBy = req.user?.name || "Production Manager";
+
+    const deleted = await service.softDeleteProductionCard(cardId, deletedBy);
+
+    return res.json({
+      success: true,
+      message: "Production card deleted successfully",
+      productionCard: deleted,
+    });
+  } catch (err) {
+    console.error("deleteCard error", err);
+    return res.status(500).json({
+      error: err.message || "Server error",
+    });
   }
 }

@@ -1,4 +1,4 @@
-import React, { use, useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Save,
@@ -47,7 +47,6 @@ import { toast } from "sonner";
 import { useERPStore, RDProject } from "../lib/data-store";
 import api from "../lib/api";
 import { Card, CardContent } from "./ui/card";
-import { set } from "mongoose";
 
 // Media query hook
 const useMediaQuery = (query: string) => {
@@ -85,6 +84,11 @@ interface ProductionCardData {
   specialInstructions: string;
   status: string;
   createdAt: string;
+  _id?: string;
+  materialRequests?: any[];
+  assignedPlant?: any;
+  cardNumber?: string;
+  createdBy?: string;
 }
 
 interface ProductionCardFormDialogProps {
@@ -109,24 +113,21 @@ export function ProductionCardFormDialog({
   const isMobile = useMediaQuery("(max-width: 768px)");
   const isTablet = useMediaQuery("(min-width: 769px) and (max-width: 1024px)");
   const [productionCards, setProductionCards] = useState<any[]>([]);
-  // const { productionCards } = useERPStore();
+  const { productionCards: storeProductionCards } = useERPStore();
 
-  console.log(editingCard, "EDITING CARDDDDDD");
+  // const fetchProduction = async () => {
+  //   try {
+  //     const res = await api.get("/production-cards");
+  //     setProductionCards(res.data.items || res.data.data || []);
+  //   } catch (error) {
+  //     console.error("Failed to fetch production cards:", error);
+  //   }
+  // };
 
-  const fetcProduction = async () => {
-    try {
-      const res = await api.get("/production-cards");
+  // useEffect(() => {
+  //   fetchProduction();
+  // }, []);
 
-      console.log(res, "TEBENENEN");
-      // setProductionCards(res.data.items || res.data.data || []);
-    } catch (error) {}
-  };
-
-  useEffect(() => {
-    fetcProduction();
-  }, []);
-
-  // Compute PO/allocated/remaining
   const getProjectIdFromSelected = () => {
     return (
       (selectedProject as any)?.project?._id ||
@@ -137,17 +138,28 @@ export function ProductionCardFormDialog({
     );
   };
 
-  const orderQty =
-    Number(
-      (selectedProject as any)?.po?.orderQuantity ??
-        (selectedProject as any)?.poTarget ??
-        0
-    ) || 0;
+  // Get allocation summary
+  // Fix the getAllocationSummary function
+  const getAllocationSummary = () => {
+    const projectId = getProjectIdFromSelected();
 
-  const projIdForCalc = getProjectIdFromSelected();
+    if (!projectId) return { orderQty: 0, allocated: 0, remaining: 0 };
 
-  const allocatedUnits = (productionCards || [])
-    .filter((c: any) => {
+    // Ensure productionCards is an array before spreading
+    const productionCardsArray = Array.isArray(productionCards)
+      ? productionCards
+      : [];
+    // const storeProductionCardsArray = Array.isArray(storeProductionCards)
+    //   ? storeProductionCards
+    //   : [];
+
+    // Combine all production cards from different sources
+    const allCards = [...productionCardsArray];
+
+    // Filter cards for this project and exclude current editing card
+    const allCardsForProject = allCards.filter((c: any) => {
+      if (!c) return false; // Skip null/undefined cards
+
       const pid =
         c.projectId ||
         c.project ||
@@ -155,14 +167,52 @@ export function ProductionCardFormDialog({
         c.rdProject ||
         (c.project && (c.project._id || c.project.id)) ||
         null;
-      return pid && projIdForCalc && String(pid) === String(projIdForCalc);
-    })
-    .reduce((sum: number, c: any) => {
+
+      if (!pid || !projectId) return false;
+
+      // Check if card belongs to this project
+      const isSameProject = String(pid) === String(projectId);
+
+      // If editing, exclude the card being edited from allocation calculation
+      if (editingCard) {
+        const isSameCard = c._id === editingCard._id || c.id === editingCard.id;
+        return isSameProject && !isSameCard;
+      }
+
+      return isSameProject;
+    });
+
+    const allocatedUnits = allCardsForProject.reduce((sum: number, c: any) => {
+      if (!c) return sum;
       const v = Number(c.cardQuantity ?? c.targetQuantity ?? c.quantity ?? 0);
       return sum + (isFinite(v) ? v : 0);
     }, 0);
 
-  const remainingUnits = Math.max(0, orderQty - allocatedUnits);
+    const orderQty =
+      Number(
+        (selectedProject as any)?.po?.orderQuantity ??
+          (selectedProject as any)?.poTarget ??
+          0
+      ) || 0;
+
+    const remainingUnits = Math.max(0, orderQty - allocatedUnits);
+
+    return { orderQty, allocated: allocatedUnits, remaining: remainingUnits };
+  };
+
+  const { orderQty, allocated, remaining } = getAllocationSummary();
+
+  // Calculate maximum allocation for current card
+  const getMaxAllocation = () => {
+    if (editingCard) {
+      // When editing, available = remaining + current card's quantity
+      const currentCardQty = parseFloat(editingCard.cardQuantity || "0");
+      return remaining + currentCardQty;
+    }
+    return remaining;
+  };
+
+  const maxAllocation = getMaxAllocation();
 
   const [costData, setCostData] = useState({
     upper: [] as any[],
@@ -271,7 +321,35 @@ export function ProductionCardFormDialog({
 
     loadPlants();
   }, [open]);
+  const fetchProduction = async () => {
+    try {
+      const projectId = getProjectIdFromSelected();
+      if (!projectId) {
+        setProductionCards([]);
+        return;
+      }
 
+      // Fetch production cards for the specific project
+      const res = await api.get(`/projects/${projectId}/production-cards`);
+      const items =
+        res?.data?.data?.items ?? res?.data?.items ?? res?.data?.data ?? [];
+      const normalized = Array.isArray(items)
+        ? items
+        : Array.isArray(res?.data)
+        ? res.data
+        : [];
+      setProductionCards(normalized);
+    } catch (error) {
+      console.error("Failed to fetch production cards:", error);
+      setProductionCards([]);
+    }
+  };
+
+  useEffect(() => {
+    if (open && selectedProject) {
+      fetchProduction();
+    }
+  }, [open, selectedProject]);
   const handleCreateNewPlant = async () => {
     if (!newPlantName.trim()) return toast.error("Please enter a plant name");
 
@@ -393,8 +471,6 @@ export function ProductionCardFormDialog({
     try {
       const res = await api.get(`/material-requests/${mrId}`);
 
-      console.log(res, "RESRESRESCCCCCCCCCCCCCCCCCCCCCCCCCC");
-
       if (!res.data?.success || !res.data.data) return;
 
       const mr = res.data.data;
@@ -411,13 +487,6 @@ export function ProductionCardFormDialog({
       );
 
       setMaterialData(issuedMap);
-
-      // ✅ Sync allocation from MR → Card
-      setFormData((prev) => ({
-        ...prev,
-        cardQuantity: String(mr.productionCardId?.cardQuantity || ""),
-      }));
-
       setRequestStatus(mr.status);
     } catch (err) {
       console.error("Failed to load material request for edit", err);
@@ -432,15 +501,6 @@ export function ProductionCardFormDialog({
     }
   }, [open, editingCard]);
 
-  // useEffect(() => {
-  //   const mrIdToUse = editingCard?.materialRequests?.[0]?._id || mrId;
-
-  //   if (open && mrIdToUse) {
-  //     loadMaterialRequestForEdit(mrIdToUse);
-  //   }
-  // }, [open, editingCard, mrId]);
-
-  // const [mrId, setMrId] = useState<string>("");
   const handleSendToStoreManager = async () => {
     if (!formData.cardQuantity || parseInt(formData.cardQuantity) === 0) {
       toast.error("Please enter production allocation quantity first");
@@ -448,6 +508,10 @@ export function ProductionCardFormDialog({
     }
 
     let cardIdToUse = createdCardId || productionCardCreated?._id;
+
+    if (!cardIdToUse && editingCard) {
+      cardIdToUse = editingCard._id || editingCard.id;
+    }
 
     if (!cardIdToUse) {
       toast.error("Please save the production card first");
@@ -460,6 +524,12 @@ export function ProductionCardFormDialog({
 
     if (!projectId) {
       toast.error("Project not found");
+      return;
+    }
+
+    // Validate allocation doesn't exceed available
+    if (allocationQty > maxAllocation) {
+      toast.error(`Cannot allocate more than ${maxAllocation} units`);
       return;
     }
 
@@ -544,19 +614,43 @@ export function ProductionCardFormDialog({
       return;
     }
 
+    const allocationQty = parseFloat(formData.cardQuantity);
+
+    // Validate allocation doesn't exceed available
+    if (allocationQty > maxAllocation) {
+      toast.error(`Cannot allocate more than ${maxAllocation} units`);
+      return;
+    }
+
     if (!selectedProject) {
       toast.error("No project selected for production card");
       return;
     }
 
-    // Get the card ID - use createdCardId if available, otherwise check productionCardCreated
+    // Get the card ID - check multiple sources
     let cardIdToUse = createdCardId;
 
     if (!cardIdToUse && productionCardCreated) {
       cardIdToUse = productionCardCreated?._id;
     }
 
-    const cardNumber = generateProductionCardNumber();
+    // If no card ID exists yet (fresh creation without skeleton), create one
+    if (!cardIdToUse && !editingCard) {
+      try {
+        const projectId = getProjectIdFromSelected();
+        const skeletonRes = await api.post(
+          `/projects/${projectId}/production-cards/skeleton`
+        );
+        cardIdToUse = skeletonRes.data.productionCard?._id;
+        setProductionCardCreated(skeletonRes.data.productionCard);
+      } catch (err) {
+        toast.error("Failed to create card base");
+        return;
+      }
+    }
+
+    const cardNumber =
+      editingCard?.cardNumber || generateProductionCardNumber();
     const projectId = getProjectIdFromSelected();
 
     if (!projectId) {
@@ -668,6 +762,9 @@ export function ProductionCardFormDialog({
 
       onSave(cardData);
       if (onCardCreated) onCardCreated();
+
+      // Close the dialog after saving
+      onClose();
     } catch (err: any) {
       console.error("Failed to save production card:", err);
       toast.error(
@@ -705,8 +802,6 @@ export function ProductionCardFormDialog({
     }
   };
 
-  console.log(editingCard, "test dedededed");
-
   // Render mobile section content
   const renderMobileSection = () => {
     if (!isMobile) return null;
@@ -721,6 +816,8 @@ export function ProductionCardFormDialog({
                 Allocation
               </h3>
             </div>
+
+            {/* Allocation Summary Card */}
             <Card className="border border-gray-200">
               <CardContent className="p-4">
                 <div className="space-y-4">
@@ -733,14 +830,16 @@ export function ProductionCardFormDialog({
                       value={formData.cardQuantity || ""}
                       onChange={(e) => {
                         const val = e.target.value;
-                        const maxQty = orderQty || 1200;
                         const numVal = parseInt(val, 10);
 
-                        if (numVal > maxQty) {
+                        if (numVal > maxAllocation) {
                           toast.error(
-                            `Allocation cannot exceed maximum quantity of ${maxQty}`
+                            `Cannot allocate more than ${maxAllocation} units`
                           );
-                          handleInputChange("cardQuantity", String(maxQty));
+                          handleInputChange(
+                            "cardQuantity",
+                            String(maxAllocation)
+                          );
                         } else {
                           handleInputChange("cardQuantity", val);
                         }
@@ -748,27 +847,38 @@ export function ProductionCardFormDialog({
                       placeholder="0"
                       className="w-32 h-9 text-center border-2 border-gray-300"
                       min="1"
+                      max={maxAllocation}
                     />
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Order Quantity:</span>
+                      <span className="text-gray-600">Total Order:</span>
                       <span className="font-semibold">{orderQty || "N/A"}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Already Allocated:</span>
-                      <span className="font-semibold">{allocatedUnits}</span>
+                      <span className="font-semibold">{allocated}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Available:</span>
+                      <span
+                        className={`font-semibold ${
+                          remaining === 0 ? "text-red-600" : "text-green-600"
+                        }`}
+                      >
+                        {remaining}
+                      </span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-gray-200">
-                      <span className="font-medium">Remaining:</span>
+                      <span className="font-medium">Max Allocation:</span>
                       <span
                         className={`font-bold ${
-                          remainingUnits === 0
+                          maxAllocation === 0
                             ? "text-red-600"
                             : "text-green-600"
                         }`}
                       >
-                        {orderQty ? remainingUnits : "N/A"}
+                        {maxAllocation}
                       </span>
                     </div>
                   </div>
@@ -828,41 +938,84 @@ export function ProductionCardFormDialog({
                     return (
                       <Card
                         key={row._id}
-                        className="mb-2 border border-gray-200"
+                        className="mb-3 rounded-xl border border-gray-200 shadow-sm"
                       >
-                        <CardContent className="p-3">
-                          <div className="space-y-2">
-                            <div className="font-medium text-sm truncate">
+                        <CardContent className="p-4 space-y-3">
+                          {/* Item Header */}
+                          <div className="flex flex-col gap-1">
+                            <div className="font-semibold text-sm text-gray-900 truncate">
                               {row.item}
                             </div>
-                            <div className="text-xs text-gray-600 truncate">
+                            <div className="text-xs text-gray-500 truncate">
                               {row.description}
                             </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div className="space-y-1">
-                                <div className="text-gray-500">Requirement</div>
-                                <div className="font-semibold">
-                                  {requirement.toFixed(2)}
-                                </div>
-                              </div>
-                              <div className="space-y-1">
-                                <div className="text-gray-500">Available</div>
-                                <Input
-                                  type="number"
-                                  className="h-7 text-xs px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                  value={available === 0 ? "" : available}
-                                  onChange={(e) =>
-                                    handleMaterialDataChange(
-                                      itemName,
-                                      "available",
-                                      e.target.value === ""
-                                        ? 0
-                                        : parseFloat(e.target.value)
-                                    )
-                                  }
-                                />
-                              </div>
+                          </div>
+
+                          {/* Divider */}
+                          <div className="h-px bg-gray-200" />
+
+                          {/* Values Grid */}
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            {/* Requirement */}
+                            <div className="flex flex-col items-center justify-center bg-blue-50 rounded-lg py-2">
+                              <span className="text-gray-500">Required</span>
+                              <span className="font-bold text-blue-700">
+                                {requirement.toFixed(2)}
+                              </span>
                             </div>
+
+                            {/* Available */}
+                            <div className="flex flex-col items-center justify-center bg-green-50 rounded-lg py-2">
+                              <span className="text-gray-500 mb-1">
+                                Available
+                              </span>
+                              <Input
+                                type="number"
+                                className="h-7 w-16 text-xs text-center"
+                                value={available === 0 ? "" : available}
+                                onChange={(e) =>
+                                  handleMaterialDataChange(
+                                    itemName,
+                                    "available",
+                                    e.target.value === ""
+                                      ? 0
+                                      : parseFloat(e.target.value)
+                                  )
+                                }
+                              />
+                            </div>
+
+                            {/* Issued */}
+                            <div className="flex flex-col items-center justify-center bg-purple-50 rounded-lg py-2">
+                              <span className="text-gray-500">Issued</span>
+                              <span className="font-bold text-purple-700">
+                                {materialData[itemName]?.issued || 0}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Balance Bar */}
+                          <div className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg text-xs font-medium">
+                            <span className="text-gray-600">Balance</span>
+                            <span
+                              className={`${
+                                Math.max(
+                                  0,
+                                  requirement -
+                                    available -
+                                    (materialData[itemName]?.issued || 0)
+                                ) === 0
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {Math.max(
+                                0,
+                                requirement -
+                                  available -
+                                  (materialData[itemName]?.issued || 0)
+                              ).toFixed(2)}
+                            </span>
                           </div>
                         </CardContent>
                       </Card>
@@ -1151,26 +1304,29 @@ export function ProductionCardFormDialog({
 
             {!isMobile && (
               <div className="flex items-center gap-4 self-end sm:self-center">
-                <Card className="border border-gray-200 shadow-sm min-w-[200px]">
+                {/* Allocation Summary Card */}
+                <Card className="border border-gray-200 shadow-sm min-w-[220px]">
                   <CardContent className="p-3">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label className="text-sm font-medium text-gray-700">
-                          Allocation
+                          Allocation Quantity
                         </Label>
                         <Input
                           type="number"
                           value={formData.cardQuantity || ""}
                           onChange={(e) => {
                             const val = e.target.value;
-                            const maxQty = orderQty || 1200;
                             const numVal = parseInt(val, 10);
 
-                            if (numVal > maxQty) {
+                            if (numVal > maxAllocation) {
                               toast.error(
-                                `Allocation cannot exceed maximum quantity of ${maxQty}`
+                                `Cannot allocate more than ${maxAllocation} units`
                               );
-                              handleInputChange("cardQuantity", String(maxQty));
+                              handleInputChange(
+                                "cardQuantity",
+                                String(maxAllocation)
+                              );
                             } else {
                               handleInputChange("cardQuantity", val);
                             }
@@ -1178,31 +1334,42 @@ export function ProductionCardFormDialog({
                           placeholder="0"
                           className="w-20 h-8 text-center border border-gray-300"
                           min="1"
+                          max={maxAllocation}
                         />
                       </div>
                       <div className="text-xs text-gray-600 space-y-1">
                         <div className="flex justify-between">
-                          <span>Order Qty:</span>
+                          <span>Total Order:</span>
                           <span className="font-semibold">
                             {orderQty || "N/A"}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Allocated:</span>
-                          <span className="font-semibold">
-                            {allocatedUnits}
-                          </span>
+                          <span>Already Allocated:</span>
+                          <span className="font-semibold">{allocated}</span>
                         </div>
-                        <div className="flex justify-between pt-1 border-t border-gray-200">
-                          <span className="font-medium">Remaining:</span>
+                        <div className="flex justify-between">
+                          <span>Available:</span>
                           <span
-                            className={`font-bold ${
-                              remainingUnits === 0
+                            className={`font-semibold ${
+                              remaining === 0
                                 ? "text-red-600"
                                 : "text-green-600"
                             }`}
                           >
-                            {orderQty ? remainingUnits : "N/A"}
+                            {remaining}
+                          </span>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-gray-200">
+                          <span className="font-medium">Max Allocation:</span>
+                          <span
+                            className={`font-bold ${
+                              maxAllocation === 0
+                                ? "text-red-600"
+                                : "text-green-600"
+                            }`}
+                          >
+                            {maxAllocation}
                           </span>
                         </div>
                       </div>
@@ -1232,15 +1399,29 @@ export function ProductionCardFormDialog({
                         <Input
                           type="number"
                           value={formData.cardQuantity || ""}
-                          onChange={(e) =>
-                            handleInputChange("cardQuantity", e.target.value)
-                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const numVal = parseInt(val, 10);
+
+                            if (numVal > maxAllocation) {
+                              toast.error(
+                                `Cannot allocate more than ${maxAllocation} units`
+                              );
+                              handleInputChange(
+                                "cardQuantity",
+                                String(maxAllocation)
+                              );
+                            } else {
+                              handleInputChange("cardQuantity", val);
+                            }
+                          }}
                           placeholder="0"
                           className="w-20 h-8 text-center border border-gray-300"
                           min="1"
+                          max={maxAllocation}
                         />
                         <span className="text-sm text-gray-600">
-                          / {orderQty || "N/A"}
+                          / {maxAllocation || "N/A"} max
                         </span>
                       </div>
                     </div>
@@ -1414,7 +1595,7 @@ export function ProductionCardFormDialog({
                                       <Input
                                         type="number"
                                         className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs"
-                                        value={available === 0 ? "" : available} // 👈 shows empty instead of 0
+                                        value={available === 0 ? "" : available}
                                         onChange={(e) =>
                                           handleMaterialDataChange(
                                             itemName,
@@ -1459,9 +1640,6 @@ export function ProductionCardFormDialog({
                         <Button
                           onClick={handleSendToStoreManager}
                           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 sm:px-6 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2 text-xs sm:text-sm"
-                          // disabled={
-                          //   // !createdCardId || requestStatus !== "Not Requested"
-                          // }
                         >
                           <Send className="w-3 h-3 sm:w-4 sm:h-4" />
                           {requestStatus === "Not Requested"
@@ -1729,6 +1907,11 @@ export function ProductionCardFormDialog({
                 className={`${
                   isMobile ? "w-full mt-2" : ""
                 } bg-blue-500 hover:bg-blue-600 text-white`}
+                disabled={
+                  !formData.cardQuantity ||
+                  !formData.startDate ||
+                  !formData.assignPlant
+                }
               >
                 <Save className="w-4 h-4 mr-2" />
                 {editingCard ? "Update Card" : "Save Card"}

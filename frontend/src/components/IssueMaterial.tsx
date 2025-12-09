@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Search,
   Trash2,
@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   MoreVertical,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "./ui/button";
@@ -33,48 +34,856 @@ import { Separator } from "./ui/separator";
 
 import api from "../lib/api";
 
+// Types
+interface MaterialItem {
+  _id: string;
+  itemId: string;
+  name: string;
+  specification: string;
+  requirement: number;
+  available: number;
+  issued: number;
+  balance: number;
+}
+
+interface ComponentItem extends MaterialItem {}
+
+interface Project {
+  productName: string;
+}
+
+interface MaterialRequisition {
+  _id: string;
+  cardNumber: string;
+  projectId: Project;
+  requestedBy: string;
+  status: "Pending to Store" | "Partially Issued" | "Issued";
+  materials: MaterialItem[];
+  components: ComponentItem[];
+  createdAt: string;
+}
+
 interface IssueMaterialProps {
   searchTerm: string;
   onSearchChange: (term: string) => void;
 }
 
+// Helper Components
+const Info = ({
+  label,
+  value,
+  highlight = false,
+  status,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  status?: string;
+}) => (
+  <div className="min-w-0">
+    <p className="text-gray-500 text-xs md:text-sm mb-1 truncate">{label}</p>
+    <p
+      className={`font-semibold text-sm md:text-base truncate ${
+        highlight
+          ? status === "Issued"
+            ? "text-green-600"
+            : status === "Partially Issued"
+            ? "text-yellow-600"
+            : "text-red-600"
+          : "text-gray-900"
+      }`}
+    >
+      {value || "-"}
+    </p>
+  </div>
+);
+
+interface IssueRowProps {
+  item: MaterialItem | ComponentItem;
+  issuedQuantities: Record<string, number>;
+  onIssueChange: (id: string, qty: number) => void;
+}
+
+const IssueRow = ({ item, issuedQuantities, onIssueChange }: IssueRowProps) => {
+  const itemId = item.itemId || item._id;
+  const req = Number(item.requirement || 0);
+  const avail = Number(item.available || 0);
+  const alreadyIssued = Number(item.issued || 0); // Current value in DB
+  const newIssuedAmount = Number(issuedQuantities[itemId] || 0); // What user enters (replaces old value)
+
+  // Max that can be issued = Requirement - Available
+  const maxIssuable = Math.max(0, req - avail);
+
+  // Balance after issuing new amount
+  const balanceAfter = Math.max(0, req - (avail + newIssuedAmount));
+
+  return (
+    <tr className="border-b hover:bg-gray-50">
+      <td className="px-6 py-3 border-r">{item.name}</td>
+      <td className="px-6 py-3 border-r">{item.specification || "-"}</td>
+      <td className="px-6 py-3 border-r text-center font-semibold text-blue-700">
+        {req}
+      </td>
+      <td className="px-6 py-3 border-r text-center">{avail}</td>
+      <td className="px-6 py-3 border-r text-center font-semibold text-green-600">
+        {alreadyIssued}
+      </td>
+      <td className="px-6 py-3 border-r text-center">
+        <div className="flex flex-col items-center gap-1">
+          <Input
+            type="number"
+            min={0}
+            max={maxIssuable}
+            value={newIssuedAmount || ""}
+            onChange={(e) =>
+              onIssueChange(
+                itemId,
+                Math.max(0, Math.min(maxIssuable, Number(e.target.value) || 0))
+              )
+            }
+            className="w-28 text-center text-base"
+            placeholder="0"
+          />
+          <div className="text-xs text-gray-500">Max: {maxIssuable}</div>
+        </div>
+      </td>
+      <td className="px-6 py-3 text-center font-semibold">
+        <div className="flex flex-col">
+          <span
+            className={balanceAfter === 0 ? "text-green-600" : "text-red-600"}
+          >
+            {balanceAfter}
+          </span>
+          <span className="text-xs text-gray-500">
+            Will replace: {alreadyIssued} → {newIssuedAmount}
+          </span>
+        </div>
+      </td>
+    </tr>
+  );
+};
+const MobileIssueItem = ({
+  item,
+  issuedQuantities,
+  onIssueChange,
+}: IssueRowProps) => {
+  const itemId = item.itemId || item._id;
+  const req = Number(item.requirement || 0);
+  const avail = Number(item.available || 0);
+  const alreadyIssued = Number(item.issued || 0);
+  const newIssuedAmount = Number(issuedQuantities[itemId] || 0);
+  const maxIssuable = Math.max(0, req - avail);
+  const balanceAfter = Math.max(0, req - (avail + newIssuedAmount));
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex justify-between items-start">
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900 truncate">{item.name}</p>
+          <p className="text-sm text-gray-600 mt-1">
+            {item.specification || "No specification"}
+          </p>
+        </div>
+        <Badge
+          variant={balanceAfter === 0 ? "default" : "destructive"}
+          className="ml-2 shrink-0"
+        >
+          {balanceAfter} left
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Required</p>
+          <p className="font-semibold text-blue-700">{req}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Available</p>
+          <p className="font-semibold">{avail}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Currently Issued</p>
+          <p className="font-semibold text-green-600">{alreadyIssued}</p>
+        </div>
+      </div>
+
+      <div className="pt-2">
+        <p className="text-xs text-gray-500 mb-2">Set New Issued Quantity</p>
+        <div className="flex items-center gap-3">
+          <Input
+            type="number"
+            min={0}
+            max={maxIssuable}
+            value={newIssuedAmount || ""}
+            onChange={(e) =>
+              onIssueChange(
+                itemId,
+                Math.max(0, Math.min(maxIssuable, Number(e.target.value) || 0))
+              )
+            }
+            className="flex-1 text-center"
+            placeholder="0"
+          />
+          <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">
+            Max: {maxIssuable}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mt-2 italic">
+          This will replace the current issued amount of {alreadyIssued}
+        </p>
+      </div>
+
+      <div className="pt-2">
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">New issued amount:</p>
+            <p className="font-semibold text-green-700">{newIssuedAmount}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-500 mb-1">Balance remaining:</p>
+            <p
+              className={`font-semibold ${
+                balanceAfter === 0 ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {balanceAfter}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <Separator className="mt-4" />
+    </div>
+  );
+};
+
+interface MaterialSectionsProps {
+  sections: Array<{
+    label: string;
+    color: string;
+    items: Array<MaterialItem | ComponentItem>;
+  }>;
+  issuedQuantities: Record<string, number>;
+  onIssueChange: (id: string, qty: number) => void;
+}
+
+const MaterialSections = ({
+  sections,
+  issuedQuantities,
+  onIssueChange,
+}: MaterialSectionsProps) => {
+  return (
+    <div className="space-y-6">
+      {/* Mobile View */}
+      <div className="md:hidden space-y-4">
+        {sections.map((sec) => (
+          <Card key={sec.label} className="overflow-hidden">
+            <div
+              className={`${sec.color} px-4 py-3 font-semibold flex justify-between items-center`}
+            >
+              <span className="text-sm">{sec.label}</span>
+              <Badge variant="secondary" className="text-xs">
+                {sec.items.length} items
+              </Badge>
+            </div>
+            <CardContent className="p-0">
+              {sec.items.length === 0 ? (
+                <div className="px-4 py-6 text-center text-gray-400">
+                  No items
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {sec.items.map((item) => (
+                    <MobileIssueItem
+                      key={item.itemId || item._id}
+                      item={item}
+                      issuedQuantities={issuedQuantities}
+                      onIssueChange={onIssueChange}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Desktop View - Fixed width for better layout */}
+      <div className="hidden md:block bg-white rounded-xl border overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table
+            className="w-full border-collapse"
+            style={{ minWidth: "1200px" }}
+          >
+            <thead>
+              <tr className="bg-gray-100 border-b">
+                <th className="px-6 py-3 border-r text-left font-semibold min-w-[200px]">
+                  ITEM
+                </th>
+                <th className="px-6 py-3 border-r text-left font-semibold min-w-[250px]">
+                  SPECIFICATION
+                </th>
+                <th className="px-6 py-3 border-r text-center font-semibold min-w-[120px]">
+                  REQUIRED
+                </th>
+                <th className="px6 py-3 border-r text-center font-semibold min-w-[120px]">
+                  AVAILABLE
+                </th>
+                <th className="px-6 py-3 border-r text-center font-semibold min-w-[140px]">
+                  ALREADY ISSUED
+                </th>
+                <th className="px-6 py-3 border-r text-center font-semibold min-w-[180px]">
+                  ISSUE NOW
+                </th>
+                <th className="px-6 py-3 text-center font-semibold min-w-[180px]">
+                  BALANCE AFTER ISSUE
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {sections.map((sec) => (
+                <React.Fragment key={sec.label}>
+                  <tr className={`${sec.color} border-y`}>
+                    <td colSpan={7} className="px-6 py-2 font-semibold text-sm">
+                      {sec.label}
+                    </td>
+                  </tr>
+
+                  {sec.items.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-6 py-8 text-center text-gray-400 text-sm"
+                      >
+                        No items in this category
+                      </td>
+                    </tr>
+                  )}
+
+                  {sec.items.map((item) => (
+                    <IssueRow
+                      key={item.itemId || item._id}
+                      item={item}
+                      issuedQuantities={issuedQuantities}
+                      onIssueChange={onIssueChange}
+                    />
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface MaterialIssueDialogProps {
+  requisition: MaterialRequisition | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+}
+
+const MaterialIssueDialog = ({
+  requisition,
+  open,
+  onOpenChange,
+  onSuccess,
+}: MaterialIssueDialogProps) => {
+  const [issuedQuantities, setIssuedQuantities] = useState<
+    Record<string, number>
+  >({});
+
+  useEffect(() => {
+    if (requisition) {
+      const initialQuantities: Record<string, number> = {};
+
+      // Initialize with the CURRENT issued amount from DB
+      // This way the input shows what's already issued
+      [
+        ...(requisition.materials || []),
+        ...(requisition.components || []),
+      ].forEach((item) => {
+        const itemId = String(item.itemId || item._id);
+        initialQuantities[itemId] = Number(item.issued || 0); // Show current issued amount
+      });
+
+      setIssuedQuantities(initialQuantities);
+    }
+  }, [requisition]);
+
+  const handleIssueQuantityChange = useCallback((id: string, qty: number) => {
+    setIssuedQuantities((prev) => ({
+      ...prev,
+      [id]: qty,
+    }));
+  }, []);
+
+  const getCategorizedSections = useCallback(() => {
+    if (!requisition) {
+      return {
+        upper: [],
+        material: [],
+        component: [],
+        packaging: [],
+        miscellaneous: [],
+      };
+    }
+
+    const upper: any[] = [];
+    const material: any[] = [];
+    const component: any[] = [];
+    const packaging: any[] = [];
+    const miscellaneous: any[] = [];
+
+    requisition.materials?.forEach((item) => {
+      const name = (item.name || "").toLowerCase();
+      if (name.includes("upper")) {
+        upper.push(item);
+      } else {
+        material.push(item);
+      }
+    });
+
+    requisition.components?.forEach((item) => {
+      const name = (item.name || "").toLowerCase();
+      if (name.includes("pack") || name.includes("packaging")) {
+        packaging.push(item);
+      } else if (name.includes("component") || name.startsWith("c ")) {
+        component.push(item);
+      } else {
+        miscellaneous.push(item);
+      }
+    });
+
+    return { upper, material, component, packaging, miscellaneous };
+  }, [requisition]);
+
+  const handleIssueMaterials = async () => {
+    if (!requisition) return;
+
+    try {
+      const updatedMaterials =
+        requisition.materials?.map((item) => {
+          const itemId = item.itemId || item._id;
+          const newIssuedAmount = Number(issuedQuantities[String(itemId)] || 0); // This REPLACES the old issued amount
+          const available = Number(item.available || 0);
+          const requirement = Number(item.requirement || 0);
+
+          // Balance = Requirement - (Available + New Issued Amount)
+          const balance = Math.max(
+            0,
+            requirement - (available + newIssuedAmount)
+          );
+
+          return {
+            ...item,
+            issued: newIssuedAmount, // REPLACE with new value
+            balance,
+          };
+        }) || [];
+
+      const updatedComponents =
+        requisition.components?.map((item) => {
+          const itemId = item.itemId || item._id;
+          const newIssuedAmount = Number(issuedQuantities[String(itemId)] || 0); // This REPLACES the old issued amount
+          const available = Number(item.available || 0);
+          const requirement = Number(item.requirement || 0);
+
+          // Balance = Requirement - (Available + New Issued Amount)
+          const balance = Math.max(
+            0,
+            requirement - (available + newIssuedAmount)
+          );
+
+          return {
+            ...item,
+            issued: newIssuedAmount, // REPLACE with new value
+            balance,
+          };
+        }) || [];
+
+      // Calculate totals for status determination
+      const allItems = [...updatedMaterials, ...updatedComponents];
+      const totalRequired = allItems.reduce(
+        (sum, item) => sum + Number(item.requirement || 0),
+        0
+      );
+      const totalIssued = allItems.reduce(
+        (sum, item) => sum + Number(item.issued || 0),
+        0
+      );
+
+      // New status logic
+      let newStatus = requisition.status;
+      if (totalIssued >= totalRequired) {
+        newStatus = "Issued";
+      } else if (totalIssued > 0) {
+        newStatus = "Partially Issued";
+      } else {
+        newStatus = "Pending to Store";
+      }
+
+      const body = {
+        materials: updatedMaterials,
+        components: updatedComponents,
+        status: newStatus,
+      };
+
+      await api.put(`/material-requests/${requisition._id}`, body);
+      onSuccess();
+      onOpenChange(false);
+      alert("Materials issued successfully!");
+    } catch (err) {
+      console.error("Issue material failed", err);
+      alert("Failed to issue materials.");
+    }
+  };
+
+  if (!requisition) return null;
+
+  const sections = getCategorizedSections();
+  const categorizedSections = [
+    {
+      label: "UPPER MATERIAL",
+      color: "bg-cyan-100 text-cyan-900",
+      items: sections.upper,
+    },
+    {
+      label: "MATERIAL USED",
+      color: "bg-cyan-200 text-cyan-900",
+      items: sections.material,
+    },
+    {
+      label: "COMPONENT USED",
+      color: "bg-purple-100 text-purple-900",
+      items: sections.component,
+    },
+    {
+      label: "PACKAGING USED",
+      color: "bg-yellow-100 text-yellow-900",
+      items: sections.packaging,
+    },
+    {
+      label: "MISCELLANEOUS USED",
+      color: "bg-rose-100 text-rose-900",
+      items: sections.miscellaneous,
+    },
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="
+          fixed 
+          left-1/2 
+          top-1/2 
+          w-[95vw] 
+          h-[90vh]
+          -translate-x-1/2 
+          -translate-y-1/2 
+          p-0 
+          flex 
+          flex-col 
+          overflow-hidden 
+          rounded-xl 
+          shadow-2xl
+          border
+          bg-white
+        "
+        style={{
+          maxWidth: "1600px",
+          maxHeight: "95vh",
+          minWidth: "300px",
+        }}
+      >
+        {/* Header */}
+        <div className="sticky top-0 z-50 px-6 py-4 bg-white border-b shadow-sm flex justify-between items-center shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center shadow-md">
+              <Package className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <DialogTitle className="text-2xl font-semibold text-gray-900">
+                Issue Material
+              </DialogTitle>
+              <DialogDescription className="text-gray-600">
+                Issue materials for {requisition.cardNumber}
+              </DialogDescription>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onOpenChange(false)}
+            className="rounded-full hover:bg-gray-100 h-10 w-10"
+          >
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6">
+          <Card className="bg-gray-50 border">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-600" />
+                <CardTitle className="text-lg font-semibold">
+                  Production Card Details
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Info label="Card Number" value={requisition.cardNumber} />
+                <Info
+                  label="Product"
+                  value={requisition.projectId?.productName}
+                />
+                <Info label="Requested By" value={requisition.requestedBy} />
+                <Info
+                  label="Status"
+                  value={requisition.status}
+                  highlight
+                  status={requisition.status}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <MaterialSections
+            sections={categorizedSections}
+            issuedQuantities={issuedQuantities}
+            onIssueChange={handleIssueQuantityChange}
+          />
+        </div>
+
+        {/* Footer */}
+        <div className="sticky bottom-0 p-4 border-t bg-white flex justify-end shrink-0">
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="min-w-[100px]"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white min-w-[150px]"
+              onClick={handleIssueMaterials}
+            >
+              Issue Materials
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Mobile Card Component
+interface MobileRequisitionCardProps {
+  requisition: MaterialRequisition;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onIssue: () => void;
+  onDelete: () => void;
+}
+
+const MobileRequisitionCard = ({
+  requisition,
+  isExpanded,
+  onToggle,
+  onIssue,
+  onDelete,
+}: MobileRequisitionCardProps) => {
+  const totalItems = [
+    ...(requisition.materials || []),
+    ...(requisition.components || []),
+  ];
+  const totalRequired = totalItems.reduce(
+    (sum, item) => sum + Number(item.requirement || 0),
+    0
+  );
+  const totalIssued = totalItems.reduce(
+    (sum, item) => sum + Number(item.issued || 0),
+    0
+  );
+  const progress = totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
+
+  return (
+    <Card key={requisition._id} className="overflow-hidden">
+      <CardHeader className="pb-3 cursor-pointer" onClick={onToggle}>
+        <div className="flex justify-between items-start">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <div className="h-10 w-10 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
+              <FileText className="text-blue-600 w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <CardTitle className="text-base font-semibold truncate">
+                {requisition.cardNumber || "N/A"}
+              </CardTitle>
+              <p className="text-sm text-gray-600 truncate">
+                {requisition.projectId?.productName || "-"}
+              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                  <div
+                    className={`h-1.5 rounded-full ${
+                      progress >= 100
+                        ? "bg-green-500"
+                        : progress > 0
+                        ? "bg-yellow-500"
+                        : "bg-red-500"
+                    }`}
+                    style={{ width: `${Math.min(progress, 100)}%` }}
+                  />
+                </div>
+                <span className="text-xs text-gray-500 shrink-0">
+                  {totalIssued}/{totalRequired}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge
+              variant={
+                requisition.status === "Pending to Store"
+                  ? "destructive"
+                  : requisition.status === "Issued"
+                  ? "default"
+                  : requisition.status === "Partially Issued"
+                  ? "secondary"
+                  : "outline"
+              }
+              className="text-xs"
+            >
+              {requisition.status}
+            </Badge>
+            {isExpanded ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
+          </div>
+        </div>
+      </CardHeader>
+
+      {isExpanded && (
+        <CardContent className="pt-0">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Requested By</p>
+                <p className="text-sm font-medium">
+                  {requisition.requestedBy || "N/A"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Request Date</p>
+                <p className="text-sm font-medium">
+                  {new Date(requisition.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Materials</p>
+                <p className="text-sm font-medium">
+                  {requisition.materials?.length || 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Components</p>
+                <p className="text-sm font-medium">
+                  {requisition.components?.length || 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Issued</p>
+                <p className="text-sm font-medium text-green-600">
+                  {totalIssued}/{totalRequired}
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                onClick={onIssue}
+              >
+                <Send className="w-4 h-4 mr-2" />
+                {requisition.status === "Issued" ? "View/Update" : "Issue"}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <MoreVertical className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem className="text-red-600" onClick={onDelete}>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onIssue}>
+                    <FileText className="w-4 h-4 mr-2" />
+                    View Details
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+};
+
+// Main Component
 export function IssueMaterial({
   searchTerm,
   onSearchChange,
 }: IssueMaterialProps) {
-  const [materialRequisitions, setMaterialRequisitions] = useState<any[]>([]);
-  const [selectedRequisition, setSelectedRequisition] = useState<any | null>(
-    null
-  );
+  const [materialRequisitions, setMaterialRequisitions] = useState<
+    MaterialRequisition[]
+  >([]);
+  const [selectedRequisition, setSelectedRequisition] =
+    useState<MaterialRequisition | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
-  // Fetch all material requests
-  const fetchMaterialList = async () => {
+  const fetchMaterialList = useCallback(async () => {
     try {
       const res = await api.get(`/material-requests`);
-      console.log("Fetched material requisitions:", res.data);
       setMaterialRequisitions(res.data.items || []);
     } catch (err) {
       console.error("Failed to fetch material list", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchMaterialList();
-  }, []);
+  }, [fetchMaterialList]);
 
-  const filteredData = () => {
+  const filteredData = useMemo(() => {
     return materialRequisitions.filter((req) => {
       const card = req.cardNumber || "";
       const project = req.projectId?.productName || "";
+      const search = searchTerm.toLowerCase();
       return (
-        card.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        project.toLowerCase().includes(searchTerm.toLowerCase())
+        card.toLowerCase().includes(search) ||
+        project.toLowerCase().includes(search)
       );
     });
-  };
+  }, [materialRequisitions, searchTerm]);
 
-  const toggleCardExpansion = (cardId: string) => {
+  const toggleCardExpansion = useCallback((cardId: string) => {
     setExpandedCards((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(cardId)) {
@@ -84,622 +893,210 @@ export function IssueMaterial({
       }
       return newSet;
     });
-  };
+  }, []);
 
-  /* =====================================================
-   MaterialIssueDialog - opens for a single requisition
-   ======================================================*/
-  const MaterialIssueDialog = ({ requisition, open, onOpenChange }: any) => {
-    const [issuedQuantities, setIssuedQuantities] = useState<
-      Record<string, number>
-    >({});
-
-    useEffect(() => {
-      // Initialize issued quantities from existing issued values
-      if (requisition) {
-        const initialQuantities: Record<string, number> = {};
-
-        // Initialize from materials
-        (requisition.materials || []).forEach((item: any) => {
-          const itemId = String(item.itemId || item._id);
-          initialQuantities[itemId] = Number(item.issued || 0);
-        });
-
-        // Initialize from components
-        (requisition.components || []).forEach((item: any) => {
-          const itemId = String(item.itemId || item._id);
-          initialQuantities[itemId] = Number(item.issued || 0);
-        });
-
-        setIssuedQuantities(initialQuantities);
-      }
-    }, [requisition]);
-
-    const handleIssueQuantityChange = (id: string, qty: number) => {
-      setIssuedQuantities((prev) => ({
-        ...prev,
-        [id]: qty,
-      }));
-    };
-
-    // Organize items into 5 sections based on name heuristics
-    const getCategorizedSections = () => {
-      if (!requisition) {
-        return {
-          upper: [],
-          material: [],
-          component: [],
-          packaging: [],
-          miscellaneous: [],
-        };
-      }
-
-      const upper: any[] = [];
-      const material: any[] = [];
-      const component: any[] = [];
-      const packaging: any[] = [];
-      const miscellaneous: any[] = [];
-
-      // Categorize materials
-      (requisition.materials || []).forEach((item: any) => {
-        const name = (item.name || "").toLowerCase();
-        if (name.includes("upper")) {
-          upper.push(item);
-        } else {
-          material.push(item);
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (
+        window.confirm("Are you sure you want to delete this material request?")
+      ) {
+        try {
+          await api.delete(`/material-requests/${id}`);
+          fetchMaterialList();
+        } catch (err) {
+          console.error("Delete failed", err);
+          alert("Failed to delete material request");
         }
-      });
-
-      // Categorize components
-      (requisition.components || []).forEach((item: any) => {
-        const name = (item.name || "").toLowerCase();
-        if (name.includes("pack") || name.includes("packaging")) {
-          packaging.push(item);
-        } else if (name.includes("component") || name.startsWith("c ")) {
-          component.push(item);
-        } else {
-          miscellaneous.push(item);
-        }
-      });
-
-      return { upper, material, component, packaging, miscellaneous };
-    };
-
-    // Issue materials: compute updated arrays and call API
-    const handleIssueMaterials = async () => {
-      if (!requisition) return;
-      try {
-        const reqId = requisition._id;
-
-        // Update materials with issued quantities
-        const updatedMaterials = (requisition.materials || []).map(
-          (item: any) => {
-            const itemId = item.itemId || item._id;
-            const issued = Number(issuedQuantities[String(itemId)] || 0);
-            const available = Number(item.available || 0);
-            const requirement = Number(item.requirement || 0);
-            const balance = Math.max(0, requirement - (available + issued));
-
-            return {
-              ...item,
-              issued,
-              balance,
-            };
-          }
-        );
-
-        // Update components with issued quantities
-        const updatedComponents = (requisition.components || []).map(
-          (item: any) => {
-            const itemId = item.itemId || item._id;
-            const issued = Number(issuedQuantities[String(itemId)] || 0);
-            const available = Number(item.available || 0);
-            const requirement = Number(item.requirement || 0);
-            const balance = Math.max(0, requirement - (available + issued));
-
-            return {
-              ...item,
-              issued,
-              balance,
-            };
-          }
-        );
-
-        // Determine new status
-        const allItems = [...updatedMaterials, ...updatedComponents];
-        const totalRequired = allItems.reduce(
-          (sum, item) => sum + Number(item.requirement || 0),
-          0
-        );
-        const totalIssued = allItems.reduce(
-          (sum, item) => sum + Number(item.issued || 0),
-          0
-        );
-
-        let newStatus = requisition.status;
-        if (totalIssued >= totalRequired) {
-          newStatus = "Issued";
-        } else if (totalIssued > 0) {
-          newStatus = "Partially Issued";
-        }
-
-        const body = {
-          materials: updatedMaterials,
-          components: updatedComponents,
-          status: newStatus,
-        };
-
-        await api.put(`/material-requests/${reqId}`, body);
-
-        // Refresh list and close
-        await fetchMaterialList();
-        onOpenChange(false);
-        setSelectedRequisition(null);
-        alert("Materials issued successfully!");
-      } catch (err) {
-        console.error("Issue material failed", err);
-        alert("Failed to issue materials.");
       }
-    };
-
-    if (!requisition) return null;
-
-    const sections = getCategorizedSections();
-
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-[95vw] md:max-w-6xl w-[95vw] md:w-full max-h-[95vh] md:max-h-[85vh] p-0 md:rounded-lg flex flex-col overflow-hidden">
-          {/* HEADER - Fixed at top */}
-          <div className="sticky top-0 z-50 px-4 md:px-8 py-4 md:py-6 bg-white border-b shadow-sm flex flex-col md:flex-row md:justify-between md:items-center gap-4 flex-shrink-0">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 md:w-14 md:h-14 bg-blue-600 rounded-lg md:rounded-xl flex items-center justify-center shadow-md">
-                <Package className="w-5 h-5 md:w-8 md:h-8 text-white" />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <DialogTitle className="text-xl md:text-3xl font-semibold truncate">
-                  Issue Material
-                </DialogTitle>
-                <DialogDescription className="text-gray-600 text-sm md:text-lg line-clamp-1">
-                  Issue materials for {requisition.cardNumber}
-                </DialogDescription>
-              </div>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              className="absolute top-4 right-4 md:relative md:top-0 md:right-0 h-8 w-8 md:h-12 md:w-12 rounded-full hover:bg-gray-100 flex-shrink-0"
-            >
-              <X className="w-4 h-4 md:w-6 md:h-6 text-gray-600" />
-            </Button>
-          </div>
-
-          {/* SCROLLABLE CONTENT AREA */}
-          <div className="flex-1 overflow-y-auto px-4 md:px-8 py-4 md:py-8 space-y-6 md:space-y-10">
-            <Card className="bg-gray-50">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 md:w-6 md:h-6 text-blue-600" />
-                  <CardTitle className="text-lg md:text-xl">
-                    Production Card Details
-                  </CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-                  <Info label="Card Number" value={requisition?.cardNumber} />
-                  <Info
-                    label="Product"
-                    value={requisition?.projectId?.productName || "-"}
-                  />
-                  <Info label="Requested By" value={requisition?.requestedBy} />
-                  <Info
-                    label="Status"
-                    value={requisition?.status}
-                    highlight
-                    status={requisition?.status}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Material sections - 5 categories */}
-            <MaterialSections
-              sections={[
-                {
-                  label: "UPPER MATERIAL",
-                  color: "bg-cyan-100 text-cyan-900",
-                  items: sections.upper,
-                },
-                {
-                  label: "MATERIAL USED",
-                  color: "bg-cyan-200 text-cyan-900",
-                  items: sections.material,
-                },
-                {
-                  label: "COMPONENT USED",
-                  color: "bg-purple-100 text-purple-900",
-                  items: sections.component,
-                },
-                {
-                  label: "PACKAGING USED",
-                  color: "bg-yellow-100 text-yellow-900",
-                  items: sections.packaging,
-                },
-                {
-                  label: "MISCELLANEOUS USED",
-                  color: "bg-rose-100 text-rose-900",
-                  items: sections.miscellaneous,
-                },
-              ]}
-              issuedQuantities={issuedQuantities}
-              onIssueChange={handleIssueQuantityChange}
-            />
-          </div>
-
-          {/* FOOTER - Fixed at bottom */}
-          <div className="sticky bottom-0 p-4 md:p-6 border-t bg-white flex justify-end flex-shrink-0">
-            <div className="flex flex-col-reverse sm:flex-row gap-3 w-full sm:w-auto">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="w-full sm:w-auto"
-              >
-                Cancel
-              </Button>
-              <Button
-                className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
-                onClick={handleIssueMaterials}
-              >
-                Issue Materials
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  };
-
-  /* ----------------------
-     Small subcomponents
-  ------------------------*/
-  const Info = ({ label, value, highlight = false, status }: any) => (
-    <div className="min-w-0">
-      <p className="text-gray-500 text-xs md:text-sm mb-1 truncate">{label}</p>
-      <p
-        className={`font-semibold text-sm md:text-base truncate ${
-          highlight
-            ? status === "Issued"
-              ? "text-green-600"
-              : status === "Partially Issued"
-              ? "text-yellow-600"
-              : status === "Pending to Store"
-              ? "text-red-600"
-              : "text-blue-600"
-            : "text-gray-900"
-        }`}
-      >
-        {value ?? "-"}
-      </p>
-    </div>
+    },
+    [fetchMaterialList]
   );
 
-  const MaterialSections = ({
-    sections,
-    issuedQuantities,
-    onIssueChange,
-  }: any) => {
-    return (
-      <div className="space-y-6">
-        {/* Mobile View - Cards */}
-        <div className="md:hidden space-y-4">
-          {sections.map((sec: any) => (
-            <Card key={sec.label} className="overflow-hidden">
-              <div
-                className={`${sec.color} px-4 py-3 font-semibold flex justify-between items-center`}
-              >
-                <span className="text-sm">{sec.label}</span>
-                <Badge variant="secondary" className="text-xs">
-                  {sec.items.length} items
-                </Badge>
-              </div>
-              <CardContent className="p-0">
-                {sec.items.length === 0 ? (
-                  <div className="px-4 py-6 text-center text-gray-400">
-                    No items
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {sec.items.map((item: any) => (
-                      <MobileIssueItem
-                        key={item.itemId || item._id}
-                        item={item}
-                        issuedQuantities={issuedQuantities}
-                        onIssueChange={onIssueChange}
-                      />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Desktop View - Table */}
-        <div className="hidden md:block bg-white rounded-xl border overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-100 border-b">
-                  <th className="px-6 py-3 border-r text-left">ITEM</th>
-                  <th className="px-6 py-3 border-r text-left">
-                    SPECIFICATION
-                  </th>
-                  <th className="px-6 py-3 border-r text-center">REQUIRED</th>
-                  <th className="px-6 py-3 border-r text-center">AVAILABLE</th>
-                  <th className="px-6 py-3 border-r text-center">
-                    ALREADY ISSUED
-                  </th>
-                  <th className="px-6 py-3 border-r text-center">ISSUE NOW</th>
-                  <th className="px-6 py-3 text-center">BALANCE AFTER ISSUE</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {sections.map((sec: any) => (
-                  <React.Fragment key={sec.label}>
-                    <tr className={`${sec.color} border-y`}>
-                      <td colSpan={7} className="px-6 py-2 font-semibold">
-                        {sec.label}
-                      </td>
-                    </tr>
-
-                    {sec.items.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="px-6 py-3 text-center text-gray-400"
-                        >
-                          No items
-                        </td>
-                      </tr>
-                    )}
-
-                    {sec.items.map((item: any) => (
-                      <IssueRow
-                        key={item.itemId || item._id}
-                        item={item}
-                        issuedQuantities={issuedQuantities}
-                        onIssueChange={onIssueChange}
-                      />
-                    ))}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const MobileIssueItem = ({ item, issuedQuantities, onIssueChange }: any) => {
-    const itemId = String(item.itemId || item._id);
-    const req = Number(item.requirement || 0);
-    const avail = Number(item.available || 0);
-    const alreadyIssued = Number(item.issued || 0);
-    const issueNow = Number(issuedQuantities[itemId] || 0);
-    const totalIssued = alreadyIssued + issueNow;
-    const balance = Math.max(0, req - (avail + totalIssued));
-
-    return (
-      <div className="p-4 space-y-3">
-        <div className="flex justify-between items-start">
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-gray-900 truncate">{item.name}</p>
-            <p className="text-sm text-gray-600 mt-1">
-              {item.specification || "No specification"}
-            </p>
-          </div>
-          <Badge
-            variant={balance === 0 ? "default" : "destructive"}
-            className="ml-2"
-          >
-            {balance} left
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Required</p>
-            <p className="font-semibold text-blue-700">{req}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Available</p>
-            <p className="font-semibold">{avail}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Already Issued</p>
-            <p className="font-semibold text-green-600">{alreadyIssued}</p>
-          </div>
-        </div>
-
-        <div className="pt-2">
-          <p className="text-xs text-gray-500 mb-2">
-            Issue Additional Quantity
-          </p>
-          <div className="flex items-center gap-3">
-            <Input
-              type="number"
-              min={0}
-              max={req - alreadyIssued}
-              value={issueNow === 0 ? "" : issueNow}
-              onChange={(e) =>
-                onIssueChange(itemId, Number(e.target.value) || 0)
-              }
-              className="flex-1 text-center"
-            />
-            <span className="text-sm text-gray-500 whitespace-nowrap">
-              Max: {req - alreadyIssued}
-            </span>
-          </div>
-        </div>
-
-        <div className="pt-2">
-          <p className="text-xs text-gray-500 mb-1">Total Issued After This</p>
-          <p className="font-semibold text-green-700">{totalIssued}</p>
-        </div>
-
-        <Separator className="mt-4" />
-      </div>
-    );
-  };
-
-  const IssueRow = ({ item, issuedQuantities, onIssueChange }: any) => {
-    const itemId = String(item.itemId || item._id);
-    const req = Number(item.requirement || 0);
-    const avail = Number(item.available || 0);
-    const alreadyIssued = Number(item.issued || 0);
-    const issueNow = Number(issuedQuantities[itemId] || 0);
-    const totalIssued = alreadyIssued + issueNow;
-    const balance = Math.max(0, req - (avail + totalIssued));
-
-    return (
-      <tr className="border-b hover:bg-gray-50">
-        <td className="px-6 py-3 border-r">{item.name}</td>
-        <td className="px-6 py-3 border-r">{item.specification || "-"}</td>
-
-        <td className="px-6 py-3 border-r text-center font-semibold text-blue-700">
-          {req}
-        </td>
-
-        <td className="px-6 py-3 border-r text-center">{avail}</td>
-
-        <td className="px-6 py-3 border-r text-center font-semibold text-green-600">
-          {alreadyIssued}
-        </td>
-
-        <td className="px-6 py-3 border-r text-center">
-          <Input
-            type="number"
-            min={0}
-            max={req - alreadyIssued}
-            value={issueNow === 0 ? "" : issueNow}
-            className="w-20 text-center"
-            onChange={(e) => onIssueChange(itemId, Number(e.target.value) || 0)}
-          />
-        </td>
-
-        <td className="px-6 py-3 text-center font-semibold">
-          <span className={balance === 0 ? "text-green-600" : "text-red-600"}>
-            {balance}
-          </span>
-        </td>
-      </tr>
-    );
-  };
-
-  /* ----------------------
-     Main render: list & dialog
-  ------------------------*/
   return (
-    <div className="space-y-4 md:space-y-6">
-      {/* SEARCH BAR */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+    <div className="space-y-6">
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
             placeholder="Search by card number or product..."
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-10 text-sm md:text-base"
+            className="pl-10"
           />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
-            <Filter className="w-4 h-4 mr-2" /> Filters
+          <Button variant="outline" className="gap-2">
+            <Filter className="w-4 h-4" />
+            Filters
           </Button>
           <Button
             variant="outline"
-            size="sm"
             onClick={fetchMaterialList}
-            className="flex-1 sm:flex-none"
+            className="gap-2"
           >
+            <RefreshCw className="w-4 h-4" />
             Refresh
           </Button>
         </div>
       </div>
 
-      {/* MOBILE CARDS VIEW */}
+      {/* Mobile View */}
       <div className="md:hidden space-y-4">
-        {filteredData().length === 0 ? (
-          <div className="text-center py-12 text-gray-500 bg-white rounded-lg border">
-            <Package className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-            <p>No material requisitions found</p>
-            <p className="text-sm text-gray-400 mt-1">
-              Try adjusting your search or filters
-            </p>
-          </div>
+        {filteredData.length === 0 ? (
+          <EmptyState />
         ) : (
-          filteredData().map((req) => {
-            const isExpanded = expandedCards.has(req._id);
+          filteredData.map((req) => (
+            <MobileRequisitionCard
+              key={req._id}
+              requisition={req}
+              isExpanded={expandedCards.has(req._id)}
+              onToggle={() => toggleCardExpansion(req._id)}
+              onIssue={() => setSelectedRequisition(req)}
+              onDelete={() => handleDelete(req._id)}
+            />
+          ))
+        )}
+      </div>
 
-            // Calculate total issued for summary
-            const totalItems = [
-              ...(req.materials || []),
-              ...(req.components || []),
-            ];
-            const totalRequired = totalItems.reduce(
-              (sum, item) => sum + Number(item.requirement || 0),
-              0
-            );
-            const totalIssued = totalItems.reduce(
-              (sum, item) => sum + Number(item.issued || 0),
-              0
-            );
-            const progress =
-              totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
+      {/* Desktop View */}
+      <div className="hidden md:block">
+        <DesktopTable
+          requisitions={filteredData}
+          onIssue={setSelectedRequisition}
+          onDelete={handleDelete}
+        />
+      </div>
 
-            return (
-              <Card key={req._id} className="overflow-hidden">
-                <CardHeader
-                  className="pb-3 cursor-pointer"
-                  onClick={() => toggleCardExpansion(req._id)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className="h-10 w-10 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
-                        <FileText className="text-blue-600 w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <CardTitle className="text-base font-semibold truncate">
-                          {req.cardNumber || "N/A"}
-                        </CardTitle>
-                        <p className="text-sm text-gray-600 truncate">
-                          {req.projectId?.productName || "-"}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="flex-1 bg-gray-200 rounded-full h-1.5">
-                            <div
-                              className={`h-1.5 rounded-full ${
-                                progress >= 100
-                                  ? "bg-green-500"
-                                  : progress > 0
-                                  ? "bg-yellow-500"
-                                  : "bg-red-500"
-                              }`}
-                              style={{ width: `${Math.min(progress, 100)}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {totalIssued}/{totalRequired}
-                          </span>
+      {/* Issue Dialog */}
+      <MaterialIssueDialog
+        requisition={selectedRequisition}
+        open={!!selectedRequisition}
+        onOpenChange={(open) => !open && setSelectedRequisition(null)}
+        onSuccess={fetchMaterialList}
+      />
+    </div>
+  );
+}
+
+// Desktop Table Component
+interface DesktopTableProps {
+  requisitions: MaterialRequisition[];
+  onIssue: (req: MaterialRequisition) => void;
+  onDelete: (id: string) => void;
+}
+
+const DesktopTable = ({
+  requisitions,
+  onIssue,
+  onDelete,
+}: DesktopTableProps) => {
+  return (
+    <div className="bg-white rounded-lg shadow border overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1000px]">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[180px]">
+                Card Number
+              </th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[250px]">
+                Product Name
+              </th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[150px]">
+                Requested By
+              </th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[200px]">
+                Issued Progress
+              </th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[150px]">
+                Status
+              </th>
+              <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900 min-w-[200px]">
+                Actions
+              </th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-gray-200">
+            {requisitions.length === 0 ? (
+              <tr>
+                <td colSpan={6}>
+                  <EmptyState />
+                </td>
+              </tr>
+            ) : (
+              requisitions.map((req) => {
+                const totalItems = [
+                  ...(req.materials || []),
+                  ...(req.components || []),
+                ];
+                const totalRequired = totalItems.reduce(
+                  (sum, item) => sum + Number(item.requirement || 0),
+                  0
+                );
+                const totalIssued = totalItems.reduce(
+                  (sum, item) => sum + Number(item.issued || 0),
+                  0
+                );
+                const progress =
+                  totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
+
+                return (
+                  <tr key={req._id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 bg-blue-100 rounded flex items-center justify-center shrink-0">
+                          <FileText className="text-blue-600 w-5 h-5" />
+                        </div>
+                        <div className="font-medium text-gray-900">
+                          {req.cardNumber}
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="font-medium text-gray-900 truncate">
+                          {req.projectId?.productName || "-"}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {req.materials?.length || 0} materials,{" "}
+                          {req.components?.length || 0} components
+                        </p>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <p className="font-medium text-gray-900">
+                        {req.requestedBy}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {new Date(req.createdAt).toLocaleDateString()}
+                      </p>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-300 ${
+                              progress >= 100
+                                ? "bg-green-500"
+                                : progress > 0
+                                ? "bg-yellow-500"
+                                : "bg-red-500"
+                            }`}
+                            style={{ width: `${Math.min(progress, 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-gray-700 min-w-[60px] shrink-0">
+                          {totalIssued}/{totalRequired}
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4">
                       <Badge
                         variant={
                           req.status === "Pending to Store"
@@ -710,310 +1107,54 @@ export function IssueMaterial({
                             ? "secondary"
                             : "outline"
                         }
-                        className="text-xs"
+                        className="font-semibold"
                       >
                         {req.status}
                       </Badge>
-                      {isExpanded ? (
-                        <ChevronUp className="w-4 h-4 text-gray-400" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-gray-400" />
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
+                    </td>
 
-                {isExpanded && (
-                  <CardContent className="pt-0">
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">
-                            Requested By
-                          </p>
-                          <p className="text-sm font-medium">
-                            {req.requestedBy || "N/A"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">
-                            Request Date
-                          </p>
-                          <p className="text-sm font-medium">
-                            {new Date(req.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">
-                            Materials
-                          </p>
-                          <p className="text-sm font-medium">
-                            {req.materials?.length || 0}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">
-                            Components
-                          </p>
-                          <p className="text-sm font-medium">
-                            {req.components?.length || 0}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">Issued</p>
-                          <p className="text-sm font-medium text-green-600">
-                            {totalIssued}/{totalRequired}
-                          </p>
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      <div className="flex gap-2">
+                    <td className="px-6 py-4">
+                      <div className="flex justify-end gap-2">
                         <Button
                           size="sm"
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                          onClick={() => setSelectedRequisition(req)}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                          onClick={() => onIssue(req)}
                         >
-                          <Send className="w-4 h-4 mr-2" />
-                          {req.status === "Issued" ? "View/Update" : "Issue"}
+                          <Send className="w-4 h-4 mr-1" />
+                          {req.status === "Issued"
+                            ? "View/Update"
+                            : req.status === "Partially Issued"
+                            ? "Issue More"
+                            : "Issue"}
                         </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline">
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              className="text-red-600"
-                              onClick={async () => {
-                                if (
-                                  window.confirm(
-                                    "Are you sure you want to delete this material request?"
-                                  )
-                                ) {
-                                  try {
-                                    await api.delete(
-                                      `/material-requests/${req._id}`
-                                    );
-                                    fetchMaterialList();
-                                  } catch (err) {
-                                    console.error("Delete failed", err);
-                                  }
-                                }
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <FileText className="w-4 h-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  </CardContent>
-                )}
-              </Card>
-            );
-          })
-        )}
-      </div>
-
-      {/* DESKTOP TABLE VIEW */}
-      <div className="hidden md:block bg-white rounded-lg shadow border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px]">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Card Number
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Product Name
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Requested By
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Issued Progress
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-gray-200">
-              {filteredData().length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
-                    <div className="flex flex-col items-center justify-center">
-                      <Package className="w-12 h-12 text-gray-300 mb-3" />
-                      <p className="text-gray-500">
-                        No material requisitions found
-                      </p>
-                      <p className="text-sm text-gray-400 mt-1">
-                        Try adjusting your search or filters
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredData().map((req) => {
-                  // Calculate progress
-                  const totalItems = [
-                    ...(req.materials || []),
-                    ...(req.components || []),
-                  ];
-                  const totalRequired = totalItems.reduce(
-                    (sum, item) => sum + Number(item.requirement || 0),
-                    0
-                  );
-                  const totalIssued = totalItems.reduce(
-                    (sum, item) => sum + Number(item.issued || 0),
-                    0
-                  );
-                  const progress =
-                    totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
-
-                  return (
-                    <tr
-                      key={req._id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
-                            <FileText className="text-blue-600 w-5 h-5" />
-                          </div>
-                          <div className="font-medium">{req.cardNumber}</div>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="max-w-xs">
-                          <p className="font-medium truncate">
-                            {req.projectId?.productName || "-"}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {req.materials?.length || 0} materials,{" "}
-                            {req.components?.length || 0} components
-                          </p>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <p className="font-medium">{req.requestedBy}</p>
-                        <p className="text-sm text-gray-500">
-                          {new Date(req.createdAt).toLocaleDateString()}
-                        </p>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${
-                                progress >= 100
-                                  ? "bg-green-500"
-                                  : progress > 0
-                                  ? "bg-yellow-500"
-                                  : "bg-red-500"
-                              }`}
-                              style={{ width: `${Math.min(progress, 100)}%` }}
-                            />
-                          </div>
-                          <span className="text-sm text-gray-700 min-w-[60px]">
-                            {totalIssued}/{totalRequired}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <Badge
-                          variant={
-                            req.status === "Pending to Store"
-                              ? "destructive"
-                              : req.status === "Issued"
-                              ? "default"
-                              : req.status === "Partially Issued"
-                              ? "secondary"
-                              : "outline"
-                          }
-                          className="font-semibold"
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+                          onClick={() => onDelete(req._id)}
                         >
-                          {req.status}
-                        </Badge>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="flex justify-end items-center gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-green-600 text-white hover:bg-green-700"
-                            onClick={() => setSelectedRequisition(req)}
-                          >
-                            <Send className="w-4 h-4 mr-1" />
-                            {req.status === "Issued"
-                              ? "View/Update"
-                              : req.status === "Partially Issued"
-                              ? "Issue More"
-                              : "Issue"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-red-600 hover:text-red-700"
-                            onClick={async () => {
-                              if (
-                                window.confirm(
-                                  "Are you sure you want to delete this material request?"
-                                )
-                              ) {
-                                try {
-                                  await api.delete(
-                                    `/material-requests/${req._id}`
-                                  );
-                                  fetchMaterialList();
-                                } catch (err) {
-                                  console.error("Delete failed", err);
-                                }
-                              }
-                            }}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
-
-      {/* ISSUE DIALOG */}
-      <MaterialIssueDialog
-        requisition={selectedRequisition}
-        open={!!selectedRequisition}
-        onOpenChange={(open: boolean) => {
-          if (!open) {
-            setSelectedRequisition(null);
-          }
-        }}
-      />
     </div>
   );
-}
+};
+
+// Empty State Component
+const EmptyState = () => (
+  <div className="text-center py-16 text-gray-500 bg-white rounded-lg border">
+    <Package className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+    <p className="text-lg font-medium text-gray-700 mb-2">
+      No material requisitions found
+    </p>
+    <p className="text-gray-500">Try adjusting your search or filters</p>
+  </div>
+);

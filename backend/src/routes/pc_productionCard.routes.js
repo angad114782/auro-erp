@@ -15,5 +15,5 @@ router.get("/preview-next-number", ctrl.previewNextCardNumber);
 
 router.get("/:cardId", ctrl.getCard);
 router.put("/:cardId", ctrl.updateCard);
-
+router.delete("/:cardId", ctrl.deleteCard);
 export default router;
