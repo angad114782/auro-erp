@@ -689,6 +689,7 @@ export function RedSealProjectDetailsDialog(props: any) {
         assignPerson: { name: project.assignPerson?.name || "-" },
         productDesc: project.productDesc || "-",
         clientApproval: project.clientApproval || "-",
+        status: project?.status,
         nextUpdate: {
           date: project.nextUpdate?.date || "",
           note: project.nextUpdate?.note || "",

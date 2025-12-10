@@ -225,7 +225,7 @@ export function POTargetDialog({
                   </div>
                   <div>
                     <Label className="text-xs md:text-sm font-medium text-gray-600">
-                      Tentative Cost per Unit
+                      Tentative Cost
                     </Label>
                     <div className="mt-1 flex items-center space-x-1 text-sm md:text-base font-semibold text-green-700">
                       <IndianRupee className="w-3 h-3 md:w-4 md:h-4" />
@@ -319,7 +319,7 @@ export function POTargetDialog({
                   </div>
 
                   {/* Unit Price */}
-                  <div>
+                  {/* <div>
                     <Label
                       htmlFor="unitPrice"
                       className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
@@ -341,7 +341,7 @@ export function POTargetDialog({
                       Leave empty to use brand final cost: ₹
                       {(project.clientFinalCost || 0).toLocaleString("en-IN")}
                     </p>
-                  </div>
+                  </div> */}
 
                   {/* Delivery Date */}
                   <div>

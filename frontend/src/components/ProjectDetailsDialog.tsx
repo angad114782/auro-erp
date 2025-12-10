@@ -434,6 +434,8 @@ export default function ProjectDetailsDialog(props: any) {
 
       const activeTab = project.status;
 
+      console.log(costData, "sdsdsdsdsdsdsdsd");
+
       await generateProjectPDF({
         project: pdfProject,
         costData,

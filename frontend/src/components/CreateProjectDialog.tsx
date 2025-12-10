@@ -1875,41 +1875,43 @@ export function CreateProjectDialog({
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 px-4 md:px-6 lg:px-8 xl:px-12 py-4 md:py-6 lg:py-8 shadow-lg z-50">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-3 md:gap-4 w-full sm:w-auto">
-              <AlertCircle className="w-5 h-5 md:w-6 md:h-6 text-blue-600 shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm md:text-base font-semibold text-gray-900">
-                  Ready to Create Your R&amp;D Project?
-                </p>
-                <p className="text-xs md:text-sm text-gray-600">
-                  Double-check all required fields marked with * before
-                  submission
-                </p>
+        <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 shadow-lg z-50">
+          <div className="px-4 md:px-6 lg:px-8 xl:px-12 py-4 md:py-6 lg:py-8 mx-auto w-full max-w-full">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-3 md:gap-4 w-full sm:w-auto">
+                <AlertCircle className="w-5 h-5 md:w-6 md:h-6 text-blue-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm md:text-base font-semibold text-gray-900 truncate">
+                    Ready to Create Your R&amp;D Project?
+                  </p>
+                  <p className="text-xs md:text-sm text-gray-600 truncate">
+                    Double-check all required fields marked with * before
+                    submission
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 md:gap-4 w-full sm:w-auto">
-              <Button
-                variant="outline"
-                size={isMobile ? "default" : "lg"}
-                className="px-4 md:px-6 lg:px-8 py-2 md:py-3 text-sm md:text-base border-2 hover:bg-gray-50 w-full"
-                onClick={() => onClose()}
-                type="button"
-              >
-                Cancel
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-3 md:gap-4 w-full sm:w-auto">
+                <Button
+                  variant="outline"
+                  size={isMobile ? "default" : "lg"}
+                  className="px-4 md:px-6 lg:px-8 py-2 md:py-3 text-sm md:text-base border-2 hover:bg-gray-50 w-full sm:w-auto min-w-[120px]"
+                  onClick={() => onClose()}
+                  type="button"
+                >
+                  Cancel
+                </Button>
 
-              <Button
-                onClick={handleCreateProject}
-                size={isMobile ? "default" : "lg"}
-                className="px-4 md:px-6 lg:px-8 py-2 md:py-3 text-sm md:text-base bg-[#0c9dcb] hover:bg-[#0c9dcb]/90 w-full"
-                type="button"
-              >
-                <Plus className="w-4 h-4 md:w-5 md:h-5 mr-2 md:mr-3" />
-                <span>Create R&amp;D Project</span>
-              </Button>
+                <Button
+                  onClick={handleCreateProject}
+                  size={isMobile ? "default" : "lg"}
+                  className="px-4 md:px-6 lg:px-8 py-2 md:py-3 text-sm md:text-base bg-[#0c9dcb] hover:bg-[#0c9dcb]/90 w-full sm:w-auto min-w-[160px]"
+                  type="button"
+                >
+                  <Plus className="w-4 h-4 md:w-5 md:h-5 mr-2 md:mr-3" />
+                  <span>Create R&amp;D Project</span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>

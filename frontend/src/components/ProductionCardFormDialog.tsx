@@ -89,6 +89,7 @@ interface ProductionCardData {
   assignedPlant?: any;
   cardNumber?: string;
   createdBy?: string;
+  materialRequestStatus?: string;
 }
 
 interface ProductionCardFormDialogProps {
@@ -115,19 +116,6 @@ export function ProductionCardFormDialog({
   const [productionCards, setProductionCards] = useState<any[]>([]);
   const { productionCards: storeProductionCards } = useERPStore();
 
-  // const fetchProduction = async () => {
-  //   try {
-  //     const res = await api.get("/production-cards");
-  //     setProductionCards(res.data.items || res.data.data || []);
-  //   } catch (error) {
-  //     console.error("Failed to fetch production cards:", error);
-  //   }
-  // };
-
-  // useEffect(() => {
-  //   fetchProduction();
-  // }, []);
-
   const getProjectIdFromSelected = () => {
     return (
       (selectedProject as any)?.project?._id ||
@@ -138,78 +126,130 @@ export function ProductionCardFormDialog({
     );
   };
 
-  // Get allocation summary
-  // Fix the getAllocationSummary function
+  // Fixed allocation summary calculation
   const getAllocationSummary = () => {
-    const projectId = getProjectIdFromSelected();
+    const projectIdRaw = getProjectIdFromSelected();
 
-    if (!projectId) return { orderQty: 0, allocated: 0, remaining: 0 };
+    if (!projectIdRaw)
+      return {
+        orderQty: 0,
+        allocated: 0,
+        remaining: 0,
+        allocatedWithoutCurrent: 0,
+        currentCardQuantity: 0,
+        availableForEditing: 0,
+      };
 
-    // Ensure productionCards is an array before spreading
+    const toNumber = (val: any) => {
+      const num = parseFloat(val ?? 0);
+      return Number.isFinite(num) ? num : 0;
+    };
+
+    const normalizeId = (val: any) => {
+      if (!val) return null;
+      if (typeof val === "object") {
+        return val._id || val.id || val.projectId || null;
+      }
+      return val;
+    };
+
+    const projectId = normalizeId(projectIdRaw);
+    const projectIdStr = projectId ? String(projectId) : null;
+
+    // Ensure productionCards is an array
     const productionCardsArray = Array.isArray(productionCards)
       ? productionCards
       : [];
-    // const storeProductionCardsArray = Array.isArray(storeProductionCards)
-    //   ? storeProductionCards
-    //   : [];
 
-    // Combine all production cards from different sources
-    const allCards = [...productionCardsArray];
+    // Filter cards for this project
+    const allCardsForProject = productionCardsArray.filter((c: any) => {
+      if (!c) return false;
 
-    // Filter cards for this project and exclude current editing card
-    const allCardsForProject = allCards.filter((c: any) => {
-      if (!c) return false; // Skip null/undefined cards
+      const pidRaw =
+        c.projectId || c.project || c.rdProjectId || c.rdProject || null;
+      const pid = normalizeId(pidRaw);
 
-      const pid =
-        c.projectId ||
-        c.project ||
-        c.rdProjectId ||
-        c.rdProject ||
-        (c.project && (c.project._id || c.project.id)) ||
-        null;
-
-      if (!pid || !projectId) return false;
-
-      // Check if card belongs to this project
-      const isSameProject = String(pid) === String(projectId);
-
-      // If editing, exclude the card being edited from allocation calculation
-      if (editingCard) {
-        const isSameCard = c._id === editingCard._id || c.id === editingCard.id;
-        return isSameProject && !isSameCard;
-      }
-
-      return isSameProject;
+      if (!pid || !projectIdStr) return false;
+      return String(pid) === projectIdStr;
     });
 
-    const allocatedUnits = allCardsForProject.reduce((sum: number, c: any) => {
+    const orderQty =
+      toNumber((selectedProject as any)?.po?.orderQuantity) ||
+      toNumber((selectedProject as any)?.poTarget) ||
+      0;
+
+    // Calculate total allocated including all cards
+    const totalAllocated = allCardsForProject.reduce((sum: number, c: any) => {
       if (!c) return sum;
-      const v = Number(c.cardQuantity ?? c.targetQuantity ?? c.quantity ?? 0);
-      return sum + (isFinite(v) ? v : 0);
+      const v = toNumber(c.cardQuantity ?? c.targetQuantity ?? c.quantity ?? 0);
+      return sum + v;
     }, 0);
 
-    const orderQty =
-      Number(
-        (selectedProject as any)?.po?.orderQuantity ??
-          (selectedProject as any)?.poTarget ??
-          0
-      ) || 0;
+    // Get current card ID if editing
+    const currentCardId = editingCard?._id || editingCard?.id;
 
-    const remainingUnits = Math.max(0, orderQty - allocatedUnits);
+    // Calculate allocation without current card
+    const allocatedWithoutCurrent = allCardsForProject.reduce(
+      (sum: number, c: any) => {
+        if (!c) return sum;
+        const cardId = c._id || c.id;
+        // Skip the card being edited
+        if (editingCard && cardId === currentCardId) {
+          return sum;
+        }
+        const v = toNumber(
+          c.cardQuantity ?? c.targetQuantity ?? c.quantity ?? 0
+        );
+        return sum + v;
+      },
+      0
+    );
 
-    return { orderQty, allocated: allocatedUnits, remaining: remainingUnits };
+    // Get current card's original quantity
+    const currentCardQuantity = editingCard
+      ? toNumber(
+          editingCard.cardQuantity ??
+            editingCard.targetQuantity ??
+            editingCard.quantity ??
+            0
+        )
+      : 0;
+
+    // Available when editing = orderQty - allocatedWithoutCurrent
+    const availableForEditing = Math.max(0, orderQty - allocatedWithoutCurrent);
+
+    // Available when creating = orderQty - totalAllocated
+    const remaining = Math.max(0, orderQty - totalAllocated);
+
+    return {
+      orderQty,
+      allocated: totalAllocated,
+      remaining,
+      allocatedWithoutCurrent,
+      currentCardQuantity,
+      availableForEditing,
+    };
   };
 
-  const { orderQty, allocated, remaining } = getAllocationSummary();
+  const {
+    orderQty,
+    allocated,
+    remaining,
+    allocatedWithoutCurrent,
+    currentCardQuantity,
+    availableForEditing,
+  } = getAllocationSummary();
 
   // Calculate maximum allocation for current card
   const getMaxAllocation = () => {
     if (editingCard) {
-      // When editing, available = remaining + current card's quantity
-      const currentCardQty = parseFloat(editingCard.cardQuantity || "0");
-      return remaining + currentCardQty;
+      // When editing: we can allocate up to availableForEditing
+      // This is orderQty minus other cards' allocations
+      return availableForEditing;
+    } else {
+      // When creating new: we can allocate up to remaining
+      return remaining;
     }
-    return remaining;
   };
 
   const maxAllocation = getMaxAllocation();
@@ -292,6 +332,7 @@ export function ProductionCardFormDialog({
   const [newPlantName, setNewPlantName] = useState("");
   const [loadingPlants, setLoadingPlants] = useState(false);
   const [currentSection, setCurrentSection] = useState(0);
+  const [existingMrId, setExistingMrId] = useState<string | null>(null);
   const sections = ["allocation", "materials", "timeline", "details"];
 
   const handleSectionChange = (direction: "prev" | "next") => {
@@ -321,6 +362,7 @@ export function ProductionCardFormDialog({
 
     loadPlants();
   }, [open]);
+
   const fetchProduction = async () => {
     try {
       const projectId = getProjectIdFromSelected();
@@ -350,6 +392,7 @@ export function ProductionCardFormDialog({
       fetchProduction();
     }
   }, [open, selectedProject]);
+
   const handleCreateNewPlant = async () => {
     if (!newPlantName.trim()) return toast.error("Please enter a plant name");
 
@@ -375,6 +418,12 @@ export function ProductionCardFormDialog({
 
   useEffect(() => {
     if (open && editingCard) {
+      const firstMrId =
+        editingCard.materialRequests?.[0]?._id ||
+        editingCard.materialRequests?.[0] ||
+        null;
+      setExistingMrId(firstMrId);
+
       setFormData({
         cardName: editingCard.cardNumber || "",
         productionType: "Production Card",
@@ -393,10 +442,13 @@ export function ProductionCardFormDialog({
             : editingCard.assignedPlant?._id || "",
       });
 
-      setRequestStatus(editingCard.materialRequestStatus || "Not Requested");
+      setRequestStatus(
+        (editingCard.materialRequestStatus as any) || "Not Requested"
+      );
     }
 
     if (open && !editingCard) {
+      setExistingMrId(null);
       setFormData({
         cardName: "",
         productionType: "",
@@ -436,7 +488,9 @@ export function ProductionCardFormDialog({
     if (!selectedProject) return "No Product Selected";
     return `${selectedProject.brandId || ""} ${
       selectedProject.categoryId || ""
-    } - ${selectedProject.typeId || ""} ${selectedProject.colorId || ""}`;
+    } - ${selectedProject.typeId || ""} ${
+      (selectedProject as any)?.colorId || (selectedProject as any)?.color || ""
+    }`;
   };
 
   const generateProductionCardNumber = () => {
@@ -497,6 +551,7 @@ export function ProductionCardFormDialog({
     const mrIdToUse = editingCard?.materialRequests?.[0]?._id;
 
     if (open && mrIdToUse) {
+      setExistingMrId(mrIdToUse);
       loadMaterialRequestForEdit(mrIdToUse);
     }
   }, [open, editingCard]);
@@ -585,20 +640,91 @@ export function ProductionCardFormDialog({
       });
     });
 
-    const response = await api.post(
-      `/production-cards/${cardIdToUse}/material-requests`,
-      {
-        status: "Pending to Store",
-        materials,
-        components,
-        notes: "Material request created from production card",
-      }
-    );
+    try {
+      let response;
 
-    if (response.data.success) {
-      setRequestStatus("Pending to Store");
-      toast.success("Material request sent to Store Manager successfully!");
-      onCardCreated?.();
+      if (existingMrId) {
+        // Update existing MR instead of creating a new one
+        response = await api.put(`/material-requests/${existingMrId}`, {
+          status: "Pending to Store",
+          materials,
+          components,
+          notes: "Material request updated from production card",
+        });
+      } else {
+        response = await api.post(
+          `/production-cards/${cardIdToUse}/material-requests`,
+          {
+            status: "Pending to Store",
+            materials,
+            components,
+            notes: "Material request created from production card",
+          }
+        );
+        const createdMrId =
+          response.data?.mr?._id ||
+          response.data?.data?._id ||
+          response.data?.materialRequest?._id ||
+          null;
+        if (createdMrId) setExistingMrId(createdMrId);
+      }
+
+      if (response.data.success) {
+        setRequestStatus(
+          response.data?.mr?.status ||
+            response.data?.data?.status ||
+            "Pending to Store"
+        );
+        toast.success("Material request sent to Store Manager successfully!");
+        onCardCreated?.();
+      }
+    } catch (err: any) {
+      console.error("Failed to send/update material request:", err);
+      toast.error(
+        err?.response?.data?.error ||
+          err?.message ||
+          "Failed to send material request"
+      );
+    }
+  };
+
+  // Fixed input change handler with validation
+  const handleInputChange = (field: string, value: string) => {
+    if (field === "cardQuantity") {
+      const numVal = parseInt(value, 10);
+
+      if (value === "") {
+        setFormData((prev) => ({ ...prev, [field]: "" }));
+        return;
+      }
+
+      if (isNaN(numVal) || numVal < 0) {
+        toast.error("Please enter a valid positive number");
+        setFormData((prev) => ({ ...prev, [field]: "" }));
+        return;
+      }
+
+      if (numVal > maxAllocation) {
+        toast.error(
+          editingCard
+            ? `Cannot allocate more than ${maxAllocation} units. Other cards already use ${allocatedWithoutCurrent} units.`
+            : `Cannot allocate more than ${maxAllocation} units. Total order quantity is ${orderQty}.`
+        );
+        setFormData((prev) => ({
+          ...prev,
+          [field]: String(maxAllocation),
+        }));
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          [field]: String(numVal),
+        }));
+      }
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
     }
   };
 
@@ -642,7 +768,6 @@ export function ProductionCardFormDialog({
           `/projects/${projectId}/production-cards/skeleton`
         );
         cardIdToUse = skeletonRes.data.productionCard?._id;
-        setProductionCardCreated(skeletonRes.data.productionCard);
       } catch (err) {
         toast.error("Failed to create card base");
         return;
@@ -773,13 +898,6 @@ export function ProductionCardFormDialog({
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
   const getDialogStyle = () => {
     if (isMobile) {
       return {
@@ -828,22 +946,9 @@ export function ProductionCardFormDialog({
                     <Input
                       type="number"
                       value={formData.cardQuantity || ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        const numVal = parseInt(val, 10);
-
-                        if (numVal > maxAllocation) {
-                          toast.error(
-                            `Cannot allocate more than ${maxAllocation} units`
-                          );
-                          handleInputChange(
-                            "cardQuantity",
-                            String(maxAllocation)
-                          );
-                        } else {
-                          handleInputChange("cardQuantity", val);
-                        }
-                      }}
+                      onChange={(e) =>
+                        handleInputChange("cardQuantity", e.target.value)
+                      }
                       placeholder="0"
                       className="w-32 h-9 text-center border-2 border-gray-300"
                       min="1"
@@ -856,17 +961,21 @@ export function ProductionCardFormDialog({
                       <span className="font-semibold">{orderQty || "N/A"}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Already Allocated:</span>
-                      <span className="font-semibold">{allocated}</span>
+                      <span className="text-gray-600">
+                        {editingCard
+                          ? "Other Cards Allocated:"
+                          : "Already Allocated:"}
+                      </span>
+                      <span className="font-semibold">
+                        {editingCard ? allocatedWithoutCurrent : allocated}
+                      </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Available:</span>
-                      <span
-                        className={`font-semibold ${
-                          remaining === 0 ? "text-red-600" : "text-green-600"
-                        }`}
-                      >
-                        {remaining}
+                      <span className="text-gray-600">
+                        {editingCard ? "This Card Currently:" : "Available:"}
+                      </span>
+                      <span className="font-semibold">
+                        {editingCard ? currentCardQuantity : remaining}
                       </span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-gray-200">
@@ -1315,22 +1424,9 @@ export function ProductionCardFormDialog({
                         <Input
                           type="number"
                           value={formData.cardQuantity || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const numVal = parseInt(val, 10);
-
-                            if (numVal > maxAllocation) {
-                              toast.error(
-                                `Cannot allocate more than ${maxAllocation} units`
-                              );
-                              handleInputChange(
-                                "cardQuantity",
-                                String(maxAllocation)
-                              );
-                            } else {
-                              handleInputChange("cardQuantity", val);
-                            }
-                          }}
+                          onChange={(e) =>
+                            handleInputChange("cardQuantity", e.target.value)
+                          }
                           placeholder="0"
                           className="w-20 h-8 text-center border border-gray-300"
                           min="1"
@@ -1345,19 +1441,27 @@ export function ProductionCardFormDialog({
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Already Allocated:</span>
-                          <span className="font-semibold">{allocated}</span>
+                          <span>
+                            {editingCard ? "Other Cards:" : "Allocated:"}
+                          </span>
+                          <span className="font-semibold">
+                            {editingCard ? allocatedWithoutCurrent : allocated}
+                          </span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Available:</span>
+                          <span>
+                            {editingCard ? "This Card:" : "Available:"}
+                          </span>
                           <span
                             className={`font-semibold ${
-                              remaining === 0
+                              (editingCard
+                                ? currentCardQuantity
+                                : remaining) === 0
                                 ? "text-red-600"
                                 : "text-green-600"
                             }`}
                           >
-                            {remaining}
+                            {editingCard ? currentCardQuantity : remaining}
                           </span>
                         </div>
                         <div className="flex justify-between pt-1 border-t border-gray-200">
@@ -1399,22 +1503,9 @@ export function ProductionCardFormDialog({
                         <Input
                           type="number"
                           value={formData.cardQuantity || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const numVal = parseInt(val, 10);
-
-                            if (numVal > maxAllocation) {
-                              toast.error(
-                                `Cannot allocate more than ${maxAllocation} units`
-                              );
-                              handleInputChange(
-                                "cardQuantity",
-                                String(maxAllocation)
-                              );
-                            } else {
-                              handleInputChange("cardQuantity", val);
-                            }
-                          }}
+                          onChange={(e) =>
+                            handleInputChange("cardQuantity", e.target.value)
+                          }
                           placeholder="0"
                           className="w-20 h-8 text-center border border-gray-300"
                           min="1"

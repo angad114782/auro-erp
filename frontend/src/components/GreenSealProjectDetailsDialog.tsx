@@ -767,7 +767,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
       await generateProjectPDF({
         project: pdfProject,
         costData: defaultCostData,
-        activeTab,
+        activeTab: "green_seal",
         colorVariants: colorVariantsData, // Pass actual color variant data
       });
 
@@ -2103,85 +2103,4 @@ export function GreenSealProjectDetailsDialog(props: Props) {
       />
     </>
   );
-}
-
-// Helper functions
-const DEFAULT_MATERIALS = (): Material[] => [
-  { name: "Upper", desc: "Rexine", consumption: "26 pairs/mtr" },
-  { name: "Lining", desc: "Skinfit", consumption: "25 pair @ 155/-" },
-  { name: "Lining", desc: "EVA", consumption: "33/70 - 1.5mm 35pair" },
-  { name: "Footbed", desc: "-", consumption: "-" },
-  { name: "Mid Sole 1", desc: "-", consumption: "-" },
-  { name: "Mid Sole 2", desc: "-", consumption: "-" },
-  { name: "Out Sole", desc: "-", consumption: "-" },
-  { name: "PU Adhesive", desc: "-", consumption: "-" },
-  { name: "Print", desc: "-", consumption: "-" },
-];
-
-const DEFAULT_COMPONENTS = (): CompType[] => [
-  { name: "Foam", desc: "-", consumption: "7.5grm" },
-  { name: "Velcro", desc: "75mm", consumption: "1.25 pair" },
-  { name: "Elastic Roop", desc: "-", consumption: "-" },
-  { name: "Thread", desc: "-", consumption: "-" },
-  { name: "Tafta Label", desc: "MRP", consumption: "-" },
-  { name: "Buckle", desc: "-", consumption: "2pcs" },
-  { name: "Heat Transfer", desc: "-", consumption: "-" },
-  { name: "Trim", desc: "sticker", consumption: "10 pcs" },
-  { name: "Welding", desc: "-", consumption: "-" },
-];
-
-// Update convertColorVariants function in GreenSealProjectDetailsDialog
-
-function convertColorVariants(projectData: any): Map<string, any> {
-  const variantsMap = new Map<string, any>();
-  if (!projectData?.colorVariants) return variantsMap;
-
-  // Helper function to get empty costing structure
-  const getEmptyCosting = () => ({
-    upper: [],
-    material: [],
-    component: [],
-    packaging: [],
-    misc: [],
-    labour: { items: [], directTotal: 0 },
-    summary: {
-      upperTotal: 0,
-      componentTotal: 0,
-      materialTotal: 0,
-      packagingTotal: 0,
-      miscTotal: 0,
-      labourTotal: 0,
-      additionalCosts: 0,
-      profitMargin: 0,
-      profitAmount: 0,
-      tentativeCost: 0,
-    },
-  });
-
-  if (projectData.colorVariants instanceof Map) {
-    for (const [k, v] of projectData.colorVariants.entries()) {
-      variantsMap.set(k, {
-        materials: Array.isArray(v?.materials) ? v.materials : [],
-        components: Array.isArray(v?.components) ? v.components : [],
-        images: Array.isArray(v?.images) ? v.images : [],
-        costing: v?.costing || getEmptyCosting(),
-        updatedBy: v?.updatedBy || null,
-        updatedAt: v?.updatedAt ? new Date(v.updatedAt) : new Date(),
-      });
-    }
-    return variantsMap;
-  }
-
-  for (const [k, v] of Object.entries(projectData.colorVariants || {})) {
-    const val: any = v;
-    variantsMap.set(k, {
-      materials: Array.isArray(val?.materials) ? val.materials : [],
-      components: Array.isArray(val?.components) ? val.components : [],
-      images: Array.isArray(val?.images) ? val.images : [],
-      costing: val?.costing || getEmptyCosting(),
-      updatedBy: val?.updatedBy || null,
-      updatedAt: val?.updatedAt ? new Date(val.updatedAt) : new Date(),
-    });
-  }
-  return variantsMap;
 }

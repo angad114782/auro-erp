@@ -15,7 +15,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { useRedirect } from "../hooks/useRedirect";
 import api from "../lib/api";
@@ -55,11 +55,12 @@ export interface CostItem {
   _id: string;
   item: string;
   description: string;
-  consumption: number; // Changed from string to number
+  consumption: number;
   cost: number;
   department?: string;
   createdAt?: string;
   updatedAt?: string;
+  isNew?: boolean; // Flag for newly created dummy items
 }
 
 // Labour cost interface matching backend
@@ -69,6 +70,7 @@ export interface LabourCost {
     _id: string;
     name: string;
     cost: number;
+    isNew?: boolean;
   }>;
 }
 
@@ -76,7 +78,6 @@ export interface LabourCost {
 export interface CostSummary {
   additionalCosts: number;
   profitMargin: number | "";
-
   remarks: string;
   upperTotal: number;
   componentTotal: number;
@@ -92,6 +93,78 @@ export interface CostSummary {
   approvedBy?: string;
 }
 
+// Constants
+const CATEGORIES = [
+  { id: "upper", label: "Upper", color: "orange", icon: Shirt },
+  { id: "component", label: "Component", color: "purple", icon: Scissors },
+  { id: "material", label: "Material", color: "teal", icon: Package },
+  { id: "packaging", label: "Packaging", color: "rose", icon: Package },
+  { id: "labour", label: "Labour", color: "amber", icon: Wrench },
+  { id: "misc", label: "Misc", color: "gray", icon: FileCheck },
+] as const;
+
+const STAGES = [
+  {
+    value: "cutting",
+    label: "Cutting",
+    icon: Scissors,
+    color: "text-purple-600",
+  },
+  {
+    value: "printing",
+    label: "Printing",
+    icon: Printer,
+    color: "text-blue-600",
+  },
+  {
+    value: "stitching",
+    label: "Stitching",
+    icon: Shirt,
+    color: "text-indigo-600",
+  },
+  {
+    value: "lasting",
+    label: "Lasting",
+    icon: Wrench,
+    color: "text-orange-600",
+  },
+  {
+    value: "packing",
+    label: "Packing",
+    icon: Package,
+    color: "text-green-600",
+  },
+  {
+    value: "quality",
+    label: "Quality Check",
+    icon: FileCheck,
+    color: "text-emerald-600",
+  },
+] as const;
+
+const TOTAL_ROWS_PER_CATEGORY = 5;
+
+// Helper function to get empty dummy rows
+const getEmptyDummyRows = (count: number, category: string): CostItem[] => {
+  return Array.from({ length: count }).map((_, index) => ({
+    _id: `dummy_${category}_${Date.now()}_${index}_${Math.random()}`,
+    item: "",
+    description: "",
+    consumption: 0,
+    cost: 0,
+    isNew: true,
+  }));
+};
+
+const getEmptyLabourItems = (count: number) => {
+  return Array.from({ length: count }).map((_, index) => ({
+    _id: `dummy_labour_${Date.now()}_${index}_${Math.random()}`,
+    name: "",
+    cost: 0,
+    isNew: true,
+  }));
+};
+
 // Mobile Category Selector
 const MobileCategorySelector = ({
   activeCategory,
@@ -100,19 +173,10 @@ const MobileCategorySelector = ({
   activeCategory: string;
   onSelectCategory: (category: string) => void;
 }) => {
-  const categories = [
-    { id: "upper", label: "Upper", color: "orange" },
-    { id: "component", label: "Component", color: "purple" },
-    { id: "material", label: "Material", color: "teal" },
-    { id: "packaging", label: "Packaging", color: "rose" },
-    { id: "labour", label: "Labour", color: "amber" },
-    { id: "misc", label: "Misc", color: "gray" },
-  ];
-
   return (
     <div className="sticky top-0 z-40 bg-white border-b border-gray-200 px-4 py-3">
       <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-        {categories.map((cat) => (
+        {CATEGORIES.map((cat) => (
           <button
             key={cat.id}
             onClick={() => onSelectCategory(cat.id)}
@@ -130,7 +194,7 @@ const MobileCategorySelector = ({
   );
 };
 
-// Add New Item Dialog Component (Responsive)
+// Add New Item Dialog Component
 const AddNewItemDialog = ({
   category,
   isOpen,
@@ -168,23 +232,11 @@ const AddNewItemDialog = ({
       newErrors.item = "Item name is required";
     }
 
-    if (
-      formData.consumption === undefined ||
-      formData.consumption === null ||
-      isNaN(formData.consumption)
-    ) {
-      newErrors.consumption = "Consumption is required and must be a number";
-    } else if (formData.consumption < 0) {
+    if (formData.consumption < 0) {
       newErrors.consumption = "Consumption cannot be negative";
     }
 
-    if (
-      formData.cost === undefined ||
-      formData.cost === null ||
-      isNaN(formData.cost)
-    ) {
-      newErrors.cost = "Cost is required";
-    } else if (formData.cost < 0) {
+    if (formData.cost < 0) {
       newErrors.cost = "Cost cannot be negative";
     }
 
@@ -330,7 +382,7 @@ const AddNewItemDialog = ({
   );
 };
 
-// Stage Selector Component (Mobile Optimized)
+// Stage Selector Component
 const StageSelector = ({
   itemId,
   category,
@@ -344,44 +396,9 @@ const StageSelector = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  const stages = [
-    {
-      value: "cutting",
-      label: "Cutting",
-      icon: Scissors,
-      color: "text-purple-600",
-    },
-    {
-      value: "printing",
-      label: "Printing",
-      icon: Printer,
-      color: "text-blue-600",
-    },
-    {
-      value: "stitching",
-      label: "Stitching",
-      icon: Shirt,
-      color: "text-indigo-600",
-    },
-    {
-      value: "lasting",
-      label: "Lasting",
-      icon: Wrench,
-      color: "text-orange-600",
-    },
-    {
-      value: "packing",
-      label: "Packing",
-      icon: Package,
-      color: "text-green-600",
-    },
-    {
-      value: "quality",
-      label: "Quality Check",
-      icon: FileCheck,
-      color: "text-emerald-600",
-    },
-  ];
+  if (!["upper", "component"].includes(category)) {
+    return null;
+  }
 
   const handleStageSelect = (department: string, label: string) => {
     setIsOpen(false);
@@ -389,14 +406,9 @@ const StageSelector = ({
     toast.success(`Item will advance to ${label}`);
   };
 
-  // Only show department selector for upper and component categories
-  if (!["upper", "component"].includes(category)) {
-    return null;
-  }
-
   if (isMobile) {
     return (
-      <Sheet>
+      <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetTrigger asChild>
           <Button
             variant="ghost"
@@ -416,7 +428,7 @@ const StageSelector = ({
           </SheetHeader>
           <div className="py-4">
             <div className="grid grid-cols-2 gap-2">
-              {stages.map((stage) => {
+              {STAGES.map((stage) => {
                 const Icon = stage.icon;
                 return (
                   <button
@@ -455,7 +467,7 @@ const StageSelector = ({
             onClick={() => setIsOpen(false)}
           />
           <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
-            {stages.map((stage) => {
+            {STAGES.map((stage) => {
               const Icon = stage.icon;
               return (
                 <button
@@ -475,13 +487,14 @@ const StageSelector = ({
   );
 };
 
-// Cost Category Card Component (Responsive)
+// Cost Category Card Component
 const CostCategoryCard = ({
   title,
   category,
   items,
-  onUpdateCost,
+  onUpdateItem,
   onUpdateConsumption,
+  onUpdateCost,
   onDeleteItem,
   onAddItem,
   onStageSelect,
@@ -491,184 +504,196 @@ const CostCategoryCard = ({
   title: string;
   category: string;
   items: CostItem[];
-  onUpdateCost: (itemId: string, cost: number) => void;
+  onUpdateItem: (itemId: string, field: string, value: string | number) => void;
   onUpdateConsumption: (itemId: string, consumption: number) => void;
+  onUpdateCost: (itemId: string, cost: number) => void;
   onDeleteItem: (itemId: string) => void;
   onAddItem: () => void;
   onStageSelect: (itemId: string, department: string) => void;
   color?: "orange" | "purple" | "teal" | "rose" | "gray" | "amber";
   isMobile?: boolean;
 }) => {
-  const colorClasses = {
-    orange: {
-      border: "border-orange-200",
-      header: "bg-orange-50",
-      icon: "text-orange-600",
-      button: "text-orange-600 border-orange-200 hover:bg-orange-50",
-      total: "bg-orange-50 text-orange-900",
-    },
-    purple: {
-      border: "border-purple-200",
-      header: "bg-purple-50",
-      icon: "text-purple-600",
-      button: "text-purple-600 border-purple-200 hover:bg-purple-50",
-      total: "bg-purple-50 text-purple-900",
-    },
-    teal: {
-      border: "border-teal-200",
-      header: "bg-teal-50",
-      icon: "text-teal-600",
-      button: "text-teal-600 border-teal-200 hover:bg-teal-50",
-      total: "bg-teal-50 text-teal-900",
-    },
-    rose: {
-      border: "border-rose-200",
-      header: "bg-rose-50",
-      icon: "text-rose-600",
-      button: "text-rose-600 border-rose-200 hover:bg-rose-50",
-      total: "bg-rose-50 text-rose-900",
-    },
-    gray: {
-      border: "border-gray-200",
-      header: "bg-gray-50",
-      icon: "text-gray-600",
-      button: "text-gray-600 border-gray-200 hover:bg-gray-50",
-      total: "bg-gray-50 text-gray-900",
-    },
-    amber: {
-      border: "border-amber-200",
-      header: "bg-amber-50",
-      icon: "text-amber-600",
-      button: "text-amber-600 border-amber-200 hover:bg-amber-50",
-      total: "bg-amber-50 text-amber-900",
-    },
-  };
-
-  const currentColor = colorClasses[color];
-
-  // Ensure items is always an array and handle undefined/null values
-  const safeItems = Array.isArray(items) ? items : [];
-  const totalCost = safeItems.reduce(
-    (sum, item) => sum + (Number(item.cost) || 0),
-    0
+  const colorClasses = useMemo(
+    () => ({
+      orange: {
+        border: "border-orange-200",
+        header: "bg-orange-50",
+        icon: "text-orange-600",
+        button: "text-orange-600 border-orange-200 hover:bg-orange-50",
+        total: "bg-orange-50 text-orange-900",
+      },
+      purple: {
+        border: "border-purple-200",
+        header: "bg-purple-50",
+        icon: "text-purple-600",
+        button: "text-purple-600 border-purple-200 hover:bg-purple-50",
+        total: "bg-purple-50 text-purple-900",
+      },
+      teal: {
+        border: "border-teal-200",
+        header: "bg-teal-50",
+        icon: "text-teal-600",
+        button: "text-teal-600 border-teal-200 hover:bg-teal-50",
+        total: "bg-teal-50 text-teal-900",
+      },
+      rose: {
+        border: "border-rose-200",
+        header: "bg-rose-50",
+        icon: "text-rose-600",
+        button: "text-rose-600 border-rose-200 hover:bg-rose-50",
+        total: "bg-rose-50 text-rose-900",
+      },
+      gray: {
+        border: "border-gray-200",
+        header: "bg-gray-50",
+        icon: "text-gray-600",
+        button: "text-gray-600 border-gray-200 hover:bg-gray-50",
+        total: "bg-gray-50 text-gray-900",
+      },
+      amber: {
+        border: "border-amber-200",
+        header: "bg-amber-50",
+        icon: "text-amber-600",
+        button: "text-amber-600 border-amber-200 hover:bg-amber-50",
+        total: "bg-amber-50 text-amber-900",
+      },
+    }),
+    []
   );
 
-  if (isMobile) {
-    return (
-      <Card className={`border-2 ${currentColor.border}`}>
-        <CardHeader className={currentColor.header}>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Calculator className={`w-4 h-4 ${currentColor.icon}`} />
-            {title}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-3">
-          <div className="space-y-4">
-            {/* Mobile List View */}
-            <div className="space-y-3">
-              {safeItems.map((item) => (
-                <div
-                  key={item._id}
-                  className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex-1">
-                      <div className="font-medium text-sm mb-1">
-                        {item.item || "Untitled Item"}
-                      </div>
-                      {item.description && (
-                        <div className="text-xs text-gray-600 mb-1">
-                          {item.description}
-                        </div>
-                      )}
+  const currentColor = colorClasses[color];
+  const safeItems = Array.isArray(items) ? items : [];
+
+  // Calculate total cost from non-empty items (items with name or cost)
+  const totalCost = safeItems.reduce((sum, item) => {
+    if (item.item.trim() || item.cost > 0 || item.consumption > 0) {
+      return sum + (Number(item.cost) || 0);
+    }
+    return sum;
+  }, 0);
+
+  const renderMobileView = () => (
+    <Card className={`border-2 ${currentColor.border}`}>
+      <CardHeader className={currentColor.header}>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Calculator className={`w-4 h-4 ${currentColor.icon}`} />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-3">
+        <div className="space-y-4">
+          <div className="space-y-3">
+            {safeItems.map((item) => (
+              <div
+                key={item._id}
+                className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex-1">
+                    <div className="font-medium text-sm mb-1">
+                      <Input
+                        value={item.item || ""}
+                        onChange={(e) =>
+                          onUpdateItem(item._id, "item", e.target.value)
+                        }
+                        placeholder="Enter item name"
+                        className="text-sm h-7"
+                      />
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onDeleteItem(item._id)}
-                        className="h-7 w-7 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                      <StageSelector
-                        itemId={item._id}
-                        category={category}
-                        onStageSelect={onStageSelect}
-                        isMobile={isMobile}
+                    <div className="text-xs text-gray-600 mb-1">
+                      <Input
+                        value={item.description || ""}
+                        onChange={(e) =>
+                          onUpdateItem(item._id, "description", e.target.value)
+                        }
+                        placeholder="Description (optional)"
+                        className="text-xs h-6"
                       />
                     </div>
                   </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onDeleteItem(item._id)}
+                      className="h-7 w-7 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                    <StageSelector
+                      itemId={item._id}
+                      category={category}
+                      onStageSelect={onStageSelect}
+                      isMobile={isMobile}
+                    />
+                  </div>
+                </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="space-y-1">
-                      <div className="text-gray-500">Consumption *</div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="space-y-1">
+                    <div className="text-gray-500">Consumption *</div>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={item.consumption || ""}
+                      onChange={(e) => {
+                        const value =
+                          e.target.value === "" ? 0 : Number(e.target.value);
+                        onUpdateConsumption(item._id, value);
+                      }}
+                      className="h-7 text-xs px-2"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-gray-500">Cost *</div>
+                    <div className="relative">
+                      <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2" />
                       <Input
                         type="number"
                         step="0.01"
                         min="0"
-                        value={item.consumption || ""}
-                        onChange={(e) => {
-                          const value =
-                            e.target.value === "" ? 0 : Number(e.target.value);
-                          onUpdateConsumption(item._id, value);
-                        }}
-                        className="h-7 text-xs px-2"
+                        className="h-7 text-xs pl-5"
+                        value={item.cost || ""}
+                        onChange={(e) =>
+                          onUpdateCost(item._id, Number(e.target.value) || 0)
+                        }
                         placeholder="0.00"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <div className="text-gray-500">Cost *</div>
-                      <div className="relative">
-                        <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2" />
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="h-7 text-xs pl-5"
-                          value={item.cost || ""}
-                          onChange={(e) =>
-                            onUpdateCost(item._id, Number(e.target.value) || 0)
-                          }
-                          placeholder="0.00"
-                        />
-                      </div>
-                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-
-            {/* Add New Item Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              className={`w-full ${currentColor.button} h-9`}
-              onClick={onAddItem}
-            >
-              <Plus className="w-3 h-3 mr-2" />
-              Add New Item
-            </Button>
-
-            <Separator />
-
-            {/* Total Cost */}
-            <div className={`p-3 rounded-lg ${currentColor.total}`}>
-              <div className="flex justify-between items-center">
-                <span className="font-medium text-sm">Total {title}:</span>
-                <span className="text-base font-bold">
-                  ₹{totalCost.toFixed(2)}
-                </span>
               </div>
+            ))}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className={`w-full ${currentColor.button} h-9`}
+            onClick={onAddItem}
+          >
+            <Plus className="w-3 h-3 mr-2" />
+            Add New Item
+          </Button>
+
+          <Separator />
+
+          <div className={`p-3 rounded-lg ${currentColor.total}`}>
+            <div className="flex justify-between items-center">
+              <span className="font-medium text-sm">Total {title}:</span>
+              <span className="text-base font-bold">
+                ₹{totalCost.toFixed(2)}
+              </span>
             </div>
           </div>
-        </CardContent>
-      </Card>
-    );
-  }
+        </div>
+      </CardContent>
+    </Card>
+  );
 
-  // Desktop View
-  return (
+  const renderDesktopView = () => (
     <Card className={`border-2 ${currentColor.border} h-148`}>
       <CardHeader className={currentColor.header}>
         <CardTitle className="text-lg flex items-center gap-2">
@@ -678,7 +703,6 @@ const CostCategoryCard = ({
       </CardHeader>
       <CardContent className="p-4">
         <div className="space-y-4">
-          {/* Table Header */}
           <div className="grid grid-cols-12 gap-2 bg-gray-100 p-2 rounded text-sm font-medium">
             <div className="col-span-3 text-center">
               {category === "component"
@@ -695,7 +719,6 @@ const CostCategoryCard = ({
             <div className="col-span-2 text-center">ACTIONS</div>
           </div>
 
-          {/* Scrollable Table Content */}
           <div className="h-64 overflow-y-auto scrollbar-hide space-y-4">
             {safeItems.map((item) => (
               <div
@@ -705,15 +728,21 @@ const CostCategoryCard = ({
                 <div className="col-span-3">
                   <Input
                     value={item.item || ""}
-                    readOnly
-                    className="text-center text-sm bg-gray-50 h-8"
+                    onChange={(e) =>
+                      onUpdateItem(item._id, "item", e.target.value)
+                    }
+                    className="text-center text-sm h-8"
+                    placeholder="Enter item name"
                   />
                 </div>
                 <div className="col-span-3">
                   <Input
                     value={item.description || ""}
-                    readOnly
-                    className="text-sm bg-gray-50 h-8"
+                    onChange={(e) =>
+                      onUpdateItem(item._id, "description", e.target.value)
+                    }
+                    className="text-sm h-8"
+                    placeholder="Description (optional)"
                   />
                 </div>
                 <div className="col-span-2">
@@ -766,7 +795,6 @@ const CostCategoryCard = ({
             ))}
           </div>
 
-          {/* Add New Item Button */}
           <Button
             variant="outline"
             size="sm"
@@ -779,7 +807,6 @@ const CostCategoryCard = ({
 
           <Separator />
 
-          {/* Total Cost */}
           <div className={`p-3 rounded-lg ${currentColor.total}`}>
             <div className="flex justify-between items-center">
               <span className="font-medium">Total {title}:</span>
@@ -790,16 +817,20 @@ const CostCategoryCard = ({
       </CardContent>
     </Card>
   );
+
+  return isMobile ? renderMobileView() : renderDesktopView();
 };
 
 // Mobile Labour Cost Card
 const MobileLabourCostCard = ({
   labourCost,
-  updateLabourCost,
+  onUpdateLabour,
+  onDeleteLabourItem,
   onAddItem,
 }: {
   labourCost: LabourCost;
-  updateLabourCost: (updates: Partial<LabourCost>) => void;
+  onUpdateLabour: (updates: Partial<LabourCost>) => void;
+  onDeleteLabourItem: (itemId: string) => void;
   onAddItem: () => void;
 }) => {
   return (
@@ -812,7 +843,6 @@ const MobileLabourCostCard = ({
       </CardHeader>
       <CardContent className="p-3">
         <div className="space-y-4">
-          {/* Direct Total */}
           <div className="bg-amber-100 p-3 rounded-lg border-2 border-amber-300">
             <div className="flex justify-between items-center">
               <span className="font-medium text-amber-900 text-sm">
@@ -826,7 +856,7 @@ const MobileLabourCostCard = ({
                   min="0"
                   value={labourCost.directTotal || 0}
                   onChange={(e) =>
-                    updateLabourCost({
+                    onUpdateLabour({
                       directTotal: Number(e.target.value) || 0,
                     })
                   }
@@ -836,7 +866,6 @@ const MobileLabourCostCard = ({
             </div>
           </div>
 
-          {/* Labour Items */}
           <div className="space-y-3">
             {labourCost.items.map((item) => (
               <div
@@ -844,7 +873,22 @@ const MobileLabourCostCard = ({
                 className="flex items-center justify-between border-b border-amber-100 pb-2"
               >
                 <div className="flex-1">
-                  <Label className="text-amber-800 text-sm">{item.name}</Label>
+                  <Input
+                    value={item.name || ""}
+                    onChange={(e) => {
+                      const updatedItems = labourCost.items.map((labourItem) =>
+                        labourItem._id === item._id
+                          ? {
+                              ...labourItem,
+                              name: e.target.value,
+                            }
+                          : labourItem
+                      );
+                      onUpdateLabour({ items: updatedItems });
+                    }}
+                    placeholder="Labour item name"
+                    className="text-sm h-8"
+                  />
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="relative">
@@ -864,7 +908,7 @@ const MobileLabourCostCard = ({
                                 }
                               : labourItem
                         );
-                        updateLabourCost({ items: updatedItems });
+                        onUpdateLabour({ items: updatedItems });
                       }}
                       className="pl-7 text-sm h-8 w-24"
                       placeholder="0.00"
@@ -873,12 +917,7 @@ const MobileLabourCostCard = ({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      const updatedItems = labourCost.items.filter(
-                        (labourItem) => labourItem._id !== item._id
-                      );
-                      updateLabourCost({ items: updatedItems });
-                    }}
+                    onClick={() => onDeleteLabourItem(item._id)}
                     className="h-7 w-7 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -888,7 +927,6 @@ const MobileLabourCostCard = ({
             ))}
           </div>
 
-          {/* Add New Button */}
           <Button
             variant="outline"
             size="sm"
@@ -901,7 +939,6 @@ const MobileLabourCostCard = ({
 
           <Separator />
 
-          {/* Total */}
           <div className="bg-amber-50 p-3 rounded-lg">
             <div className="flex justify-between items-center">
               <span className="font-medium text-amber-900 text-sm">
@@ -918,6 +955,7 @@ const MobileLabourCostCard = ({
   );
 };
 
+// Main Component
 export function TentativeCostDialog({
   open,
   onOpenChange,
@@ -927,15 +965,11 @@ export function TentativeCostDialog({
   const { updateRDProject } = useERPStore();
   const [isMobile, setIsMobile] = useState(false);
   const [activeMobileCategory, setActiveMobileCategory] = useState("upper");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [dataLoaded, setDataLoaded] = useState<boolean>(false);
 
-  // Initialize with proper default values to avoid undefined issues
-  const [costRows, setCostRows] = useState<{
-    upper: CostItem[];
-    component: CostItem[];
-    material: CostItem[];
-    packaging: CostItem[];
-    miscellaneous: CostItem[];
-  }>({
+  // State management
+  const [costRows, setCostRows] = useState<Record<string, CostItem[]>>({
     upper: [],
     component: [],
     material: [],
@@ -964,25 +998,21 @@ export function TentativeCostDialog({
     status: "draft",
   });
 
-  // Real-time summary for instant UI updates
   const [realTimeSummary, setRealTimeSummary] = useState<CostSummary | null>(
     null
   );
+  const [addItemDialogs, setAddItemDialogs] = useState<Record<string, boolean>>(
+    {
+      upper: false,
+      component: false,
+      material: false,
+      packaging: false,
+      labour: false,
+      miscellaneous: false,
+    }
+  );
 
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [dataLoaded, setDataLoaded] = useState<boolean>(false);
-
-  // Dialog states
-  const [addItemDialogs, setAddItemDialogs] = useState({
-    upper: false,
-    component: false,
-    material: false,
-    packaging: false,
-    labour: false,
-    miscellaneous: false,
-  });
-
-  const [dialogForms, setDialogForms] = useState({
+  const [dialogForms, setDialogForms] = useState<Record<string, any>>({
     upper: { item: "", description: "", consumption: 0, cost: 0 },
     component: { item: "", description: "", consumption: 0, cost: 0 },
     material: { item: "", description: "", consumption: 0, cost: 0 },
@@ -990,6 +1020,9 @@ export function TentativeCostDialog({
     labour: { item: "", description: "", consumption: 0, cost: 0 },
     miscellaneous: { item: "", description: "", consumption: 0, cost: 0 },
   });
+
+  const { goTo } = useRedirect();
+  const displaySummary = realTimeSummary || costSummary;
 
   // Check screen size
   useEffect(() => {
@@ -999,11 +1032,7 @@ export function TentativeCostDialog({
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Use realTimeSummary for display, fallback to costSummary
-  const displaySummary = realTimeSummary || costSummary;
-  const { goTo } = useRedirect();
-
-  // Load all cost data from backend
+  // Load all cost data from backend when dialog opens
   useEffect(() => {
     if (project && open && !dataLoaded) {
       loadAllCostData();
@@ -1019,47 +1048,100 @@ export function TentativeCostDialog({
     }
   }, [open]);
 
-  // Reset real-time summary when data loads from backend
+  // Ensure always 5 rows in each category
   useEffect(() => {
     if (dataLoaded) {
-      setRealTimeSummary(null);
+      maintainFiveRowsPerCategory();
+      maintainFiveLabourItems();
     }
-  }, [dataLoaded]);
+  }, [dataLoaded, costRows, labourCost]);
+
+  const maintainFiveRowsPerCategory = useCallback(() => {
+    setCostRows((prev) => {
+      const updated: Record<string, CostItem[]> = { ...prev };
+      Object.keys(updated).forEach((category) => {
+        const currentItems = updated[category] || [];
+        const existingItems = currentItems.filter((item) => !item.isNew);
+        const dummyItems = currentItems.filter((item) => item.isNew);
+
+        const totalItems = existingItems.length + dummyItems.length;
+        const neededDummyRows = Math.max(
+          0,
+          TOTAL_ROWS_PER_CATEGORY - totalItems
+        );
+
+        if (neededDummyRows > 0) {
+          const newDummyRows = getEmptyDummyRows(neededDummyRows, category);
+          updated[category] = [
+            ...existingItems,
+            ...dummyItems,
+            ...newDummyRows,
+          ];
+        } else if (totalItems > TOTAL_ROWS_PER_CATEGORY) {
+          // If we have more than 5 items, keep all existing items and remove excess dummy items
+          const excessDummyCount = totalItems - TOTAL_ROWS_PER_CATEGORY;
+          const dummyToKeep = dummyItems.slice(
+            0,
+            Math.max(0, dummyItems.length - excessDummyCount)
+          );
+          updated[category] = [...existingItems, ...dummyToKeep];
+        }
+      });
+      return updated;
+    });
+  }, []);
+
+  const maintainFiveLabourItems = useCallback(() => {
+    setLabourCost((prev) => {
+      const existingItems = prev.items.filter((item) => !item.isNew);
+      const dummyItems = prev.items.filter((item) => item.isNew);
+
+      const totalItems = existingItems.length + dummyItems.length;
+      const neededDummyRows = Math.max(0, TOTAL_ROWS_PER_CATEGORY - totalItems);
+
+      if (neededDummyRows > 0) {
+        const newDummyRows = getEmptyLabourItems(neededDummyRows);
+        return {
+          ...prev,
+          items: [...existingItems, ...dummyItems, ...newDummyRows],
+        };
+      } else if (totalItems > TOTAL_ROWS_PER_CATEGORY) {
+        // If we have more than 5 items, keep all existing items and remove excess dummy items
+        const excessDummyCount = totalItems - TOTAL_ROWS_PER_CATEGORY;
+        const dummyToKeep = dummyItems.slice(
+          0,
+          Math.max(0, dummyItems.length - excessDummyCount)
+        );
+        return {
+          ...prev,
+          items: [...existingItems, ...dummyToKeep],
+        };
+      }
+      return prev;
+    });
+  }, []);
 
   const loadAllCostData = async () => {
     if (!project) return;
 
     setIsLoading(true);
     try {
-      // Load cost summary
-      const summaryResponse = await api.get(`/projects/${project._id}/costs`);
-      const summaryData = summaryResponse.data.summary || summaryResponse.data;
+      const [summaryResponse, ...rowResponses] = await Promise.all([
+        api.get(`/projects/${project._id}/costs`),
+        ...["upper", "component", "material", "packaging", "miscellaneous"].map(
+          (section) => api.get(`/projects/${project._id}/costs/${section}`)
+        ),
+        api.get(`/projects/${project._id}/costs/labour`),
+      ]);
 
+      // Process summary
+      const summaryData = summaryResponse.data.summary || summaryResponse.data;
       if (summaryData) {
-        setCostSummary((prev) => ({
-          ...prev,
-          ...summaryData,
-          additionalCosts: Number(summaryData.additionalCosts) || 0,
-          profitMargin:
-            summaryData.profitMargin === undefined ||
-            summaryData.profitMargin === null
-              ? 0
-              : Number(summaryData.profitMargin),
-          upperTotal: Number(summaryData.upperTotal) || 0,
-          componentTotal: Number(summaryData.componentTotal) || 0,
-          materialTotal: Number(summaryData.materialTotal) || 0,
-          packagingTotal: Number(summaryData.packagingTotal) || 0,
-          miscTotal: Number(summaryData.miscTotal) || 0,
-          labourTotal: Number(summaryData.labourTotal) || 0,
-          totalAllCosts: Number(summaryData.totalAllCosts) || 0,
-          profitAmount: Number(summaryData.profitAmount) || 0,
-          tentativeCost: Number(summaryData.tentativeCost) || 0,
-          remarks: summaryData.remarks || "",
-          status: summaryData.status || "draft",
-        }));
+        setCostSummary(processSummaryData(summaryData));
       }
 
-      // Load cost rows
+      // Process cost rows - always ensure we have 5 total rows per category
+      const newCostRows: Record<string, CostItem[]> = {};
       const sections = [
         "upper",
         "component",
@@ -1067,315 +1149,376 @@ export function TentativeCostDialog({
         "packaging",
         "miscellaneous",
       ];
-      const rowPromises = sections.map((section) =>
-        api.get(`/projects/${project._id}/costs/${section}`)
-      );
-      const rowResponses = await Promise.all(rowPromises);
 
-      const newCostRows = {
-        upper: Array.isArray(rowResponses[0]?.data?.rows)
-          ? rowResponses[0].data.rows.map((item: any) => ({
-              _id: item._id || `upper_${Date.now()}_${Math.random()}`,
-              item: item.item || "",
-              description: item.description || "",
-              consumption: Number(item.consumption) || 0,
-              cost: Number(item.cost) || 0,
-              department: item.department || "",
-            }))
-          : [],
-        component: Array.isArray(rowResponses[1]?.data?.rows)
-          ? rowResponses[1].data.rows.map((item: any) => ({
-              _id: item._id || `component_${Date.now()}_${Math.random()}`,
-              item: item.item || "",
-              description: item.description || "",
-              consumption: Number(item.consumption) || 0,
-              cost: Number(item.cost) || 0,
-              department: item.department || "",
-            }))
-          : [],
-        material: Array.isArray(rowResponses[2]?.data?.rows)
-          ? rowResponses[2].data.rows.map((item: any) => ({
-              _id: item._id || `material_${Date.now()}_${Math.random()}`,
-              item: item.item || "",
-              description: item.description || "",
-              consumption: Number(item.consumption) || 0,
-              cost: Number(item.cost) || 0,
-            }))
-          : [],
-        packaging: Array.isArray(rowResponses[3]?.data?.rows)
-          ? rowResponses[3].data.rows.map((item: any) => ({
-              _id: item._id || `packaging_${Date.now()}_${Math.random()}`,
-              item: item.item || "",
-              description: item.description || "",
-              consumption: Number(item.consumption) || 0,
-              cost: Number(item.cost) || 0,
-            }))
-          : [],
-        miscellaneous: Array.isArray(rowResponses[4]?.data?.rows)
-          ? rowResponses[4].data.rows.map((item: any) => ({
-              _id: item._id || `misc_${Date.now()}_${Math.random()}`,
-              item: item.item || "",
-              description: item.description || "",
-              consumption: Number(item.consumption) || 0,
-              cost: Number(item.cost) || 0,
-            }))
-          : [],
-      };
+      sections.forEach((section, index) => {
+        const rows = rowResponses[index]?.data?.rows;
+        const existingItems = Array.isArray(rows)
+          ? rows.map(processCostItem)
+          : [];
+
+        // Add empty dummy rows to make total of 5 rows
+        const neededDummyRows = Math.max(
+          0,
+          TOTAL_ROWS_PER_CATEGORY - existingItems.length
+        );
+        const dummyRows = getEmptyDummyRows(neededDummyRows, section);
+
+        newCostRows[section] = [...existingItems, ...dummyRows];
+      });
 
       setCostRows(newCostRows);
 
-      // Load labour cost
-      const labourResponse = await api.get(
-        `/projects/${project._id}/costs/labour`
-      );
-      const labourData = labourResponse.data.labour || labourResponse.data;
+      // Process labour cost - always ensure 5 total items
+      const labourData = rowResponses[5]?.data?.labour || rowResponses[5]?.data;
+      let labourItems: LabourCost["items"] = [];
 
-      if (labourData) {
-        setLabourCost({
-          directTotal: Number(labourData.directTotal) || 0,
-          items: Array.isArray(labourData.items)
-            ? labourData.items.map((item: any) => ({
-                _id: item._id || `labour_${Date.now()}_${Math.random()}`,
-                name: item.name || "",
-                cost: Number(item.cost) || 0,
-              }))
-            : [],
-        });
+      if (labourData && Array.isArray(labourData.items)) {
+        labourItems = labourData.items.map((item: any) => ({
+          _id: item._id || `labour_${Date.now()}_${Math.random()}`,
+          name: item.name || "",
+          cost: Number(item.cost) || 0,
+        }));
       }
 
+      // Add empty dummy items to make total of 5 items
+      const neededLabourDummyItems = Math.max(
+        0,
+        TOTAL_ROWS_PER_CATEGORY - labourItems.length
+      );
+      const labourDummyItems = getEmptyLabourItems(neededLabourDummyItems);
+
+      setLabourCost({
+        directTotal: Number(labourData?.directTotal) || 0,
+        items: [...labourItems, ...labourDummyItems],
+      });
+
       setDataLoaded(true);
+      toast.info(
+        `Each category shows ${TOTAL_ROWS_PER_CATEGORY} rows. Fill in the empty rows and save when done.`
+      );
     } catch (error) {
       console.error("Failed to load cost data:", error);
-      toast.error("Failed to load cost data");
+      toast.error("Failed to load cost data. Starting with empty rows.");
 
-      setCostRows({
-        upper: [],
-        component: [],
-        material: [],
-        packaging: [],
-        miscellaneous: [],
+      // Initialize with 5 empty rows per category
+      const emptyCostRows: Record<string, CostItem[]> = {};
+      sections.forEach((section) => {
+        emptyCostRows[section] = getEmptyDummyRows(
+          TOTAL_ROWS_PER_CATEGORY,
+          section
+        );
       });
+
+      setCostRows(emptyCostRows);
       setLabourCost({
         directTotal: 0,
-        items: [],
+        items: getEmptyLabourItems(TOTAL_ROWS_PER_CATEGORY),
       });
+
+      setDataLoaded(true);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const sections = [
+    "upper",
+    "component",
+    "material",
+    "packaging",
+    "miscellaneous",
+  ];
+
+  const processSummaryData = (data: any): CostSummary => ({
+    additionalCosts: Number(data.additionalCosts) || 0,
+    profitMargin:
+      data.profitMargin === undefined || data.profitMargin === null
+        ? 0
+        : Number(data.profitMargin),
+    remarks: data.remarks || "",
+    upperTotal: Number(data.upperTotal) || 0,
+    componentTotal: Number(data.componentTotal) || 0,
+    materialTotal: Number(data.materialTotal) || 0,
+    packagingTotal: Number(data.packagingTotal) || 0,
+    miscTotal: Number(data.miscTotal) || 0,
+    labourTotal: Number(data.labourTotal) || 0,
+    totalAllCosts: Number(data.totalAllCosts) || 0,
+    profitAmount: Number(data.profitAmount) || 0,
+    tentativeCost: Number(data.tentativeCost) || 0,
+    status: data.status || "draft",
+  });
+
+  const processCostItem = (item: any): CostItem => ({
+    _id: item._id || `item_${Date.now()}_${Math.random()}`,
+    item: item.item || "",
+    description: item.description || "",
+    consumption: Number(item.consumption) || 0,
+    cost: Number(item.cost) || 0,
+    department: item.department || "",
+    isNew: false,
+  });
+
+  const formatCurrency = useCallback((amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
-  };
+  }, []);
 
-  // Real-time calculation handlers
-  const handleAdditionalCostsChange = (value: number) => {
-    const newAdditionalCosts = Number(value) || 0;
-    const newProfitMargin = costSummary.profitMargin || 25;
+  // Local update functions for immediate UI changes
+  const updateLocalItem = useCallback(
+    (
+      category: string,
+      itemId: string,
+      field: string,
+      value: string | number
+    ) => {
+      setCostRows((prev) => ({
+        ...prev,
+        [category]: prev[category].map((item) =>
+          item._id === itemId ? { ...item, [field]: value } : item
+        ),
+      }));
+    },
+    []
+  );
 
-    const totalAllCosts =
-      (costSummary.upperTotal || 0) +
-      (costSummary.componentTotal || 0) +
-      (costSummary.materialTotal || 0) +
-      (costSummary.packagingTotal || 0) +
-      (costSummary.miscTotal || 0) +
-      (costSummary.labourTotal || 0);
+  const updateLocalConsumption = useCallback(
+    (category: string, itemId: string, consumption: number) => {
+      updateLocalItem(category, itemId, "consumption", consumption);
 
-    const subtotalBeforeProfit = totalAllCosts + newAdditionalCosts;
-    const profitAmount = Math.round(
-      (subtotalBeforeProfit * newProfitMargin) / 100
-    );
-    const tentativeCost = subtotalBeforeProfit + profitAmount;
+      // Update category total
+      const categoryItems = costRows[category] || [];
+      const categoryTotal = categoryItems.reduce((sum, item) => {
+        if (item.item.trim() || item.cost > 0 || item.consumption > 0) {
+          return sum + (Number(item.cost) || 0);
+        }
+        return sum;
+      }, 0);
 
-    setRealTimeSummary({
-      ...costSummary,
-      additionalCosts: newAdditionalCosts,
-      profitMargin: newProfitMargin,
-      totalAllCosts,
-      profitAmount,
-      tentativeCost,
+      updateCategoryTotal(category, categoryTotal);
+    },
+    [costRows, updateLocalItem]
+  );
+
+  const updateLocalCost = useCallback(
+    (category: string, itemId: string, cost: number) => {
+      updateLocalItem(category, itemId, "cost", cost);
+
+      // Update category total
+      const categoryItems = costRows[category] || [];
+      const categoryTotal = categoryItems.reduce((sum, item) => {
+        if (item.item.trim() || item.cost > 0 || item.consumption > 0) {
+          return sum + (Number(item.cost) || 0);
+        }
+        return sum;
+      }, 0);
+
+      updateCategoryTotal(category, categoryTotal);
+    },
+    [costRows, updateLocalItem]
+  );
+
+  const updateCategoryTotal = useCallback((category: string, total: number) => {
+    setCostSummary((prev) => {
+      const newSummary = { ...prev };
+      switch (category) {
+        case "upper":
+          newSummary.upperTotal = total;
+          break;
+        case "component":
+          newSummary.componentTotal = total;
+          break;
+        case "material":
+          newSummary.materialTotal = total;
+          break;
+        case "packaging":
+          newSummary.packagingTotal = total;
+          break;
+        case "miscellaneous":
+          newSummary.miscTotal = total;
+          break;
+      }
+
+      // Recalculate totals
+      const totalAllCosts =
+        newSummary.upperTotal +
+        newSummary.componentTotal +
+        newSummary.materialTotal +
+        newSummary.packagingTotal +
+        newSummary.miscTotal +
+        newSummary.labourTotal;
+
+      const subtotalBeforeProfit = totalAllCosts + newSummary.additionalCosts;
+      const profitAmount = Math.round(
+        (subtotalBeforeProfit * (Number(newSummary.profitMargin) || 25)) / 100
+      );
+      const tentativeCost = subtotalBeforeProfit + profitAmount;
+
+      return {
+        ...newSummary,
+        totalAllCosts,
+        profitAmount,
+        tentativeCost,
+      };
     });
+  }, []);
 
-    setCostSummary((prev) => ({
-      ...prev,
-      additionalCosts: newAdditionalCosts,
-    }));
-  };
+  const updateItemCost = useCallback(
+    async (itemId: string, cost: number) => {
+      if (!project) return;
 
-  const handleProfitMarginChange = (raw: string) => {
-    let value = Number(raw);
-    if (raw.trim() === "" || isNaN(value)) {
-      value = 0;
-    }
-    value = Math.max(0, Math.min(value, 100));
-
-    const newProfitMargin = value;
-    const newAdditionalCosts = costSummary.additionalCosts || 0;
-
-    const totalAllCosts =
-      (costSummary.upperTotal || 0) +
-      (costSummary.componentTotal || 0) +
-      (costSummary.materialTotal || 0) +
-      (costSummary.packagingTotal || 0) +
-      (costSummary.miscTotal || 0) +
-      (costSummary.labourTotal || 0);
-
-    const subtotal = totalAllCosts + newAdditionalCosts;
-    const profitAmount = Math.round((subtotal * newProfitMargin) / 100);
-    const tentativeCost = subtotal + profitAmount;
-
-    setRealTimeSummary({
-      ...costSummary,
-      profitMargin: newProfitMargin,
-      totalAllCosts,
-      profitAmount,
-      tentativeCost,
-    });
-
-    setCostSummary((prev) => ({
-      ...prev,
-      profitMargin: newProfitMargin,
-    }));
-  };
-
-  const handleRemarksChange = (value: string) => {
-    setCostSummary((prev) => ({
-      ...prev,
-      remarks: value,
-    }));
-
-    if (realTimeSummary) {
-      setRealTimeSummary((prev) => ({
-        ...prev!,
-        remarks: value,
-      }));
-    }
-  };
-
-  // Cost item management
-  const updateItemCost = async (itemId: string, cost: number) => {
-    if (!project) return;
-
-    try {
-      let section: string | null = null;
-      for (const [sec, items] of Object.entries(costRows)) {
-        if (items.find((item) => item._id === itemId)) {
-          section = sec;
-          break;
-        }
-      }
-
+      const section = findItemSection(itemId);
       if (!section) {
-        toast.error("Item not found");
+        // Update locally for dummy items
+        const category = Object.keys(costRows).find((cat) =>
+          costRows[cat].some((item) => item._id === itemId)
+        );
+        if (category) {
+          updateLocalCost(category, itemId, cost);
+        }
         return;
       }
 
-      await api.patch(`/projects/${project._id}/costs/${section}/${itemId}`, {
-        cost: Number(cost) || 0,
-      });
+      try {
+        await api.patch(`/projects/${project._id}/costs/${section}/${itemId}`, {
+          cost: Number(cost) || 0,
+        });
 
-      setCostRows((prev) => ({
-        ...prev,
-        [section as string]: prev[section as keyof typeof prev].map((item) =>
-          item._id === itemId ? { ...item, cost: Number(cost) || 0 } : item
-        ),
-      }));
-
-      await loadSummary();
-    } catch (error) {
-      console.error("Failed to update item cost:", error);
-      toast.error("Failed to update item cost");
-    }
-  };
-
-  const updateItemConsumption = async (itemId: string, consumption: number) => {
-    if (!project) return;
-
-    try {
-      let section: string | null = null;
-      for (const [sec, items] of Object.entries(costRows)) {
-        if (items.find((item) => item._id === itemId)) {
-          section = sec;
-          break;
-        }
+        updateLocalCost(section, itemId, cost);
+      } catch (error) {
+        console.error("Failed to update item cost:", error);
+        toast.error("Failed to update item cost");
       }
+    },
+    [project, costRows, updateLocalCost]
+  );
 
+  const updateItemConsumption = useCallback(
+    async (itemId: string, consumption: number) => {
+      if (!project) return;
+
+      const section = findItemSection(itemId);
       if (!section) {
-        toast.error("Item not found");
+        // Update locally for dummy items
+        const category = Object.keys(costRows).find((cat) =>
+          costRows[cat].some((item) => item._id === itemId)
+        );
+        if (category) {
+          updateLocalConsumption(category, itemId, consumption);
+        }
         return;
       }
 
-      await api.patch(`/projects/${project._id}/costs/${section}/${itemId}`, {
-        consumption: Number(consumption) || 0,
-      });
+      try {
+        await api.patch(`/projects/${project._id}/costs/${section}/${itemId}`, {
+          consumption: Number(consumption) || 0,
+        });
 
-      setCostRows((prev) => ({
-        ...prev,
-        [section as string]: prev[section as keyof typeof prev].map((item) =>
-          item._id === itemId
-            ? { ...item, consumption: Number(consumption) || 0 }
-            : item
-        ),
-      }));
-
-      await loadSummary();
-    } catch (error) {
-      console.error("Failed to update item consumption:", error);
-      toast.error("Failed to update item consumption");
-    }
-  };
-
-  const deleteItem = async (itemId: string) => {
-    if (!project) return;
-
-    try {
-      let section: string | null = null;
-      for (const [sec, items] of Object.entries(costRows)) {
-        if (items.find((item) => item._id === itemId)) {
-          section = sec;
-          break;
-        }
+        updateLocalConsumption(section, itemId, consumption);
+      } catch (error) {
+        console.error("Failed to update item consumption:", error);
+        toast.error("Failed to update item consumption");
       }
+    },
+    [project, costRows, updateLocalConsumption]
+  );
 
+  const updateItemField = useCallback(
+    async (itemId: string, field: string, value: string | number) => {
+      if (!project) return;
+
+      const section = findItemSection(itemId);
       if (!section) {
-        toast.error("Item not found");
+        // Update locally for dummy items
+        const category = Object.keys(costRows).find((cat) =>
+          costRows[cat].some((item) => item._id === itemId)
+        );
+        if (category) {
+          updateLocalItem(category, itemId, field, value);
+        }
         return;
       }
 
-      await api.delete(`/projects/${project._id}/costs/${section}/${itemId}`);
+      try {
+        await api.patch(`/projects/${project._id}/costs/${section}/${itemId}`, {
+          [field]: value,
+        });
 
-      setCostRows((prev) => ({
-        ...prev,
-        [section as string]: prev[section as keyof typeof prev].filter(
-          (item) => item._id !== itemId
-        ),
-      }));
+        updateLocalItem(section, itemId, field, value);
+      } catch (error) {
+        console.error(`Failed to update item ${field}:`, error);
+        toast.error(`Failed to update item ${field}`);
+      }
+    },
+    [project, costRows, updateLocalItem]
+  );
 
-      await loadSummary();
-      toast.success("Item deleted successfully");
-    } catch (error) {
-      console.error("Failed to delete item:", error);
-      toast.error("Failed to delete item");
-    }
-  };
-
-  const setItemDepartment = async (itemId: string, department: string) => {
-    if (!project) return;
-
-    try {
-      let section: string | null = null;
-      for (const [sec, items] of Object.entries(costRows)) {
-        if (items.find((item) => item._id === itemId)) {
-          section = sec;
-          break;
+  const findItemSection = useCallback(
+    (itemId: string): string | null => {
+      for (const [section, items] of Object.entries(costRows)) {
+        const item = items.find((item) => item._id === itemId);
+        if (item && !item.isNew) {
+          return section;
         }
       }
+      return null;
+    },
+    [costRows]
+  );
 
+  const deleteItem = useCallback(
+    async (itemId: string) => {
+      if (!project) return;
+
+      const section = findItemSection(itemId);
+      if (!section) {
+        // Delete locally for dummy items
+        const category = Object.keys(costRows).find((cat) =>
+          costRows[cat].some((item) => item._id === itemId)
+        );
+        if (category) {
+          setCostRows((prev) => ({
+            ...prev,
+            [category]: prev[category].filter((item) => item._id !== itemId),
+          }));
+
+          // After deleting, ensure we still have 5 rows
+          setTimeout(() => maintainFiveRowsPerCategory(), 0);
+
+          toast.success("Item removed");
+        }
+        return;
+      }
+
+      try {
+        await api.delete(`/projects/${project._id}/costs/${section}/${itemId}`);
+
+        setCostRows((prev) => ({
+          ...prev,
+          [section]: prev[section].filter((item) => item._id !== itemId),
+        }));
+
+        // After deleting, ensure we still have 5 rows
+        setTimeout(() => maintainFiveRowsPerCategory(), 0);
+
+        await loadSummary();
+        toast.success("Item deleted successfully");
+      } catch (error) {
+        console.error("Failed to delete item:", error);
+        toast.error("Failed to delete item");
+      }
+    },
+    [project, findItemSection, costRows, maintainFiveRowsPerCategory]
+  );
+
+  const setItemDepartment = useCallback(
+    async (itemId: string, department: string) => {
+      if (!project) return;
+
+      const section = findItemSection(itemId);
       if (!section || !["upper", "component"].includes(section)) {
         toast.error(
           "Department tagging only allowed for upper and component items"
@@ -1383,152 +1526,307 @@ export function TentativeCostDialog({
         return;
       }
 
-      await api.patch(
-        `/projects/${project._id}/costs/${section}/${itemId}/department`,
-        { department }
-      );
+      try {
+        await api.patch(
+          `/projects/${project._id}/costs/${section}/${itemId}/department`,
+          {
+            department,
+          }
+        );
 
-      setCostRows((prev) => ({
-        ...prev,
-        [section as string]: prev[section as keyof typeof prev].map((item) =>
-          item._id === itemId ? { ...item, department } : item
-        ),
-      }));
+        setCostRows((prev) => ({
+          ...prev,
+          [section]: prev[section].map((item) =>
+            item._id === itemId ? { ...item, department } : item
+          ),
+        }));
 
-      toast.success("Department updated successfully");
-    } catch (error) {
-      console.error("Failed to update department:", error);
-      toast.error("Failed to update department");
-    }
-  };
+        toast.success("Department updated successfully");
+      } catch (error) {
+        console.error("Failed to update department:", error);
+        toast.error("Failed to update department");
+      }
+    },
+    [project, findItemSection]
+  );
 
-  // Dialog management
-  const openAddItemDialog = (category: string) => {
+  const openAddItemDialog = useCallback((category: string) => {
     setAddItemDialogs((prev) => ({ ...prev, [category]: true }));
     setDialogForms((prev) => ({
       ...prev,
       [category]: { item: "", description: "", consumption: 0, cost: 0 },
     }));
-  };
+  }, []);
 
-  const closeAddItemDialog = (category: string) => {
+  const closeAddItemDialog = useCallback((category: string) => {
     setAddItemDialogs((prev) => ({ ...prev, [category]: false }));
-  };
+  }, []);
 
-  const updateDialogForm = (
-    category: string,
-    field: string,
-    value: string | number
-  ) => {
-    setDialogForms((prev) => ({
-      ...prev,
-      [category]: {
-        ...prev[category as keyof typeof prev],
-        [field]: value,
-      },
-    }));
-  };
+  const updateDialogForm = useCallback(
+    (category: string, field: string, value: string | number) => {
+      setDialogForms((prev) => ({
+        ...prev,
+        [category]: {
+          ...prev[category],
+          [field]: value,
+        },
+      }));
+    },
+    []
+  );
 
-  const handleAddNewItem = async (category: string) => {
-    if (!project) return;
+  const handleAddNewItem = useCallback(
+    async (category: string) => {
+      if (!project) return;
 
-    const currentForm = dialogForms[category as keyof typeof dialogForms];
+      const currentForm = dialogForms[category];
+      if (!validateItemForm(currentForm)) return;
 
-    // Validate required fields
-    if (!currentForm.item.trim()) {
+      try {
+        const payload = {
+          item: currentForm.item.trim(),
+          description: currentForm.description || "",
+          consumption: Number(currentForm.consumption) || 0,
+          cost: Number(currentForm.cost) || 0,
+        };
+
+        const response = await api.post(
+          `/projects/${project._id}/costs/${category}`,
+          payload
+        );
+
+        if (response.data.row) {
+          setCostRows((prev) => {
+            const updatedItems = [
+              ...prev[category],
+              {
+                _id: response.data.row._id,
+                item: response.data.row.item || "",
+                description: response.data.row.description || "",
+                consumption: Number(response.data.row.consumption) || 0,
+                cost: Number(response.data.row.cost) || 0,
+                department: response.data.row.department || "",
+                isNew: false,
+              },
+            ];
+
+            // Remove one dummy item to maintain 5 rows total
+            const dummyItems = updatedItems.filter((item) => item.isNew);
+            if (dummyItems.length > 0) {
+              const itemToRemove = dummyItems[0]._id;
+              return {
+                ...prev,
+                [category]: updatedItems.filter(
+                  (item) => item._id !== itemToRemove
+                ),
+              };
+            }
+
+            return { ...prev, [category]: updatedItems };
+          });
+        }
+
+        await loadSummary();
+        closeAddItemDialog(category);
+        toast.success(`New ${category} item added successfully!`);
+      } catch (error) {
+        console.error("Failed to add item:", error);
+        toast.error("Failed to add item");
+      }
+    },
+    [project, dialogForms, closeAddItemDialog]
+  );
+
+  const validateItemForm = (form: any): boolean => {
+    if (!form.item.trim()) {
       toast.error("Please enter an item name");
-      return;
+      return false;
     }
 
-    // Validate consumption
-    if (
-      currentForm.consumption === undefined ||
-      currentForm.consumption === null ||
-      isNaN(currentForm.consumption)
-    ) {
-      toast.error("Please enter a valid consumption amount");
-      return;
-    }
-
-    if (currentForm.consumption < 0) {
+    if (form.consumption < 0) {
       toast.error("Consumption cannot be negative");
-      return;
+      return false;
     }
 
-    // Validate cost
-    if (
-      currentForm.cost === undefined ||
-      currentForm.cost === null ||
-      isNaN(currentForm.cost)
-    ) {
-      toast.error("Please enter a valid cost");
-      return;
-    }
-
-    if (currentForm.cost < 0) {
+    if (form.cost < 0) {
       toast.error("Cost cannot be negative");
-      return;
+      return false;
     }
 
-    try {
-      const payload = {
-        item: currentForm.item.trim(),
-        description: currentForm.description || "",
-        consumption: Number(currentForm.consumption) || 0,
-        cost: Number(currentForm.cost) || 0,
-      };
+    return true;
+  };
 
-      const response = await api.post(
-        `/projects/${project._id}/costs/${category}`,
-        payload
+  const updateLabourCost = useCallback(
+    async (updates: Partial<LabourCost>) => {
+      if (!project) return;
+
+      try {
+        // Update locally first for immediate UI response
+        setLabourCost((prev) => ({ ...prev, ...updates }));
+
+        // Update cost summary with new labour total
+        if (updates.directTotal !== undefined) {
+          setCostSummary((prev) => {
+            const totalAllCosts =
+              prev.upperTotal +
+              prev.componentTotal +
+              prev.materialTotal +
+              prev.packagingTotal +
+              prev.miscTotal +
+              updates.directTotal!;
+
+            const subtotalBeforeProfit = totalAllCosts + prev.additionalCosts;
+            const profitAmount = Math.round(
+              (subtotalBeforeProfit * (Number(prev.profitMargin) || 25)) / 100
+            );
+            const tentativeCost = subtotalBeforeProfit + profitAmount;
+
+            return {
+              ...prev,
+              labourTotal: updates.directTotal!,
+              totalAllCosts,
+              profitAmount,
+              tentativeCost,
+            };
+          });
+        }
+
+        // Then save to backend (only for non-dummy data)
+        const itemsToSave = labourCost.items.filter((item) => !item.isNew);
+        if (itemsToSave.length > 0 || updates.directTotal !== undefined) {
+          await api.patch(`/projects/${project._id}/costs/labour`, {
+            directTotal: updates.directTotal || labourCost.directTotal,
+            items: itemsToSave,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to update labour cost:", error);
+        toast.error("Failed to update labour cost");
+      }
+    },
+    [project, labourCost]
+  );
+
+  const updateLabourItem = useCallback(
+    (itemId: string, field: string, value: string | number) => {
+      setLabourCost((prev) => ({
+        ...prev,
+        items: prev.items.map((item) =>
+          item._id === itemId ? { ...item, [field]: value } : item
+        ),
+      }));
+    },
+    []
+  );
+
+  const deleteLabourItem = useCallback(
+    (itemId: string) => {
+      setLabourCost((prev) => ({
+        ...prev,
+        items: prev.items.filter((item) => item._id !== itemId),
+      }));
+
+      // After deleting, ensure we still have 5 items
+      setTimeout(() => maintainFiveLabourItems(), 0);
+
+      toast.success("Labour item removed");
+    },
+    [maintainFiveLabourItems]
+  );
+
+  const handleAdditionalCostsChange = useCallback(
+    (value: number) => {
+      const newAdditionalCosts = Number(value) || 0;
+      const newProfitMargin = costSummary.profitMargin || 25;
+
+      const totalAllCosts =
+        costSummary.upperTotal +
+        costSummary.componentTotal +
+        costSummary.materialTotal +
+        costSummary.packagingTotal +
+        costSummary.miscTotal +
+        costSummary.labourTotal;
+
+      const subtotalBeforeProfit = totalAllCosts + newAdditionalCosts;
+      const profitAmount = Math.round(
+        (subtotalBeforeProfit * Number(newProfitMargin)) / 100
       );
+      const tentativeCost = subtotalBeforeProfit + profitAmount;
 
-      if (response.data.row) {
-        setCostRows((prev) => ({
-          ...prev,
-          [category]: [
-            ...prev[category as keyof typeof prev],
-            {
-              _id: response.data.row._id,
-              item: response.data.row.item || "",
-              description: response.data.row.description || "",
-              consumption: Number(response.data.row.consumption) || 0,
-              cost: Number(response.data.row.cost) || 0,
-              department: response.data.row.department || "",
-            },
-          ],
+      setRealTimeSummary({
+        ...costSummary,
+        additionalCosts: newAdditionalCosts,
+        profitMargin: newProfitMargin,
+        totalAllCosts,
+        profitAmount,
+        tentativeCost,
+      });
+
+      setCostSummary((prev) => ({
+        ...prev,
+        additionalCosts: newAdditionalCosts,
+      }));
+    },
+    [costSummary]
+  );
+
+  const handleProfitMarginChange = useCallback(
+    (raw: string) => {
+      let value = Number(raw);
+      if (raw.trim() === "" || isNaN(value)) {
+        value = 0;
+      }
+      value = Math.max(0, Math.min(value, 100));
+
+      const newProfitMargin = value;
+      const newAdditionalCosts = costSummary.additionalCosts || 0;
+
+      const totalAllCosts =
+        costSummary.upperTotal +
+        costSummary.componentTotal +
+        costSummary.materialTotal +
+        costSummary.packagingTotal +
+        costSummary.miscTotal +
+        costSummary.labourTotal;
+
+      const subtotal = totalAllCosts + newAdditionalCosts;
+      const profitAmount = Math.round((subtotal * newProfitMargin) / 100);
+      const tentativeCost = subtotal + profitAmount;
+
+      setRealTimeSummary({
+        ...costSummary,
+        profitMargin: newProfitMargin,
+        totalAllCosts,
+        profitAmount,
+        tentativeCost,
+      });
+
+      setCostSummary((prev) => ({
+        ...prev,
+        profitMargin: newProfitMargin,
+      }));
+    },
+    [costSummary]
+  );
+
+  const handleRemarksChange = useCallback(
+    (value: string) => {
+      setCostSummary((prev) => ({
+        ...prev,
+        remarks: value,
+      }));
+
+      if (realTimeSummary) {
+        setRealTimeSummary((prev) => ({
+          ...prev!,
+          remarks: value,
         }));
       }
+    },
+    [realTimeSummary]
+  );
 
-      await loadSummary();
-      closeAddItemDialog(category);
-      toast.success(`New ${category} item added successfully!`);
-    } catch (error) {
-      console.error("Failed to add item:", error);
-      toast.error("Failed to add item");
-    }
-  };
-
-  const updateLabourCost = async (updates: Partial<LabourCost>) => {
-    if (!project) return;
-
-    try {
-      const response = await api.patch(
-        `/projects/${project._id}/costs/labour`,
-        updates
-      );
-      setLabourCost((prev) => ({ ...prev, ...updates }));
-
-      setTimeout(async () => {
-        await loadSummary();
-      }, 500);
-    } catch (error) {
-      console.error("Failed to update labour cost:", error);
-      toast.error("Failed to update labour cost");
-    }
-  };
-
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     if (!project) return;
 
     try {
@@ -1536,41 +1834,23 @@ export function TentativeCostDialog({
       const summaryData = response.data.summary || response.data;
 
       if (summaryData) {
-        setCostSummary((prev) => ({
-          ...prev,
-          ...summaryData,
-          additionalCosts: Number(summaryData.additionalCosts) || 0,
-          profitMargin:
-            summaryData.profitMargin === undefined ||
-            summaryData.profitMargin === null
-              ? 0
-              : Number(summaryData.profitMargin),
-          upperTotal: Number(summaryData.upperTotal) || 0,
-          componentTotal: Number(summaryData.componentTotal) || 0,
-          materialTotal: Number(summaryData.materialTotal) || 0,
-          packagingTotal: Number(summaryData.packagingTotal) || 0,
-          miscTotal: Number(summaryData.miscTotal) || 0,
-          labourTotal: Number(summaryData.labourTotal) || 0,
-          totalAllCosts: Number(summaryData.totalAllCosts) || 0,
-          profitAmount: Number(summaryData.profitAmount) || 0,
-          tentativeCost: Number(summaryData.tentativeCost) || 0,
-          remarks: summaryData.remarks || "",
-          status: summaryData.status || "draft",
-        }));
-
+        setCostSummary(processSummaryData(summaryData));
         setRealTimeSummary(null);
       }
     } catch (error) {
       console.error("Failed to load summary:", error);
     }
-  };
+  }, [project]);
 
-  const handleSaveSummary = async () => {
+  const handleSaveSummary = useCallback(async () => {
     if (!project) return;
 
     setIsLoading(true);
 
     try {
+      // Save all filled dummy rows
+      await saveAllFilledDummyRows();
+
       const payload = {
         additionalCosts: Number(costSummary.additionalCosts) || 0,
         profitMargin: Number(costSummary.profitMargin) || 0,
@@ -1582,43 +1862,112 @@ export function TentativeCostDialog({
         payload
       );
 
-      if (response.data && response.data.summary) {
-        const freshSummary = response.data.summary;
-
-        setCostSummary((prev) => ({
-          ...prev,
-          additionalCosts: Number(freshSummary.additionalCosts) || 0,
-          profitMargin: Number(freshSummary.profitMargin) || 25,
-          remarks: freshSummary.remarks || "",
-          upperTotal: Number(freshSummary.upperTotal) || 0,
-          componentTotal: Number(freshSummary.componentTotal) || 0,
-          materialTotal: Number(freshSummary.materialTotal) || 0,
-          packagingTotal: Number(freshSummary.packagingTotal) || 0,
-          miscTotal: Number(freshSummary.miscTotal) || 0,
-          labourTotal: Number(freshSummary.labourTotal) || 0,
-          totalAllCosts: Number(freshSummary.totalAllCosts) || 0,
-          profitAmount: Number(freshSummary.profitAmount) || 0,
-          tentativeCost: Number(freshSummary.tentativeCost) || 0,
-          status: freshSummary.status || "draft",
-        }));
-
+      if (response.data?.summary) {
+        setCostSummary(processSummaryData(response.data.summary));
         setRealTimeSummary(null);
       }
 
-      toast.success("Cost summary saved successfully!");
+      toast.success("All data saved successfully!");
     } catch (error: any) {
-      console.error("❌ Failed to save cost summary:", error);
+      console.error("❌ Failed to save data:", error);
       toast.error(
-        `Failed to save cost summary: ${
-          error.response?.data?.message || error.message
-        }`
+        `Failed to save data: ${error.response?.data?.message || error.message}`
       );
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [project, costSummary]);
 
-  const handleApprove = async () => {
+  const saveAllFilledDummyRows = useCallback(async () => {
+    if (!project) return;
+
+    const savePromises: Promise<any>[] = [];
+
+    // Save cost rows
+    Object.entries(costRows).forEach(([category, items]) => {
+      const dummyItemsToSave = items.filter(
+        (item) =>
+          item.isNew &&
+          (item.item.trim() || item.cost > 0 || item.consumption > 0)
+      );
+
+      dummyItemsToSave.forEach((item) => {
+        savePromises.push(
+          api
+            .post(`/projects/${project._id}/costs/${category}`, {
+              item: item.item.trim() || "Unnamed Item",
+              description: item.description || "",
+              consumption: Number(item.consumption) || 0,
+              cost: Number(item.cost) || 0,
+            })
+            .then((response) => {
+              // Update the item with the saved ID and remove isNew flag
+              setCostRows((prev) => ({
+                ...prev,
+                [category]: prev[category].map((i) =>
+                  i._id === item._id
+                    ? {
+                        ...i,
+                        _id: response.data.row?._id || i._id,
+                        isNew: false,
+                        item: item.item.trim() || "Unnamed Item",
+                      }
+                    : i
+                ),
+              }));
+            })
+        );
+      });
+    });
+
+    // Save labour dummy items
+    const labourDummyItemsToSave = labourCost.items.filter(
+      (item) => item.isNew && (item.name.trim() || item.cost > 0)
+    );
+
+    if (labourDummyItemsToSave.length > 0) {
+      labourDummyItemsToSave.forEach((item) => {
+        savePromises.push(
+          api
+            .patch(`/projects/${project._id}/costs/labour`, {
+              items: [
+                {
+                  name: item.name.trim() || "Unnamed Labour",
+                  cost: Number(item.cost) || 0,
+                },
+              ],
+            })
+            .then(() => {
+              // Update labour item to remove isNew flag
+              setLabourCost((prev) => ({
+                ...prev,
+                items: prev.items.map((i) =>
+                  i._id === item._id ? { ...i, isNew: false } : i
+                ),
+              }));
+            })
+        );
+      });
+    }
+
+    // Save labour direct total if changed
+    if (labourCost.directTotal > 0) {
+      savePromises.push(
+        api.patch(`/projects/${project._id}/costs/labour`, {
+          directTotal: labourCost.directTotal,
+        })
+      );
+    }
+
+    if (savePromises.length > 0) {
+      await Promise.all(savePromises);
+      toast.success(`Saved ${savePromises.length} items`);
+    } else {
+      toast.info("No new items to save");
+    }
+  }, [project, costRows, labourCost]);
+
+  const handleApprove = useCallback(async () => {
     if (!project) return;
 
     try {
@@ -1645,7 +1994,122 @@ export function TentativeCostDialog({
       console.error("❌ Failed to approve:", error);
       toast.error("Failed to approve cost");
     }
-  };
+  }, [
+    project,
+    handleSaveSummary,
+    costSummary,
+    updateRDProject,
+    onApproved,
+    onOpenChange,
+    goTo,
+  ]);
+
+  const renderMobileContent = useMemo(() => {
+    const categoryComponents: Record<string, JSX.Element> = {
+      upper: (
+        <CostCategoryCard
+          key="upper-mobile"
+          title="Upper Cost"
+          category="upper"
+          items={costRows.upper}
+          onUpdateItem={updateItemField}
+          onUpdateConsumption={updateItemConsumption}
+          onUpdateCost={updateItemCost}
+          onDeleteItem={deleteItem}
+          onAddItem={() => openAddItemDialog("upper")}
+          onStageSelect={setItemDepartment}
+          color="orange"
+          isMobile={true}
+        />
+      ),
+      component: (
+        <CostCategoryCard
+          key="component-mobile"
+          title="Component Cost"
+          category="component"
+          items={costRows.component}
+          onUpdateItem={updateItemField}
+          onUpdateConsumption={updateItemConsumption}
+          onUpdateCost={updateItemCost}
+          onDeleteItem={deleteItem}
+          onAddItem={() => openAddItemDialog("component")}
+          onStageSelect={setItemDepartment}
+          color="purple"
+          isMobile={true}
+        />
+      ),
+      material: (
+        <CostCategoryCard
+          key="material-mobile"
+          title="Material Cost"
+          category="material"
+          items={costRows.material}
+          onUpdateItem={updateItemField}
+          onUpdateConsumption={updateItemConsumption}
+          onUpdateCost={updateItemCost}
+          onDeleteItem={deleteItem}
+          onAddItem={() => openAddItemDialog("material")}
+          onStageSelect={setItemDepartment}
+          color="teal"
+          isMobile={true}
+        />
+      ),
+      packaging: (
+        <CostCategoryCard
+          key="packaging-mobile"
+          title="Packaging Cost"
+          category="packaging"
+          items={costRows.packaging}
+          onUpdateItem={updateItemField}
+          onUpdateConsumption={updateItemConsumption}
+          onUpdateCost={updateItemCost}
+          onDeleteItem={deleteItem}
+          onAddItem={() => openAddItemDialog("packaging")}
+          onStageSelect={setItemDepartment}
+          color="rose"
+          isMobile={true}
+        />
+      ),
+      misc: (
+        <CostCategoryCard
+          key="miscellaneous-mobile"
+          title="Miscellaneous Cost"
+          category="miscellaneous"
+          items={costRows.miscellaneous}
+          onUpdateItem={updateItemField}
+          onUpdateConsumption={updateItemConsumption}
+          onUpdateCost={updateItemCost}
+          onDeleteItem={deleteItem}
+          onAddItem={() => openAddItemDialog("miscellaneous")}
+          onStageSelect={setItemDepartment}
+          color="gray"
+          isMobile={true}
+        />
+      ),
+      labour: (
+        <MobileLabourCostCard
+          labourCost={labourCost}
+          onUpdateLabour={updateLabourCost}
+          onDeleteLabourItem={deleteLabourItem}
+          onAddItem={() => openAddItemDialog("labour")}
+        />
+      ),
+    };
+
+    return categoryComponents[activeMobileCategory];
+  }, [
+    activeMobileCategory,
+    costRows,
+    labourCost,
+    updateItemField,
+    updateItemConsumption,
+    updateItemCost,
+    deleteItem,
+    openAddItemDialog,
+    setItemDepartment,
+    updateLabourCost,
+    deleteLabourItem,
+  ]);
 
   if (!project) return null;
 
@@ -1653,12 +2117,12 @@ export function TentativeCostDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={`
-        ${
-          isMobile
-            ? "max-w-[95vw]! w-[95vw]! max-h-[95vh] top-[2.5vh] translate-y-0"
-            : "max-w-[85vw]! w-[85vw]! max-h-[90vh] top-[5vh] translate-y-0"
-        } overflow-hidden p-0 m-0 flex flex-col
-      `}
+          ${
+            isMobile
+              ? "max-w-[95vw]! w-[95vw]! max-h-[95vh] top-[2.5vh] translate-y-0"
+              : "max-w-[85vw]! w-[85vw]! max-h-[90vh] top-[5vh] translate-y-0"
+          } overflow-hidden p-0 m-0 flex flex-col
+        `}
       >
         {/* Sticky Header */}
         <div className="sticky top-0 z-50 px-4 md:px-6 py-3 md:py-4 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b border-blue-200 shadow-sm">
@@ -1686,7 +2150,7 @@ export function TentativeCostDialog({
                 className="text-xs md:text-sm"
               >
                 <Save className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
-                {isMobile ? "Save" : "Save Summary"}
+                {isMobile ? "Save All" : "Save All Data"}
               </Button>
               <Button
                 onClick={handleApprove}
@@ -1709,636 +2173,598 @@ export function TentativeCostDialog({
           </div>
         </div>
 
-        {/* Mobile Category Selector */}
-        {isMobile && (
-          <MobileCategorySelector
-            activeCategory={activeMobileCategory}
-            onSelectCategory={setActiveMobileCategory}
-          />
+        {/* Loading State */}
+        {isLoading && !dataLoaded && (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading cost data...</p>
+            </div>
+          </div>
         )}
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="p-3 md:p-4 lg:p-6 space-y-4 md:space-y-6">
-            {isMobile ? (
-              /* Mobile Content */
-              <>
-                {activeMobileCategory === "upper" && (
-                  <CostCategoryCard
-                    key="upper-mobile"
-                    title="Upper Cost"
-                    category="upper"
-                    items={costRows.upper}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("upper")}
-                    onStageSelect={setItemDepartment}
-                    color="orange"
-                    isMobile={true}
-                  />
-                )}
+        {/* Content when loaded */}
+        {(!isLoading || dataLoaded) && (
+          <>
+            {/* Mobile Category Selector */}
+            {isMobile && (
+              <MobileCategorySelector
+                activeCategory={activeMobileCategory}
+                onSelectCategory={setActiveMobileCategory}
+              />
+            )}
 
-                {activeMobileCategory === "component" && (
-                  <CostCategoryCard
-                    key="component-mobile"
-                    title="Component Cost"
-                    category="component"
-                    items={costRows.component}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("component")}
-                    onStageSelect={setItemDepartment}
-                    color="purple"
-                    isMobile={true}
-                  />
-                )}
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto scrollbar-hide">
+              <div className="p-3 md:p-4 lg:p-6 space-y-4 md:space-y-6">
+                {isMobile ? (
+                  <>
+                    {renderMobileContent}
 
-                {activeMobileCategory === "material" && (
-                  <CostCategoryCard
-                    key="material-mobile"
-                    title="Material Cost"
-                    category="material"
-                    items={costRows.material}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("material")}
-                    onStageSelect={setItemDepartment}
-                    color="teal"
-                    isMobile={true}
-                  />
-                )}
-
-                {activeMobileCategory === "packaging" && (
-                  <CostCategoryCard
-                    key="packaging-mobile"
-                    title="Packaging Cost"
-                    category="packaging"
-                    items={costRows.packaging}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("packaging")}
-                    onStageSelect={setItemDepartment}
-                    color="rose"
-                    isMobile={true}
-                  />
-                )}
-
-                {activeMobileCategory === "misc" && (
-                  <CostCategoryCard
-                    key="miscellaneous-mobile"
-                    title="Miscellaneous Cost"
-                    category="miscellaneous"
-                    items={costRows.miscellaneous}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("miscellaneous")}
-                    onStageSelect={setItemDepartment}
-                    color="gray"
-                    isMobile={true}
-                  />
-                )}
-
-                {activeMobileCategory === "labour" && (
-                  <MobileLabourCostCard
-                    labourCost={labourCost}
-                    updateLabourCost={updateLabourCost}
-                    onAddItem={() => openAddItemDialog("labour")}
-                  />
-                )}
-
-                {/* Mobile Cost Summary */}
-                <Card className="border-2 border-green-200">
-                  <CardHeader className="bg-green-50">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Calculator className="w-4 h-4 text-green-600" />
-                      Cost Summary
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-3 space-y-4">
-                    <div className="space-y-3">
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600">
-                          Additional Costs
-                        </Label>
-                        <div className="relative mt-1">
-                          <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={displaySummary.additionalCosts || 0}
-                            onChange={(e) =>
-                              handleAdditionalCostsChange(
-                                Number(e.target.value)
-                              )
-                            }
-                            className="pl-8 h-9 text-sm"
-                            placeholder="Additional costs"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600">
-                          Profit Margin (%)
-                        </Label>
-                        <div className="relative mt-1">
-                          <Percent className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                          <Input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="100"
-                            value={displaySummary.profitMargin ?? 0}
-                            onChange={(e) =>
-                              handleProfitMarginChange(e.target.value)
-                            }
-                            className="pl-8 h-9 text-sm"
-                            placeholder="Profit margin %"
-                          />
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      {/* Mobile Cost Breakdown */}
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="text-xs text-gray-600">
-                            Upper Cost:
-                          </div>
-                          <div className="text-xs font-medium text-right">
-                            {formatCurrency(displaySummary.upperTotal || 0)}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            Component Cost:
-                          </div>
-                          <div className="text-xs font-medium text-right">
-                            {formatCurrency(displaySummary.componentTotal || 0)}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            Material Cost:
-                          </div>
-                          <div className="text-xs font-medium text-right">
-                            {formatCurrency(displaySummary.materialTotal || 0)}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            Packaging Cost:
-                          </div>
-                          <div className="text-xs font-medium text-right">
-                            {formatCurrency(displaySummary.packagingTotal || 0)}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            Misc Cost:
-                          </div>
-                          <div className="text-xs font-medium text-right">
-                            {formatCurrency(displaySummary.miscTotal || 0)}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            Labour Cost:
-                          </div>
-                          <div className="text-xs font-medium text-right">
-                            {formatCurrency(displaySummary.labourTotal || 0)}
-                          </div>
-                        </div>
-
-                        <Separator />
-
-                        <div className="flex justify-between text-sm font-medium bg-blue-50 p-2 rounded">
-                          <span className="text-blue-900">Total Costs:</span>
-                          <span className="text-blue-900">
-                            {formatCurrency(displaySummary.totalAllCosts || 0)}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-600">Additional:</span>
-                          <span className="font-medium">
-                            +
-                            {formatCurrency(
-                              displaySummary.additionalCosts || 0
-                            )}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-600">
-                            Profit ({displaySummary.profitMargin || 25}%):
-                          </span>
-                          <span className="font-medium">
-                            +{formatCurrency(displaySummary.profitAmount || 0)}
-                          </span>
-                        </div>
-
-                        <Separator />
-
-                        <div className="bg-green-50 p-3 rounded-lg">
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold text-green-900">
-                              Tentative Cost:
-                            </span>
-                            <span className="text-lg font-bold text-green-900">
-                              {formatCurrency(
-                                displaySummary.tentativeCost || 0
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Mobile Remarks */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Notes</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-3">
-                    <Label className="text-sm font-medium text-gray-600">
-                      Remarks
-                    </Label>
-                    <Textarea
-                      value={displaySummary.remarks || ""}
-                      onChange={(e) => handleRemarksChange(e.target.value)}
-                      className="mt-2 text-sm h-24"
-                      placeholder="Add notes..."
-                    />
-                  </CardContent>
-                </Card>
-              </>
-            ) : (
-              /* Desktop Content */
-              <>
-                {/* Cost Breakdown Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                  <CostCategoryCard
-                    key="upper-desktop"
-                    title="Upper Cost Breakdown"
-                    category="upper"
-                    items={costRows.upper}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("upper")}
-                    onStageSelect={setItemDepartment}
-                    color="orange"
-                  />
-
-                  <CostCategoryCard
-                    key="component-desktop"
-                    title="Component Cost Breakdown"
-                    category="component"
-                    items={costRows.component}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("component")}
-                    onStageSelect={setItemDepartment}
-                    color="purple"
-                  />
-
-                  <CostCategoryCard
-                    key="material-desktop"
-                    title="Material Cost Breakdown"
-                    category="material"
-                    items={costRows.material}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("material")}
-                    onStageSelect={setItemDepartment}
-                    color="teal"
-                  />
-
-                  <CostCategoryCard
-                    key="packaging-desktop"
-                    title="Packaging Cost Breakdown"
-                    category="packaging"
-                    items={costRows.packaging}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("packaging")}
-                    onStageSelect={setItemDepartment}
-                    color="rose"
-                  />
-
-                  <CostCategoryCard
-                    key="miscellaneous-desktop"
-                    title="Miscellaneous Cost Breakdown"
-                    category="miscellaneous"
-                    items={costRows.miscellaneous}
-                    onUpdateCost={updateItemCost}
-                    onUpdateConsumption={updateItemConsumption}
-                    onDeleteItem={deleteItem}
-                    onAddItem={() => openAddItemDialog("miscellaneous")}
-                    onStageSelect={setItemDepartment}
-                    color="gray"
-                  />
-
-                  {/* Labour Cost Card */}
-                  <Card
-                    key="labour-desktop"
-                    className="border-2 border-amber-200 h-148"
-                  >
-                    <CardHeader className="bg-amber-50">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Calculator className="w-5 h-5 text-amber-600" />
-                        Labour Cost + OH Breakdown
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-4">
-                      <div className="space-y-4">
-                        {/* Direct Total Labour Cost Input */}
-                        <div className="bg-amber-100 p-4 rounded-lg border-2 border-amber-300">
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium text-amber-900">
-                              Labour + OH Cost:
-                            </span>
-                            <div className="relative">
-                              <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-amber-600 w-4 h-4" />
+                    {/* Mobile Cost Summary */}
+                    <Card className="border-2 border-green-200">
+                      <CardHeader className="bg-green-50">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Calculator className="w-4 h-4 text-green-600" />
+                          Cost Summary
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-3 space-y-4">
+                        <div className="space-y-3">
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">
+                              Additional Costs
+                            </Label>
+                            <div className="relative mt-1">
+                              <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                               <Input
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={labourCost.directTotal || 0}
+                                value={displaySummary.additionalCosts || 0}
                                 onChange={(e) =>
-                                  updateLabourCost({
-                                    directTotal: Number(e.target.value) || 0,
-                                  })
+                                  handleAdditionalCostsChange(
+                                    Number(e.target.value)
+                                  )
                                 }
-                                className="pl-8 text-lg font-bold text-amber-900 bg-white border-amber-300 w-32"
+                                className="pl-8 h-9 text-sm"
+                                placeholder="Additional costs"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">
+                              Profit Margin (%)
+                            </Label>
+                            <div className="relative mt-1">
+                              <Percent className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="100"
+                                value={displaySummary.profitMargin ?? 0}
+                                onChange={(e) =>
+                                  handleProfitMarginChange(e.target.value)
+                                }
+                                className="pl-8 h-9 text-sm"
+                                placeholder="Profit margin %"
+                              />
+                            </div>
+                          </div>
+
+                          <Separator />
+
+                          {/* Mobile Cost Breakdown */}
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="text-xs text-gray-600">
+                                Upper Cost:
+                              </div>
+                              <div className="text-xs font-medium text-right">
+                                {formatCurrency(displaySummary.upperTotal || 0)}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                Component Cost:
+                              </div>
+                              <div className="text-xs font-medium text-right">
+                                {formatCurrency(
+                                  displaySummary.componentTotal || 0
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                Material Cost:
+                              </div>
+                              <div className="text-xs font-medium text-right">
+                                {formatCurrency(
+                                  displaySummary.materialTotal || 0
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                Packaging Cost:
+                              </div>
+                              <div className="text-xs font-medium text-right">
+                                {formatCurrency(
+                                  displaySummary.packagingTotal || 0
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                Misc Cost:
+                              </div>
+                              <div className="text-xs font-medium text-right">
+                                {formatCurrency(displaySummary.miscTotal || 0)}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                Labour Cost:
+                              </div>
+                              <div className="text-xs font-medium text-right">
+                                {formatCurrency(
+                                  displaySummary.labourTotal || 0
+                                )}
+                              </div>
+                            </div>
+
+                            <Separator />
+
+                            <div className="flex justify-between text-sm font-medium bg-blue-50 p-2 rounded">
+                              <span className="text-blue-900">
+                                Total Costs:
+                              </span>
+                              <span className="text-blue-900">
+                                {formatCurrency(
+                                  displaySummary.totalAllCosts || 0
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between text-xs">
+                              <span className="text-gray-600">Additional:</span>
+                              <span className="font-medium">
+                                +
+                                {formatCurrency(
+                                  displaySummary.additionalCosts || 0
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between text-xs">
+                              <span className="text-gray-600">
+                                Profit ({displaySummary.profitMargin || 25}%):
+                              </span>
+                              <span className="font-medium">
+                                +
+                                {formatCurrency(
+                                  displaySummary.profitAmount || 0
+                                )}
+                              </span>
+                            </div>
+
+                            <Separator />
+
+                            <div className="bg-green-50 p-3 rounded-lg">
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-green-900">
+                                  Tentative Cost:
+                                </span>
+                                <span className="text-lg font-bold text-green-900">
+                                  {formatCurrency(
+                                    displaySummary.tentativeCost || 0
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Mobile Remarks */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">Notes</CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-3">
+                        <Label className="text-sm font-medium text-gray-600">
+                          Remarks
+                        </Label>
+                        <Textarea
+                          value={displaySummary.remarks || ""}
+                          onChange={(e) => handleRemarksChange(e.target.value)}
+                          className="mt-2 text-sm h-24"
+                          placeholder="Add notes..."
+                        />
+                      </CardContent>
+                    </Card>
+                  </>
+                ) : (
+                  /* Desktop Content */
+                  <>
+                    {/* Cost Breakdown Section */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                      <CostCategoryCard
+                        key="upper-desktop"
+                        title="Upper Cost Breakdown"
+                        category="upper"
+                        items={costRows.upper}
+                        onUpdateItem={updateItemField}
+                        onUpdateConsumption={updateItemConsumption}
+                        onUpdateCost={updateItemCost}
+                        onDeleteItem={deleteItem}
+                        onAddItem={() => openAddItemDialog("upper")}
+                        onStageSelect={setItemDepartment}
+                        color="orange"
+                      />
+
+                      <CostCategoryCard
+                        key="component-desktop"
+                        title="Component Cost Breakdown"
+                        category="component"
+                        items={costRows.component}
+                        onUpdateItem={updateItemField}
+                        onUpdateConsumption={updateItemConsumption}
+                        onUpdateCost={updateItemCost}
+                        onDeleteItem={deleteItem}
+                        onAddItem={() => openAddItemDialog("component")}
+                        onStageSelect={setItemDepartment}
+                        color="purple"
+                      />
+
+                      <CostCategoryCard
+                        key="material-desktop"
+                        title="Material Cost Breakdown"
+                        category="material"
+                        items={costRows.material}
+                        onUpdateItem={updateItemField}
+                        onUpdateConsumption={updateItemConsumption}
+                        onUpdateCost={updateItemCost}
+                        onDeleteItem={deleteItem}
+                        onAddItem={() => openAddItemDialog("material")}
+                        onStageSelect={setItemDepartment}
+                        color="teal"
+                      />
+
+                      <CostCategoryCard
+                        key="packaging-desktop"
+                        title="Packaging Cost Breakdown"
+                        category="packaging"
+                        items={costRows.packaging}
+                        onUpdateItem={updateItemField}
+                        onUpdateConsumption={updateItemConsumption}
+                        onUpdateCost={updateItemCost}
+                        onDeleteItem={deleteItem}
+                        onAddItem={() => openAddItemDialog("packaging")}
+                        onStageSelect={setItemDepartment}
+                        color="rose"
+                      />
+
+                      <CostCategoryCard
+                        key="miscellaneous-desktop"
+                        title="Miscellaneous Cost Breakdown"
+                        category="miscellaneous"
+                        items={costRows.miscellaneous}
+                        onUpdateItem={updateItemField}
+                        onUpdateConsumption={updateItemConsumption}
+                        onUpdateCost={updateItemCost}
+                        onDeleteItem={deleteItem}
+                        onAddItem={() => openAddItemDialog("miscellaneous")}
+                        onStageSelect={setItemDepartment}
+                        color="gray"
+                      />
+
+                      {/* Labour Cost Card */}
+                      <Card
+                        key="labour-desktop"
+                        className="border-2 border-amber-200 h-148"
+                      >
+                        <CardHeader className="bg-amber-50">
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            <Calculator className="w-5 h-5 text-amber-600" />
+                            Labour Cost + OH Breakdown
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4">
+                          <div className="space-y-4">
+                            <div className="bg-amber-100 p-4 rounded-lg border-2 border-amber-300">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium text-amber-900">
+                                  Labour + OH Cost:
+                                </span>
+                                <div className="relative">
+                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-amber-600 w-4 h-4" />
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={labourCost.directTotal || 0}
+                                    onChange={(e) =>
+                                      updateLabourCost({
+                                        directTotal:
+                                          Number(e.target.value) || 0,
+                                      })
+                                    }
+                                    className="pl-8 text-lg font-bold text-amber-900 bg-white border-amber-300 w-32"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            <h4 className="font-medium text-amber-900">
+                              Individual Labour Components:
+                            </h4>
+
+                            <div className="h-32 overflow-y-auto scrollbar-hide space-y-3">
+                              {labourCost.items.map((item) => (
+                                <div
+                                  key={item._id}
+                                  className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-2 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors"
+                                >
+                                  <div>
+                                    <Input
+                                      value={item.name || ""}
+                                      onChange={(e) =>
+                                        updateLabourItem(
+                                          item._id,
+                                          "name",
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder="Labour item name"
+                                      className="text-sm h-8"
+                                    />
+                                  </div>
+                                  <div className="relative">
+                                    <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={item.cost || 0}
+                                      onChange={(e) =>
+                                        updateLabourItem(
+                                          item._id,
+                                          "cost",
+                                          Number(e.target.value) || 0
+                                        )
+                                      }
+                                      className="pl-6 text-sm h-8"
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deleteLabourItem(item._id)}
+                                    className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full text-amber-600 border-amber-200 hover:bg-amber-50"
+                              onClick={() => openAddItemDialog("labour")}
+                            >
+                              <Plus className="w-4 h-4 mr-2" />
+                              Add New Labour Component
+                            </Button>
+
+                            <Separator />
+
+                            <div className="bg-amber-50 p-3 rounded-lg">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium text-amber-900">
+                                  Total Labour Cost:
+                                </span>
+                                <span className="text-lg font-bold text-amber-900">
+                                  ₹{(labourCost.directTotal || 0).toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Final Cost Summary */}
+                    <Card className="border-2 border-green-200">
+                      <CardHeader className="bg-green-50">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Calculator className="w-5 h-5 text-green-600" />
+                          Final Cost Summary
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-4 md:p-6 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">
+                              Additional Costs
+                            </Label>
+                            <div className="relative mt-1">
+                              <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={displaySummary.additionalCosts || 0}
+                                onChange={(e) =>
+                                  handleAdditionalCostsChange(
+                                    Number(e.target.value)
+                                  )
+                                }
+                                className="pl-10 h-10 md:h-12"
+                                placeholder="Additional costs (optional)"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">
+                              Profit Margin (%)
+                            </Label>
+                            <div className="relative mt-1">
+                              <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="100"
+                                value={displaySummary.profitMargin ?? 0}
+                                onChange={(e) =>
+                                  handleProfitMarginChange(e.target.value)
+                                }
+                                className="pl-10 h-10 md:h-12"
+                                placeholder="Enter profit margin %"
                               />
                             </div>
                           </div>
                         </div>
 
-                        <h4 className="font-medium text-amber-900">
-                          Individual Labour Components:
-                        </h4>
-
-                        {/* Labour Items */}
-                        <div className="h-32 overflow-y-auto scrollbar-hide space-y-3">
-                          {labourCost.items.map((item) => (
-                            <div
-                              key={item._id}
-                              className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-2 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors"
-                            >
-                              <div>
-                                <Label className="text-amber-800">
-                                  {item.name}
-                                </Label>
-                              </div>
-                              <div className="relative">
-                                <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={item.cost || 0}
-                                  onChange={(e) => {
-                                    const updatedItems = labourCost.items.map(
-                                      (labourItem) =>
-                                        labourItem._id === item._id
-                                          ? {
-                                              ...labourItem,
-                                              cost: Number(e.target.value) || 0,
-                                            }
-                                          : labourItem
-                                    );
-                                    updateLabourCost({ items: updatedItems });
-                                  }}
-                                  className="pl-6 text-sm"
-                                  placeholder="0.00"
-                                />
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  const updatedItems = labourCost.items.filter(
-                                    (labourItem) => labourItem._id !== item._id
-                                  );
-                                  updateLabourCost({ items: updatedItems });
-                                }}
-                                className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Add New Labour Component Button */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-amber-600 border-amber-200 hover:bg-amber-50"
-                          onClick={() => openAddItemDialog("labour")}
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add New Labour Component
-                        </Button>
-
                         <Separator />
 
-                        {/* Total Labour Cost */}
-                        <div className="bg-amber-50 p-3 rounded-lg">
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium text-amber-900">
-                              Total Labour Cost:
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                            <div className="text-center">
+                              <div className="text-xs text-gray-600">
+                                Upper Cost
+                              </div>
+                              <div className="text-sm font-medium">
+                                {formatCurrency(displaySummary.upperTotal || 0)}
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xs text-gray-600">
+                                Component Cost
+                              </div>
+                              <div className="text-sm font-medium">
+                                {formatCurrency(
+                                  displaySummary.componentTotal || 0
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xs text-gray-600">
+                                Material Cost
+                              </div>
+                              <div className="text-sm font-medium">
+                                {formatCurrency(
+                                  displaySummary.materialTotal || 0
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xs text-gray-600">
+                                Packaging Cost
+                              </div>
+                              <div className="text-sm font-medium">
+                                {formatCurrency(
+                                  displaySummary.packagingTotal || 0
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xs text-gray-600">
+                                Misc Cost
+                              </div>
+                              <div className="text-sm font-medium">
+                                {formatCurrency(displaySummary.miscTotal || 0)}
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xs text-gray-600">
+                                Labour Cost
+                              </div>
+                              <div className="text-sm font-medium">
+                                {formatCurrency(
+                                  displaySummary.labourTotal || 0
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <Separator />
+
+                          <div className="flex justify-between text-sm font-medium bg-blue-50 p-3 rounded">
+                            <span className="text-blue-900">
+                              Total All Costs:
                             </span>
-                            <span className="text-lg font-bold text-amber-900">
-                              ₹{(labourCost.directTotal || 0).toFixed(2)}
+                            <span className="text-blue-900">
+                              {formatCurrency(
+                                displaySummary.totalAllCosts || 0
+                              )}
                             </span>
                           </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
 
-                {/* Final Cost Summary */}
-                <Card className="border-2 border-green-200">
-                  <CardHeader className="bg-green-50">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Calculator className="w-5 h-5 text-green-600" />
-                      Final Cost Summary
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4 md:p-6 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">
+                                Additional Costs:
+                              </span>
+                              <span className="font-medium">
+                                +
+                                {formatCurrency(
+                                  displaySummary.additionalCosts || 0
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">
+                                Profit ({displaySummary.profitMargin || 25}%):
+                              </span>
+                              <span className="font-medium">
+                                +
+                                {formatCurrency(
+                                  displaySummary.profitAmount || 0
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <Separator />
+
+                          <div className="bg-green-50 p-4 rounded-lg">
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-green-900">
+                                Tentative Cost:
+                              </span>
+                              <span className="text-xl md:text-2xl font-bold text-green-900">
+                                {formatCurrency(
+                                  displaySummary.tentativeCost || 0
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Remarks Section */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Notes</CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-4 md:p-6">
                         <Label className="text-sm font-medium text-gray-600">
-                          Additional Costs
+                          Remarks & Justification
                         </Label>
-                        <div className="relative mt-1">
-                          <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={displaySummary.additionalCosts || 0}
-                            onChange={(e) =>
-                              handleAdditionalCostsChange(
-                                Number(e.target.value)
-                              )
-                            }
-                            className="pl-10 h-10 md:h-12"
-                            placeholder="Additional costs (optional)"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600">
-                          Profit Margin (%)
-                        </Label>
-                        <div className="relative mt-1">
-                          <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                          <Input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="100"
-                            value={displaySummary.profitMargin ?? 0}
-                            onChange={(e) =>
-                              handleProfitMarginChange(e.target.value)
-                            }
-                            className="pl-10 h-10 md:h-12"
-                            placeholder="Enter profit margin %"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Cost Summary */}
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-                        <div className="text-center">
-                          <div className="text-xs text-gray-600">
-                            Upper Cost
-                          </div>
-                          <div className="text-sm font-medium">
-                            {formatCurrency(displaySummary.upperTotal || 0)}
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-xs text-gray-600">
-                            Component Cost
-                          </div>
-                          <div className="text-sm font-medium">
-                            {formatCurrency(displaySummary.componentTotal || 0)}
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-xs text-gray-600">
-                            Material Cost
-                          </div>
-                          <div className="text-sm font-medium">
-                            {formatCurrency(displaySummary.materialTotal || 0)}
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-xs text-gray-600">
-                            Packaging Cost
-                          </div>
-                          <div className="text-sm font-medium">
-                            {formatCurrency(displaySummary.packagingTotal || 0)}
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-xs text-gray-600">Misc Cost</div>
-                          <div className="text-sm font-medium">
-                            {formatCurrency(displaySummary.miscTotal || 0)}
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-xs text-gray-600">
-                            Labour Cost
-                          </div>
-                          <div className="text-sm font-medium">
-                            {formatCurrency(displaySummary.labourTotal || 0)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      <div className="flex justify-between text-sm font-medium bg-blue-50 p-3 rounded">
-                        <span className="text-blue-900">Total All Costs:</span>
-                        <span className="text-blue-900">
-                          {formatCurrency(displaySummary.totalAllCosts || 0)}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">
-                            Additional Costs:
-                          </span>
-                          <span className="font-medium">
-                            +
-                            {formatCurrency(
-                              displaySummary.additionalCosts || 0
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">
-                            Profit ({displaySummary.profitMargin || 25}%):
-                          </span>
-                          <span className="font-medium">
-                            +{formatCurrency(displaySummary.profitAmount || 0)}
-                          </span>
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      <div className="bg-green-50 p-4 rounded-lg">
-                        <div className="flex justify-between items-center">
-                          <span className="font-bold text-green-900">
-                            Tentative Cost:
-                          </span>
-                          <span className="text-xl md:text-2xl font-bold text-green-900">
-                            {formatCurrency(displaySummary.tentativeCost || 0)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Remarks Section */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Notes</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4 md:p-6">
-                    <Label className="text-sm font-medium text-gray-600">
-                      Remarks & Justification
-                    </Label>
-                    <Textarea
-                      value={displaySummary.remarks || ""}
-                      onChange={(e) => handleRemarksChange(e.target.value)}
-                      className="mt-2 h-24 md:h-32"
-                      placeholder="Add notes about cost calculation methodology, assumptions, or special considerations..."
-                    />
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </div>
-        </div>
+                        <Textarea
+                          value={displaySummary.remarks || ""}
+                          onChange={(e) => handleRemarksChange(e.target.value)}
+                          className="mt-2 h-24 md:h-32"
+                          placeholder="Add notes about cost calculation methodology, assumptions, or special considerations..."
+                        />
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Sticky Footer */}
         <div className="sticky bottom-0 z-40 bg-white border-t-2 border-gray-200 px-4 md:px-6 py-3 md:py-4 shadow-lg">
@@ -2382,9 +2808,9 @@ export function TentativeCostDialog({
         <AddNewItemDialog
           key={`dialog-${category}`}
           category={category}
-          isOpen={addItemDialogs[category as keyof typeof addItemDialogs]}
+          isOpen={addItemDialogs[category]}
           onClose={() => closeAddItemDialog(category)}
-          formData={dialogForms[category as keyof typeof dialogForms]}
+          formData={dialogForms[category]}
           onFormChange={(field, value) =>
             updateDialogForm(category, field, value)
           }

@@ -232,53 +232,165 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
    Section: Materials & Components
 ------------------------------------------------------ */
 const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
-  // Materials Section
+  // Materials Section - check multiple possible locations
   const materials = p.costData?.material || p.materials || [];
   const components = p.costData?.component || p.components || [];
+  const upper = p.costData?.upper || [];
+  const packaging = p.costData?.packaging || [];
+  const miscellaneous = p.costData?.miscellaneous || [];
+  const labour = p.costData?.labour?.items || [];
 
-  if (materials.length > 0) {
+  // Create a comprehensive cost summary
+  if (materials.length > 0 || components.length > 0 || upper.length > 0) {
     doc.setFontSize(13);
     doc.setTextColor(0, 100, 0);
-    doc.text("MATERIALS USED", 14, y);
+    doc.text("COST BREAKDOWN", 14, y);
     y += 8;
 
-    autoTable(doc, {
-      startY: y,
-      head: [["Material", "Description", "Consumption"]],
-      body: materials.map((m: any) => [
-        safe(m.name),
-        safe(m.desc || m.description),
-        safe(m.consumption),
-      ]),
-      theme: "grid",
-      headStyles: { fillColor: [0, 100, 0] },
-      styles: { fontSize: 9 },
-    });
+    // Materials Table
+    if (materials.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        head: [["Material", "Description", "Consumption", "Cost"]],
+        body: materials.map((m: any) => [
+          safe(m.item || m.name),
+          safe(m.description || m.desc),
+          safe(m.consumption || m.quantity),
+          formatINR(m.cost || 0),
+        ]),
+        theme: "grid",
+        headStyles: { fillColor: [0, 100, 0] },
+        styles: { fontSize: 9 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
 
-    y = (doc as any).lastAutoTable.finalY + 10;
-  }
+    // Components Table
+    if (components.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        head: [["Component", "Description", "Consumption", "Cost"]],
+        body: components.map((c: any) => [
+          safe(c.item || c.name),
+          safe(c.description || c.desc),
+          safe(c.consumption || c.quantity),
+          formatINR(c.cost || 0),
+        ]),
+        theme: "grid",
+        headStyles: { fillColor: [75, 0, 130] },
+        styles: { fontSize: 9 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
 
-  // Components Section
-  if (components.length > 0) {
-    doc.setFontSize(13);
-    doc.setTextColor(75, 0, 130);
-    doc.text("COMPONENTS USED", 14, y);
-    y += 8;
+    // Upper Table
+    if (upper.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        head: [["Upper", "Description", "Consumption", "Cost"]],
+        body: upper.map((u: any) => [
+          safe(u.item),
+          safe(u.description),
+          safe(u.consumption),
+          formatINR(u.cost || 0),
+        ]),
+        theme: "grid",
+        headStyles: { fillColor: [139, 0, 0] }, // Dark red
+        styles: { fontSize: 9 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
 
-    autoTable(doc, {
-      startY: y,
-      head: [["Component", "Description", "Consumption"]],
-      body: components.map((c: any) => [
-        safe(c.name),
-        safe(c.desc || c.description),
-        safe(c.consumption),
-      ]),
-      theme: "grid",
-      headStyles: { fillColor: [75, 0, 130] },
-      styles: { fontSize: 9 },
-    });
+    // Packaging Table
+    if (packaging.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        head: [["Packaging", "Description", "Consumption", "Cost"]],
+        body: packaging.map((pkg: any) => [
+          safe(pkg.item),
+          safe(pkg.description),
+          safe(pkg.consumption),
+          formatINR(pkg.cost || 0),
+        ]),
+        theme: "grid",
+        headStyles: { fillColor: [0, 0, 139] }, // Dark blue
+        styles: { fontSize: 9 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
 
-    y = (doc as any).lastAutoTable.finalY + 10;
+    // Miscellaneous Table
+    if (miscellaneous.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        head: [["Miscellaneous", "Description", "Consumption", "Cost"]],
+        body: miscellaneous.map((misc: any) => [
+          safe(misc.item),
+          safe(misc.description),
+          safe(misc.consumption),
+          formatINR(misc.cost || 0),
+        ]),
+        theme: "grid",
+        headStyles: { fillColor: [128, 0, 128] }, // Purple
+        styles: { fontSize: 9 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // Labour Table
+    if (labour.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        head: [["Labour", "Description", "Rate", "Hours", "Cost"]],
+        body: labour.map((l: any) => [
+          safe(l.name),
+          safe(l.description),
+          formatINR(l.rate || 0),
+          safe(l.hours || 0),
+          formatINR(l.cost || 0),
+        ]),
+        theme: "grid",
+        headStyles: { fillColor: [165, 42, 42] }, // Brown
+        styles: { fontSize: 9 },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // Add Summary Section
+    const summary = p.costData?.summary;
+    if (summary) {
+      doc.setFontSize(13);
+      doc.setTextColor(40, 90, 160);
+      doc.text("COST SUMMARY", 14, y);
+      y += 8;
+
+      const summaryRows = [
+        ["Upper Total", formatINR(summary.upperTotal || 0)],
+        ["Component Total", formatINR(summary.componentTotal || 0)],
+        ["Material Total", formatINR(summary.materialTotal || 0)],
+        ["Packaging Total", formatINR(summary.packagingTotal || 0)],
+        ["Miscellaneous Total", formatINR(summary.miscTotal || 0)],
+        ["Labour Total", formatINR(summary.labourTotal || 0)],
+        ["", ""],
+        ["Total All Costs", formatINR(summary.totalAllCosts || 0)],
+        ["Additional Costs", formatINR(summary.additionalCosts || 0)],
+        ["Tentative Cost", formatINR(summary.tentativeCost || 0)],
+        ["Profit Amount", formatINR(summary.profitAmount || 0)],
+        ["Profit Margin", `${safe(summary.profitMargin || 0)}%`],
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        head: [["Item", "Amount"]],
+        body: summaryRows,
+        theme: "grid",
+        headStyles: { fillColor: [40, 90, 160] },
+        styles: { fontSize: 10 },
+        showFoot: "never",
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 15;
+    }
   }
 
   return y;
@@ -320,20 +432,132 @@ const renderClientFeedback = (doc: jsPDF, p: any, y: number) => {
 
   return y;
 };
+// src/utils/pdfGenerator.ts - Add new function
 
+/* ------------------------------------------------------
+   Section: Color Variants
+------------------------------------------------------ */
+const renderColorVariants = (doc: jsPDF, p: any, y: number) => {
+  const colorVariants = p.colorVariants || {};
+  const colorKeys = Object.keys(colorVariants);
+
+  if (colorKeys.length === 0) return y;
+
+  doc.setFontSize(16);
+  doc.setTextColor(128, 0, 128); // Purple for color variants
+  doc.text("COLOR VARIANTS ANALYSIS", 14, y);
+  y += 12;
+
+  // Render each color variant
+  colorKeys.forEach((colorName, index) => {
+    const variant = colorVariants[colorName];
+
+    // Color variant header
+    doc.setFontSize(14);
+    doc.setTextColor(40, 90, 160);
+    doc.text(`Color: ${colorName}`, 14, y);
+    y += 8;
+
+    // Render costing tables for this variant
+    if (variant.costing) {
+      const costing = variant.costing;
+
+      // Upper costs
+      if (costing.upper && costing.upper.length > 0) {
+        autoTable(doc, {
+          startY: y,
+          head: [["Upper Item", "Description", "Consumption", "Cost"]],
+          body: costing.upper.map((u: any) => [
+            safe(u.item),
+            safe(u.description),
+            safe(u.consumption),
+            formatINR(u.cost || 0),
+          ]),
+          theme: "grid",
+          headStyles: { fillColor: [139, 0, 0] },
+          styles: { fontSize: 9 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 10;
+      }
+
+      // Material costs
+      if (costing.material && costing.material.length > 0) {
+        autoTable(doc, {
+          startY: y,
+          head: [["Material", "Description", "Consumption", "Cost"]],
+          body: costing.material.map((m: any) => [
+            safe(m.item),
+            safe(m.description),
+            safe(m.consumption),
+            formatINR(m.cost || 0),
+          ]),
+          theme: "grid",
+          headStyles: { fillColor: [0, 100, 0] },
+          styles: { fontSize: 9 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 10;
+      }
+
+      // Component costs
+      if (costing.component && costing.component.length > 0) {
+        autoTable(doc, {
+          startY: y,
+          head: [["Component", "Description", "Consumption", "Cost"]],
+          body: costing.component.map((c: any) => [
+            safe(c.item),
+            safe(c.description),
+            safe(c.consumption),
+            formatINR(c.cost || 0),
+          ]),
+          theme: "grid",
+          headStyles: { fillColor: [75, 0, 130] },
+          styles: { fontSize: 9 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 10;
+      }
+
+      // Add page break if needed
+      if (y > doc.internal.pageSize.height - 50) {
+        doc.addPage();
+        y = 20;
+      }
+    }
+
+    // Add spacing between variants
+    if (index < colorKeys.length - 1) {
+      y += 10;
+      doc.setDrawColor(200, 200, 200);
+      doc.line(14, y, doc.internal.pageSize.width - 14, y);
+      y += 10;
+    }
+  });
+
+  return y;
+};
 /* ------------------------------------------------------
    TAB CONFIGURATION
 ------------------------------------------------------ */
 const TAB_LAYOUT = {
-  prototype: ["product_details", "images", "client_feedback"],
+  prototype: [
+    "product_details",
+    "images",
+    "client_feedback",
+    "materials_components",
+  ],
 
-  red_seal: ["product_details", "images", "client_feedback"],
+  red_seal: [
+    "product_details",
+    "images",
+    "client_feedback",
+    "materials_components",
+  ],
 
   green_seal: [
     "product_details",
     "images",
     "client_feedback",
     "materials_components",
+    "color_variants",
   ],
 
   po_pending: [
@@ -356,6 +580,8 @@ const TAB_LAYOUT = {
 /* ------------------------------------------------------
    SECTION MAP
 ------------------------------------------------------ */
+// src/utils/pdfGenerator.ts - Update SECTION_MAP
+
 const SECTION_MAP: Record<
   string,
   (doc: jsPDF, p: any, y: number) => Promise<number> | number
@@ -365,8 +591,8 @@ const SECTION_MAP: Record<
   client_feedback: renderClientFeedback,
   materials_components: renderMaterialsComponents,
   po_details: renderPODetails,
+  color_variants: renderColorVariants, // Add this
 };
-
 /* ------------------------------------------------------
    MAIN FUNCTION
 ------------------------------------------------------ */
@@ -382,6 +608,8 @@ export const generateProjectPDF = async ({
   colorVariants?: any;
 }) => {
   // Prepare the project data
+
+  console.log(costData, "ddsdsd");
   const p = {
     ...project,
     costData: costData || {
@@ -396,6 +624,7 @@ export const generateProjectPDF = async ({
       totalAmount: project.poValue,
       deliveryDate: project.redSealTargetDate,
     },
+    colorVariants: colorVariants || {},
   };
 
   const doc = new jsPDF("p", "mm", "a4");

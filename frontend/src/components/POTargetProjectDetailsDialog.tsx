@@ -559,11 +559,26 @@ export function POPendingProjectDetailsDialog(props: Props) {
 
       // Prepare PO details
       const poDetails = {
-        poNumber: (project as any)?.poNumber || project.poNumber || "",
+        poNumber:
+          (project as any)?.poNumber ||
+          project.poNumber ||
+          "" ||
+          project?.po?.poNumber,
         orderQuantity:
-          (project as any)?.orderQuantity || project.orderQuantity || 0,
-        unitPrice: (project as any)?.unitPrice || project.unitPrice || 0,
-        totalAmount: (project as any)?.poValue || project.poValue || 0,
+          (project as any)?.orderQuantity ||
+          project.orderQuantity ||
+          0 ||
+          project?.po?.orderQuantity,
+        unitPrice:
+          (project as any)?.unitPrice ||
+          project.unitPrice ||
+          0 ||
+          project?.po?.unitPrice,
+        totalAmount:
+          (project as any)?.poValue ||
+          project.poValue ||
+          0 ||
+          project?.po?.totalAmount,
         deliveryDate: project.redSealTargetDate || "",
         paymentTerms: "Standard 30 days",
       };
@@ -594,7 +609,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
           : null,
         sampleImages: (project.sampleImages || []).map(getFullImageUrl),
       };
-
+      console.log(pdfProject, "pdfProject");
       await generateProjectPDF({
         project: pdfProject,
         costData: pdfProject.costData,

@@ -280,14 +280,14 @@ export function ColorMaterialsDialog({
       }
 
       // Create default variant if none exist
-      if (Object.keys(variants).length === 0 && project.color) {
-        variants[project.color] = {
-          materials: getDefaultMaterials(),
-          components: getDefaultComponents(),
-          images: [],
-          costing: getEmptyCosting(),
-        };
-      }
+      // if (Object.keys(variants).length === 0 && project.color) {
+      //   variants[project.color] = {
+      //     materials: getDefaultMaterials(),
+      //     components: getDefaultComponents(),
+      //     images: [],
+      //     costing: getEmptyCosting(),
+      //   };
+      // }
 
       setColorVariantsData(variants);
       setPendingColorVariants({});
