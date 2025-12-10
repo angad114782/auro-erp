@@ -437,6 +437,9 @@ const renderClientFeedback = (doc: jsPDF, p: any, y: number) => {
 /* ------------------------------------------------------
    Section: Color Variants
 ------------------------------------------------------ */
+/* ------------------------------------------------------
+   Section: Color Variants
+------------------------------------------------------ */
 const renderColorVariants = (doc: jsPDF, p: any, y: number) => {
   const colorVariants = p.colorVariants || {};
   const colorKeys = Object.keys(colorVariants);
@@ -516,6 +519,29 @@ const renderColorVariants = (doc: jsPDF, p: any, y: number) => {
         y = (doc as any).lastAutoTable.finalY + 10;
       }
 
+      // Labour Table - FIXED HERE
+      if (
+        costing.labour &&
+        costing.labour.items &&
+        costing.labour.items.length > 0
+      ) {
+        autoTable(doc, {
+          startY: y,
+          head: [["Labour", "Description", "Rate", "Hours", "Cost"]],
+          body: costing.labour.items.map((l: any) => [
+            safe(l.name),
+            safe(l.description || ""),
+            formatINR(l.rate || 0),
+            safe(l.hours || 0),
+            formatINR(l.cost || 0),
+          ]),
+          theme: "grid",
+          headStyles: { fillColor: [165, 42, 42] }, // Brown
+          styles: { fontSize: 9 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 10;
+      }
+
       // Add page break if needed
       if (y > doc.internal.pageSize.height - 50) {
         doc.addPage();
@@ -565,6 +591,7 @@ const TAB_LAYOUT = {
     "images",
     "materials_components",
     "po_details",
+    "color_variants",
     "client_feedback",
   ],
 
@@ -573,6 +600,14 @@ const TAB_LAYOUT = {
     "images",
     "materials_components",
     "po_details",
+    "client_feedback",
+  ],
+  all_projects: [
+    "product_details",
+    "images",
+    "materials_components",
+    "po_details",
+    "color_variants",
     "client_feedback",
   ],
 };
@@ -607,9 +642,10 @@ export const generateProjectPDF = async ({
   activeTab: string;
   colorVariants?: any;
 }) => {
-  // Prepare the project data
-
-  console.log(costData, "ddsdsd");
+  const colorVariantsObj =
+    colorVariants instanceof Map
+      ? Object.fromEntries(colorVariants)
+      : colorVariants;
   const p = {
     ...project,
     costData: costData || {
@@ -624,7 +660,7 @@ export const generateProjectPDF = async ({
       totalAmount: project.poValue,
       deliveryDate: project.redSealTargetDate,
     },
-    colorVariants: colorVariants || {},
+    colorVariants: colorVariantsObj || {},
   };
 
   const doc = new jsPDF("p", "mm", "a4");
@@ -648,6 +684,8 @@ export const generateProjectPDF = async ({
     headerColor = [0, 128, 0]; // Green
   } else if (activeTab === "red_seal") {
     headerColor = [200, 50, 50]; // Red
+  } else if (activeTab === "all_projects") {
+    headerColor = [191, 84, 196];
   }
 
   doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
@@ -705,6 +743,7 @@ export const generateProjectPDF = async ({
     green_seal: "Green_Seal",
     red_seal: "Red_Seal",
     prototype: "Prototype",
+    all_projects: "All Projects",
   };
 
   const statusLabel = statusMap[activeTab] || "Report";

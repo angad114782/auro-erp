@@ -712,30 +712,10 @@ export function GreenSealProjectDetailsDialog(props: Props) {
         summary: summaryRes.data.hasCostData ? summaryRes.data.summary : null,
       };
 
-      // Prepare COLOR VARIANTS data from localColorVariants
-      const colorVariantsData: Record<string, any> = {};
-
-      // Collect cost data for each color variant from localColorVariants
-      for (const colorId of colorVariantTabs) {
-        const variant = localColorVariants.get(colorId);
-        if (variant?.costing) {
-          colorVariantsData[colorId] = {
-            color: colorId,
-            costing: {
-              upper: variant.costing.upper || [],
-              component: variant.costing.component || [],
-              material: variant.costing.material || [],
-              packaging: variant.costing.packaging || [],
-              misc: variant.costing.misc || [],
-              labour: variant.costing.labour || { directTotal: 0, items: [] },
-              summary: variant.costing.summary || getEmptySummary(),
-            },
-            materials: variant.materials || [],
-            components: variant.components || [],
-            images: variant.images || [],
-          };
-        }
-      }
+      const colorVariantsObj = {};
+      localColorVariants.forEach((value, key) => {
+        colorVariantsObj[key] = value;
+      });
 
       const pdfProject = {
         autoCode: project.autoCode,
@@ -762,13 +742,11 @@ export function GreenSealProjectDetailsDialog(props: Props) {
         costData: defaultCostData,
       };
 
-      const activeTab = project.status;
-
       await generateProjectPDF({
         project: pdfProject,
         costData: defaultCostData,
         activeTab: "green_seal",
-        colorVariants: colorVariantsData, // Pass actual color variant data
+        colorVariants: colorVariantsObj, // Pass actual color variant data
       });
 
       toast.success("PDF downloaded successfully!");
