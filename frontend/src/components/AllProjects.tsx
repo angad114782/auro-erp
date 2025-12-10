@@ -457,31 +457,51 @@ export default function ProjectListCard() {
       toast.error("Failed to generate PDF");
     }
   };
-  // Handle color variant save
+  // In your component, add:
+
+  // Update handleColorVariantsSave:
   const handleColorVariantsSave = useCallback(
     async (savedColorIds: string[]) => {
       try {
         if (!selectedProject?._id) return;
 
-        // In a real app, you would fetch updated project data
-        // For now, we'll just reload the projects
-        await loadProjects();
+        // Fetch the updated project data
+        const response = await fetch(
+          `${BACKEND_URL}/api/projects/${selectedProject._id}`
+        );
 
+        if (!response.ok) {
+          throw new Error("Failed to fetch updated project");
+        }
+
+        const updatedProject = await response.json();
+
+        console.log(updatedProject, "sdfsdsd");
+        // Update the selected project with new data
+        setSelectedProject(updatedProject?.data);
+
+        // Convert and update color variants
+        const variants = convertColorVariants(updatedProject);
+        setColorVariants(variants);
+        setLocalColorVariants(variants);
+
+        // Set active tab
         if (savedColorIds && savedColorIds.length > 0) {
           setActiveColorTab(savedColorIds[0]);
-        } else if (selectedProject.color) {
-          setActiveColorTab(selectedProject.color);
+        } else if (updatedProject.color) {
+          setActiveColorTab(updatedProject.color);
         }
 
         toast.success("Color variants saved successfully!");
       } catch (error) {
         console.error("Failed to refresh color variants:", error);
         toast.error("Failed to load updated color variants");
+      } finally {
+        console.log("saved ");
       }
     },
     [selectedProject, loadProjects]
   );
-
   const renderColorVariantSection = () => (
     <div className="space-y-4 md:space-y-6">
       {/* Color Variant Tabs Header */}
