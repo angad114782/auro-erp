@@ -1550,6 +1550,22 @@ export function TentativeCostDialog({
     [project, findItemSection]
   );
 
+  const loadSummary = useCallback(async () => {
+    if (!project) return;
+
+    try {
+      const response = await api.get(`/projects/${project._id}/costs`);
+      const summaryData = response.data.summary || response.data;
+
+      if (summaryData) {
+        setCostSummary(processSummaryData(summaryData));
+        setRealTimeSummary(null);
+      }
+    } catch (error) {
+      console.error("Failed to load summary:", error);
+    }
+  }, [project]);
+
   const openAddItemDialog = useCallback((category: string) => {
     setAddItemDialogs((prev) => ({ ...prev, [category]: true }));
     setDialogForms((prev) => ({
@@ -1655,47 +1671,46 @@ export function TentativeCostDialog({
 
     return true;
   };
-
   const updateLabourCost = useCallback(
     async (updates: Partial<LabourCost>) => {
       if (!project) return;
 
-      // Update UI instantly
-      setLabourCost((prev) => ({ ...prev, ...updates }));
+      // Update UI immediately & get fresh state snapshot
+      setLabourCost((prev) => {
+        const updated = { ...prev, ...updates };
 
-      // Build clean array to send to backend
-      const cleanItems = labourCost.items
-        .filter((i) => i.name.trim() || i.cost > 0)
-        .map((i) => ({
-          _id: i.isNew ? undefined : i._id,
-          name: i.name.trim(),
-          cost: Number(i.cost) || 0,
-        }));
+        const cleanItems = updated.items
+          .filter((i) => i.name.trim() || i.cost > 0)
+          .map((i) => ({
+            _id: i.isNew ? undefined : i._id,
+            name: i.name.trim(),
+            cost: Number(i.cost) || 0,
+          }));
 
-      try {
-        const res = await api.patch(`/projects/${project._id}/costs/labour`, {
-          directTotal: updates.directTotal ?? labourCost.directTotal,
-          items: cleanItems,
-        });
+        // Send correct data
+        api
+          .patch(`/projects/${project._id}/costs/labour`, {
+            directTotal: updated.directTotal,
+            items: cleanItems,
+          })
+          .then((res) => {
+            setLabourCost({
+              directTotal: res.data.labour.directTotal,
+              items: res.data.labour.items.map((it: any) => ({
+                _id: it._id,
+                name: it.name,
+                cost: it.cost,
+                isNew: false,
+              })),
+            });
+            loadSummary();
+          })
+          .catch(() => toast.error("Failed to update labour"));
 
-        // Replace UI items with saved IDs
-        setLabourCost({
-          directTotal: res.data.labour.directTotal,
-          items: res.data.labour.items.map((it: any) => ({
-            _id: it._id,
-            name: it.name,
-            cost: it.cost,
-            isNew: false,
-          })),
-        });
-
-        await loadSummary();
-      } catch (error) {
-        console.error("Failed to save labour:", error);
-        toast.error("Failed to save labour");
-      }
+        return updated;
+      });
     },
-    [project, labourCost]
+    [project, loadSummary]
   );
 
   const updateLabourItem = useCallback(
@@ -1817,22 +1832,6 @@ export function TentativeCostDialog({
     [realTimeSummary]
   );
 
-  const loadSummary = useCallback(async () => {
-    if (!project) return;
-
-    try {
-      const response = await api.get(`/projects/${project._id}/costs`);
-      const summaryData = response.data.summary || response.data;
-
-      if (summaryData) {
-        setCostSummary(processSummaryData(summaryData));
-        setRealTimeSummary(null);
-      }
-    } catch (error) {
-      console.error("Failed to load summary:", error);
-    }
-  }, [project]);
-
   const handleSaveSummary = useCallback(async () => {
     if (!project) return;
 
@@ -1868,15 +1867,14 @@ export function TentativeCostDialog({
       setIsLoading(false);
     }
   }, [project, costSummary]);
-
   const saveAllFilledDummyRows = useCallback(async () => {
     if (!project) return;
 
     const savePromises: Promise<any>[] = [];
 
-    /* ---------------------------------------------
-     * 1️⃣ SAVE COST ROWS (upper, component, etc.)
-     * --------------------------------------------- */
+    /* ---------------------------------------------------------
+     * 1️⃣ SAVE COST ROWS (upper, component, material, etc.)
+     * --------------------------------------------------------- */
     Object.entries(costRows).forEach(([category, items]) => {
       const dummyItemsToSave = items.filter(
         (item) =>
@@ -1896,7 +1894,7 @@ export function TentativeCostDialog({
             .then((response) => {
               const newId = response.data.row?._id;
 
-              // Update UI — convert dummy → real
+              // Update UI state safely
               setCostRows((prev) => ({
                 ...prev,
                 [category]: prev[category].map((i) =>
@@ -1915,49 +1913,58 @@ export function TentativeCostDialog({
       });
     });
 
-    /* ---------------------------------------------
-     * 2️⃣ SAVE LABOUR (ALL ITEMS IN ONE PATCH CALL)
-     * --------------------------------------------- */
-
-    const cleanLabourItems = labourCost.items
-      .filter((i) => i.name.trim() || i.cost > 0)
-      .map((i) => ({
-        _id: i.isNew ? undefined : i._id,
-        name: i.name.trim() || "Unnamed Labour",
-        cost: Number(i.cost) || 0,
-      }));
-
+    /* ---------------------------------------------------------
+     * 2️⃣ SAVE LABOUR — MUST USE FUNCTIONAL STATE (IMPORTANT)
+     * --------------------------------------------------------- */
     savePromises.push(
-      api
-        .patch(`/projects/${project._id}/costs/labour`, {
-          directTotal: labourCost.directTotal,
-          items: cleanLabourItems,
-        })
-        .then((res) => {
-          // Update UI with new IDs
-          setLabourCost({
-            directTotal: res.data.labour.directTotal,
-            items: res.data.labour.items.map((it: any) => ({
-              _id: it._id,
-              name: it.name,
-              cost: it.cost,
-              isNew: false,
-            })),
-          });
-        })
+      new Promise((resolve) => {
+        setLabourCost((prev) => {
+          // Build final cleaned labour array
+          const cleanItems = prev.items
+            .filter((i) => i.name.trim() || i.cost > 0) // remove empty
+            .map((i) => ({
+              _id: i.isNew ? undefined : i._id,
+              name: i.name.trim(),
+              cost: Number(i.cost) || 0,
+            }));
+
+          api
+            .patch(`/projects/${project._id}/costs/labour`, {
+              directTotal: prev.directTotal,
+              items: cleanItems,
+            })
+            .then((res) => {
+              const updated = res.data.labour;
+
+              // Replace UI with fresh backend data
+              setLabourCost({
+                directTotal: updated.directTotal,
+                items: updated.items.map((it: any) => ({
+                  _id: it._id,
+                  name: it.name,
+                  cost: it.cost,
+                  isNew: false,
+                })),
+              });
+
+              resolve(null);
+            })
+            .catch(() => {
+              toast.error("Failed to save labour");
+              resolve(null);
+            });
+
+          return prev; // return old state until server confirms new data
+        });
+      })
     );
 
-    /* ---------------------------------------------
-     * 3️⃣ EXECUTE SAVE
-     * --------------------------------------------- */
-
-    if (savePromises.length > 0) {
-      await Promise.all(savePromises);
-      toast.success(`Saved ${savePromises.length} items`);
-    } else {
-      toast.info("No new items to save");
-    }
-  }, [project, costRows, labourCost]);
+    /* ---------------------------------------------------------
+     * 3️⃣ EXECUTE ALL SAVES
+     * --------------------------------------------------------- */
+    await Promise.all(savePromises);
+    toast.success("All new items saved successfully!");
+  }, [project, costRows]);
 
   const handleApprove = useCallback(async () => {
     if (!project) return;

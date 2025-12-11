@@ -17,37 +17,39 @@ export async function patchLabour(req, res) {
     const { projectId } = req.params;
     const { directTotal, items } = req.body;
 
-    let labour = await LabourCost.findOne({ projectId });
-    if (!labour) {
-      labour = await LabourCost.create({
-        projectId,
-        directTotal: 0,
-        items: [],
-      });
-    }
+    let labour = await ensureLabour(projectId);
 
-    // Update total
+    // 1️⃣ Update total
     if (directTotal !== undefined) {
-      labour.directTotal = Number(directTotal) || 0;
+      labour.directTotal = Math.max(Number(directTotal) || 0, 0);
     }
 
-    // Update items
+    // 2️⃣ Update items smartly
     if (Array.isArray(items)) {
-      labour.items = items.map((it) => ({
-        _id: it._id || undefined,
-        name: it.name,
-        cost: Number(it.cost) || 0,
-      }));
+      const newItems = items.map((i) => {
+        if (i._id) {
+          return {
+            _id: i._id,
+            name: i.name.trim(),
+            cost: Math.max(Number(i.cost) || 0, 0),
+          };
+        }
+        return {
+          name: i.name.trim(),
+          cost: Math.max(Number(i.cost) || 0, 0),
+        };
+      });
+
+      labour.items = newItems;
     }
 
     await labour.save();
 
-    return res.json({ ok: true, labour });
-  } catch (err) {
-    console.error("LABOUR PATCH FAILED", err);
-    return res.status(400).json({
-      ok: false,
-      message: err.message || "Failed to save labour data",
-    });
+    const summary = await recomputeSummary(projectId);
+
+    return ok(res, { labour, summary });
+  } catch (e) {
+    console.error("LABOUR UPDATE ERROR:", e);
+    return fail(res, e.message, 400);
   }
 }
