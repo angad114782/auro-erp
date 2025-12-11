@@ -17,78 +17,83 @@ const sumByProject = async (Model, projectId) => {
   return Number(total) || 0;
 };
 
+/** ✅ ATOMIC UPSERT — SAFE */
 export async function ensureSummary(projectId) {
-  const existing = await CostSummary.findOne({ projectId });
-  if (existing) return existing;
-  return CostSummary.create({ projectId });
+  return CostSummary.findOneAndUpdate(
+    { projectId },
+    {}, // no updates, just ensure document exists
+    { upsert: true, new: true }
+  );
 }
 
 export async function ensureLabour(projectId) {
-  const existing = await LabourCost.findOne({ projectId });
-  if (existing) return existing;
-  return LabourCost.create({ projectId, directTotal: 0, items: [] });
+  return LabourCost.findOneAndUpdate(
+    { projectId },
+    { $setOnInsert: { directTotal: 0, items: [] } },
+    { upsert: true, new: true }
+  );
 }
 
-/** Recalculate & persist summary for a project. Returns fresh summary doc. */
+/**
+ * ✅ Recompute summary safely with atomic updates
+ * NEVER uses create() or save() → no race conditions.
+ */
 export async function recomputeSummary(projectId) {
-  // section totals
-  const [upperTotal, componentTotal, materialTotal, packagingTotal, miscTotal] =
-    await Promise.all([
-      sumByProject(UpperCostRow, projectId),
-      sumByProject(ComponentCostRow, projectId),
-      sumByProject(MaterialCostRow, projectId),
-      sumByProject(PackagingCostRow, projectId),
-      sumByProject(MiscCostRow, projectId),
-    ]);
+  const [upper, component, material, packaging, misc] = await Promise.all([
+    sumByProject(UpperCostRow, projectId),
+    sumByProject(ComponentCostRow, projectId),
+    sumByProject(MaterialCostRow, projectId),
+    sumByProject(PackagingCostRow, projectId),
+    sumByProject(MiscCostRow, projectId),
+  ]);
 
   const labour = await ensureLabour(projectId);
   const labourTotal = Number(labour.directTotal) || 0;
 
-  // Check if ALL costs are zero AND labour has no items
-  const hasNoCostData =
-    upperTotal === 0 &&
-    componentTotal === 0 &&
-    materialTotal === 0 &&
-    packagingTotal === 0 &&
-    miscTotal === 0 &&
+  const hasNoCost =
+    upper === 0 &&
+    component === 0 &&
+    material === 0 &&
+    packaging === 0 &&
+    misc === 0 &&
     labourTotal === 0 &&
     (!labour.items || labour.items.length === 0);
 
-  // If no data exists, delete the summary to indicate no cost data
-  if (hasNoCostData) {
+  // Delete summary if no data
+  if (hasNoCost) {
     await CostSummary.deleteOne({ projectId });
     return null;
   }
 
+  // Make sure summary exists
   const summary = await ensureSummary(projectId);
-
-  const totalAllCosts =
-    upperTotal +
-    componentTotal +
-    materialTotal +
-    packagingTotal +
-    miscTotal +
-    labourTotal;
 
   const additionalCosts = Number(summary.additionalCosts) || 0;
   const profitMargin = Number(summary.profitMargin) || 0;
 
-  const subtotalBeforeProfit = totalAllCosts + additionalCosts;
-  const profitAmount = Math.round((subtotalBeforeProfit * profitMargin) / 100);
-  const tentativeCost = subtotalBeforeProfit + profitAmount;
+  const totalAllCosts =
+    upper + component + material + packaging + misc + labourTotal;
 
-  summary.set({
-    upperTotal,
-    componentTotal,
-    materialTotal,
-    packagingTotal,
-    miscTotal,
-    labourTotal,
-    totalAllCosts,
-    profitAmount,
-    tentativeCost,
-  });
+  const subtotal = totalAllCosts + additionalCosts;
+  const profitAmount = Math.round((subtotal * profitMargin) / 100);
+  const tentativeCost = subtotal + profitAmount;
 
-  await summary.save();
-  return summary;
+  // Atomic update for computed fields
+  return CostSummary.findOneAndUpdate(
+    { projectId },
+    {
+      $set: {
+        upperTotal: upper,
+        componentTotal: component,
+        materialTotal: material,
+        packagingTotal: packaging,
+        miscTotal: misc,
+        labourTotal,
+        totalAllCosts,
+        profitAmount,
+        tentativeCost,
+      },
+    },
+    { new: true }
+  );
 }

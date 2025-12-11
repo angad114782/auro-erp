@@ -17,6 +17,7 @@ import { AuthProvider, useAuth } from "./lib/AuthContext";
 import { ERPProvider, useERP } from "./lib/stores/erpContext";
 import { Menu } from "lucide-react";
 import { Button } from "./components/ui/button";
+import ProjectListCard from "./components/AllProjects";
 
 // Main App Content (protected routes)
 function AppContent(): React.JSX.Element {
@@ -75,8 +76,11 @@ function AppContent(): React.JSX.Element {
     switch (currentModule) {
       case "dashboard":
         return <Dashboard onNavigate={handleModuleChange} />;
-      case "master-data":
-        return <MasterDataManagement currentSubModule={currentSubModule} />;
+      case "all-projects":
+        return <ProjectListCard />;
+
+      // case "master-data":
+      //   return <MasterDataManagement currentSubModule={currentSubModule} />;
       case "rd-management":
         return <RDManagement />;
       case "production":

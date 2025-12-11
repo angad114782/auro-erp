@@ -73,6 +73,7 @@ export function FigmaSidebar({
     "delivery",
   ]);
   const { hasPermission } = useAuth();
+  console.log("Can access all-projects?", hasPermission("all-projects"));
 
   const handleCollapseToggle = (collapsed: boolean): void => {
     setIsCollapsed(collapsed);
@@ -115,10 +116,16 @@ export function FigmaSidebar({
       icon: <LayoutDashboard className="w-5 h-5" />,
       description: "Overview and analytics",
     },
+    // {
+    //   id: "master-data",
+    //   name: "Master Data Management",
+    //   icon: <Database className="w-5 h-5" />,
+    //   description: "Standardize reference data",
+    // },
     {
-      id: "master-data",
-      name: "Master Data Management",
-      icon: <Database className="w-5 h-5" />,
+      id: "all-projects",
+      name: "All Projects",
+      icon: <MonitorPlay className="w-4 h-4" />,
       description: "Standardize reference data",
     },
     {
@@ -132,11 +139,7 @@ export function FigmaSidebar({
           name: "R&D Dashboard",
           icon: <LayoutDashboard className="w-4 h-4" />,
         },
-        {
-          id: "all-projects",
-          name: "All Projects",
-          icon: <MonitorPlay className="w-4 h-4" />,
-        },
+
         {
           id: "project",
           name: "Project",

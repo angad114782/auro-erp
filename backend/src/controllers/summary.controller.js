@@ -7,7 +7,6 @@ export async function getSummary(req, res) {
   try {
     const { projectId } = req.params;
 
-    // Check if any cost data exists first
     const {
       UpperCostRow,
       ComponentCostRow,
@@ -17,15 +16,7 @@ export async function getSummary(req, res) {
     } = await import("../models/costRow.model.js");
     const { LabourCost } = await import("../models/labourCost.model.js");
 
-    // Count all cost rows
-    const [
-      upperCount,
-      componentCount,
-      materialCount,
-      packagingCount,
-      miscCount,
-      labour,
-    ] = await Promise.all([
+    const [upper, comp, mat, pack, misc, labourDoc] = await Promise.all([
       UpperCostRow.countDocuments({ projectId }),
       ComponentCostRow.countDocuments({ projectId }),
       MaterialCostRow.countDocuments({ projectId }),
@@ -34,93 +25,101 @@ export async function getSummary(req, res) {
       LabourCost.findOne({ projectId }),
     ]);
 
-    const hasLabourItems = labour && labour.items && labour.items.length > 0;
-    const hasAnyCostData =
-      upperCount > 0 ||
-      componentCount > 0 ||
-      materialCount > 0 ||
-      packagingCount > 0 ||
-      miscCount > 0 ||
-      hasLabourItems;
+    const hasData =
+      upper > 0 ||
+      comp > 0 ||
+      mat > 0 ||
+      pack > 0 ||
+      misc > 0 ||
+      (labourDoc && labourDoc.items.length > 0);
 
-    if (!hasAnyCostData) {
-      // No cost data exists - return empty summary
+    if (!hasData) {
       return ok(res, {
         summary: null,
         hasCostData: false,
-        message: "No cost data available",
+        message: "No cost data yet",
       });
     }
 
-    // Recompute summary
     const summary = await recomputeSummary(projectId);
 
-    return ok(res, {
-      summary,
-      hasCostData: true,
-    });
+    return ok(res, { summary, hasCostData: true });
   } catch (e) {
-    return fail(res, e.message, 400);
+    return fail(res, e.message);
   }
 }
 
+/** ✅ ATOMIC UPSERT PATCH — NO RACE CONDITION */
 export async function patchSummary(req, res) {
   try {
     const { projectId } = req.params;
-    const { additionalCosts, profitMargin, remarks } = req.body;
 
-    const summary = await ensureSummary(projectId);
+    const update = {};
+    if (req.body.additionalCosts !== undefined)
+      update.additionalCosts = Math.max(Number(req.body.additionalCosts), 0);
 
-    if (additionalCosts !== undefined)
-      summary.additionalCosts = Math.max(Number(additionalCosts) || 0, 0);
-    if (profitMargin !== undefined)
-      summary.profitMargin = Math.min(
-        Math.max(Number(profitMargin) || 0, 0),
+    if (req.body.profitMargin !== undefined)
+      update.profitMargin = Math.min(
+        Math.max(Number(req.body.profitMargin), 0),
         100
       );
-    if (remarks !== undefined) summary.remarks = String(remarks);
 
-    await summary.save();
+    if (req.body.remarks !== undefined)
+      update.remarks = String(req.body.remarks);
+
+    // atomic update, ensures doc exists
+    await CostSummary.findOneAndUpdate(
+      { projectId },
+      { $set: update },
+      { upsert: true }
+    );
+
     const fresh = await recomputeSummary(projectId);
     return ok(res, { summary: fresh });
   } catch (e) {
-    return fail(res, e.message, 400);
+    return fail(res, e.message);
   }
 }
 
+/** ✅ FIXED — NO save(), uses atomic update */
 export async function approveSummary(req, res) {
   try {
     const { projectId } = req.params;
-    const userId = req.user?._id; // optional if you have auth
+    const userId = req.user?._id;
+
     const summary = await recomputeSummary(projectId);
+    if (!summary) return fail(res, "No cost data to approve", 400);
 
-    // Check if summary exists (might be null if no data)
-    if (!summary) {
-      return fail(res, "Cannot approve: No cost data exists", 400);
-    }
+    if ((summary.tentativeCost || 0) <= 0)
+      return fail(res, "Tentative cost must be > 0", 400);
 
-    if ((summary.tentativeCost || 0) <= 0) {
-      return fail(res, "Tentative cost must be greater than 0");
-    }
+    const approved = await CostSummary.findOneAndUpdate(
+      { projectId },
+      {
+        $set: {
+          status: "ready_for_red_seal",
+          approvedAt: new Date(),
+          ...(mongoose.isValidObjectId(userId) && { approvedBy: userId }),
+        },
+      },
+      { new: true }
+    );
 
-    summary.status = "ready_for_red_seal";
-    summary.approvedAt = new Date();
-    if (mongoose.isValidObjectId(userId)) summary.approvedBy = userId;
-    await summary.save();
-
-    // (Optional) mirror status on Project if field exists
+    // Optionally update Project status
     try {
-      const { default: mongoosePkg } = await import("mongoose");
-      const Project = mongoosePkg.models.Project;
+      const Project = mongoose.models.Project;
       if (Project) {
-        await Project.findByIdAndUpdate(projectId, {
-          status: "red_seal",
-        }).catch(() => {});
+        Project.findByIdAndUpdate(projectId, { status: "red_seal" }).catch(
+          () => {}
+        );
       }
     } catch {}
 
-    return ok(res, { summary, message: "Approved & advanced to Red Seal" });
+    return ok(res, {
+      summary: approved,
+      message: "Approved & moved to Red Seal",
+    });
   } catch (e) {
-    return fail(res, e.message, 400);
+    return fail(res, e.message);
   }
 }

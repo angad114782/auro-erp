@@ -42,6 +42,7 @@ interface AuthContextType extends AuthState {
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   SuperAdmin: [
     "dashboard",
+    "all-projects",
     "master-data",
     "rd-management",
     "production",
@@ -54,6 +55,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   Admin: [
     "dashboard",
+    "all-projects",
     "master-data",
     "rd-management",
     "production",
