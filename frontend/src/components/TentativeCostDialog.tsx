@@ -15,7 +15,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, JSX } from "react";
 import { toast } from "sonner";
 import { useRedirect } from "../hooks/useRedirect";
 import api from "../lib/api";
@@ -1660,48 +1660,39 @@ export function TentativeCostDialog({
     async (updates: Partial<LabourCost>) => {
       if (!project) return;
 
+      // Update UI instantly
+      setLabourCost((prev) => ({ ...prev, ...updates }));
+
+      // Build clean array to send to backend
+      const cleanItems = labourCost.items
+        .filter((i) => i.name.trim() || i.cost > 0)
+        .map((i) => ({
+          _id: i.isNew ? undefined : i._id,
+          name: i.name.trim(),
+          cost: Number(i.cost) || 0,
+        }));
+
       try {
-        // Update locally first for immediate UI response
-        setLabourCost((prev) => ({ ...prev, ...updates }));
+        const res = await api.patch(`/projects/${project._id}/costs/labour`, {
+          directTotal: updates.directTotal ?? labourCost.directTotal,
+          items: cleanItems,
+        });
 
-        // Update cost summary with new labour total
-        if (updates.directTotal !== undefined) {
-          setCostSummary((prev) => {
-            const totalAllCosts =
-              prev.upperTotal +
-              prev.componentTotal +
-              prev.materialTotal +
-              prev.packagingTotal +
-              prev.miscTotal +
-              updates.directTotal!;
+        // Replace UI items with saved IDs
+        setLabourCost({
+          directTotal: res.data.labour.directTotal,
+          items: res.data.labour.items.map((it: any) => ({
+            _id: it._id,
+            name: it.name,
+            cost: it.cost,
+            isNew: false,
+          })),
+        });
 
-            const subtotalBeforeProfit = totalAllCosts + prev.additionalCosts;
-            const profitAmount = Math.round(
-              (subtotalBeforeProfit * (Number(prev.profitMargin) || 25)) / 100
-            );
-            const tentativeCost = subtotalBeforeProfit + profitAmount;
-
-            return {
-              ...prev,
-              labourTotal: updates.directTotal!,
-              totalAllCosts,
-              profitAmount,
-              tentativeCost,
-            };
-          });
-        }
-
-        // Then save to backend (only for non-dummy data)
-        const itemsToSave = labourCost.items.filter((item) => !item.isNew);
-        if (itemsToSave.length > 0 || updates.directTotal !== undefined) {
-          await api.patch(`/projects/${project._id}/costs/labour`, {
-            directTotal: updates.directTotal || labourCost.directTotal,
-            items: itemsToSave,
-          });
-        }
+        await loadSummary();
       } catch (error) {
-        console.error("Failed to update labour cost:", error);
-        toast.error("Failed to update labour cost");
+        console.error("Failed to save labour:", error);
+        toast.error("Failed to save labour");
       }
     },
     [project, labourCost]
@@ -1883,7 +1874,9 @@ export function TentativeCostDialog({
 
     const savePromises: Promise<any>[] = [];
 
-    // Save cost rows
+    /* ---------------------------------------------
+     * 1️⃣ SAVE COST ROWS (upper, component, etc.)
+     * --------------------------------------------- */
     Object.entries(costRows).forEach(([category, items]) => {
       const dummyItemsToSave = items.filter(
         (item) =>
@@ -1901,16 +1894,18 @@ export function TentativeCostDialog({
               cost: Number(item.cost) || 0,
             })
             .then((response) => {
-              // Update the item with the saved ID and remove isNew flag
+              const newId = response.data.row?._id;
+
+              // Update UI — convert dummy → real
               setCostRows((prev) => ({
                 ...prev,
                 [category]: prev[category].map((i) =>
                   i._id === item._id
                     ? {
                         ...i,
-                        _id: response.data.row?._id || i._id,
+                        _id: newId,
                         isNew: false,
-                        item: item.item.trim() || "Unnamed Item",
+                        item: item.item.trim(),
                       }
                     : i
                 ),
@@ -1920,44 +1915,41 @@ export function TentativeCostDialog({
       });
     });
 
-    // Save labour dummy items
-    const labourDummyItemsToSave = labourCost.items.filter(
-      (item) => item.isNew && (item.name.trim() || item.cost > 0)
+    /* ---------------------------------------------
+     * 2️⃣ SAVE LABOUR (ALL ITEMS IN ONE PATCH CALL)
+     * --------------------------------------------- */
+
+    const cleanLabourItems = labourCost.items
+      .filter((i) => i.name.trim() || i.cost > 0)
+      .map((i) => ({
+        _id: i.isNew ? undefined : i._id,
+        name: i.name.trim() || "Unnamed Labour",
+        cost: Number(i.cost) || 0,
+      }));
+
+    savePromises.push(
+      api
+        .patch(`/projects/${project._id}/costs/labour`, {
+          directTotal: labourCost.directTotal,
+          items: cleanLabourItems,
+        })
+        .then((res) => {
+          // Update UI with new IDs
+          setLabourCost({
+            directTotal: res.data.labour.directTotal,
+            items: res.data.labour.items.map((it: any) => ({
+              _id: it._id,
+              name: it.name,
+              cost: it.cost,
+              isNew: false,
+            })),
+          });
+        })
     );
 
-    if (labourDummyItemsToSave.length > 0) {
-      labourDummyItemsToSave.forEach((item) => {
-        savePromises.push(
-          api
-            .patch(`/projects/${project._id}/costs/labour`, {
-              items: [
-                {
-                  name: item.name.trim() || "Unnamed Labour",
-                  cost: Number(item.cost) || 0,
-                },
-              ],
-            })
-            .then(() => {
-              // Update labour item to remove isNew flag
-              setLabourCost((prev) => ({
-                ...prev,
-                items: prev.items.map((i) =>
-                  i._id === item._id ? { ...i, isNew: false } : i
-                ),
-              }));
-            })
-        );
-      });
-    }
-
-    // Save labour direct total if changed
-    if (labourCost.directTotal > 0) {
-      savePromises.push(
-        api.patch(`/projects/${project._id}/costs/labour`, {
-          directTotal: labourCost.directTotal,
-        })
-      );
-    }
+    /* ---------------------------------------------
+     * 3️⃣ EXECUTE SAVE
+     * --------------------------------------------- */
 
     if (savePromises.length > 0) {
       await Promise.all(savePromises);

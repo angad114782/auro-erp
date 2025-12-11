@@ -16,15 +16,38 @@ export async function patchLabour(req, res) {
   try {
     const { projectId } = req.params;
     const { directTotal, items } = req.body;
-    const labour = await ensureLabour(projectId);
 
-    if (directTotal !== undefined) labour.directTotal = Math.max(Number(directTotal) || 0, 0);
-    if (Array.isArray(items)) labour.items = items.map((i) => ({ name: i.name, cost: Math.max(Number(i.cost)||0, 0) }));
+    let labour = await LabourCost.findOne({ projectId });
+    if (!labour) {
+      labour = await LabourCost.create({
+        projectId,
+        directTotal: 0,
+        items: [],
+      });
+    }
+
+    // Update total
+    if (directTotal !== undefined) {
+      labour.directTotal = Number(directTotal) || 0;
+    }
+
+    // Update items
+    if (Array.isArray(items)) {
+      labour.items = items.map((it) => ({
+        _id: it._id || undefined,
+        name: it.name,
+        cost: Number(it.cost) || 0,
+      }));
+    }
 
     await labour.save();
-    const summary = await recomputeSummary(projectId);
-    return ok(res, { labour, summary });
-  } catch (e) {
-    return fail(res, e.message, 400);
+
+    return res.json({ ok: true, labour });
+  } catch (err) {
+    console.error("LABOUR PATCH FAILED", err);
+    return res.status(400).json({
+      ok: false,
+      message: err.message || "Failed to save labour data",
+    });
   }
 }
