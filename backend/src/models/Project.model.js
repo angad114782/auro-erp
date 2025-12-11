@@ -52,7 +52,7 @@ const statusHistorySchema = new mongoose.Schema(
 const nextUpdateSchema = new mongoose.Schema(
   {
     date: { type: Date, required: true },
-    note: { type: String, default: "" }, // NOTE: only next-update carries note
+    note: { type: String, default: "" },
     by: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     at: { type: Date, default: Date.now },
   },
@@ -84,7 +84,6 @@ const colorVariantSchema = new mongoose.Schema(
     components: [colorVariantItemSchema],
     images: [String],
 
-    // NEW COST SECTIONS
     costing: {
       upper: [costRowSchema],
       material: [costRowSchema],
@@ -104,7 +103,7 @@ const colorVariantSchema = new mongoose.Schema(
   { _id: false }
 );
 
-/** ---------- Main Project schema ---------- **/
+/** ---------- Main Project Schema ---------- **/
 
 const projectSchema = new mongoose.Schema(
   {
@@ -138,13 +137,12 @@ const projectSchema = new mongoose.Schema(
       default: null,
     },
 
-    color: { type: String, required: true, trim: true }, // default/base color name
+    color: { type: String, required: true, trim: true },
     artName: { type: String, default: "" },
     size: { type: String, default: "" },
     gender: { type: String, default: "" },
     priority: { type: String, default: "normal" },
 
-    // canonical status string (validated in service)
     status: { type: String, default: "prototype", index: true },
 
     productDesc: { type: String, default: "" },
@@ -153,19 +151,14 @@ const projectSchema = new mongoose.Schema(
     coverImage: { type: String, default: "" },
     sampleImages: { type: [String], default: [] },
 
-    // business fields
     clientFinalCost: { type: Number, default: null, min: 0 },
-    clientApproval: { type: String, default: "pending" }, // normalized in service
+    clientApproval: { type: String, default: "pending" },
 
-    // only next-update holds a note
     nextUpdate: { type: nextUpdateSchema, default: null },
 
-    // histories
     statusHistory: { type: [statusHistorySchema], default: [] },
     clientCostHistory: { type: [clientCostHistorySchema], default: [] },
-    // po: { type: poDetailsSchema, default: null },
 
-    // Color variants map: key = colorId (e.g., "c_black"), value = sub doc
     colorVariants: {
       type: Map,
       of: colorVariantSchema,
@@ -177,4 +170,9 @@ const projectSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/** ---------- FIXED INDEXES ---------- **/
+projectSchema.index({ autoCode: "text", artName: "text" });
+projectSchema.index({ company: 1, brand: 1, category: 1, status: 1 });
+
+/** ---------- Export Model ---------- **/
 export const Project = mongoose.model("Project", projectSchema);

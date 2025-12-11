@@ -1,5 +1,5 @@
 // ProjectDevelopment.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Calendar,
   Clock,
@@ -10,20 +10,20 @@ import {
   Search,
   Target,
   Trash2,
-  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { CreateProjectDialog } from "./CreateProjectDialog";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
-import ProjectDetailsDialog from "./ProjectDetailsDialog";
-import { useProjects } from "../hooks/useProjects";
 import { useMasters } from "../hooks/useMaster";
 import { Badge } from "./ui/badge";
+import { useProjectQuery } from "./NewHooks/useProjectQuery";
+import { useDebounce } from "./NewHooks/useDebounce";
+import { useProjects } from "../hooks/useProjects";
+import ProjectDetailsDialog from "./ProjectDetailsDialog";
 
 export default function ProjectDevelopment() {
-  // hooks
   const {
     companies,
     brands,
@@ -31,7 +31,6 @@ export default function ProjectDevelopment() {
     types,
     countries,
     assignPersons,
-    loading,
     loadAllMasters,
     loadBrandsByCompany,
     loadCategoriesByBrand,
@@ -39,15 +38,6 @@ export default function ProjectDevelopment() {
     setCategories,
   } = useMasters();
 
-  const {
-    projects,
-    loading: projectsLoading,
-    loadProjects,
-    createProject,
-    deleteProject,
-  } = useProjects();
-
-  // UI / local
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(8);
@@ -55,8 +45,31 @@ export default function ProjectDevelopment() {
   const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const { deleteProject } = useProjects();
 
   const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "";
+
+  const debouncedSearch = useDebounce(
+    (value: string) => {
+      setDebouncedSearchTerm(value);
+      setCurrentPage(1); // Reset to first page when search changes
+    },
+    300 // 300ms delay
+  );
+  // Use the new query hook with prototype status
+  const {
+    data: projects,
+    total,
+    pages,
+    loading: projectsLoading,
+    reload,
+  } = useProjectQuery({
+    status: "prototype",
+    search: debouncedSearchTerm,
+    page: currentPage,
+    limit: itemsPerPage,
+  });
 
   // Check screen size on mount and resize
   useEffect(() => {
@@ -77,39 +90,10 @@ export default function ProjectDevelopment() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // load on mount
+  // load masters on mount
   useEffect(() => {
     loadAllMasters();
-    loadProjects();
-  }, []);
-
-  // filtering & pagination
-  const filteredProjects = useMemo(() => {
-    if (!searchTerm) return projects;
-    const q = searchTerm.toLowerCase();
-    return projects.filter((p: any) => {
-      const code = p.autoCode?.toLowerCase() ?? "";
-      const art = p.artName?.toLowerCase() ?? "";
-      const company = p.company?.name?.toLowerCase() ?? "";
-      const brand = p.brand?.name?.toLowerCase() ?? "";
-      const cat = p.category?.name?.toLowerCase() ?? "";
-      return (
-        code.includes(q) ||
-        art.includes(q) ||
-        company.includes(q) ||
-        brand.includes(q) ||
-        cat.includes(q)
-      );
-    });
-  }, [projects, searchTerm]);
-
-  const getPaginatedProjects = (list: any[]) => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return list.slice(startIndex, startIndex + itemsPerPage);
-  };
-
-  const getTotalPages = (totalItems: number) =>
-    Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  }, [loadAllMasters]);
 
   // helpers
   const calculateDuration = (start?: string, target?: string) => {
@@ -148,6 +132,14 @@ export default function ProjectDevelopment() {
       colors[(priority || "").toLowerCase()] || "bg-gray-100 text-gray-800"
     );
   };
+  const handleSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setSearchTerm(value);
+      debouncedSearch(value);
+    },
+    [debouncedSearch]
+  );
 
   // actions
   const handleProjectClick = (project: any) => {
@@ -158,7 +150,9 @@ export default function ProjectDevelopment() {
   const handleDeleteProject = async (project: any) => {
     if (!project?._id) return;
     try {
+      // You'll need to implement deleteProject in your API service
       await deleteProject(project._id);
+      await reload();
       toast.success("Project removed");
     } catch (err: any) {
       console.error("Project remove failed", err);
@@ -166,9 +160,138 @@ export default function ProjectDevelopment() {
     }
   };
 
-  // filter for development (example)
-  const developmentProjects = filteredProjects.filter(
-    (project: any) => project.status === "prototype"
+  // Loading skeleton for table
+  const TableSkeleton = () => (
+    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Product Code
+            </th>
+            <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Image
+            </th>
+            <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Company & Brand
+            </th>
+            <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Category & Type
+            </th>
+            <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Art & Colour
+            </th>
+            <th className="hidden xl:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Country
+            </th>
+            <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Timeline
+            </th>
+            <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Status
+            </th>
+            <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Priority
+            </th>
+            <th className="hidden xl:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...Array(6)].map((_, i) => (
+            <tr key={i} className="animate-pulse">
+              <td className="px-4 md:px-6 py-4">
+                <div className="flex items-center">
+                  <div className="w-8 h-8 bg-gray-200 rounded-full mr-3"></div>
+                  <div className="h-4 bg-gray-200 rounded w-24"></div>
+                </div>
+              </td>
+              <td className="px-4 md:px-6 py-4">
+                <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
+              </td>
+              <td className="px-4 md:px-6 py-4">
+                <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-24"></div>
+              </td>
+              <td className="hidden lg:table-cell px-6 py-4">
+                <div className="h-4 bg-gray-200 rounded w-28 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-20"></div>
+              </td>
+              <td className="px-4 md:px-6 py-4">
+                <div className="h-4 bg-gray-200 rounded w-28 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-20"></div>
+              </td>
+              <td className="hidden xl:table-cell px-6 py-4">
+                <div className="h-4 bg-gray-200 rounded w-20"></div>
+              </td>
+              <td className="px-4 md:px-6 py-4">
+                <div className="h-3 bg-gray-200 rounded w-24 mb-1"></div>
+                <div className="h-3 bg-gray-200 rounded w-20"></div>
+              </td>
+              <td className="px-4 md:px-6 py-4">
+                <div className="h-6 bg-gray-200 rounded w-16"></div>
+              </td>
+              <td className="px-4 md:px-6 py-4">
+                <div className="h-6 bg-gray-200 rounded w-12"></div>
+              </td>
+              <td className="hidden xl:table-cell px-6 py-4">
+                <div className="h-8 bg-gray-200 rounded w-8"></div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  // Loading skeleton for mobile cards
+  const MobileSkeleton = () => (
+    <div className="space-y-4">
+      {[...Array(4)].map((_, i) => (
+        <div
+          key={i}
+          className="border border-gray-200 rounded-lg p-4 bg-white animate-pulse"
+        >
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-start">
+              <div className="w-8 h-8 bg-gray-200 rounded-full mr-3"></div>
+              <div>
+                <div className="h-4 bg-gray-200 rounded w-24 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-20 mb-2"></div>
+                <div className="flex gap-2">
+                  <div className="h-5 bg-gray-200 rounded w-12"></div>
+                  <div className="h-5 bg-gray-200 rounded w-10"></div>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col items-end">
+              <div className="w-7 h-7 bg-gray-200 rounded mb-2"></div>
+              <div className="w-10 h-10 bg-gray-200 rounded"></div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            {[...Array(4)].map((_, j) => (
+              <div key={j}>
+                <div className="h-3 bg-gray-200 rounded w-16 mb-1"></div>
+                <div className="h-4 bg-gray-200 rounded w-20 mb-1"></div>
+                <div className="h-3 bg-gray-200 rounded w-14"></div>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-gray-200 pt-3">
+            <div className="space-y-2">
+              {[...Array(3)].map((_, k) => (
+                <div key={k} className="flex justify-between">
+                  <div className="h-3 bg-gray-200 rounded w-12"></div>
+                  <div className="h-3 bg-gray-200 rounded w-16"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 
   return (
@@ -208,12 +331,9 @@ export default function ProjectDevelopment() {
             <div className="relative w-full sm:flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Search development projects..."
+                placeholder="Search projects..."
                 value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={handleSearchChange}
                 className="pl-10 w-full"
               />
             </div>
@@ -222,427 +342,444 @@ export default function ProjectDevelopment() {
               <span className="hidden sm:inline">Filters</span>
             </Button>
           </div>
-          {/* Mobile Cards View */}
-          {isMobile ? (
-            <div className="space-y-4">
-              {getPaginatedProjects(developmentProjects).map(
-                (project: any, index) => (
-                  <div
-                    key={project._id}
-                    className="border border-gray-200 rounded-lg p-4 bg-white hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleProjectClick(project)}
-                  >
-                    {/* Header with serial number and basic info */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-start">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-3 shrink-0">
-                          {String(index + 1).padStart(2, "0")}
+
+          {/* Loading State */}
+          {projectsLoading ? (
+            isMobile ? (
+              <MobileSkeleton />
+            ) : (
+              <TableSkeleton />
+            )
+          ) : (
+            <>
+              {/* Mobile Cards View */}
+              {isMobile ? (
+                <div className="space-y-4">
+                  {projects.map((project: any, index) => (
+                    <div
+                      key={project._id}
+                      className="border border-gray-200 rounded-lg p-4 bg-white hover:bg-gray-50 cursor-pointer"
+                      onClick={() => handleProjectClick(project)}
+                    >
+                      {/* Header with serial number and basic info */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-start">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-3 shrink-0">
+                            {String(
+                              (currentPage - 1) * itemsPerPage + index + 1
+                            )
+                              .toString()
+                              .padStart(2, "0")}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {project.autoCode}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {project?.company?.name || ""}
+                            </div>
+                            <div className="flex items-center gap-1 mt-1">
+                              <Badge
+                                className={`text-xs px-2 py-0.5 ${getStageColor(
+                                  project.status
+                                )}`}
+                              >
+                                {project.status || "N/A"}
+                              </Badge>
+                              <Badge
+                                className={`text-xs px-2 py-0.5 ${getPriorityColor(
+                                  project.priority
+                                )}`}
+                              >
+                                {project.priority || "Low"}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 p-1 h-7 w-7 mb-2"
+                            onMouseDown={(e: any) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onClick={async (e: any) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              await handleDeleteProject(project);
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                          {/* Image thumbnail */}
+                          <div className="w-10 h-10 rounded-md bg-gray-100 border border-gray-200 overflow-hidden">
+                            {project.coverImage ? (
+                              <img
+                                src={
+                                  project.coverImage.startsWith("http")
+                                    ? project.coverImage
+                                    : `${BACKEND_URL}/${project.coverImage}`
+                                }
+                                alt="Cover"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <ImageIcon className="w-5 h-5 text-gray-400" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Product details in a compact grid */}
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                          <div className="text-xs text-gray-500">
+                            Art & Colour
+                          </div>
+                          <div className="text-sm font-medium truncate">
+                            {project.artName || "N/A"}
+                          </div>
+                          <div className="text-xs text-gray-600 truncate">
+                            {project?.color || "N/A"}
+                          </div>
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {project.autoCode}
-                          </div>
                           <div className="text-xs text-gray-500">
-                            {project?.company?.name || ""}
+                            Brand & Category
                           </div>
-                          <div className="flex items-center gap-1 mt-1">
-                            <Badge
-                              className={`text-xs px-2 py-0.5 ${getStageColor(
+                          <div className="text-sm font-medium truncate">
+                            {project?.brand?.name || ""}
+                          </div>
+                          <div className="text-xs text-gray-600 truncate">
+                            {project?.category?.name || ""}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">
+                            Type & Gender
+                          </div>
+                          <div className="text-sm font-medium truncate">
+                            {project?.type?.name || ""}
+                          </div>
+                          <div className="text-xs text-gray-600 truncate">
+                            {project?.gender || ""}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Country</div>
+                          <div className="text-sm font-medium truncate">
+                            {project?.country?.name || ""}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Timeline information */}
+                      <div className="border-t border-gray-100 pt-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-xs text-gray-500">
+                            Assigned To
+                          </div>
+                          <div className="text-xs font-medium">
+                            {project.assignPerson?.name || "N/A"}
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-gray-400" />
+                              <span className="text-xs text-gray-600">
+                                Start:
+                              </span>
+                            </div>
+                            <span className="text-xs font-medium">
+                              {project.createdAt
+                                ? new Date(
+                                    project.createdAt
+                                  ).toLocaleDateString("en-GB")
+                                : "TBD"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1">
+                              <Target className="w-3 h-3 text-gray-400" />
+                              <span className="text-xs text-gray-600">
+                                Target:
+                              </span>
+                            </div>
+                            <span className="text-xs font-medium">
+                              {project.redSealTargetDate
+                                ? new Date(
+                                    project.redSealTargetDate
+                                  ).toLocaleDateString("en-GB")
+                                : "TBD"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-gray-400" />
+                              <span className="text-xs font-medium">
+                                Duration:
+                              </span>
+                            </div>
+                            <span className="text-xs font-medium text-gray-700">
+                              {calculateDuration(
+                                project.createdAt,
+                                project.redSealTargetDate
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Remarks section if available */}
+                      {(project.clientApproval ||
+                        project?.nextUpdate?.note) && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <div className="text-xs text-gray-500 mb-1">
+                            Remarks
+                          </div>
+                          <div className="text-xs text-gray-700 line-clamp-2">
+                            {project.clientApproval ||
+                              project?.nextUpdate?.note ||
+                              "N/A"}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Desktop Table View */
+                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Product Code
+                        </th>
+                        <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Image
+                        </th>
+                        <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Company & Brand
+                        </th>
+                        <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Category & Type
+                        </th>
+                        <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Art & Colour
+                        </th>
+                        <th className="hidden xl:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Country
+                        </th>
+                        <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Timeline
+                        </th>
+                        <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Priority
+                        </th>
+                        <th className="hidden xl:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {projects.map((project: any, index) => (
+                        <tr
+                          key={project._id}
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => handleProjectClick(project)}
+                        >
+                          <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-3">
+                                {String(
+                                  (currentPage - 1) * itemsPerPage + index + 1
+                                )
+                                  .toString()
+                                  .padStart(2, "0")}
+                              </div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {project.autoCode}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center justify-center">
+                              <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-gray-100 border border-gray-200 shadow-sm flex items-center justify-center">
+                                {project.coverImage ? (
+                                  <img
+                                    src={
+                                      project.coverImage.startsWith("http")
+                                        ? project.coverImage
+                                        : `${BACKEND_URL}/${project.coverImage}`
+                                    }
+                                    alt="Cover"
+                                    className="w-full h-full object-cover rounded-lg"
+                                  />
+                                ) : (
+                                  <ImageIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-400" />
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {project?.company?.name || ""}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {project?.brand?.name || ""}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {project?.category?.name || ""}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {project?.type?.name || ""}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {project.artName || "N/A"}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {project?.color || "N/A"}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              {project?.country?.name || ""}
+                            </div>
+                          </td>
+
+                          <td className="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                <span className="text-xs">
+                                  {project.createdAt
+                                    ? new Date(
+                                        project.createdAt
+                                      ).toLocaleDateString("en-GB")
+                                    : "TBD"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                <span className="text-xs font-medium">
+                                  {calculateDuration(
+                                    project.createdAt,
+                                    project.redSealTargetDate
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`inline-flex px-2 text-xs leading-5 font-semibold rounded-full ${getStageColor(
                                 project.status
                               )}`}
                             >
                               {project.status || "N/A"}
-                            </Badge>
-                            <Badge
-                              className={`text-xs px-2 py-0.5 ${getPriorityColor(
+                            </span>
+                          </td>
+
+                          <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs leading-4 font-semibold rounded ${getPriorityColor(
                                 project.priority
                               )}`}
                             >
                               {project.priority || "Low"}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700 p-1 h-7 w-7 mb-2"
-                          onMouseDown={(e: any) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onClick={async (e: any) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            await handleDeleteProject(project);
-                          }}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                        {/* Image thumbnail */}
-                        <div className="w-10 h-10 rounded-md bg-gray-100 border border-gray-200 overflow-hidden">
-                          {project.coverImage ? (
-                            <img
-                              src={
-                                project.coverImage.startsWith("http")
-                                  ? project.coverImage
-                                  : `${BACKEND_URL}/${project.coverImage}`
-                              }
-                              alt="Cover"
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <ImageIcon className="w-5 h-5 text-gray-400" />
+                            </span>
+                          </td>
+
+                          <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <div className="flex items-center gap-2 justify-end">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700"
+                                onMouseDown={(e: any) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={async (e: any) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  await handleDeleteProject(project);
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Product details in a compact grid */}
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <div className="text-xs text-gray-500">
-                          Art & Colour
-                        </div>
-                        <div className="text-sm font-medium truncate">
-                          {project.artName || "N/A"}
-                        </div>
-                        <div className="text-xs text-gray-600 truncate">
-                          {project?.color || "N/A"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500">
-                          Brand & Category
-                        </div>
-                        <div className="text-sm font-medium truncate">
-                          {project?.brand?.name || ""}
-                        </div>
-                        <div className="text-xs text-gray-600 truncate">
-                          {project?.category?.name || ""}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500">
-                          Type & Gender
-                        </div>
-                        <div className="text-sm font-medium truncate">
-                          {project?.type?.name || ""}
-                        </div>
-                        <div className="text-xs text-gray-600 truncate">
-                          {project?.gender || ""}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500">Country</div>
-                        <div className="text-sm font-medium truncate">
-                          {project?.country?.name || ""}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Timeline information */}
-                    <div className="border-t border-gray-100 pt-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs text-gray-500">Assigned To</div>
-                        <div className="text-xs font-medium">
-                          {project.assignPerson?.name || "N/A"}
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-gray-400" />
-                            <span className="text-xs text-gray-600">
-                              Start:
-                            </span>
-                          </div>
-                          <span className="text-xs font-medium">
-                            {project.createdAt
-                              ? new Date(project.createdAt).toLocaleDateString(
-                                  "en-GB"
-                                )
-                              : "TBD"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <Target className="w-3 h-3 text-gray-400" />
-                            <span className="text-xs text-gray-600">
-                              Target:
-                            </span>
-                          </div>
-                          <span className="text-xs font-medium">
-                            {project.redSealTargetDate
-                              ? new Date(
-                                  project.redSealTargetDate
-                                ).toLocaleDateString("en-GB")
-                              : "TBD"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-gray-400" />
-                            <span className="text-xs font-medium">
-                              Duration:
-                            </span>
-                          </div>
-                          <span className="text-xs font-medium text-gray-700">
-                            {calculateDuration(
-                              project.createdAt,
-                              project.redSealTargetDate
-                            )}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Remarks section if available */}
-                    {(project.clientApproval || project?.nextUpdate?.note) && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <div className="text-xs text-gray-500 mb-1">
-                          Remarks
-                        </div>
-                        <div className="text-xs text-gray-700 line-clamp-2">
-                          {project.clientApproval ||
-                            project?.nextUpdate?.note ||
-                            "N/A"}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            </div>
-          ) : (
-            /* Desktop Table View */
-            <div className="overflow-x-auto border border-gray-200 rounded-lg">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Product Code
-                    </th>
-                    <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Image
-                    </th>
-                    <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Company & Brand
-                    </th>
-                    <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Category & Type
-                    </th>
-                    <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Art & Colour
-                    </th>
-                    <th className="hidden xl:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Country
-                    </th>
-                    <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Timeline
-                    </th>
-                    <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Priority
-                    </th>
-                    <th className="hidden xl:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {getPaginatedProjects(developmentProjects).map(
-                    (project: any, index) => (
-                      <tr
-                        key={project._id}
-                        className="hover:bg-gray-50 cursor-pointer"
-                        onClick={() => handleProjectClick(project)}
-                      >
-                        <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-3">
-                              {String(index + 1).padStart(2, "0")}
-                            </div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {project.autoCode}
-                            </div>
-                          </div>
-                        </td>
 
-                        <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center justify-center">
-                            <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-gray-100 border border-gray-200 shadow-sm flex items-center justify-center">
-                              {project.coverImage ? (
-                                <img
-                                  src={
-                                    project.coverImage.startsWith("http")
-                                      ? project.coverImage
-                                      : `${BACKEND_URL}/${project.coverImage}`
-                                  }
-                                  alt="Cover"
-                                  className="w-full h-full object-cover rounded-lg"
-                                />
-                              ) : (
-                                <ImageIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-400" />
-                              )}
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {project?.company?.name || ""}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {project?.brand?.name || ""}
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {project?.category?.name || ""}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {project?.type?.name || ""}
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {project.artName || "N/A"}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {project?.color || "N/A"}
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {project?.country?.name || ""}
-                          </div>
-                        </td>
-
-                        <td className="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              <span className="text-xs">
-                                {project.createdAt
-                                  ? new Date(
-                                      project.createdAt
-                                    ).toLocaleDateString("en-GB")
-                                  : "TBD"}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              <span className="text-xs font-medium">
-                                {calculateDuration(
-                                  project.createdAt,
-                                  project.redSealTargetDate
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex px-2 text-xs leading-5 font-semibold rounded-full ${getStageColor(
-                              project.status
-                            )}`}
-                          >
-                            {project.status || "N/A"}
-                          </span>
-                        </td>
-
-                        <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex px-2 py-1 text-xs leading-4 font-semibold rounded ${getPriorityColor(
-                              project.priority
-                            )}`}
-                          >
-                            {project.priority || "Low"}
-                          </span>
-                        </td>
-
-                        <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center gap-2 justify-end">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700"
-                              onMouseDown={(e: any) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                              }}
-                              onClick={async (e: any) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                await handleDeleteProject(project);
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  )}
-                </tbody>
-              </table>
-            </div>
+              {/* Empty state */}
+              {projects.length === 0 && !projectsLoading && (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Package className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    No development projects found
+                  </h3>
+                  <p className="text-gray-600">
+                    Start by creating a new project or adjust your search
+                    filters.
+                  </p>
+                </div>
+              )}
+            </>
           )}
-          {developmentProjects.length === 0 && !projectsLoading && (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Package className="w-8 h-8 text-gray-400" />
+
+          {/* Pagination */}
+          {!projectsLoading && projects.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between mt-6 space-y-4 sm:space-y-0">
+              <div className="text-sm text-gray-600">
+                Showing {projects.length} of {total} results
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No development projects found
-              </h3>
-              <p className="text-gray-600">
-                Start by creating a new project or adjust your search filters.
-              </p>
-            </div>
-          )}
-          <div className="flex flex-col sm:flex-row items-center justify-between mt-6 space-y-4 sm:space-y-0">
-            <div className="text-sm text-gray-600">
-              Showing {getPaginatedProjects(developmentProjects).length} of{" "}
-              {developmentProjects.length} results
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
 
-              <div className="flex items-center gap-1">
-                {Array.from(
-                  {
-                    length: Math.min(
-                      5,
-                      getTotalPages(developmentProjects.length)
-                    ),
-                  },
-                  (_, i) => {
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, pages) }, (_, i) => {
                     const pageNumber = i + 1;
-                    if (getTotalPages(developmentProjects.length) > 5) {
+                    if (pages > 5) {
                       if (currentPage > 3 && pageNumber === 1) {
                         return (
                           <>
@@ -651,7 +788,7 @@ export default function ProjectDevelopment() {
                               size="sm"
                               className={
                                 1 === currentPage
-                                  ? "bg-blue-500 hover:bg-blue-600"
+                                  ? "bg-blue-500 hover:bg-blue-600 text-white"
                                   : ""
                               }
                               onClick={() => setCurrentPage(1)}
@@ -672,7 +809,7 @@ export default function ProjectDevelopment() {
                             size="sm"
                             className={
                               pageNumber === currentPage
-                                ? "bg-blue-500 hover:bg-blue-600"
+                                ? "bg-blue-500 hover:bg-blue-600 text-white"
                                 : ""
                             }
                             onClick={() => setCurrentPage(pageNumber)}
@@ -681,31 +818,21 @@ export default function ProjectDevelopment() {
                           </Button>
                         );
                       }
-                      if (
-                        pageNumber ===
-                          getTotalPages(developmentProjects.length) &&
-                        currentPage <
-                          getTotalPages(developmentProjects.length) - 2
-                      ) {
+                      if (pageNumber === pages && currentPage < pages - 2) {
                         return (
                           <>
                             <span className="px-2">...</span>
                             <Button
-                              key={getTotalPages(developmentProjects.length)}
+                              key={pages}
                               size="sm"
                               className={
-                                getTotalPages(developmentProjects.length) ===
-                                currentPage
-                                  ? "bg-blue-500 hover:bg-blue-600"
+                                pages === currentPage
+                                  ? "bg-blue-500 hover:bg-blue-600 text-white"
                                   : ""
                               }
-                              onClick={() =>
-                                setCurrentPage(
-                                  getTotalPages(developmentProjects.length)
-                                )
-                              }
+                              onClick={() => setCurrentPage(pages)}
                             >
-                              {getTotalPages(developmentProjects.length)}
+                              {pages}
                             </Button>
                           </>
                         );
@@ -718,7 +845,7 @@ export default function ProjectDevelopment() {
                           size="sm"
                           className={
                             pageNumber === currentPage
-                              ? "bg-blue-500 hover:bg-blue-600"
+                              ? "bg-blue-500 hover:bg-blue-600 text-white"
                               : ""
                           }
                           onClick={() => setCurrentPage(pageNumber)}
@@ -727,26 +854,20 @@ export default function ProjectDevelopment() {
                         </Button>
                       );
                     }
-                  }
-                ).filter(Boolean)}
-              </div>
+                  }).filter(Boolean)}
+                </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={
-                  currentPage >= getTotalPages(developmentProjects.length)
-                }
-                onClick={() =>
-                  setCurrentPage((p) =>
-                    Math.min(getTotalPages(developmentProjects.length), p + 1)
-                  )
-                }
-              >
-                Next
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= pages}
+                  onClick={() => setCurrentPage((p) => Math.min(pages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -754,18 +875,15 @@ export default function ProjectDevelopment() {
         open={newProjectOpen}
         onClose={() => setNewProjectOpen(false)}
         onCreated={async () => {
-          await loadProjects();
+          await reload();
           setNewProjectOpen(false);
         }}
       />
 
       <ProjectDetailsDialog
         open={projectDetailsOpen}
-        onOpenChange={async (v) => {
-          if (!v) await loadProjects();
-          setProjectDetailsOpen(v);
-        }}
-        reloadProjects={loadProjects}
+        onOpenChange={(v) => setProjectDetailsOpen(v)}
+        reloadProjects={reload}
         project={selectedProject}
         companies={companies}
         brands={brands}

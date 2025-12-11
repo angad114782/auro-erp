@@ -16,29 +16,23 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { POApprovedProjectDetailsDialog } from "./POApprovedProjectDetailsDialog";
 import { POPendingProjectDetailsDialog } from "./POTargetProjectDetailsDialog";
-import ProjectDetailsDialog from "./ProjectDetailsDialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-
-import { useProjects } from "../hooks/useProjects";
 import { useMasters } from "../hooks/useMaster";
+import { useProjectQuery } from "./NewHooks/useProjectQuery";
+import ProjectDetailsDialog from "./ProjectDetailsDialog";
+import { useProjects } from "../hooks/useProjects";
+import { useDebounce } from "./NewHooks/useDebounce";
+import { MobileSkeleton, TableSkeleton } from "./Skeletons";
 
 export function POTargetDate({ defaultTab = "po-pending" }) {
-  // Use hooks (from your project)
-  const {
-    projects,
-    loadProjects: reloadProjects,
-    loading: projectsLoading,
-    deleteProject,
-  } = useProjects();
-
   const {
     companies,
     brands,
@@ -60,14 +54,23 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(8);
   const [isMobile, setIsMobile] = useState(false);
-
+  const { deleteProject } = useProjects();
   // Dialogs & selection
   const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
   const [poPendingDetailsOpen, setPOPendingDetailsOpen] = useState(false);
   const [poApprovedDetailsOpen, setPOApprovedDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+  const debouncedSearch = useDebounce(
+    (value: string) => {
+      setDebouncedSearchTerm(value);
+      setCurrentPage(1); // Reset to first page when search changes
+    },
+    300 // 300ms delay
+  );
 
   // Check screen size
   useEffect(() => {
@@ -88,14 +91,10 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Load masters and projects on mount (hooks expose loaders)
-  React.useEffect(() => {
+  // Load masters on mount
+  useEffect(() => {
     loadAllMasters();
   }, [loadAllMasters]);
-
-  React.useEffect(() => {
-    reloadProjects();
-  }, [reloadProjects]);
 
   // Helpers
   const calculateDuration = (startDate?: string, targetDate?: string) => {
@@ -109,161 +108,60 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
     return `${days} days`;
   };
 
-  // Filter and tabs logic
-  const filteredProjects = useMemo(() => {
-    if (!searchTerm) return projects || [];
-    const q = searchTerm.toLowerCase();
-    return (projects || []).filter((p: any) => {
-      return (
-        (p.autoCode?.toLowerCase() ?? "").includes(q) ||
-        (p.remarks?.toLowerCase() ?? "").includes(q) ||
-        (p.company?.name?.toLowerCase() ?? "").includes(q) ||
-        (p.brand?.name?.toLowerCase() ?? "").includes(q) ||
-        (p.category?.name?.toLowerCase() ?? "").includes(q) ||
-        (p.poNumber?.toLowerCase() ?? "").includes(q)
-      );
-    });
-  }, [projects, searchTerm]);
+  // Queries for both tabs
+  const {
+    data: poPendingProjects,
+    total: pendingTotal,
+    pages: pendingPages,
+    loading: pendingLoading,
+    reload: reloadPending,
+  } = useProjectQuery({
+    status: "po_pending",
+    search: debouncedSearchTerm,
+    page: currentPage,
+    limit: itemsPerPage,
+  });
 
-  const getProjectsByTab = (tabValue: string) => {
-    switch (tabValue) {
-      case "po-pending":
-        return filteredProjects.filter((p: any) => p.status === "po_pending");
-      case "po-approved":
-        return filteredProjects.filter((p: any) => p.status === "po_approved");
-      default:
-        return filteredProjects;
-    }
+  const {
+    data: poApprovedProjects,
+    total: approvedTotal,
+    pages: approvedPages,
+    loading: approvedLoading,
+    reload: reloadApproved,
+  } = useProjectQuery({
+    status: "po_approved",
+    search: debouncedSearchTerm,
+    page: currentPage,
+    limit: itemsPerPage,
+  });
+  const handleSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setSearchTerm(value);
+      debouncedSearch(value);
+    },
+    [debouncedSearch]
+  );
+  // Get current tab data
+  const getCurrentProjects = () => {
+    const extra = (window as any).erpExtra;
+    const currentTab = extra?.tab || defaultTabFromRedirect;
+    return currentTab === "po-pending" ? poPendingProjects : poApprovedProjects;
   };
 
-  const getPaginatedProjects = (list: any[]) => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return list.slice(startIndex, startIndex + itemsPerPage);
+  const getCurrentTotal = () => {
+    const extra = (window as any).erpExtra;
+    const currentTab = extra?.tab || defaultTabFromRedirect;
+    return currentTab === "po-pending" ? pendingTotal : approvedTotal;
   };
 
-  const getTotalPages = (totalItems: number) =>
-    Math.max(1, Math.ceil(totalItems / itemsPerPage));
-
-  const renderPagination = (allProjects: any[]) => {
-    const totalPages = getTotalPages(allProjects.length);
-    const paginatedProjects = getPaginatedProjects(allProjects);
-
-    if (allProjects.length === 0) return null;
-
-    return (
-      <div className="flex flex-col sm:flex-row items-center justify-between mt-6 space-y-4 sm:space-y-0">
-        <div className="text-sm text-gray-600">
-          Showing {paginatedProjects.length} of {allProjects.length} results
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Previous
-          </Button>
-
-          <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const pageNumber = i + 1;
-              if (totalPages > 5) {
-                if (currentPage > 3 && pageNumber === 1) {
-                  return (
-                    <>
-                      <Button
-                        key={1}
-                        size="sm"
-                        className={
-                          1 === currentPage
-                            ? "bg-blue-500 hover:bg-blue-600"
-                            : ""
-                        }
-                        onClick={() => setCurrentPage(1)}
-                      >
-                        1
-                      </Button>
-                      <span className="px-2">...</span>
-                    </>
-                  );
-                }
-                if (
-                  pageNumber >= currentPage - 1 &&
-                  pageNumber <= currentPage + 1
-                ) {
-                  return (
-                    <Button
-                      key={pageNumber}
-                      size="sm"
-                      className={
-                        pageNumber === currentPage
-                          ? "bg-blue-500 hover:bg-blue-600"
-                          : ""
-                      }
-                      onClick={() => setCurrentPage(pageNumber)}
-                    >
-                      {pageNumber}
-                    </Button>
-                  );
-                }
-                if (pageNumber === totalPages && currentPage < totalPages - 2) {
-                  return (
-                    <>
-                      <span className="px-2">...</span>
-                      <Button
-                        key={totalPages}
-                        size="sm"
-                        className={
-                          totalPages === currentPage
-                            ? "bg-blue-500 hover:bg-blue-600"
-                            : ""
-                        }
-                        onClick={() => setCurrentPage(totalPages)}
-                      >
-                        {totalPages}
-                      </Button>
-                    </>
-                  );
-                }
-                return null;
-              } else {
-                return (
-                  <Button
-                    key={pageNumber}
-                    size="sm"
-                    className={
-                      pageNumber === currentPage
-                        ? "bg-blue-500 hover:bg-blue-600"
-                        : ""
-                    }
-                    onClick={() => setCurrentPage(pageNumber)}
-                  >
-                    {pageNumber}
-                  </Button>
-                );
-              }
-            }).filter(Boolean)}
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentPage === totalPages}
-            onClick={() =>
-              setCurrentPage(Math.min(totalPages, currentPage + 1))
-            }
-          >
-            Next
-            <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
-        </div>
-      </div>
-    );
+  const getCurrentPages = () => {
+    const extra = (window as any).erpExtra;
+    const currentTab = extra?.tab || defaultTabFromRedirect;
+    return currentTab === "po-pending" ? pendingPages : approvedPages;
   };
 
-  // Click handler opens the appropriate dialog
+  // Handlers
   const handleProjectClick = (project: any) => {
     setSelectedProject(project);
     if (project?.status === "po_approved") {
@@ -273,12 +171,16 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
     }
   };
 
-  // Delete handler
   const handleDelete = async (project: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
-      await deleteProject(project._id || project.id);
-      await reloadProjects();
+      // Implement your delete API call
+      await deleteProject(project._id);
+      const reloadFunction =
+        (window as any).erpExtra?.tab === "po-approved"
+          ? reloadApproved
+          : reloadPending;
+      await reloadFunction();
       toast.success("Project removed");
     } catch (err) {
       console.error("Delete failed", err);
@@ -306,11 +208,11 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
   const MobileProjectCard = ({
     project,
     index,
-    tab,
+    isApproved,
   }: {
     project: any;
     index: number;
-    tab: string;
+    isApproved: boolean;
   }) => {
     const companyName = pickMasterName(
       companies,
@@ -326,7 +228,6 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
     const typeName = pickMasterName(types, project.type, "Unknown");
     const countryName = pickMasterName(countries, project.country, "Unknown");
 
-    const isApproved = tab === "po-approved";
     const poNumber = project.poNumber || (project.po && project.po.poNumber);
     const hasPO = !!poNumber;
 
@@ -339,7 +240,9 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-start">
             <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 mr-3 shrink-0">
-              {String(index + 1).padStart(2, "0")}
+              {String((currentPage - 1) * itemsPerPage + index + 1)
+                .toString()
+                .padStart(2, "0")}
             </div>
             <div>
               <div className="text-sm font-medium text-gray-900">
@@ -526,13 +429,11 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
   // Render Table for Desktop
   const DesktopTable = ({
     projects,
-    tab,
+    isApproved,
   }: {
     projects: any[];
-    tab: string;
+    isApproved: boolean;
   }) => {
-    const isApproved = tab === "po-approved";
-
     return (
       <div className="overflow-x-auto border border-gray-200 rounded-lg">
         <table className="min-w-full divide-y divide-gray-200">
@@ -606,7 +507,9 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
                   <td className="px-4 md:px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
-                        {String(index + 1).padStart(2, "0")}
+                        {String((currentPage - 1) * itemsPerPage + index + 1)
+                          .toString()
+                          .padStart(2, "0")}
                       </div>
                       <div className="text-sm font-medium text-gray-900">
                         {project.autoCode}
@@ -750,9 +653,7 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
   };
 
   // Empty state component
-  const EmptyState = ({ tab }: { tab: string }) => {
-    const isPending = tab === "po-pending";
-
+  const EmptyState = ({ isPending }: { isPending: boolean }) => {
     return (
       <div className="text-center py-12">
         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -772,6 +673,127 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
             ? "Projects awaiting PO assignment will appear here"
             : "Projects with approved PO numbers will appear here"}
         </p>
+      </div>
+    );
+  };
+
+  // Custom pagination component to maintain original style
+  const CustomPagination = ({
+    pages,
+    isPending,
+  }: {
+    pages: number;
+    isPending: boolean;
+  }) => {
+    if (pages <= 1) return null;
+
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-6 space-y-4 sm:space-y-0">
+        <div className="text-sm text-gray-600">
+          Showing {getCurrentProjects().length} of {getCurrentTotal()} results
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Previous
+          </Button>
+
+          <div className="flex items-center gap-1">
+            {Array.from({ length: Math.min(5, pages) }, (_, i) => {
+              const pageNumber = i + 1;
+              if (pages > 5) {
+                if (currentPage > 3 && pageNumber === 1) {
+                  return (
+                    <>
+                      <Button
+                        key={1}
+                        size="sm"
+                        className={
+                          1 === currentPage
+                            ? "bg-blue-500 hover:bg-blue-600 text-white"
+                            : ""
+                        }
+                        onClick={() => setCurrentPage(1)}
+                      >
+                        1
+                      </Button>
+                      <span className="px-2">...</span>
+                    </>
+                  );
+                }
+                if (
+                  pageNumber >= currentPage - 1 &&
+                  pageNumber <= currentPage + 1
+                ) {
+                  return (
+                    <Button
+                      key={pageNumber}
+                      size="sm"
+                      className={
+                        pageNumber === currentPage
+                          ? "bg-blue-500 hover:bg-blue-600 text-white"
+                          : ""
+                      }
+                      onClick={() => setCurrentPage(pageNumber)}
+                    >
+                      {pageNumber}
+                    </Button>
+                  );
+                }
+                if (pageNumber === pages && currentPage < pages - 2) {
+                  return (
+                    <>
+                      <span className="px-2">...</span>
+                      <Button
+                        key={pages}
+                        size="sm"
+                        className={
+                          pages === currentPage
+                            ? "bg-blue-500 hover:bg-blue-600 text-white"
+                            : ""
+                        }
+                        onClick={() => setCurrentPage(pages)}
+                      >
+                        {pages}
+                      </Button>
+                    </>
+                  );
+                }
+                return null;
+              } else {
+                return (
+                  <Button
+                    key={pageNumber}
+                    size="sm"
+                    className={
+                      pageNumber === currentPage
+                        ? "bg-blue-500 hover:bg-blue-600 text-white"
+                        : ""
+                    }
+                    onClick={() => setCurrentPage(pageNumber)}
+                  >
+                    {pageNumber}
+                  </Button>
+                );
+              }
+            }).filter(Boolean)}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= pages}
+            onClick={() => setCurrentPage((p) => Math.min(pages, p + 1))}
+          >
+            Next
+            <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
+        </div>
       </div>
     );
   };
@@ -812,7 +834,10 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
           <Tabs
             defaultValue={defaultTabFromRedirect}
             className="w-full"
-            onValueChange={() => setCurrentPage(1)}
+            onValueChange={(tab) => {
+              (window as any).erpExtra = { tab };
+              setCurrentPage(1);
+            }}
           >
             <TabsList className="inline-flex h-9 items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground mb-6">
               <TabsTrigger
@@ -825,7 +850,7 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
                   variant="secondary"
                   className="ml-1 h-4 px-1.5 text-xs font-medium"
                 >
-                  {getProjectsByTab("po-pending").length}
+                  {pendingTotal}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger
@@ -838,23 +863,19 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
                   variant="secondary"
                   className="ml-1 h-4 px-1.5 text-xs font-medium"
                 >
-                  {getProjectsByTab("po-approved").length}
+                  {approvedTotal}
                 </Badge>
               </TabsTrigger>
             </TabsList>
 
-            {/* PO Pending Tab */}
             <TabsContent value="po-pending">
               <div className="flex flex-col sm:flex-row items-center gap-3 md:gap-4 mb-6">
                 <div className="relative w-full sm:flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
-                    placeholder="Search PO pending projects..."
+                    placeholder="Search projects..."
                     value={searchTerm}
-                    onChange={(e: any) => {
-                      setSearchTerm(e.target.value);
-                      setCurrentPage(1);
-                    }}
+                    onChange={handleSearchChange}
                     className="pl-10 w-full"
                   />
                 </div>
@@ -864,87 +885,89 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
                 </Button>
               </div>
 
-              {getProjectsByTab("po-pending").length > 0 ? (
+              {/* 🔥 ADD SKELETON HERE */}
+              {pendingLoading ? (
+                isMobile ? (
+                  <MobileSkeleton />
+                ) : (
+                  <TableSkeleton />
+                )
+              ) : poPendingProjects.length > 0 ? (
                 <>
                   {isMobile ? (
                     <div className="space-y-4">
-                      {getPaginatedProjects(getProjectsByTab("po-pending")).map(
-                        (project: any, index: number) => (
-                          <MobileProjectCard
-                            key={project._id || project.id}
-                            project={project}
-                            index={index}
-                            tab="po-pending"
-                          />
-                        )
-                      )}
-                    </div>
-                  ) : (
-                    <DesktopTable
-                      projects={getPaginatedProjects(
-                        getProjectsByTab("po-pending")
-                      )}
-                      tab="po-pending"
-                    />
-                  )}
-                </>
-              ) : (
-                <EmptyState tab="po-pending" />
-              )}
-
-              {renderPagination(getProjectsByTab("po-pending"))}
-            </TabsContent>
-
-            {/* PO Approved Tab */}
-            <TabsContent value="po-approved">
-              <div className="flex flex-col sm:flex-row items-center gap-3 md:gap-4 mb-6">
-                <div className="relative w-full sm:flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    placeholder="Search PO approved projects..."
-                    value={searchTerm}
-                    onChange={(e: any) => {
-                      setSearchTerm(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="pl-10 w-full"
-                  />
-                </div>
-                <Button variant="outline" className="w-full sm:w-auto">
-                  <Filter className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Filters</span>
-                </Button>
-              </div>
-
-              {getProjectsByTab("po-approved").length > 0 ? (
-                <>
-                  {isMobile ? (
-                    <div className="space-y-4">
-                      {getPaginatedProjects(
-                        getProjectsByTab("po-approved")
-                      ).map((project: any, index: number) => (
+                      {poPendingProjects.map((project: any, index: number) => (
                         <MobileProjectCard
                           key={project._id || project.id}
                           project={project}
                           index={index}
-                          tab="po-approved"
+                          isApproved={false}
                         />
                       ))}
                     </div>
                   ) : (
                     <DesktopTable
-                      projects={getPaginatedProjects(
-                        getProjectsByTab("po-approved")
-                      )}
-                      tab="po-approved"
+                      projects={poPendingProjects}
+                      isApproved={false}
                     />
                   )}
                 </>
               ) : (
-                <EmptyState tab="po-approved" />
+                <EmptyState isPending={true} />
               )}
 
-              {renderPagination(getProjectsByTab("po-approved"))}
+              <CustomPagination pages={pendingPages} isPending={true} />
+            </TabsContent>
+
+            <TabsContent value="po-approved">
+              <div className="flex flex-col sm:flex-row items-center gap-3 md:gap-4 mb-6">
+                <div className="relative w-full sm:flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search projects..."
+                    value={searchTerm}
+                    onChange={handleSearchChange}
+                    className="pl-10 w-full"
+                  />
+                </div>
+                <Button variant="outline" className="w-full sm:w-auto">
+                  <Filter className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Filters</span>
+                </Button>
+              </div>
+
+              {/* 🔥 ADD SKELETON HERE */}
+              {approvedLoading ? (
+                isMobile ? (
+                  <MobileSkeleton />
+                ) : (
+                  <TableSkeleton />
+                )
+              ) : poApprovedProjects.length > 0 ? (
+                <>
+                  {isMobile ? (
+                    <div className="space-y-4">
+                      {poApprovedProjects.map((project: any, index: number) => (
+                        <MobileProjectCard
+                          key={project._id || project.id}
+                          project={project}
+                          index={index}
+                          isApproved={true}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <DesktopTable
+                      projects={poApprovedProjects}
+                      isApproved={true}
+                    />
+                  )}
+                </>
+              ) : (
+                <EmptyState isPending={false} />
+              )}
+
+              <CustomPagination pages={approvedPages} isPending={false} />
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -955,7 +978,14 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
         open={projectDetailsOpen}
         onOpenChange={setProjectDetailsOpen}
         project={selectedProject}
-        reloadProjects={reloadProjects}
+        reloadProjects={() => {
+          const extra = (window as any).erpExtra;
+          if (extra?.tab === "po-approved") {
+            reloadApproved();
+          } else {
+            reloadPending();
+          }
+        }}
         categories={categories}
         companies={companies}
         brands={brands}
@@ -967,16 +997,13 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
       />
 
       <POPendingProjectDetailsDialog
-        reloadProjects={reloadProjects}
+        reloadProjects={reloadPending}
         companies={companies}
         setBrands={setBrands}
         assignPersons={assignPersons}
         setCategories={setCategories}
         open={poPendingDetailsOpen}
-        onOpenChange={async (v: boolean) => {
-          if (!v) await reloadProjects();
-          setPOPendingDetailsOpen(v);
-        }}
+        onOpenChange={(v) => setPOPendingDetailsOpen(v)}
         project={selectedProject}
         brands={brands}
         categories={categories}
@@ -986,10 +1013,7 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
 
       <POApprovedProjectDetailsDialog
         open={poApprovedDetailsOpen}
-        onOpenChange={async (v: boolean) => {
-          if (!v) await reloadProjects();
-          setPOApprovedDetailsOpen(v);
-        }}
+        onOpenChange={(v) => setPOApprovedDetailsOpen(v)}
         project={selectedProject}
         companies={companies}
         assignPersons={assignPersons}
@@ -998,7 +1022,7 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
         categories={categories}
         setCategories={setCategories}
         types={types}
-        reloadProjects={reloadProjects}
+        reloadProjects={reloadApproved}
         countries={countries}
       />
     </div>

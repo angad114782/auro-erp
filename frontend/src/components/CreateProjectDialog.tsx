@@ -523,7 +523,6 @@ export function CreateProjectDialog({
       const res = await api.post("/projects", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      const createdProjectResponse = res.data?.data || res.data;
       onCreated && onCreated();
       toast.success(`R&D Project created ✓`);
 

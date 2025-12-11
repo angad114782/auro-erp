@@ -1,5 +1,5 @@
 // hooks/useMasters.ts
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   MasterItem,
   projectService,
@@ -14,6 +14,11 @@ export const useMasters = () => {
   const [assignPersons, setAssignPersons] = useState<MasterItem[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Load all masters when hook is initialized
+  useEffect(() => {
+    loadAllMasters();
+  }, []);
+
   // memoized: load everything once (stable reference)
   const loadAllMasters = useCallback(async () => {
     setLoading(true);
@@ -26,24 +31,45 @@ export const useMasters = () => {
         projectService.getAssignPersons(),
       ]);
 
-      setCompanies(comp);
-      setBrands(brd);
-      setTypes(typ);
-      setCountries(cnt);
-      setAssignPersons(aps);
+      setCompanies(comp || []);
+      setBrands(brd || []);
+      setTypes(typ || []);
+      setCountries(cnt || []);
+      setAssignPersons(aps || []);
       setCategories([]); // Categories depend on company + brand
+      console.log("All masters loaded:", {
+        companies: comp?.length || 0,
+        brands: brd?.length || 0,
+        types: typ?.length || 0,
+        countries: cnt?.length || 0,
+        assignPersons: aps?.length || 0,
+      });
     } catch (error) {
       console.error("Failed to load masters:", error);
+      // Set empty arrays on error
+      setCompanies([]);
+      setBrands([]);
+      setTypes([]);
+      setCountries([]);
+      setAssignPersons([]);
+      setCategories([]);
     } finally {
       setLoading(false);
     }
-  }, []); // no deps -> stable
+  }, []);
 
   // memoized: load brands by company (stable reference)
   const loadBrandsByCompany = useCallback(async (companyId: string) => {
     try {
+      if (!companyId) {
+        setBrands([]);
+        return;
+      }
+
+      console.log("Loading brands for company:", companyId);
       const brandList = await projectService.getBrands(companyId);
-      setBrands(brandList);
+      console.log("Brands loaded:", brandList?.length || 0);
+      setBrands(brandList || []);
     } catch (error) {
       console.error("Failed to load brands for company:", error);
       setBrands([]);
@@ -54,11 +80,23 @@ export const useMasters = () => {
   const loadCategoriesByBrand = useCallback(
     async (companyId: string, brandId: string) => {
       try {
+        if (!companyId || !brandId) {
+          setCategories([]);
+          return;
+        }
+
+        console.log(
+          "Loading categories for company:",
+          companyId,
+          "brand:",
+          brandId
+        );
         const categoryList = await projectService.getCategories(
           companyId,
           brandId
         );
-        setCategories(categoryList);
+        console.log("Categories loaded:", categoryList?.length || 0);
+        setCategories(categoryList || []);
       } catch (error) {
         console.error("Failed to load categories:", error);
         setCategories([]);

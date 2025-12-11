@@ -112,8 +112,8 @@ export const create = async (req, res, next) => {
 
 export const list = async (req, res, next) => {
   try {
-    const projects = await getProjects(req.query);
-    return res.json({ message: "project list", data: projects });
+    const result = await getProjects(req.query);
+    return res.json(result);
   } catch (e) {
     next(e);
   }
@@ -392,7 +392,8 @@ export const updatePO = async (req, res, next) => {
     const by = req.user?._id || null;
     const updatedProject = await setProjectPO(req?.params?.id, req?.body, by);
 
-    if (!updatedProject) return res.status(404).json({ message: "Project not found" });
+    if (!updatedProject)
+      return res.status(404).json({ message: "Project not found" });
 
     // updatedProject already has .po attached by the service
     return res.json({
@@ -409,7 +410,6 @@ export const updatePO = async (req, res, next) => {
     next(e);
   }
 };
-
 
 // GET /projects/search?query=abc
 export const searchProjects = async (req, res) => {
@@ -484,5 +484,3 @@ export const moveToProduction = async (req, res, next) => {
     session.endSession();
   }
 };
-
-

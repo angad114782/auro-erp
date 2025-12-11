@@ -63,62 +63,70 @@ export const createProject = async (payload, { session } = {}) => {
 
 /** ---------- LIST WITH PO INCLUDED ---------- **/
 export const getProjects = async (query = {}) => {
+  const {
+    search,
+    page = 1,
+    limit = 20,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+  } = query;
+
   const filter = { isActive: true };
+
+  // Text search across important fields
+  if (search) {
+    filter.$or = [
+      { autoCode: { $regex: search, $options: "i" } },
+      { artName: { $regex: search, $options: "i" } },
+    ];
+  }
 
   if (query.company) filter.company = query.company;
   if (query.brand) filter.brand = query.brand;
   if (query.category) filter.category = query.category;
 
-  if (query.status) {
-    const norm = normalizeProjectStatus(query.status);
-    filter.status = norm || "__no_match__";
+  if (query.status) filter.status = normalizeProjectStatus(query.status);
+
+  if (query.clientApproval)
+    filter.clientApproval = normalizeClientApproval(query.clientApproval);
+
+  if (query.minCost || query.maxCost) {
+    filter.clientFinalCost = {};
+    if (query.minCost) filter.clientFinalCost.$gte = Number(query.minCost);
+    if (query.maxCost) filter.clientFinalCost.$lte = Number(query.maxCost);
   }
 
-  if (query.clientApproval) {
-    const appr = normalizeClientApproval(query.clientApproval);
-    if (appr) filter.clientApproval = appr;
-    else filter.clientApproval = "__no_match__";
-  }
+  const skip = (Number(page) - 1) * Number(limit);
 
-  if (query.minCost)
-    filter.clientFinalCost = {
-      ...(filter.clientFinalCost || {}),
-      $gte: Number(query.minCost),
-    };
+  // Main query WITH pagination
+  const [projects, total] = await Promise.all([
+    Project.find(filter)
+      .populate("company brand category type country assignPerson", "name")
+      .sort({ [sortBy]: sortOrder === "asc" ? 1 : -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
 
-  if (query.maxCost)
-    filter.clientFinalCost = {
-      ...(filter.clientFinalCost || {}),
-      $lte: Number(query.maxCost),
-    };
+    Project.countDocuments(filter),
+  ]);
 
-  // 1️⃣ fetch all projects
-  const projects = await Project.find(filter)
-    .populate("company", "name")
-    .populate("brand", "name")
-    .populate("category", "name")
-    .populate("type", "name")
-    .populate("country", "name")
-    .populate("assignPerson", "name")
-    .sort({ createdAt: -1 })
-    .lean();
+  // Attach PO info
+  const ids = projects.map((p) => p._id);
+  const poList = await PoDetails.find({ project: { $in: ids } }).lean();
 
-  // 2️⃣ fetch all PO records for these projects
-  const projectIds = projects.map((p) => p._id);
-  const poList = await PoDetails.find({ project: { $in: projectIds } }).lean();
+  const poMap = Object.fromEntries(poList.map((p) => [p.project, p]));
 
-  // 3️⃣ create a map for fast matching
-  const poMap = {};
-  poList.forEach((po) => {
-    poMap[po.project.toString()] = po;
-  });
+  const final = projects.map((p) => ({
+    ...p,
+    po: poMap[p._id] || null,
+  }));
 
-  // 4️⃣ attach PO to each project
-  projects.forEach((p) => {
-    p.po = poMap[p._id.toString()] || null;
-  });
-
-  return projects;
+  return {
+    data: final,
+    total,
+    page: Number(page),
+    pages: Math.ceil(total / Number(limit)),
+  };
 };
 
 /** ---------- GET BY ID WITH PO ---------- **/

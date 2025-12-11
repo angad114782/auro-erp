@@ -22,22 +22,22 @@ export function dataUrlToFile(dataUrl: string, filename: string): File {
 /** ---------------------------------------------------
  *  Build full image URL (backend or data URL)
  * --------------------------------------------------*/
-export function getFullImageUrl(img?: string | null): string {
-  if (!img) return "";
-  if (img.startsWith("data:")) return img;
-  if (img.startsWith("http")) return img;
-  return `${BACKEND_URL}/${img}`;
-}
+// export function getFullImageUrl(img?: string | null): string {
+//   if (!img) return "";
+//   if (img.startsWith("data:")) return img;
+//   if (img.startsWith("http")) return img;
+//   return `${BACKEND_URL}/${img}`;
+// }
 
-/** ---------------------------------------------------
- *  Format date as dd/MM/yyyy
- * --------------------------------------------------*/
-export function formatDateDisplay(date?: string | null): string {
-  if (!date) return "N/A";
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return "Invalid Date";
-  return d.toLocaleDateString("en-GB");
-}
+// /** ---------------------------------------------------
+//  *  Format date as dd/MM/yyyy
+//  * --------------------------------------------------*/
+// export function formatDateDisplay(date?: string | null): string {
+//   if (!date) return "N/A";
+//   const d = new Date(date);
+//   if (isNaN(d.getTime())) return "Invalid Date";
+//   return d.toLocaleDateString("en-GB");
+// }
 
 /** ---------------------------------------------------
  *  Stage Object → progress, color, label
@@ -99,3 +99,18 @@ export function getStage(stageId?: string) {
     }
   );
 }
+
+export const getFullImageUrl = (img?: string | null) => {
+  if (!img) return "";
+  if (img.startsWith("http") || img.startsWith("data:")) return img;
+  return `${import.meta.env.VITE_BACKEND_URL}/${img}`;
+};
+
+export const formatDateDisplay = (d?: string | null) => {
+  if (!d) return "TBD";
+  try {
+    return new Date(d).toLocaleDateString("en-GB");
+  } catch {
+    return d;
+  }
+};
