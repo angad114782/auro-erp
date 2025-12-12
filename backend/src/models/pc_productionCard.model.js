@@ -1,5 +1,5 @@
+// models/pc_productionCard.model.js
 import mongoose from "mongoose";
-import { type } from "os";
 
 const MaterialLineSchema = new mongoose.Schema(
   {
@@ -11,6 +11,7 @@ const MaterialLineSchema = new mongoose.Schema(
     available: { type: Number, default: 0 },
     issued: { type: Number, default: 0 },
     balance: { type: Number, default: 0 },
+    department: { type: String, default: null }, // optional department
   },
   { _id: false }
 );
@@ -18,42 +19,34 @@ const MaterialLineSchema = new mongoose.Schema(
 const PCProductionCardSchema = new mongoose.Schema(
   {
     cardNumber: { type: String, required: true, index: true, unique: true },
-    projectId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Project",
-      required: true,
-      index: true,
-    },
+    projectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project", required: true, index: true },
     productName: { type: String, default: "" },
     cardQuantity: { type: Number, default: 0 },
     startDate: { type: Date },
-    assignedPlant: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "AssignPlant",
-      default: null,
-    },
+    assignedPlant: { type: mongoose.Schema.Types.ObjectId, ref: "AssignPlant", default: null },
     description: { type: String, default: "" },
     specialInstructions: { type: String, default: "" },
     status: { type: String, default: "Draft" },
-    stage: { type: String, default: "Planning" }, // Planning | In Production | Quality | Completed
+    stage: { type: String, default: "Planning" },
+    stageHistory: [{ from: String, to: String, by: String, at: Date }],
     materialRequestStatus: { type: String, default: "Not Requested" },
-    // snapshot arrays for quick UI render
-    materials: { type: [MaterialLineSchema], default: [] },
-    components: { type: [MaterialLineSchema], default: [] },
-    // store refs to top-level MR documents:
-    materialRequests: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "PCMaterialRequest" },
-    ],
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
+
+    // separated arrays (NEW) - keep these to avoid mixing category rows
+    upper: { type: [MaterialLineSchema], default: [] },      // UpperCostRow items (dept likely present)
+    materials: { type: [MaterialLineSchema], default: [] },  // MaterialCostRow items
+    components: { type: [MaterialLineSchema], default: [] }, // ComponentCostRow items (dept likely present)
+    packaging: { type: [MaterialLineSchema], default: [] },  // PackagingCostRow items
+    misc: { type: [MaterialLineSchema], default: [] },       // MiscCostRow items
+
+    // legacy convenience snapshots (for backward compatibility)
+    materialsSnapshot: { type: [MaterialLineSchema], default: [] },
+    componentsSnapshot: { type: [MaterialLineSchema], default: [] },
+
+    materialRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: "PCMaterialRequest" }],
+    isActive: { type: Boolean, default: true },
     createdBy: { type: String, default: "Production Manager" },
   },
   { timestamps: true }
 );
 
-export const PCProductionCard = mongoose.model(
-  "PCProductionCard",
-  PCProductionCardSchema
-);
+export const PCProductionCard = mongoose.model("PCProductionCard", PCProductionCardSchema);

@@ -1,19 +1,20 @@
+// pc_productionCard.routes.js
 import express from "express";
 import * as ctrl from "../controllers/pc_productionCard.controller.js";
 
 const router = express.Router({ mergeParams: true });
 
-// POST /projects/:projectId/production-cards/skeleton
+// specific routes first
 router.post("/skeleton", ctrl.createSkeleton);
-
 router.get("/", ctrl.getProductionCards);
-// preview next number
 router.get("/preview-next-number", ctrl.previewNextCardNumber);
+router.get("/tracking-overview", ctrl.getProjectTrackingOverviewController);
+router.get("/tracking-materials", ctrl.getTrackingMaterialsController);
 
-// GET /projects/:projectId/production-cards/  (list) - if you need list, you can expose root POST/GET in another controller
-// Note: main list endpoints may already exist in your project routes.
-
+// then param-based routes
 router.get("/:cardId", ctrl.getCard);
 router.put("/:cardId", ctrl.updateCard);
 router.delete("/:cardId", ctrl.deleteCard);
+router.patch("/:cardId/stage", ctrl.changeStageController);
+
 export default router;

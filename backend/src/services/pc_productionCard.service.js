@@ -1,9 +1,11 @@
+// services/pc_productionCard.service.js
 import mongoose from "mongoose";
 import { PCProjectCounter } from "../models/pc_projectCounter.model.js";
 import { PCCardCounter } from "../models/pc_cardCounter.model.js";
 import { PCProductionCard } from "../models/pc_productionCard.model.js";
 import { PCMaterialRequest } from "../models/pc_materialRequest.model.js";
 import { Project } from "../models/Project.model.js";
+import { PoDetails } from "../models/PoDetails.model.js";
 import {
   UpperCostRow,
   ComponentCostRow,
@@ -12,50 +14,34 @@ import {
   MiscCostRow,
 } from "../models/projectCost.model.js";
 
-/* helpers */
-function isObjectIdLike(id) {
+/* ---------- helpers ---------- */
+export function isObjectIdLike(id) {
   return id && mongoose.Types.ObjectId.isValid(String(id));
 }
 
 async function incrementNamedCounter(Model, projectId, session = null) {
-  if (!isObjectIdLike(projectId))
-    throw new Error("incrementNamedCounter: invalid projectId");
+  if (!isObjectIdLike(projectId)) throw new Error("incrementNamedCounter: invalid projectId");
   const projectObjectId =
-    projectId instanceof mongoose.Types.ObjectId
-      ? projectId
-      : new mongoose.Types.ObjectId(String(projectId));
-  const query = { projectId: projectObjectId };
-  const update = { $inc: { seq: 1 } };
+    projectId instanceof mongoose.Types.ObjectId ? projectId : new mongoose.Types.ObjectId(String(projectId));
   const opts = { new: true, upsert: true, setDefaultsOnInsert: true };
   if (session) opts.session = session;
-  const updated = await Model.findOneAndUpdate(query, update, opts);
-  if (!updated || typeof updated.seq === "undefined")
-    throw new Error("incrementNamedCounter: failed");
+  const updated = await Model.findOneAndUpdate({ projectId: projectObjectId }, { $inc: { seq: 1 } }, opts);
+  if (!updated || typeof updated.seq === "undefined") throw new Error("incrementNamedCounter: failed");
   return updated.seq;
 }
 
 export async function generateNextCardNumber(projectOrId, session = null) {
-  const projectId =
-    typeof projectOrId === "object" && projectOrId?._id
-      ? projectOrId._id
-      : projectOrId;
+  const projectId = typeof projectOrId === "object" && projectOrId?._id ? projectOrId._id : projectOrId;
   if (!projectId) throw new Error("projectId required for card number");
-
-  const project = await Project.findById(projectId)
-    .lean()
-    .catch(() => null);
+  const project = await Project.findById(projectId).lean().catch(() => null);
 
   let projectSeq;
   try {
-    projectSeq = await incrementNamedCounter(
-      PCProjectCounter,
-      projectId,
-      session
-    );
+    projectSeq = await incrementNamedCounter(PCProjectCounter, projectId, session);
   } catch (e) {
     return `PC-FALLBACK-${Date.now()}`;
   }
-  if (!PCCardCounter) return `PC-FALLBACK-${Date.now()}`;
+
   let cardSeq;
   try {
     cardSeq = await incrementNamedCounter(PCCardCounter, projectId, session);
@@ -66,8 +52,7 @@ export async function generateNextCardNumber(projectOrId, session = null) {
   const now = new Date();
   const yy = String(now.getFullYear()).slice(-2);
   const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const projectCodeRaw =
-    project && project.autoCode ? String(project.autoCode).trim() : "PRJ";
+  const projectCodeRaw = project && project.autoCode ? String(project.autoCode).trim() : "PRJ";
   const projectSeqPadded = String(projectSeq).padStart(4, "0");
   const cardSeqPadded = String(cardSeq).padStart(3, "0");
   const prefix =
@@ -77,7 +62,6 @@ export async function generateNextCardNumber(projectOrId, session = null) {
   return `${prefix}/${yy}${mm}/${cardSeqPadded}`;
 }
 
-/* numeric extractor */
 function extractNumeric(v) {
   if (typeof v === "number") return v;
   if (!v) return 0;
@@ -85,75 +69,76 @@ function extractNumeric(v) {
   return m ? parseFloat(m[0]) : 0;
 }
 
-/* computeMaterialsFromProject accepts project object or id */
-export async function computeMaterialsFromProject(
-  projectOrId,
-  allocationQty,
-  provided = { materials: [], components: [] }
-) {
-  const projectId =
-    typeof projectOrId === "object" && projectOrId?._id
-      ? String(projectOrId._id)
-      : String(projectOrId);
-  if (Array.isArray(provided.materials) && provided.materials.length > 0) {
+/* ---------- computeMaterialsFromProject (returns 5 arrays) ---------- */
+/*
+ returns:
+ {
+   upper: [..],
+   materials: [..],
+   components: [..],
+   packaging: [..],
+   misc: [..]
+ }
+ Each item includes department if present in the cost-row (for upper & component rows).
+*/
+export async function computeMaterialsFromProject(projectOrId, allocationQty = 0, provided = {}) {
+  const projectId = typeof projectOrId === "object" && projectOrId?._id ? String(projectOrId._id) : String(projectOrId);
+
+  // If caller provided prepared structure, honor it (useful for client override)
+  if (provided && Object.keys(provided).length > 0) {
     return {
-      materials: provided.materials,
+      upper: provided.upper || [],
+      materials: provided.materials || [],
       components: provided.components || [],
+      packaging: provided.packaging || [],
+      misc: provided.misc || [],
     };
   }
 
-  const [upperRows, componentRows, materialRows, packagingRows, miscRows] =
-    await Promise.all([
-      UpperCostRow.find({ projectId })
-        .lean()
-        .catch(() => []),
-      ComponentCostRow.find({ projectId })
-        .lean()
-        .catch(() => []),
-      MaterialCostRow.find({ projectId })
-        .lean()
-        .catch(() => []),
-      PackagingCostRow.find({ projectId })
-        .lean()
-        .catch(() => []),
-      MiscCostRow.find({ projectId })
-        .lean()
-        .catch(() => []),
-    ]);
+  const [upperRows, componentRows, materialRows, packagingRows, miscRows] = await Promise.all([
+    UpperCostRow.find({ projectId }).lean().catch(() => []),
+    ComponentCostRow.find({ projectId }).lean().catch(() => []),
+    MaterialCostRow.find({ projectId }).lean().catch(() => []),
+    PackagingCostRow.find({ projectId }).lean().catch(() => []),
+    MiscCostRow.find({ projectId }).lean().catch(() => []),
+  ]);
 
+  const upper = [];
   const materials = [];
   const components = [];
+  const packaging = [];
+  const misc = [];
 
-  const pushItem = (row, targetArray) => {
+  const pushItem = (row, targetArray, includeDept = false) => {
     const consumption = extractNumeric(row.consumption);
     const requirement = +(consumption * (allocationQty || 0)).toFixed(4);
-    targetArray.push({
-      itemId: row._id,
-      name: row.item || row.name || "Unknown",
-      specification: row.description || "",
-      requirement,
+
+    const base = {
+      itemId: row._id || null,
+      name: row.item || row.name || "",
+      specification: row.description || row.specification || "",
       unit: row.unit || "unit",
-      available: 0,
-      issued: 0,
-      balance: requirement,
-    });
+      requirement,
+      available: Number(row.available || 0),
+      issued: Number(row.issued || 0),
+      balance: Number(row.balance ?? requirement),
+    };
+    if (includeDept) base.department = row.department || null;
+    targetArray.push(base);
   };
 
-  upperRows.forEach((r) => pushItem(r, materials));
-  materialRows.forEach((r) => pushItem(r, materials));
-  componentRows.forEach((r) => pushItem(r, components));
-  packagingRows.forEach((r) => pushItem(r, components));
-  miscRows.forEach((r) => pushItem(r, components));
+  // upper and component rows often have department; material/packaging/misc may not
+  upperRows.forEach((r) => pushItem(r, upper, true));
+  materialRows.forEach((r) => pushItem(r, materials, false));
+  componentRows.forEach((r) => pushItem(r, components, true));
+  packagingRows.forEach((r) => pushItem(r, packaging, false));
+  miscRows.forEach((r) => pushItem(r, misc, false));
 
-  return { materials, components };
+  return { upper, materials, components, packaging, misc };
 }
 
-/* Create skeleton card (single click) - transactional if desired */
-export async function createProductionCardSkeleton(
-  projectId,
-  createdBy = "Production Manager",
-  useTransaction = true
-) {
+/* ---------- Create skeleton card ---------- */
+export async function createProductionCardSkeleton(projectId, createdBy = "Production Manager", useTransaction = true) {
   if (!projectId) throw new Error("projectId required");
   if (useTransaction) {
     const session = await mongoose.startSession();
@@ -172,6 +157,12 @@ export async function createProductionCardSkeleton(
             createdBy,
             materialRequestStatus: "Not Requested",
             assignedPlant: null,
+            // ensure snapshot arrays exist (empty)
+            upper: [],
+            materials: [],
+            components: [],
+            packaging: [],
+            misc: [],
           },
         ],
         { session }
@@ -198,31 +189,66 @@ export async function createProductionCardSkeleton(
     createdBy,
     materialRequestStatus: "Not Requested",
     assignedPlant: null,
+    upper: [],
+    materials: [],
+    components: [],
+    packaging: [],
+    misc: [],
   });
   return productionCard;
 }
 
-/* get card by id (populated) */
+/* ---------- getCardById (populate helpful fields) ---------- */
 export async function getCardById(cardId) {
   if (!isObjectIdLike(cardId)) throw new Error("Invalid cardId");
+
   const card = await PCProductionCard.findById(cardId)
     .populate({
       path: "projectId",
-      select: "autoCode productName brand allocationQty defaultPlant",
+      select: "autoCode productName artName brand allocationQty defaultPlant",
     })
     .populate({ path: "assignedPlant", select: "name" })
-    .populate({ path: "materialRequests" });
+    .populate({ path: "materialRequests" })
+    .lean();
+
   if (!card) throw new Error("Card not found");
+
+  // resolve productName fallback
+  const project = card.projectId || {};
+  const defaultProductName =
+    (project.productName && String(project.productName).trim()) ||
+    (project.artName && String(project.artName).trim()) ||
+    (project.autoCode && String(project.autoCode).trim()) ||
+    "";
+
+  const isMeaningfulName = (s) => {
+    if (!s) return false;
+    const v = String(s).trim();
+    if (!v) return false;
+    if (/^[-\s]+$/.test(v)) return false;
+    return true;
+  };
+
+  const rawName = card.productName;
+  const resolvedName = isMeaningfulName(rawName) ? String(rawName).trim() : defaultProductName;
+  card.originalProductName = rawName;
+  card.productName = resolvedName;
+
   return card;
 }
 
-/* update production card (PUT) */
-export async function updateProductionCard(
-  cardId,
-  updates = {},
-  options = { computeMaterialsIfMissing: false }
-) {
+/* ---------- updateProductionCard ---------- */
+/*
+ Accepts updates; supports computeMaterialsIfMissing option.
+ When computing, we compute 5 arrays and store:
+  - upper, materials, components, packaging, misc
+  - also produce combined materialsSnapshot and componentsSnapshot for backward compatibility:
+    materialsSnapshot = upper + materials
+    componentsSnapshot = components + packaging + misc
+*/
+export async function updateProductionCard(cardId, updates = {}, options = { computeMaterialsIfMissing: false }) {
   if (!isObjectIdLike(cardId)) throw new Error("Invalid cardId");
+
   const allowed = [
     "productName",
     "cardQuantity",
@@ -233,37 +259,56 @@ export async function updateProductionCard(
     "status",
     "materials",
     "components",
+    "upper",
+    "packaging",
+    "misc",
     "materialRequestStatus",
     "stage",
   ];
-  const payload = {};
-  for (const k of allowed)
-    if (typeof updates[k] !== "undefined") payload[k] = updates[k];
 
-  if (
-    options.computeMaterialsIfMissing &&
-    (!Array.isArray(payload.materials) || payload.materials.length === 0)
-  ) {
+  const payload = {};
+  for (const k of allowed) if (typeof updates[k] !== "undefined") payload[k] = updates[k];
+
+  // If computeMaterialsIfMissing requested OR no snapshot provided, compute from project
+  if (options.computeMaterialsIfMissing) {
     const card = await PCProductionCard.findById(cardId).lean();
     if (!card) throw new Error("Production card not found");
     const allocationQty = updates.allocationQty ?? card.cardQuantity ?? 0;
-    const computed = await computeMaterialsFromProject(
-      card.projectId,
-      allocationQty
-    );
-    payload.materials = computed.materials;
-    payload.components = computed.components;
+    const computed = await computeMaterialsFromProject(card.projectId, allocationQty);
+    // store computed five arrays (explicit)
+    payload.upper = computed.upper || [];
+    payload.materials = computed.materials || [];
+    payload.components = computed.components || [];
+    payload.packaging = computed.packaging || [];
+    payload.misc = computed.misc || [];
+  }
+
+  // If payload includes the five arrays but we also want to maintain legacy snapshots:
+  const finalizeCombined = (p) => {
+    const upperA = Array.isArray(p.upper) ? p.upper : [];
+    const matA = Array.isArray(p.materials) ? p.materials : [];
+    const compA = Array.isArray(p.components) ? p.components : [];
+    const packA = Array.isArray(p.packaging) ? p.packaging : [];
+    const miscA = Array.isArray(p.misc) ? p.misc : [];
+
+    // combined legacy snapshots
+    p.materialsSnapshot = [...upperA, ...matA]; // old 'materials' view for UI that expects combined
+    p.componentsSnapshot = [...compA, ...packA, ...miscA]; // old 'components' view
+  };
+
+  // If user provided arrays directly, ensure we set combined fields too
+  if (payload.upper || payload.materials || payload.components || payload.packaging || payload.misc) {
+    finalizeCombined(payload);
+    // also copy materialsSnapshot -> keep key 'materials' used originally by many parts?
+    // But avoid overwriting the explicit 'materials' field used for separated arrays:
+    // We'll set legacy fields in a separate key names to avoid confusion: 'materialsSnapshot' and 'componentsSnapshot'
+    // If you prefer to overwrite 'materials' and 'components' (legacy), we can do that too.
   }
 
   if (payload.assignedPlant && !isObjectIdLike(payload.assignedPlant))
     throw new Error("assignedPlant must be a valid ObjectId");
 
-  const updated = await PCProductionCard.findOneAndUpdate(
-    { _id: cardId, isActive: true }, // ✅ prevents updating deleted cards
-    { $set: payload },
-    { new: true, runValidators: true }
-  )
-
+  const updated = await PCProductionCard.findOneAndUpdate({ _id: cardId, isActive: true }, { $set: payload }, { new: true, runValidators: true })
     .populate({ path: "assignedPlant", select: "name" })
     .populate({ path: "materialRequests" });
 
@@ -271,12 +316,17 @@ export async function updateProductionCard(
   return updated;
 }
 
-/* Create top-level MR and link to card transactionally */
-export async function createMaterialRequestForCard(
-  cardId,
-  mrPayload = {},
-  requestedBy = "Production Manager"
-) {
+/* ---------- createMaterialRequestForCard (transactional) ---------- */
+/*
+ Behavior:
+ - If client supplies MR with explicit arrays (upper,materials,components,packaging,misc) use them.
+ - Otherwise take snapshot from card (the five arrays if present).
+ - For backwards compatibility also compute combined materials/components fields inside MR:
+     mr.materialsSnapshot = upper + materials
+     mr.componentsSnapshot = components + packaging + misc
+ - Push MR id to card.materialRequests and update card snapshot/status inside same transaction.
+*/
+export async function createMaterialRequestForCard(cardId, mrPayload = {}, requestedBy = "Production Manager") {
   if (!isObjectIdLike(cardId)) throw new Error("cardId required");
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -284,17 +334,18 @@ export async function createMaterialRequestForCard(
     const card = await PCProductionCard.findById(cardId).session(session);
     if (!card) throw new Error("Card not found");
 
-    // if client didn't provide materials, use card snapshot or compute
-    let materials =
-      Array.isArray(mrPayload.materials) && mrPayload.materials.length
-        ? mrPayload.materials
-        : card.materials || [];
-    let components =
-      Array.isArray(mrPayload.components) && mrPayload.components.length
-        ? mrPayload.components
-        : card.components || [];
+    // determine snapshot source (client provided or card)
+    const upper = Array.isArray(mrPayload.upper) && mrPayload.upper.length ? mrPayload.upper : (Array.isArray(card.upper) ? card.upper : []);
+    const materials = Array.isArray(mrPayload.materials) && mrPayload.materials.length ? mrPayload.materials : (Array.isArray(card.materials) ? card.materials : []);
+    const components = Array.isArray(mrPayload.components) && mrPayload.components.length ? mrPayload.components : (Array.isArray(card.components) ? card.components : []);
+    const packaging = Array.isArray(mrPayload.packaging) && mrPayload.packaging.length ? mrPayload.packaging : (Array.isArray(card.packaging) ? card.packaging : []);
+    const misc = Array.isArray(mrPayload.misc) && mrPayload.misc.length ? mrPayload.misc : (Array.isArray(card.misc) ? card.misc : []);
 
-    // create MR doc
+    // legacy combined snapshots for older UI/backends
+    const materialsSnapshot = [...(upper || []), ...(materials || [])];
+    const componentsSnapshot = [...(components || []), ...(packaging || []), ...(misc || [])];
+
+    // create MR doc (we store five arrays + legacy snapshots)
     const [mr] = await PCMaterialRequest.create(
       [
         {
@@ -303,18 +354,35 @@ export async function createMaterialRequestForCard(
           cardNumber: card.cardNumber || "",
           requestedBy: requestedBy,
           status: mrPayload.status || "Pending to Store",
-          materials,
-          components,
-          notes: mrPayload.notes || "",
+          upper: upper,
+          materials: materials,
+          components: components,
+          packaging: packaging,
+          misc: misc,
+          // legacy convenience fields
+          materialsSnapshot,
+          componentsSnapshot,
+          notes: mrPayload.notes || "Material request created from production card",
         },
       ],
       { session }
     );
 
-    // push MR id into card materialRequests and update snapshot/status
+    // push MR into card and update card snapshot & status (keep both separate arrays and legacy snapshots)
+    card.materialRequests = card.materialRequests || [];
     card.materialRequests.push(mr._id);
+
+    // persist the snapshot back to card (explicit five arrays)
+    if (upper && upper.length) card.upper = upper;
     if (materials && materials.length) card.materials = materials;
     if (components && components.length) card.components = components;
+    if (packaging && packaging.length) card.packaging = packaging;
+    if (misc && misc.length) card.misc = misc;
+
+    // also set legacy combined snapshots for backward compatibility
+    card.materialsSnapshot = materialsSnapshot;
+    card.componentsSnapshot = componentsSnapshot;
+
     card.materialRequestStatus = mr.status || card.materialRequestStatus;
     await card.save({ session });
 
@@ -328,52 +396,43 @@ export async function createMaterialRequestForCard(
   }
 }
 
-/* list material requests (filters) */
-export async function listMaterialRequests(
-  filter = {},
-  options = { page: 1, limit: 50 }
-) {
+/* ---------- listMaterialRequests ---------- */
+export async function listMaterialRequests(filter = {}, options = { page: 1, limit: 50 }) {
   const q = { isDeleted: false };
   if (filter.projectId) q.projectId = filter.projectId;
   if (filter.status) q.status = filter.status;
   const skip = (options.page - 1) * options.limit;
-  const docs = await PCMaterialRequest.find(q)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(Number(options.limit))
-    .lean();
+  const docs = await PCMaterialRequest.find(q).sort({ createdAt: -1 }).skip(skip).limit(Number(options.limit)).lean();
   const total = await PCMaterialRequest.countDocuments(q);
   return { items: docs, total };
 }
 
-/* Update MR and sync card snapshot inside transaction */
-export async function updateMaterialRequest(
-  mrId,
-  mrUpdates = {},
-  options = { syncCard: true }
-) {
+/* ---------- updateMaterialRequest (and sync card) ---------- */
+export async function updateMaterialRequest(mrId, mrUpdates = {}, options = { syncCard: true }) {
   if (!isObjectIdLike(mrId)) throw new Error("Invalid mrId");
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const mr = await PCMaterialRequest.findByIdAndUpdate(
-      mrId,
-      { $set: mrUpdates },
-      { new: true, session }
-    );
+    const mr = await PCMaterialRequest.findByIdAndUpdate(mrId, { $set: mrUpdates }, { new: true, session });
     if (!mr) throw new Error("MR not found");
 
     let card = null;
     if (options.syncCard && mr.productionCardId) {
-      card = await PCProductionCard.findById(mr.productionCardId).session(
-        session
-      );
+      card = await PCProductionCard.findById(mr.productionCardId).session(session);
       if (card) {
         card.materialRequestStatus = mr.status || card.materialRequestStatus;
-        if (Array.isArray(mr.materials) && mr.materials.length)
-          card.materials = mr.materials;
-        if (Array.isArray(mr.components) && mr.components.length)
-          card.components = mr.components;
+
+        // If MR now contains five arrays, replace card snapshot
+        if (Array.isArray(mr.upper) && mr.upper.length) card.upper = mr.upper;
+        if (Array.isArray(mr.materials) && mr.materials.length) card.materials = mr.materials;
+        if (Array.isArray(mr.components) && mr.components.length) card.components = mr.components;
+        if (Array.isArray(mr.packaging) && mr.packaging.length) card.packaging = mr.packaging;
+        if (Array.isArray(mr.misc) && mr.misc.length) card.misc = mr.misc;
+
+        // keep legacy snapshots (if provided)
+        if (Array.isArray(mr.materialsSnapshot) && mr.materialsSnapshot.length) card.materialsSnapshot = mr.materialsSnapshot;
+        if (Array.isArray(mr.componentsSnapshot) && mr.componentsSnapshot.length) card.componentsSnapshot = mr.componentsSnapshot;
+
         await card.save({ session });
       }
     }
@@ -388,11 +447,8 @@ export async function updateMaterialRequest(
   }
 }
 
-/* Soft-delete MR and unlink from card */
-export async function softDeleteMaterialRequest(
-  mrId,
-  options = { removeFromCard: true }
-) {
+/* ---------- softDeleteMaterialRequest ---------- */
+export async function softDeleteMaterialRequest(mrId, options = { removeFromCard: true }) {
   if (!isObjectIdLike(mrId)) throw new Error("Invalid mrId");
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -405,19 +461,13 @@ export async function softDeleteMaterialRequest(
 
     let card = null;
     if (options.removeFromCard && mr.productionCardId) {
-      card = await PCProductionCard.findById(mr.productionCardId).session(
-        session
-      );
+      card = await PCProductionCard.findById(mr.productionCardId).session(session);
       if (card) {
-        card.materialRequests = (card.materialRequests || []).filter(
-          (id) => String(id) !== String(mr._id)
-        );
+        card.materialRequests = (card.materialRequests || []).filter((id) => String(id) !== String(mr._id));
         // adjust materialRequestStatus using last MR if any
         const lastMrId = card.materialRequests.slice(-1)[0];
         if (lastMrId) {
-          const lastMr = await PCMaterialRequest.findById(lastMrId).session(
-            session
-          );
+          const lastMr = await PCMaterialRequest.findById(lastMrId).session(session);
           card.materialRequestStatus = lastMr ? lastMr.status : "Not Requested";
         } else {
           card.materialRequestStatus = "Not Requested";
@@ -436,16 +486,14 @@ export async function softDeleteMaterialRequest(
   }
 }
 
-// add near other exports in pc_productionCard.service.js
+/* ---------- getMaterialRequestById ---------- */
 export async function getMaterialRequestById(mrId) {
   if (!isObjectIdLike(mrId)) throw new Error("Invalid mrId");
 
-  // populate production card basic info and project for convenience
   const mr = await PCMaterialRequest.findById(mrId)
     .populate({
       path: "productionCardId",
-      select:
-        "_id cardNumber projectId productName cardQuantity assignedPlant materials components",
+      select: "_id cardNumber projectId productName cardQuantity assignedPlant upper materials components packaging misc materialsSnapshot componentsSnapshot",
       populate: { path: "assignedPlant", select: "name" },
     })
     .populate({ path: "projectId", select: "autoCode productName" })
@@ -455,10 +503,10 @@ export async function getMaterialRequestById(mrId) {
   return mr;
 }
 
+/* ---------- fetchProductionCardsForProject ---------- */
 export async function fetchProductionCardsForProject(projectId, opts = {}) {
   if (!projectId) throw new Error("projectId required");
-  if (!mongoose.Types.ObjectId.isValid(String(projectId)))
-    throw new Error("Invalid projectId");
+  if (!mongoose.Types.ObjectId.isValid(String(projectId))) throw new Error("Invalid projectId");
 
   const page = Math.max(Number(opts.page || 1), 1);
   const limit = Math.min(Math.max(Number(opts.limit || 25), 1), 500);
@@ -468,23 +516,18 @@ export async function fetchProductionCardsForProject(projectId, opts = {}) {
 
   const q = {
     projectId: new mongoose.Types.ObjectId(String(projectId)),
-    isActive: true, // ✅ ONLY ACTIVE CARDS
+    isActive: true,
   };
 
   if (status) q.status = status;
-
   if (search) {
     const safe = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    q.$or = [
-      { cardNumber: { $regex: safe, $options: "i" } },
-      { productName: { $regex: safe, $options: "i" } },
-    ];
+    q.$or = [{ cardNumber: { $regex: safe, $options: "i" } }, { productName: { $regex: safe, $options: "i" } }];
   }
 
   const [sortField, sortDir] = String(sortQuery).split(":");
   const sort = {};
   sort[sortField || "createdAt"] = sortDir === "asc" ? 1 : -1;
-
   const skip = (page - 1) * limit;
 
   const [items, total] = await Promise.all([
@@ -495,61 +538,312 @@ export async function fetchProductionCardsForProject(projectId, opts = {}) {
       .skip(skip)
       .limit(limit)
       .lean(),
-
     PCProductionCard.countDocuments(q),
   ]);
 
-  return {
-    items,
-    total,
-    page,
-    limit,
-    pages: Math.max(1, Math.ceil(total / limit)),
-  };
+  return { items, total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) };
 }
 
+/* ---------- softDeleteProductionCard ---------- */
 export async function softDeleteProductionCard(cardId, deletedBy = "System") {
   if (!isObjectIdLike(cardId)) throw new Error("Invalid cardId");
-
   const session = await mongoose.startSession();
   session.startTransaction();
-
   try {
-    const card = await PCProductionCard.findOne({
-      _id: cardId,
-      isActive: true, // ✅ prevent double delete
-    }).session(session);
-
+    const card = await PCProductionCard.findOne({ _id: cardId, isActive: true }).session(session);
     if (!card) throw new Error("Card not found or already deleted");
 
-    // ✅ Soft delete the card
     card.isActive = false;
-
     await card.save({ session });
 
-    // ✅ Soft delete & cancel ALL linked material requests
     await PCMaterialRequest.updateMany(
-      {
-        productionCardId: card._id,
-        isDeleted: false,
-      },
-      {
-        $set: {
-          isDeleted: true,
-          status: "Cancelled",
-          cancelledAt: new Date(),
-        },
-      },
+      { productionCardId: card._id, isDeleted: false },
+      { $set: { isDeleted: true, status: "Cancelled", cancelledAt: new Date() } },
       { session }
     );
 
     await session.commitTransaction();
     session.endSession();
-
     return card;
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
     throw err;
   }
+}
+
+/* ---------- Allowed stages and updateCardStage ---------- */
+const ALLOWED_STAGES = ["Planning", "Tracking", "In Production", "Quality", "Completed", "Cancelled"];
+
+export async function updateCardStage(cardId, projectId = null, newStage = "Tracking", updatedBy = "System") {
+  if (!cardId || !isObjectIdLike(cardId)) throw new Error("Invalid cardId");
+  if (!newStage || typeof newStage !== "string") throw new Error("newStage required");
+  const normalized = String(newStage).trim();
+  if (!ALLOWED_STAGES.includes(normalized)) throw new Error(`Invalid stage. Allowed: ${ALLOWED_STAGES.join(", ")}`);
+
+  const query = { _id: cardId, isActive: true };
+  if (projectId) {
+    if (!isObjectIdLike(projectId)) throw new Error("Invalid projectId");
+    query.projectId = projectId;
+  }
+
+  const existing = await PCProductionCard.findOne(query).select("stage").lean();
+  if (!existing) throw new Error("Production card not found");
+
+  const historyEntry = { from: existing.stage || null, to: normalized, by: updatedBy, at: new Date() };
+
+  const updated = await PCProductionCard.findOneAndUpdate(query, { $set: { stage: normalized }, $push: { stageHistory: historyEntry } }, { new: true, runValidators: true })
+    .populate({ path: "assignedPlant", select: "name" })
+    .populate({ path: "materialRequests", select: "_id status createdAt" });
+
+  if (!updated) throw new Error("Failed to update stage");
+  return updated;
+}
+
+/* ---------- getProjectTrackingOverview ---------- */
+export async function getProjectTrackingOverview(projectId, opts = { page: 1, limit: 25, sort: "createdAt:desc" }) {
+  if (!projectId) throw new Error("projectId required");
+  if (!mongoose.Types.ObjectId.isValid(String(projectId))) throw new Error("Invalid projectId");
+
+  const page = Math.max(Number(opts.page || 1), 1);
+  const limit = Math.min(Math.max(Number(opts.limit || 25), 1), 500);
+  const skip = (page - 1) * limit;
+  const [sortField, sortDir] = String(opts.sort || "createdAt:desc").split(":");
+  const sort = {}; sort[sortField || "createdAt"] = sortDir === "asc" ? 1 : -1;
+
+  const project = await Project.findById(projectId)
+    .populate({ path: "company", select: "name" })
+    .populate({ path: "brand", select: "name" })
+    .populate({ path: "category", select: "name" })
+    .populate({ path: "type", select: "name" })
+    .populate({ path: "country", select: "name" })
+    .populate({ path: "assignPerson", select: "name email" })
+    .lean();
+  if (!project) throw new Error("Project not found");
+
+  const projectObjId = new mongoose.Types.ObjectId(String(projectId));
+  const poDetails = await PoDetails.findOne({ project: projectObjId }).lean().catch(() => null);
+
+  const [trackingCount, totalCards, countsByStage] = await Promise.all([
+    PCProductionCard.countDocuments({ projectId: projectObjId, stage: "Tracking", isActive: true }),
+    PCProductionCard.countDocuments({ projectId: projectObjId, isActive: true }),
+    PCProductionCard.aggregate([{ $match: { projectId: projectObjId, isActive: true } }, { $group: { _id: "$stage", count: { $sum: 1 } } }]),
+  ]);
+
+  const stageCounts = {};
+  (countsByStage || []).forEach((c) => { stageCounts[c._id || "Unknown"] = c.count; });
+
+  const [cards, cardsTotal] = await Promise.all([
+    PCProductionCard.find({ projectId: projectObjId, stage: "Tracking", isActive: true }).populate({ path: "assignedPlant", select: "name" }).populate({ path: "materialRequests", select: "_id status createdAt" }).sort(sort).skip(skip).limit(limit).lean(),
+    PCProductionCard.countDocuments({ projectId: projectObjId, stage: "Tracking", isActive: true }),
+  ]);
+
+  const isMeaningfulName = (s) => {
+    if (!s) return false;
+    const v = String(s).trim();
+    if (!v) return false;
+    if (/^[-\s]+$/.test(v)) return false;
+    return true;
+  };
+
+  const defaultProductName = project.productName?.trim() || project.artName?.trim() || project.autoCode || "";
+
+  const enriched = (cards || []).map((c) => {
+    const rawName = c.productName;
+    const finalProductName = isMeaningfulName(rawName) ? String(rawName).trim() : defaultProductName;
+    return {
+      _id: c._id,
+      cardNumber: c.cardNumber,
+      productName: finalProductName,
+      originalProductName: rawName,
+      cardQuantity: c.cardQuantity,
+      startDate: c.startDate,
+      assignedPlant: c.assignedPlant || null,
+      materialRequestCount: Array.isArray(c.materialRequests) ? c.materialRequests.length : 0,
+      materialRequestStatus: c.materialRequestStatus,
+      stage: c.stage,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    };
+  });
+
+  return {
+    project: { ...project, po: poDetails || null },
+    summary: { trackingCount, totalCards, stageCounts },
+    trackingCards: { items: enriched, page, limit, total: cardsTotal, pages: Math.max(1, Math.ceil(cardsTotal / limit)) },
+  };
+}
+
+/* ---------- getTrackingMaterialsForProject (aggregates across five categories & by department) ---------- */
+/*
+ opts: { page, limit }
+ returns:
+  {
+    page, limit, totalCards,
+    cards: [ per-card snapshots ],
+    aggregated: {
+      overall: { materials: [], components: [] },    // combined (legacy) lists
+      byDepartment: { "<dept>": { materials: [], components: [] }, ... },
+      separated: { upper: [], materials: [], components: [], packaging: [], misc: [] } // aggregated per-category
+    }
+  }
+*/
+export async function getTrackingMaterialsForProject(projectId, opts = { page: 1, limit: 200, department: null }) {
+  if (!projectId) throw new Error("projectId required");
+  if (!mongoose.Types.ObjectId.isValid(String(projectId))) throw new Error("Invalid projectId");
+
+  const page = Math.max(Number(opts.page || 1), 1);
+  const limit = Math.min(Math.max(Number(opts.limit || 200), 1), 2000);
+  const skip = (page - 1) * limit;
+  const deptFilter = opts.department ? String(opts.department).trim() : null;
+
+  const projectObjId = new mongoose.Types.ObjectId(String(projectId));
+
+  // Build itemId -> department lookup from cost rows (for items that may not have dept in card snapshot)
+  const [upperCostRows, componentCostRows] = await Promise.all([
+    UpperCostRow.find({ projectId: projectObjId }).select("_id item department").lean().catch(() => []),
+    ComponentCostRow.find({ projectId: projectObjId }).select("_id item department").lean().catch(() => []),
+  ]);
+  const itemDept = {};
+  (upperCostRows || []).forEach((r) => { if (r._id) itemDept[String(r._id)] = r.department || null; });
+  (componentCostRows || []).forEach((r) => { if (r._id) itemDept[String(r._id)] = r.department || null; });
+
+  // Fetch tracking cards
+  const [cards, totalCards] = await Promise.all([
+    PCProductionCard.find({ projectId: projectObjId, stage: "Tracking", isActive: true }).select("cardNumber productName cardQuantity assignedPlant upper materials components packaging misc materialRequestStatus materialsSnapshot componentsSnapshot").populate({ path: "assignedPlant", select: "name" }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    PCProductionCard.countDocuments({ projectId: projectObjId, stage: "Tracking", isActive: true }),
+  ]);
+
+  // aggregator helpers
+  const pushToMap = (map, key, row) => {
+    if (!map[key]) {
+      map[key] = { itemId: row.itemId || null, name: row.name || "Unknown", specification: row.specification || row.description || "", unit: row.unit || "unit", requirement: Number(row.requirement || 0), available: Number(row.available || 0), issued: Number(row.issued || 0), balance: Number(row.balance || 0), occurrences: 1, department: row.department || null };
+    } else {
+      map[key].requirement += Number(row.requirement || 0);
+      map[key].available += Number(row.available || 0);
+      map[key].issued += Number(row.issued || 0);
+      map[key].balance += Number(row.balance || 0);
+      map[key].occurrences += 1;
+    }
+  };
+
+  const aggregated = {
+    separated: { upper: {}, materials: {}, components: {}, packaging: {}, misc: {} }, // maps
+    overallMaterials: {}, // legacy combined materials (upper+materials)
+    overallComponents: {}, // legacy combined components (components+packaging+misc)
+    byDepartment: {}, // dept -> { materials: {}, components: {} }
+  };
+
+  // Normalize per-card snapshots and aggregate
+  const cardsWithSnapshots = (cards || []).map((c) => {
+    const upper = Array.isArray(c.upper) ? c.upper : [];
+    const materials = Array.isArray(c.materials) ? c.materials : [];
+    const components = Array.isArray(c.components) ? c.components : [];
+    const packaging = Array.isArray(c.packaging) ? c.packaging : [];
+    const misc = Array.isArray(c.misc) ? c.misc : [];
+
+    // ensure department present where possible (from itemDept lookup)
+    const ensureDept = (row) => {
+      if (row.department) return row;
+      if (row.itemId && itemDept[String(row.itemId)]) return { ...row, department: itemDept[String(row.itemId)] };
+      return { ...row, department: row.department || "unknown" };
+    };
+
+    const upperNorm = upper.map(ensureDept);
+    const materialsNorm = materials.map(ensureDept);
+    const componentsNorm = components.map(ensureDept);
+    const packagingNorm = packaging.map(ensureDept);
+    const miscNorm = misc.map(ensureDept);
+
+    // aggregate separated category maps
+    for (const r of upperNorm) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushToMap(aggregated.separated.upper, key, r);
+    }
+    for (const r of materialsNorm) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushToMap(aggregated.separated.materials, key, r);
+    }
+    for (const r of componentsNorm) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushToMap(aggregated.separated.components, key, r);
+    }
+    for (const r of packagingNorm) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushToMap(aggregated.separated.packaging, key, r);
+    }
+    for (const r of miscNorm) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushToMap(aggregated.separated.misc, key, r);
+    }
+
+    // legacy combined lists and per-department aggregation
+    const matCombined = [...upperNorm, ...materialsNorm];
+    const compCombined = [...componentsNorm, ...packagingNorm, ...miscNorm];
+
+    for (const r of matCombined) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushToMap(aggregated.overallMaterials, key, r);
+      const dept = r.department || "unknown";
+      if (!aggregated.byDepartment[dept]) aggregated.byDepartment[dept] = { materials: {}, components: {} };
+      pushToMap(aggregated.byDepartment[dept].materials, key, r);
+    }
+    for (const r of compCombined) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushToMap(aggregated.overallComponents, key, r);
+      const dept = r.department || "unknown";
+      if (!aggregated.byDepartment[dept]) aggregated.byDepartment[dept] = { materials: {}, components: {} };
+      pushToMap(aggregated.byDepartment[dept].components, key, r);
+    }
+
+    return {
+      _id: c._id,
+      cardNumber: c.cardNumber,
+      productName: c.productName,
+      cardQuantity: c.cardQuantity,
+      assignedPlant: c.assignedPlant || null,
+      materialRequestStatus: c.materialRequestStatus,
+      upper: upperNorm,
+      materials: materialsNorm,
+      components: componentsNorm,
+      packaging: packagingNorm,
+      misc: miscNorm,
+      materialsSnapshot: Array.isArray(c.materialsSnapshot) ? c.materialsSnapshot : [...upperNorm, ...materialsNorm],
+      componentsSnapshot: Array.isArray(c.componentsSnapshot) ? c.componentsSnapshot : [...componentsNorm, ...packagingNorm, ...miscNorm],
+    };
+  });
+
+  // convert maps to sorted arrays
+  const mapToSortedList = (map) => Object.values(map || {}).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+  const separated = {
+    upper: mapToSortedList(aggregated.separated.upper),
+    materials: mapToSortedList(aggregated.separated.materials),
+    components: mapToSortedList(aggregated.separated.components),
+    packaging: mapToSortedList(aggregated.separated.packaging),
+    misc: mapToSortedList(aggregated.separated.misc),
+  };
+
+  const overallMaterialsList = mapToSortedList(aggregated.overallMaterials);
+  const overallComponentsList = mapToSortedList(aggregated.overallComponents);
+
+  const byDept = {};
+  for (const dept of Object.keys(aggregated.byDepartment)) {
+    byDept[dept] = {
+      materials: mapToSortedList(aggregated.byDepartment[dept].materials),
+      components: mapToSortedList(aggregated.byDepartment[dept].components),
+    };
+  }
+
+  return {
+    page,
+    limit,
+    totalCards,
+    cards: cardsWithSnapshots,
+    aggregated: {
+      separated,
+      overall: { materials: overallMaterialsList, components: overallComponentsList },
+      byDepartment: byDept,
+    },
+  };
 }

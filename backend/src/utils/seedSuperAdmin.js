@@ -11,7 +11,7 @@ const SA_EMAIL = process.env.SA_EMAIL || "admin@example.com";
 const SA_PASSWORD = process.env.SA_PASSWORD || "P@ssw0rd123";
 const SA_ROLE = process.env.SA_ROLE || "SuperAdmin"; // match your auth.role strings
 
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI ='mongodb+srv://ay114782_db_user:ay114782_db_user@cluster0.7ssb13i.mongodb.net/footwear_erp?appName=Cluster0';
 if (!MONGO_URI) {
   console.error("ERROR: MONGO_URI not set in .env");
   process.exit(1);

@@ -5,7 +5,7 @@ import readline from "readline";
 
 dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI = 'mongodb+srv://ay114782_db_user:ay114782_db_user@cluster0.7ssb13i.mongodb.net/footwear_erp?appName=Cluster0';
 const DB_NAME = process.env.DB_NAME || null;
 
 if (!MONGO_URI) {
