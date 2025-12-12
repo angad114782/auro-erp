@@ -126,7 +126,6 @@ export function ProductionCardFormDialog({
     );
   };
 
-  // Fixed allocation summary calculation
   const getAllocationSummary = () => {
     const projectIdRaw = getProjectIdFromSelected();
 
@@ -156,12 +155,10 @@ export function ProductionCardFormDialog({
     const projectId = normalizeId(projectIdRaw);
     const projectIdStr = projectId ? String(projectId) : null;
 
-    // Ensure productionCards is an array
     const productionCardsArray = Array.isArray(productionCards)
       ? productionCards
       : [];
 
-    // Filter cards for this project
     const allCardsForProject = productionCardsArray.filter((c: any) => {
       if (!c) return false;
 
@@ -178,22 +175,18 @@ export function ProductionCardFormDialog({
       toNumber((selectedProject as any)?.poTarget) ||
       0;
 
-    // Calculate total allocated including all cards
     const totalAllocated = allCardsForProject.reduce((sum: number, c: any) => {
       if (!c) return sum;
       const v = toNumber(c.cardQuantity ?? c.targetQuantity ?? c.quantity ?? 0);
       return sum + v;
     }, 0);
 
-    // Get current card ID if editing
     const currentCardId = editingCard?._id || editingCard?.id;
 
-    // Calculate allocation without current card
     const allocatedWithoutCurrent = allCardsForProject.reduce(
       (sum: number, c: any) => {
         if (!c) return sum;
         const cardId = c._id || c.id;
-        // Skip the card being edited
         if (editingCard && cardId === currentCardId) {
           return sum;
         }
@@ -205,7 +198,6 @@ export function ProductionCardFormDialog({
       0
     );
 
-    // Get current card's original quantity
     const currentCardQuantity = editingCard
       ? toNumber(
           editingCard.cardQuantity ??
@@ -215,10 +207,7 @@ export function ProductionCardFormDialog({
         )
       : 0;
 
-    // Available when editing = orderQty - allocatedWithoutCurrent
     const availableForEditing = Math.max(0, orderQty - allocatedWithoutCurrent);
-
-    // Available when creating = orderQty - totalAllocated
     const remaining = Math.max(0, orderQty - totalAllocated);
 
     return {
@@ -240,14 +229,10 @@ export function ProductionCardFormDialog({
     availableForEditing,
   } = getAllocationSummary();
 
-  // Calculate maximum allocation for current card
   const getMaxAllocation = () => {
     if (editingCard) {
-      // When editing: we can allocate up to availableForEditing
-      // This is orderQty minus other cards' allocations
       return availableForEditing;
     } else {
-      // When creating new: we can allocate up to remaining
       return remaining;
     }
   };
@@ -278,6 +263,8 @@ export function ProductionCardFormDialog({
       const results = await Promise.all(
         sections.map((sec) => api.get(`/projects/${projectId}/costs/${sec}`))
       );
+
+      console.log("Cost data loaded:", results); // Debug log
 
       setCostData({
         upper: results[0]?.data?.rows || [],
@@ -371,7 +358,6 @@ export function ProductionCardFormDialog({
         return;
       }
 
-      // Fetch production cards for the specific project
       const res = await api.get(`/projects/${projectId}/production-cards`);
       const items =
         res?.data?.data?.items ?? res?.data?.items ?? res?.data?.data ?? [];
@@ -501,7 +487,6 @@ export function ProductionCardFormDialog({
     return `PC-${year}-${month}-${randomNum}`;
   };
 
-  // Function to extract consumption value
   const extractConsumptionValue = (row: any): number => {
     const value =
       row.consumption ??
@@ -521,6 +506,34 @@ export function ProductionCardFormDialog({
     return 0;
   };
 
+  // Helper function to create material line with department and itemId
+  const createMaterialLine = (
+    row: any,
+    actualReq: number,
+    itemName: string
+  ) => {
+    // Extract department from row data (check multiple possible field names)
+    const department = row.department || row.dept || row.departmentName || null;
+
+    // Extract itemId - use _id as primary, fall back to id
+    const itemId = row._id || row.id;
+
+    return {
+      itemId: itemId, // Always include itemId
+      name: row.item || row.name || row.description || "",
+      specification: row.description || row.spec || "",
+      requirement: actualReq,
+      unit: row.unit || "unit",
+      available: materialData[itemName]?.available || 0,
+      issued: 0,
+      balance: Math.max(
+        0,
+        actualReq - (materialData[itemName]?.available || 0)
+      ),
+      department: department, // Include department field
+    };
+  };
+
   const loadMaterialRequestForEdit = async (mrId: string) => {
     try {
       const res = await api.get(`/material-requests/${mrId}`);
@@ -531,14 +544,19 @@ export function ProductionCardFormDialog({
 
       const issuedMap: any = {};
 
-      [...(mr.materials || []), ...(mr.components || [])].forEach(
-        (item: any) => {
-          issuedMap[item.name] = {
-            available: Number(item.available || 0),
-            issued: Number(item.issued || 0),
-          };
-        }
-      );
+      // Process all 5 categories
+      [
+        ...(mr.upper || []),
+        ...(mr.materials || []),
+        ...(mr.components || []),
+        ...(mr.packaging || []),
+        ...(mr.misc || []),
+      ].forEach((item: any) => {
+        issuedMap[item.name] = {
+          available: Number(item.available || 0),
+          issued: Number(item.issued || 0),
+        };
+      });
 
       setMaterialData(issuedMap);
       setRequestStatus(mr.status);
@@ -582,73 +600,92 @@ export function ProductionCardFormDialog({
       return;
     }
 
-    // Validate allocation doesn't exceed available
     if (allocationQty > maxAllocation) {
       toast.error(`Cannot allocate more than ${maxAllocation} units`);
       return;
     }
 
-    // ✅ Persist allocation using SAME SAVE-CARD API
     await api.put(`/projects/${projectId}/production-cards/${cardIdToUse}`, {
       cardQuantity: allocationQty,
     });
 
+    // Prepare all 5 categories with proper data structure
+    const upper: any[] = [];
     const materials: any[] = [];
     const components: any[] = [];
+    const packaging: any[] = [];
+    const misc: any[] = [];
 
-    ["upper", "material"].forEach((section) => {
-      costData[section]?.forEach((row: any) => {
-        const itemName = row.item;
-        const consumptionNum = extractConsumptionValue(row);
-        const actualReq = consumptionNum * allocationQty;
+    // Process upper - WITH department
+    costData.upper?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * allocationQty;
 
-        materials.push({
-          itemId: row._id,
-          name: row.item,
-          specification: row.description,
-          requirement: actualReq,
-          unit: row.unit || "unit",
-          available: materialData[itemName]?.available || 0,
-          issued: 0,
-          balance: Math.max(
-            0,
-            actualReq - (materialData[itemName]?.available || 0)
-          ),
-        });
-      });
+      upper.push(createMaterialLine(row, actualReq, itemName));
     });
 
-    ["component", "packaging", "miscellaneous"].forEach((section) => {
-      costData[section]?.forEach((row: any) => {
-        const itemName = row.item;
-        const consumptionNum = extractConsumptionValue(row);
-        const actualReq = consumptionNum * allocationQty;
+    // Process materials
+    costData.material?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * allocationQty;
 
-        components.push({
-          itemId: row._id,
-          name: row.item,
-          specification: row.description,
-          requirement: actualReq,
-          unit: row.unit || "unit",
-          available: materialData[itemName]?.available || 0,
-          issued: 0,
-          balance: Math.max(
-            0,
-            actualReq - (materialData[itemName]?.available || 0)
-          ),
-        });
-      });
+      materials.push(createMaterialLine(row, actualReq, itemName));
+    });
+
+    // Process components - WITH department
+    costData.component?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * allocationQty;
+
+      components.push(createMaterialLine(row, actualReq, itemName));
+    });
+
+    // Process packaging
+    costData.packaging?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * allocationQty;
+
+      packaging.push(createMaterialLine(row, actualReq, itemName));
+    });
+
+    // Process miscellaneous
+    costData.miscellaneous?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * allocationQty;
+
+      misc.push(createMaterialLine(row, actualReq, itemName));
+    });
+
+    // Debug log to see the data being sent
+    console.log("Material Request Payload:", {
+      upper: upper.map((item) => ({
+        name: item.name,
+        department: item.department,
+        itemId: item.itemId,
+      })),
+      components: components.map((item) => ({
+        name: item.name,
+        department: item.department,
+        itemId: item.itemId,
+      })),
     });
 
     try {
       let response;
 
       if (existingMrId) {
-        // Update existing MR instead of creating a new one
         response = await api.put(`/material-requests/${existingMrId}`, {
           status: "Pending to Store",
+          upper,
           materials,
           components,
+          packaging,
+          misc,
           notes: "Material request updated from production card",
         });
       } else {
@@ -656,8 +693,11 @@ export function ProductionCardFormDialog({
           `/production-cards/${cardIdToUse}/material-requests`,
           {
             status: "Pending to Store",
+            upper,
             materials,
             components,
+            packaging,
+            misc,
             notes: "Material request created from production card",
           }
         );
@@ -680,6 +720,7 @@ export function ProductionCardFormDialog({
       }
     } catch (err: any) {
       console.error("Failed to send/update material request:", err);
+      console.error("Error details:", err.response?.data);
       toast.error(
         err?.response?.data?.error ||
           err?.message ||
@@ -688,7 +729,6 @@ export function ProductionCardFormDialog({
     }
   };
 
-  // Fixed input change handler with validation
   const handleInputChange = (field: string, value: string) => {
     if (field === "cardQuantity") {
       const numVal = parseInt(value, 10);
@@ -742,7 +782,6 @@ export function ProductionCardFormDialog({
 
     const allocationQty = parseFloat(formData.cardQuantity);
 
-    // Validate allocation doesn't exceed available
     if (allocationQty > maxAllocation) {
       toast.error(`Cannot allocate more than ${maxAllocation} units`);
       return;
@@ -753,14 +792,12 @@ export function ProductionCardFormDialog({
       return;
     }
 
-    // Get the card ID - check multiple sources
     let cardIdToUse = createdCardId;
 
     if (!cardIdToUse && productionCardCreated) {
       cardIdToUse = productionCardCreated?._id;
     }
 
-    // If no card ID exists yet (fresh creation without skeleton), create one
     if (!cardIdToUse && !editingCard) {
       try {
         const projectId = getProjectIdFromSelected();
@@ -783,54 +820,76 @@ export function ProductionCardFormDialog({
       return;
     }
 
-    // Calculate materials and components
+    // Prepare all 5 categories with proper data structure
+    const upper: any[] = [];
     const materials: any[] = [];
     const components: any[] = [];
+    const packaging: any[] = [];
+    const misc: any[] = [];
 
-    ["upper", "material"].forEach((section) => {
-      (costData[section as keyof typeof costData] as any[])?.forEach(
-        (row: any) => {
-          const itemName = row.item;
-          const consumptionNum = extractConsumptionValue(row);
-          const actualReq = consumptionNum * Number(formData.cardQuantity || 0);
-          materials.push({
-            id: row._id,
-            name: row.item,
-            specification: row.description,
-            requirement: actualReq,
-            unit: row.unit || "unit",
-            available: materialData[itemName]?.available || 0,
-            issued: 0,
-            balance: Math.max(
-              0,
-              actualReq - (materialData[itemName]?.available || 0)
-            ),
-          });
-        }
-      );
+    // Process upper - WITH department
+    costData.upper?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * Number(formData.cardQuantity || 0);
+
+      upper.push(createMaterialLine(row, actualReq, itemName));
     });
 
-    ["component", "packaging", "miscellaneous"].forEach((section) => {
-      (costData[section as keyof typeof costData] as any[])?.forEach(
-        (row: any) => {
-          const itemName = row.item;
-          const consumptionNum = extractConsumptionValue(row);
-          const actualReq = consumptionNum * Number(formData.cardQuantity || 0);
-          components.push({
-            id: row._id,
-            name: row.item,
-            specification: row.description,
-            requirement: actualReq,
-            unit: row.unit || "unit",
-            available: materialData[itemName]?.available || 0,
-            issued: 0,
-            balance: Math.max(
-              0,
-              actualReq - (materialData[itemName]?.available || 0)
-            ),
-          });
-        }
-      );
+    // Process materials
+    costData.material?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * Number(formData.cardQuantity || 0);
+
+      materials.push(createMaterialLine(row, actualReq, itemName));
+    });
+
+    // Process components - WITH department
+    costData.component?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * Number(formData.cardQuantity || 0);
+
+      components.push(createMaterialLine(row, actualReq, itemName));
+    });
+
+    // Process packaging
+    costData.packaging?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * Number(formData.cardQuantity || 0);
+
+      packaging.push(createMaterialLine(row, actualReq, itemName));
+    });
+
+    // Process miscellaneous
+    costData.miscellaneous?.forEach((row: any) => {
+      const itemName = row.item;
+      const consumptionNum = extractConsumptionValue(row);
+      const actualReq = consumptionNum * Number(formData.cardQuantity || 0);
+
+      misc.push(createMaterialLine(row, actualReq, itemName));
+    });
+
+    // Debug log to see the data structure
+    console.log("Card Save Payload Structure:", {
+      upperSample: upper[0]
+        ? {
+            name: upper[0].name,
+            department: upper[0].department,
+            itemId: upper[0].itemId,
+          }
+        : null,
+      componentsSample: components[0]
+        ? {
+            name: components[0].name,
+            department: components[0].department,
+            itemId: components[0].itemId,
+          }
+        : null,
+      totalUpper: upper.length,
+      totalComponents: components.length,
     });
 
     const payload = {
@@ -844,9 +903,14 @@ export function ProductionCardFormDialog({
       specialInstructions: formData.specialInstructions,
       status: "Draft",
       materialRequestStatus: requestStatus,
+      upper,
       materials,
       components,
+      packaging,
+      misc,
     };
+
+    console.log("Full Save Payload:", payload); // Debug
 
     try {
       let response;
@@ -864,10 +928,11 @@ export function ProductionCardFormDialog({
         toast.success("Production card created successfully!");
       }
 
-      const createdCard = response.data.data;
+      console.log("Save Response:", response.data); // Debug
+
+      const createdCard = response.data.data || response.data.productionCard;
       setCreatedCardId(createdCard?._id);
 
-      // Create card data for onSave callback
       const cardData: ProductionCardData = {
         id: createdCard?._id,
         cardName: createdCard?.cardNumber || cardNumber,
@@ -887,11 +952,10 @@ export function ProductionCardFormDialog({
 
       onSave(cardData);
       if (onCardCreated) onCardCreated();
-
-      // Close the dialog after saving
       onClose();
     } catch (err: any) {
       console.error("Failed to save production card:", err);
+      console.error("Error details:", err.response?.data);
       toast.error(
         err?.response?.data?.error || "Failed to save production card"
       );
@@ -920,12 +984,20 @@ export function ProductionCardFormDialog({
     }
   };
 
-  // Render mobile section content
+  const materialSections = [
+    { label: "UPPER MATERIAL", key: "upper", color: "bg-cyan-100" },
+    { label: "MATERIAL USED", key: "material", color: "bg-cyan-200" },
+    { label: "COMPONENTS USED", key: "component", color: "bg-purple-100" },
+    { label: "PACKAGING USED", key: "packaging", color: "bg-yellow-100" },
+    { label: "MISCELLANEOUS USED", key: "miscellaneous", color: "bg-rose-100" },
+  ];
+
+  // Display department in the mobile card
   const renderMobileSection = () => {
     if (!isMobile) return null;
 
     switch (currentSection) {
-      case 0: // allocation
+      case 0:
         return (
           <div className="space-y-4 p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -934,8 +1006,6 @@ export function ProductionCardFormDialog({
                 Allocation
               </h3>
             </div>
-
-            {/* Allocation Summary Card */}
             <Card className="border border-gray-200">
               <CardContent className="p-4">
                 <div className="space-y-4">
@@ -996,7 +1066,7 @@ export function ProductionCardFormDialog({
             </Card>
           </div>
         );
-      case 1: // materials
+      case 1:
         return (
           <div className="space-y-4 p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -1004,136 +1074,120 @@ export function ProductionCardFormDialog({
               <h3 className="text-lg font-semibold text-gray-900">Materials</h3>
             </div>
             <div className="space-y-3">
-              {[
-                { label: "UPPER MATERIAL", key: "upper", color: "bg-cyan-100" },
-                {
-                  label: "MATERIAL USED",
-                  key: "material",
-                  color: "bg-cyan-200",
-                },
-                {
-                  label: "COMPONENTS USED",
-                  key: "component",
-                  color: "bg-purple-100",
-                },
-                {
-                  label: "PACKAGING USED",
-                  key: "packaging",
-                  color: "bg-yellow-100",
-                },
-                {
-                  label: "MISCELLANEOUS USED",
-                  key: "miscellaneous",
-                  color: "bg-rose-100",
-                },
-              ].map((section) => (
+              {materialSections.map((section) => (
                 <div key={section.key}>
                   <div
                     className={`px-3 py-2 ${section.color} rounded-t-lg font-medium text-sm mb-2`}
                   >
                     {section.label}
                   </div>
-                  {costData[section.key]?.slice(0, 3).map((row: any) => {
-                    const itemName = row.item;
-                    const available = materialData[itemName]?.available || 0;
-                    const consumptionNum = extractConsumptionValue(row);
-                    const allocationQty = Number(formData.cardQuantity || 0);
+                  {costData[section.key as keyof typeof costData]
+                    ?.slice(0, 3)
+                    .map((row: any) => {
+                      const itemName = row.item;
+                      const available = materialData[itemName]?.available || 0;
+                      const consumptionNum = extractConsumptionValue(row);
+                      const allocationQty = Number(formData.cardQuantity || 0);
 
-                    const requirement =
-                      formData.cardQuantity === ""
-                        ? consumptionNum
-                        : consumptionNum * allocationQty;
+                      const requirement =
+                        formData.cardQuantity === ""
+                          ? consumptionNum
+                          : consumptionNum * allocationQty;
 
-                    return (
-                      <Card
-                        key={row._id}
-                        className="mb-3 rounded-xl border border-gray-200 shadow-sm"
-                      >
-                        <CardContent className="p-4 space-y-3">
-                          {/* Item Header */}
-                          <div className="flex flex-col gap-1">
-                            <div className="font-semibold text-sm text-gray-900 truncate">
-                              {row.item}
-                            </div>
-                            <div className="text-xs text-gray-500 truncate">
-                              {row.description}
-                            </div>
-                          </div>
+                      // Get department for display
+                      const department =
+                        row.department ||
+                        row.dept ||
+                        row.departmentName ||
+                        null;
 
-                          {/* Divider */}
-                          <div className="h-px bg-gray-200" />
-
-                          {/* Values Grid */}
-                          <div className="grid grid-cols-3 gap-2 text-xs">
-                            {/* Requirement */}
-                            <div className="flex flex-col items-center justify-center bg-blue-50 rounded-lg py-2">
-                              <span className="text-gray-500">Required</span>
-                              <span className="font-bold text-blue-700">
-                                {requirement.toFixed(2)}
-                              </span>
-                            </div>
-
-                            {/* Available */}
-                            <div className="flex flex-col items-center justify-center bg-green-50 rounded-lg py-2">
-                              <span className="text-gray-500 mb-1">
-                                Available
-                              </span>
-                              <Input
-                                type="number"
-                                className="h-7 w-16 text-xs text-center"
-                                value={available === 0 ? "" : available}
-                                onChange={(e) =>
-                                  handleMaterialDataChange(
-                                    itemName,
-                                    "available",
-                                    e.target.value === ""
-                                      ? 0
-                                      : parseFloat(e.target.value)
-                                  )
-                                }
-                              />
+                      return (
+                        <Card
+                          key={row._id}
+                          className="mb-3 rounded-xl border border-gray-200 shadow-sm"
+                        >
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex flex-col gap-1">
+                              <div className="font-semibold text-sm text-gray-900 truncate">
+                                {row.item}
+                              </div>
+                              <div className="text-xs text-gray-500 truncate">
+                                {row.description}
+                              </div>
+                              {department && (
+                                <div className="text-xs text-blue-600 font-medium mt-1">
+                                  Dept: {department}
+                                </div>
+                              )}
                             </div>
 
-                            {/* Issued */}
-                            <div className="flex flex-col items-center justify-center bg-purple-50 rounded-lg py-2">
-                              <span className="text-gray-500">Issued</span>
-                              <span className="font-bold text-purple-700">
-                                {materialData[itemName]?.issued || 0}
-                              </span>
-                            </div>
-                          </div>
+                            <div className="h-px bg-gray-200" />
 
-                          {/* Balance Bar */}
-                          <div className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg text-xs font-medium">
-                            <span className="text-gray-600">Balance</span>
-                            <span
-                              className={`${
-                                Math.max(
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              <div className="flex flex-col items-center justify-center bg-blue-50 rounded-lg py-2">
+                                <span className="text-gray-500">Required</span>
+                                <span className="font-bold text-blue-700">
+                                  {requirement.toFixed(2)}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col items-center justify-center bg-green-50 rounded-lg py-2">
+                                <span className="text-gray-500 mb-1">
+                                  Available
+                                </span>
+                                <Input
+                                  type="number"
+                                  className="h-7 w-16 text-xs text-center"
+                                  value={available === 0 ? "" : available}
+                                  onChange={(e) =>
+                                    handleMaterialDataChange(
+                                      itemName,
+                                      "available",
+                                      e.target.value === ""
+                                        ? 0
+                                        : parseFloat(e.target.value)
+                                    )
+                                  }
+                                />
+                              </div>
+
+                              <div className="flex flex-col items-center justify-center bg-purple-50 rounded-lg py-2">
+                                <span className="text-gray-500">Issued</span>
+                                <span className="font-bold text-purple-700">
+                                  {materialData[itemName]?.issued || 0}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg text-xs font-medium">
+                              <span className="text-gray-600">Balance</span>
+                              <span
+                                className={`${
+                                  Math.max(
+                                    0,
+                                    requirement -
+                                      available -
+                                      (materialData[itemName]?.issued || 0)
+                                  ) === 0
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                                }`}
+                              >
+                                {Math.max(
                                   0,
                                   requirement -
                                     available -
                                     (materialData[itemName]?.issued || 0)
-                                ) === 0
-                                  ? "text-green-600"
-                                  : "text-red-600"
-                              }`}
-                            >
-                              {Math.max(
-                                0,
-                                requirement -
-                                  available -
-                                  (materialData[itemName]?.issued || 0)
-                              ).toFixed(2)}
-                            </span>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                                ).toFixed(2)}
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                 </div>
               ))}
             </div>
-            {/* ✅ SEND TO STORE BUTTON FOR MOBILE */}
             <div className="mt-4 bg-white rounded-lg border border-blue-200 p-3">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
@@ -1158,7 +1212,7 @@ export function ProductionCardFormDialog({
             </div>
           </div>
         );
-      case 2: // timeline
+      case 2:
         return (
           <div className="space-y-4 p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -1333,7 +1387,7 @@ export function ProductionCardFormDialog({
             </Card>
           </div>
         );
-      case 3: // details
+      case 3:
         return (
           <div className="space-y-4 p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -1390,7 +1444,6 @@ export function ProductionCardFormDialog({
         className="overflow-hidden p-0 m-0 flex flex-col"
         style={getDialogStyle()}
       >
-        {/* Header */}
         <div className="sticky top-0 z-50 px-4 sm:px-6 md:px-8 py-4 sm:py-6 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b-2 border-blue-200">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3 sm:gap-6">
@@ -1413,7 +1466,6 @@ export function ProductionCardFormDialog({
 
             {!isMobile && (
               <div className="flex items-center gap-4 self-end sm:self-center">
-                {/* Allocation Summary Card */}
                 <Card className="border border-gray-200 shadow-sm min-w-[220px]">
                   <CardContent className="p-3">
                     <div className="space-y-2">
@@ -1531,7 +1583,6 @@ export function ProductionCardFormDialog({
           )}
         </div>
 
-        {/* Mobile Navigation */}
         {isMobile && (
           <div className="sticky top-16 z-40 bg-white border-b border-gray-200 px-4 py-3">
             <div className="flex items-center justify-between">
@@ -1567,13 +1618,11 @@ export function ProductionCardFormDialog({
           </div>
         )}
 
-        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto">
           {isMobile ? (
             renderMobileSection()
           ) : (
             <div className="px-4 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8 space-y-6 sm:space-y-8">
-              {/* Materials Section for Desktop */}
               <div className="space-y-4">
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <Target className="w-5 h-5 text-blue-500" />
@@ -1592,6 +1641,9 @@ export function ProductionCardFormDialog({
                             <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-900 text-xs sm:text-sm">
                               SPECIFICATION
                             </th>
+                            <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-900 text-xs sm:text-sm">
+                              DEPARTMENT
+                            </th>
                             <th className="px-3 sm:px-4 py-2 sm:py-3 text-center font-semibold text-gray-900 text-xs sm:text-sm">
                               REQUIREMENT
                             </th>
@@ -1607,43 +1659,19 @@ export function ProductionCardFormDialog({
                           </tr>
                         </thead>
                         <tbody>
-                          {[
-                            {
-                              label: "UPPER MATERIAL",
-                              key: "upper",
-                              color: "bg-cyan-100 text-cyan-800",
-                            },
-                            {
-                              label: "MATERIAL USED",
-                              key: "material",
-                              color: "bg-cyan-200 text-cyan-900",
-                            },
-                            {
-                              label: "COMPONENTS USED",
-                              key: "component",
-                              color: "bg-purple-100 text-purple-800",
-                            },
-                            {
-                              label: "PACKAGING USED",
-                              key: "packaging",
-                              color: "bg-yellow-100 text-yellow-800",
-                            },
-                            {
-                              label: "MISCELLANEOUS USED",
-                              key: "miscellaneous",
-                              color: "bg-rose-100 text-rose-800",
-                            },
-                          ].map((section) => (
+                          {materialSections.map((section) => (
                             <React.Fragment key={section.key}>
                               <tr className={section.color}>
                                 <td
-                                  colSpan={6}
+                                  colSpan={7}
                                   className="px-3 sm:px-4 py-2 font-semibold text-xs sm:text-sm"
                                 >
                                   {section.label}
                                 </td>
                               </tr>
-                              {costData[section.key]?.map((row: any) => {
+                              {costData[
+                                section.key as keyof typeof costData
+                              ]?.map((row: any) => {
                                 const itemName = row.item;
                                 const available =
                                   materialData[itemName]?.available || 0;
@@ -1668,6 +1696,13 @@ export function ProductionCardFormDialog({
                                         requirement - available - issued
                                       );
 
+                                // Get department for display
+                                const department =
+                                  row.department ||
+                                  row.dept ||
+                                  row.departmentName ||
+                                  null;
+
                                 return (
                                   <tr
                                     key={row._id}
@@ -1678,6 +1713,11 @@ export function ProductionCardFormDialog({
                                     </td>
                                     <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
                                       {row.description}
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                                      <span className="text-blue-600 font-medium">
+                                        {department || "-"}
+                                      </span>
                                     </td>
                                     <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-medium">
                                       {requirement.toFixed(2)}
@@ -1714,7 +1754,6 @@ export function ProductionCardFormDialog({
                     </div>
                   </div>
 
-                  {/* Send to Store Manager Button */}
                   <div className="mt-4 sm:mt-6 bg-white rounded-lg border border-blue-200 p-3 sm:p-4">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
@@ -1743,7 +1782,6 @@ export function ProductionCardFormDialog({
                 </div>
               </div>
 
-              {/* Timeline Section for Desktop */}
               <div className="space-y-4">
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-blue-500" />
@@ -1915,7 +1953,6 @@ export function ProductionCardFormDialog({
                 </div>
               </div>
 
-              {/* Details Section for Desktop */}
               <div className="space-y-4">
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <AlertCircle className="w-5 h-5 text-blue-500" />
@@ -1956,7 +1993,6 @@ export function ProductionCardFormDialog({
           )}
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 px-4 sm:px-6 md:px-8 py-4 bg-white/95 backdrop-blur-sm border-t border-gray-200">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {isMobile && (

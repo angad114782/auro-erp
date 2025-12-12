@@ -1133,7 +1133,7 @@ export function TentativeCostDialog({
         ),
         api.get(`/projects/${project._id}/costs/labour`),
       ]);
-
+      console.log(rowResponses, "ddddddddddddddd");
       // Process summary
       const summaryData = summaryResponse.data.summary || summaryResponse.data;
       if (summaryData) {

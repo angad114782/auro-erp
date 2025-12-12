@@ -78,6 +78,8 @@ interface ProductionCardData {
   assignPlant: string;
   projectId?: string;
   cardQuantity?: string;
+  stage?: string; // Add stage field
+  _id?: string; // Add _id field for API calls
 }
 
 interface CreateProductionCardDialogProps {
@@ -236,6 +238,7 @@ export function CreateProductionCardDialog({
   const displayProductionCards: ProductionCardData[] = sourceCards.map(
     (card: any) => ({
       id: card.id || card._id,
+      _id: card._id || card.id, // Add _id for API calls
       projectId: card.projectId || card.project?._id || card.project || null,
       cardName: card.cardNumber || card.cardName,
       productionType: card.description || "Production",
@@ -249,6 +252,7 @@ export function CreateProductionCardDialog({
       description: card.description,
       specialInstructions: card.specialInstructions,
       status: card.status,
+      stage: card.stage || "Planning", // Add stage from API
       createdAt: card.createdAt,
       assignPlant: card.assignedPlant,
     })
@@ -305,25 +309,71 @@ export function CreateProductionCardDialog({
     }
   };
 
+  // Update handleStartProduction to use stage API
   const handleStartProduction = async (card: ProductionCardData) => {
     setStartingProduction(card.id);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success(`Production started for ${card.cardName}!`);
-    } catch (error) {
-      toast.error("Failed to start production");
+      // Update stage to "Tracking" using the API
+      const response = await api.put(
+        `/projects/${card.projectId}/production-cards/${card._id}/stage`,
+        {
+          stage: "Tracking",
+          updatedBy: "Production Manager", // You can get this from user context
+        }
+      );
+      console.log(response, "test response");
+      if (response.data.success) {
+        // Update the local state
+        setApiCards((prev) =>
+          prev.map((c) =>
+            c._id === card._id ? { ...c, stage: "Tracking" } : c
+          )
+        );
+
+        toast.success(
+          `Production card "${card.cardName}" moved to Tracking stage!`
+        );
+      } else {
+        throw new Error("Failed to update stage");
+      }
+    } catch (error: any) {
+      console.error("Failed to start production:", error);
+      toast.error(error?.response?.data?.error || "Failed to start production");
     } finally {
       setStartingProduction(null);
     }
   };
 
+  // Update handleStopProduction to revert stage
   const handleStopProduction = async (card: ProductionCardData) => {
     setLoadingCardId(card.id);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success(`Production stopped for ${card.cardName}`);
-    } catch (error) {
-      toast.error("Failed to stop production");
+      // Revert stage back to "Planning"
+      const response = await api.put(
+        `/projects/${card.projectId}/production-cards/${card._id}/stage`,
+        {
+          stage: "Planning",
+          updatedBy: "Production Manager",
+        }
+      );
+
+      if (response.data.success) {
+        // Update the local state
+        setApiCards((prev) =>
+          prev.map((c) =>
+            c._id === card._id ? { ...c, stage: "Planning" } : c
+          )
+        );
+
+        toast.success(
+          `Production card "${card.cardName}" reverted to Planning stage!`
+        );
+      } else {
+        throw new Error("Failed to update stage");
+      }
+    } catch (error: any) {
+      console.error("Failed to stop production:", error);
+      toast.error(error?.response?.data?.error || "Failed to stop production");
     } finally {
       setLoadingCardId(null);
     }
@@ -382,14 +432,34 @@ export function CreateProductionCardDialog({
     setShowProductionCardForm(true);
   };
 
+  // Update getCardActionButtons to disable when stage is "Tracking"
   const getCardActionButtons = (card: ProductionCardData) => {
-    const isInProgress = card.status === "In Progress";
+    const isTracking = card.stage === "Tracking";
     const isStarting = startingProduction === card.id;
     const isLoading = loadingCardId === card.id;
 
-    if (isInProgress) {
+    // Disable buttons when stage is "Tracking"
+    if (isTracking) {
       return (
-        <>
+        <div className="flex gap-2 w-full">
+          <Button
+            disabled={true}
+            variant="outline"
+            size="sm"
+            className="flex-1 text-xs opacity-50 cursor-not-allowed"
+          >
+            <Play className="w-3 h-3" />
+            Tracking Started
+          </Button>
+          <Button
+            disabled={true}
+            variant="outline"
+            size="sm"
+            className="flex-1 text-xs opacity-50 cursor-not-allowed"
+          >
+            <Target className="w-3 h-3" />
+            Edit Disabled
+          </Button>
           <Button
             onClick={() => handleStopProduction(card)}
             disabled={isLoading}
@@ -400,28 +470,20 @@ export function CreateProductionCardDialog({
             {isLoading ? (
               <>
                 <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Stopping...
+                Reverting...
               </>
             ) : (
               <>
                 <AlertCircle className="w-3 h-3" />
-                Stop
+                Revert to Planning
               </>
             )}
           </Button>
-          <Button
-            onClick={() => handleEditCard(card)}
-            variant="secondary"
-            size="sm"
-            className="flex-1 text-xs"
-          >
-            <Target className="w-3 h-3" />
-            Edit
-          </Button>
-        </>
+        </div>
       );
     }
 
+    // Normal buttons when not in Tracking stage
     return (
       <div className="flex gap-2 w-full">
         <Button
@@ -430,8 +492,17 @@ export function CreateProductionCardDialog({
           size="sm"
           className="flex-1 bg-green-500 hover:bg-green-600 text-xs"
         >
-          <Play className="w-3 h-3" />
-          Start
+          {isStarting ? (
+            <>
+              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Starting...
+            </>
+          ) : (
+            <>
+              <Play className="w-3 h-3" />
+              Start Tracking
+            </>
+          )}
         </Button>
         <Button
           onClick={() => handleEditCard(card)}
@@ -452,6 +523,56 @@ export function CreateProductionCardDialog({
           Delete
         </Button>
       </div>
+    );
+  };
+
+  // Update the stage badge display
+  const getStageBadge = (stage: string = "Planning") => {
+    const stageColors: Record<
+      string,
+      { bg: string; text: string; border: string }
+    > = {
+      Planning: {
+        bg: "bg-blue-50",
+        text: "text-blue-700",
+        border: "border-blue-200",
+      },
+      Tracking: {
+        bg: "bg-green-50",
+        text: "text-green-700",
+        border: "border-green-200",
+      },
+      "In Production": {
+        bg: "bg-purple-50",
+        text: "text-purple-700",
+        border: "border-purple-200",
+      },
+      Quality: {
+        bg: "bg-yellow-50",
+        text: "text-yellow-700",
+        border: "border-yellow-200",
+      },
+      Completed: {
+        bg: "bg-emerald-50",
+        text: "text-emerald-700",
+        border: "border-emerald-200",
+      },
+      Cancelled: {
+        bg: "bg-red-50",
+        text: "text-red-700",
+        border: "border-red-200",
+      },
+    };
+
+    const colors = stageColors[stage] || stageColors.Planning;
+
+    return (
+      <Badge
+        variant="outline"
+        className={`text-xs ${colors.bg} ${colors.text} ${colors.border}`}
+      >
+        {stage}
+      </Badge>
     );
   };
 
@@ -734,7 +855,11 @@ export function CreateProductionCardDialog({
                     .map((card) => (
                       <div
                         key={card.id}
-                        className="bg-white rounded-lg sm:rounded-xl border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-all"
+                        className={`bg-white rounded-lg sm:rounded-xl border p-4 sm:p-6 hover:shadow-md transition-all ${
+                          card.stage === "Tracking"
+                            ? "border-green-300 bg-green-50/20"
+                            : "border-gray-200"
+                        }`}
                       >
                         {/* Header */}
                         <div className="flex flex-col space-y-3 sm:space-y-4">
@@ -757,25 +882,14 @@ export function CreateProductionCardDialog({
 
                           {/* Status Badge */}
                           <div className="flex flex-wrap gap-1 sm:gap-2">
-                            <Badge
-                              variant="outline"
-                              className={`text-xs ${
-                                card.status === "In Progress"
-                                  ? "bg-green-50 text-green-700 border-green-200"
-                                  : "bg-blue-50 text-blue-700 border-blue-200"
-                              }`}
-                            >
-                              {card.status === "In Progress"
-                                ? "In Production"
-                                : "Ready to Start"}
-                            </Badge>
-                            {card.status === "In Progress" && (
+                            {getStageBadge(card.stage)}
+                            {card.stage === "Tracking" && (
                               <Badge
                                 variant="outline"
-                                className="text-xs bg-orange-50 text-orange-700 border-orange-200"
+                                className="text-xs bg-green-50 text-green-700 border-green-200"
                               >
-                                <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-orange-500 rounded-full animate-pulse mr-1" />
-                                Live
+                                <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full animate-pulse mr-1" />
+                                Live Tracking
                               </Badge>
                             )}
                           </div>

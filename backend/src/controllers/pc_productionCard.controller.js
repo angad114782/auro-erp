@@ -51,7 +51,8 @@ export async function updateCard(req, res) {
 export async function getCard(req, res) {
   try {
     const cardId = req.params.cardId;
-    if (!cardId) return res.status(400).json({ error: "cardId required in URL" });
+    if (!cardId)
+      return res.status(400).json({ error: "cardId required in URL" });
 
     const card = await service.getCardById(cardId);
     return res.json({ success: true, productionCard: card });
@@ -142,10 +143,13 @@ export async function changeStageController(req, res) {
   try {
     const { projectId, cardId } = req.params;
     const { stage } = req.body;
-
+    console.log(stage, "stage");
+    console.log(projectId, "pi");
+    console.log(cardId, "cardId");
     const updatedBy = req.user?.name || req.body.updatedBy || "System";
 
-    if (!stage) return res.status(400).json({ error: "stage is required in body" });
+    if (!stage)
+      return res.status(400).json({ error: "stage is required in body" });
 
     const updatedCard = await service.updateCardStage(
       cardId,

@@ -58,8 +58,11 @@ interface MaterialRequisition {
   projectId: Project;
   requestedBy: string;
   status: "Pending to Store" | "Partially Issued" | "Issued";
+  upper: MaterialItem[];
   materials: MaterialItem[];
   components: ComponentItem[];
+  packaging: MaterialItem[];
+  misc: MaterialItem[];
   createdAt: string;
 }
 
@@ -108,13 +111,9 @@ const IssueRow = ({ item, issuedQuantities, onIssueChange }: IssueRowProps) => {
   const itemId = item.itemId || item._id;
   const req = Number(item.requirement || 0);
   const avail = Number(item.available || 0);
-  const alreadyIssued = Number(item.issued || 0); // Current value in DB
-  const newIssuedAmount = Number(issuedQuantities[itemId] || 0); // What user enters (replaces old value)
-
-  // Max that can be issued = Requirement - Available
+  const alreadyIssued = Number(item.issued || 0);
+  const newIssuedAmount = Number(issuedQuantities[itemId] || 0);
   const maxIssuable = Math.max(0, req - avail);
-
-  // Balance after issuing new amount
   const balanceAfter = Math.max(0, req - (avail + newIssuedAmount));
 
   return (
@@ -162,6 +161,7 @@ const IssueRow = ({ item, issuedQuantities, onIssueChange }: IssueRowProps) => {
     </tr>
   );
 };
+
 const MobileIssueItem = ({
   item,
   issuedQuantities,
@@ -308,7 +308,7 @@ const MaterialSections = ({
         ))}
       </div>
 
-      {/* Desktop View - Fixed width for better layout */}
+      {/* Desktop View */}
       <div className="hidden md:block bg-white rounded-xl border overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table
@@ -400,14 +400,16 @@ const MaterialIssueDialog = ({
     if (requisition) {
       const initialQuantities: Record<string, number> = {};
 
-      // Initialize with the CURRENT issued amount from DB
-      // This way the input shows what's already issued
+      // Process all 5 categories
       [
+        ...(requisition.upper || []),
         ...(requisition.materials || []),
         ...(requisition.components || []),
+        ...(requisition.packaging || []),
+        ...(requisition.misc || []),
       ].forEach((item) => {
         const itemId = String(item.itemId || item._id);
-        initialQuantities[itemId] = Number(item.issued || 0); // Show current issued amount
+        initialQuantities[itemId] = Number(item.issued || 0);
       });
 
       setIssuedQuantities(initialQuantities);
@@ -425,54 +427,33 @@ const MaterialIssueDialog = ({
     if (!requisition) {
       return {
         upper: [],
-        material: [],
-        component: [],
+        materials: [],
+        components: [],
         packaging: [],
-        miscellaneous: [],
+        misc: [],
       };
     }
 
-    const upper: any[] = [];
-    const material: any[] = [];
-    const component: any[] = [];
-    const packaging: any[] = [];
-    const miscellaneous: any[] = [];
-
-    requisition.materials?.forEach((item) => {
-      const name = (item.name || "").toLowerCase();
-      if (name.includes("upper")) {
-        upper.push(item);
-      } else {
-        material.push(item);
-      }
-    });
-
-    requisition.components?.forEach((item) => {
-      const name = (item.name || "").toLowerCase();
-      if (name.includes("pack") || name.includes("packaging")) {
-        packaging.push(item);
-      } else if (name.includes("component") || name.startsWith("c ")) {
-        component.push(item);
-      } else {
-        miscellaneous.push(item);
-      }
-    });
-
-    return { upper, material, component, packaging, miscellaneous };
+    return {
+      upper: requisition.upper || [],
+      materials: requisition.materials || [],
+      components: requisition.components || [],
+      packaging: requisition.packaging || [],
+      misc: requisition.misc || [],
+    };
   }, [requisition]);
 
   const handleIssueMaterials = async () => {
     if (!requisition) return;
 
     try {
-      const updatedMaterials =
-        requisition.materials?.map((item) => {
+      const updateItems = (items: MaterialItem[]) => {
+        return items.map((item) => {
           const itemId = item.itemId || item._id;
-          const newIssuedAmount = Number(issuedQuantities[String(itemId)] || 0); // This REPLACES the old issued amount
+          const newIssuedAmount = Number(issuedQuantities[String(itemId)] || 0);
           const available = Number(item.available || 0);
           const requirement = Number(item.requirement || 0);
 
-          // Balance = Requirement - (Available + New Issued Amount)
           const balance = Math.max(
             0,
             requirement - (available + newIssuedAmount)
@@ -480,33 +461,27 @@ const MaterialIssueDialog = ({
 
           return {
             ...item,
-            issued: newIssuedAmount, // REPLACE with new value
+            issued: newIssuedAmount,
             balance,
           };
-        }) || [];
+        });
+      };
 
-      const updatedComponents =
-        requisition.components?.map((item) => {
-          const itemId = item.itemId || item._id;
-          const newIssuedAmount = Number(issuedQuantities[String(itemId)] || 0); // This REPLACES the old issued amount
-          const available = Number(item.available || 0);
-          const requirement = Number(item.requirement || 0);
+      const updatedUpper = updateItems(requisition.upper || []);
+      const updatedMaterials = updateItems(requisition.materials || []);
+      const updatedComponents = updateItems(requisition.components || []);
+      const updatedPackaging = updateItems(requisition.packaging || []);
+      const updatedMisc = updateItems(requisition.misc || []);
 
-          // Balance = Requirement - (Available + New Issued Amount)
-          const balance = Math.max(
-            0,
-            requirement - (available + newIssuedAmount)
-          );
+      // Calculate totals for all categories
+      const allItems = [
+        ...updatedUpper,
+        ...updatedMaterials,
+        ...updatedComponents,
+        ...updatedPackaging,
+        ...updatedMisc,
+      ];
 
-          return {
-            ...item,
-            issued: newIssuedAmount, // REPLACE with new value
-            balance,
-          };
-        }) || [];
-
-      // Calculate totals for status determination
-      const allItems = [...updatedMaterials, ...updatedComponents];
       const totalRequired = allItems.reduce(
         (sum, item) => sum + Number(item.requirement || 0),
         0
@@ -516,7 +491,6 @@ const MaterialIssueDialog = ({
         0
       );
 
-      // New status logic
       let newStatus = requisition.status;
       if (totalIssued >= totalRequired) {
         newStatus = "Issued";
@@ -527,8 +501,11 @@ const MaterialIssueDialog = ({
       }
 
       const body = {
+        upper: updatedUpper,
         materials: updatedMaterials,
         components: updatedComponents,
+        packaging: updatedPackaging,
+        misc: updatedMisc,
         status: newStatus,
       };
 
@@ -554,12 +531,12 @@ const MaterialIssueDialog = ({
     {
       label: "MATERIAL USED",
       color: "bg-cyan-200 text-cyan-900",
-      items: sections.material,
+      items: sections.materials,
     },
     {
       label: "COMPONENT USED",
       color: "bg-purple-100 text-purple-900",
-      items: sections.component,
+      items: sections.components,
     },
     {
       label: "PACKAGING USED",
@@ -569,37 +546,20 @@ const MaterialIssueDialog = ({
     {
       label: "MISCELLANEOUS USED",
       color: "bg-rose-100 text-rose-900",
-      items: sections.miscellaneous,
+      items: sections.misc,
     },
   ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="
-          fixed 
-          left-1/2 
-          top-1/2 
-          w-[95vw] 
-          h-[90vh]
-          -translate-x-1/2 
-          -translate-y-1/2 
-          p-0 
-          flex 
-          flex-col 
-          overflow-hidden 
-          rounded-xl 
-          shadow-2xl
-          border
-          bg-white
-        "
+        className="fixed left-1/2 top-1/2 w-[95vw] h-[90vh] -translate-x-1/2 -translate-y-1/2 p-0 flex flex-col overflow-hidden rounded-xl shadow-2xl border bg-white"
         style={{
           maxWidth: "1600px",
           maxHeight: "95vh",
           minWidth: "300px",
         }}
       >
-        {/* Header */}
         <div className="sticky top-0 z-50 px-6 py-4 bg-white border-b shadow-sm flex justify-between items-center shrink-0">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center shadow-md">
@@ -624,7 +584,6 @@ const MaterialIssueDialog = ({
           </Button>
         </div>
 
-        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6">
           <Card className="bg-gray-50 border">
             <CardHeader className="pb-3">
@@ -660,7 +619,6 @@ const MaterialIssueDialog = ({
           />
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 p-4 border-t bg-white flex justify-end shrink-0">
           <div className="flex gap-3">
             <Button
@@ -700,8 +658,11 @@ const MobileRequisitionCard = ({
   onDelete,
 }: MobileRequisitionCardProps) => {
   const totalItems = [
+    ...(requisition.upper || []),
     ...(requisition.materials || []),
     ...(requisition.components || []),
+    ...(requisition.packaging || []),
+    ...(requisition.misc || []),
   ];
   const totalRequired = totalItems.reduce(
     (sum, item) => sum + Number(item.requirement || 0),
@@ -791,6 +752,12 @@ const MobileRequisitionCard = ({
 
             <div className="grid grid-cols-3 gap-4">
               <div>
+                <p className="text-xs text-gray-500 mb-1">Upper</p>
+                <p className="text-sm font-medium">
+                  {requisition.upper?.length || 0}
+                </p>
+              </div>
+              <div>
                 <p className="text-xs text-gray-500 mb-1">Materials</p>
                 <p className="text-sm font-medium">
                   {requisition.materials?.length || 0}
@@ -800,6 +767,18 @@ const MobileRequisitionCard = ({
                 <p className="text-xs text-gray-500 mb-1">Components</p>
                 <p className="text-sm font-medium">
                   {requisition.components?.length || 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Packaging</p>
+                <p className="text-sm font-medium">
+                  {requisition.packaging?.length || 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Misc</p>
+                <p className="text-sm font-medium">
+                  {requisition.misc?.length || 0}
                 </p>
               </div>
               <div>
@@ -912,9 +891,207 @@ export function IssueMaterial({
     [fetchMaterialList]
   );
 
+  // Desktop Table Component
+  const DesktopTable = ({
+    requisitions,
+    onIssue,
+    onDelete,
+  }: {
+    requisitions: MaterialRequisition[];
+    onIssue: (req: MaterialRequisition) => void;
+    onDelete: (id: string) => void;
+  }) => {
+    return (
+      <div className="bg-white rounded-lg shadow border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1000px]">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[180px]">
+                  Card Number
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[250px]">
+                  Product Name
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[150px]">
+                  Requested By
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[200px]">
+                  Material Counts
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[200px]">
+                  Issued Progress
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[150px]">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900 min-w-[200px]">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-gray-200">
+              {requisitions.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>
+                    <EmptyState />
+                  </td>
+                </tr>
+              ) : (
+                requisitions.map((req) => {
+                  const totalItems = [
+                    ...(req.upper || []),
+                    ...(req.materials || []),
+                    ...(req.components || []),
+                    ...(req.packaging || []),
+                    ...(req.misc || []),
+                  ];
+                  const totalRequired = totalItems.reduce(
+                    (sum, item) => sum + Number(item.requirement || 0),
+                    0
+                  );
+                  const totalIssued = totalItems.reduce(
+                    (sum, item) => sum + Number(item.issued || 0),
+                    0
+                  );
+                  const progress =
+                    totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
+
+                  return (
+                    <tr key={req._id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 bg-blue-100 rounded flex items-center justify-center shrink-0">
+                            <FileText className="text-blue-600 w-5 h-5" />
+                          </div>
+                          <div className="font-medium text-gray-900">
+                            {req.cardNumber}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="font-medium text-gray-900 truncate">
+                            {req.projectId?.productName || "-"}
+                          </p>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <p className="font-medium text-gray-900">
+                          {req.requestedBy}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {new Date(req.createdAt).toLocaleDateString()}
+                        </p>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1">
+                          <div className="text-sm text-gray-600">
+                            <span className="font-medium">U:</span>{" "}
+                            {req.upper?.length || 0} |
+                            <span className="font-medium"> M:</span>{" "}
+                            {req.materials?.length || 0} |
+                            <span className="font-medium"> C:</span>{" "}
+                            {req.components?.length || 0}
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            <span className="font-medium">P:</span>{" "}
+                            {req.packaging?.length || 0} |
+                            <span className="font-medium"> Misc:</span>{" "}
+                            {req.misc?.length || 0}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full transition-all duration-300 ${
+                                progress >= 100
+                                  ? "bg-green-500"
+                                  : progress > 0
+                                  ? "bg-yellow-500"
+                                  : "bg-red-500"
+                              }`}
+                              style={{ width: `${Math.min(progress, 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-sm text-gray-700 min-w-[60px] shrink-0">
+                            {totalIssued}/{totalRequired}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <Badge
+                          variant={
+                            req.status === "Pending to Store"
+                              ? "destructive"
+                              : req.status === "Issued"
+                              ? "default"
+                              : req.status === "Partially Issued"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          className="font-semibold"
+                        >
+                          {req.status}
+                        </Badge>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            onClick={() => onIssue(req)}
+                          >
+                            <Send className="w-4 h-4 mr-1" />
+                            {req.status === "Issued"
+                              ? "View/Update"
+                              : req.status === "Partially Issued"
+                              ? "Issue More"
+                              : "Issue"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+                            onClick={() => onDelete(req._id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // Empty State Component
+  const EmptyState = () => (
+    <div className="text-center py-16 text-gray-500 bg-white rounded-lg border">
+      <Package className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+      <p className="text-lg font-medium text-gray-700 mb-2">
+        No material requisitions found
+      </p>
+      <p className="text-gray-500">Try adjusting your search or filters</p>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -941,7 +1118,6 @@ export function IssueMaterial({
         </div>
       </div>
 
-      {/* Mobile View */}
       <div className="md:hidden space-y-4">
         {filteredData.length === 0 ? (
           <EmptyState />
@@ -959,7 +1135,6 @@ export function IssueMaterial({
         )}
       </div>
 
-      {/* Desktop View */}
       <div className="hidden md:block">
         <DesktopTable
           requisitions={filteredData}
@@ -968,7 +1143,6 @@ export function IssueMaterial({
         />
       </div>
 
-      {/* Issue Dialog */}
       <MaterialIssueDialog
         requisition={selectedRequisition}
         open={!!selectedRequisition}
@@ -978,183 +1152,3 @@ export function IssueMaterial({
     </div>
   );
 }
-
-// Desktop Table Component
-interface DesktopTableProps {
-  requisitions: MaterialRequisition[];
-  onIssue: (req: MaterialRequisition) => void;
-  onDelete: (id: string) => void;
-}
-
-const DesktopTable = ({
-  requisitions,
-  onIssue,
-  onDelete,
-}: DesktopTableProps) => {
-  return (
-    <div className="bg-white rounded-lg shadow border overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1000px]">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[180px]">
-                Card Number
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[250px]">
-                Product Name
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[150px]">
-                Requested By
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[200px]">
-                Issued Progress
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 min-w-[150px]">
-                Status
-              </th>
-              <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900 min-w-[200px]">
-                Actions
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-gray-200">
-            {requisitions.length === 0 ? (
-              <tr>
-                <td colSpan={6}>
-                  <EmptyState />
-                </td>
-              </tr>
-            ) : (
-              requisitions.map((req) => {
-                const totalItems = [
-                  ...(req.materials || []),
-                  ...(req.components || []),
-                ];
-                const totalRequired = totalItems.reduce(
-                  (sum, item) => sum + Number(item.requirement || 0),
-                  0
-                );
-                const totalIssued = totalItems.reduce(
-                  (sum, item) => sum + Number(item.issued || 0),
-                  0
-                );
-                const progress =
-                  totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
-
-                return (
-                  <tr key={req._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 bg-blue-100 rounded flex items-center justify-center shrink-0">
-                          <FileText className="text-blue-600 w-5 h-5" />
-                        </div>
-                        <div className="font-medium text-gray-900">
-                          {req.cardNumber}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-medium text-gray-900 truncate">
-                          {req.projectId?.productName || "-"}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {req.materials?.length || 0} materials,{" "}
-                          {req.components?.length || 0} components
-                        </p>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <p className="font-medium text-gray-900">
-                        {req.requestedBy}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(req.createdAt).toLocaleDateString()}
-                      </p>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 bg-gray-200 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full transition-all duration-300 ${
-                              progress >= 100
-                                ? "bg-green-500"
-                                : progress > 0
-                                ? "bg-yellow-500"
-                                : "bg-red-500"
-                            }`}
-                            style={{ width: `${Math.min(progress, 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-sm text-gray-700 min-w-[60px] shrink-0">
-                          {totalIssued}/{totalRequired}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <Badge
-                        variant={
-                          req.status === "Pending to Store"
-                            ? "destructive"
-                            : req.status === "Issued"
-                            ? "default"
-                            : req.status === "Partially Issued"
-                            ? "secondary"
-                            : "outline"
-                        }
-                        className="font-semibold"
-                      >
-                        {req.status}
-                      </Badge>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                          onClick={() => onIssue(req)}
-                        >
-                          <Send className="w-4 h-4 mr-1" />
-                          {req.status === "Issued"
-                            ? "View/Update"
-                            : req.status === "Partially Issued"
-                            ? "Issue More"
-                            : "Issue"}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
-                          onClick={() => onDelete(req._id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
-// Empty State Component
-const EmptyState = () => (
-  <div className="text-center py-16 text-gray-500 bg-white rounded-lg border">
-    <Package className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-    <p className="text-lg font-medium text-gray-700 mb-2">
-      No material requisitions found
-    </p>
-    <p className="text-gray-500">Try adjusting your search or filters</p>
-  </div>
-);

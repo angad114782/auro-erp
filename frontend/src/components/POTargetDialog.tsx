@@ -1,5 +1,5 @@
-// POTargetDialog.tsx (responsive version)
-import React, { useState } from "react";
+// POTargetDialog.tsx (FIXED VERSION)
+import React, { useState, useEffect } from "react";
 import {
   ShoppingCart,
   Package,
@@ -13,6 +13,7 @@ import {
   Calculator,
   Target,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -54,18 +55,111 @@ export function POTargetDialog({
   const [urgencyLevel, setUrgencyLevel] = useState("Normal");
   const [qualityRequirements, setQualityRequirements] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const [loadingCost, setLoadingCost] = useState(false);
+  const [tentativeCost, setTentativeCost] = useState<number | null>(null);
 
   const { goTo } = useRedirect();
 
   // Check screen size
-  React.useEffect(() => {
+  useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  if (!project) return null;
+  // Fetch tentative cost when dialog opens
+  useEffect(() => {
+    if (open && project?._id) {
+      fetchTentativeCost();
+    } else {
+      // Reset when dialog closes
+      setTentativeCost(null);
+    }
+  }, [open, project?._id]);
+
+  const fetchTentativeCost = async () => {
+    setLoadingCost(true);
+    try {
+      // Try to get calculated tentative cost from cost summary
+      const response = await api.get(`/projects/${project._id}/costs`);
+
+      if (response.data?.summary?.tentativeCost) {
+        // If API returns calculated tentative cost
+        setTentativeCost(response.data.summary.tentativeCost);
+      } else if (response.data?.hasCostData && response.data?.summary) {
+        // If we have cost breakdown in summary, use it
+        const summary = response.data.summary;
+        const calculatedTentative =
+          (summary.upperTotal || 0) +
+          (summary.componentTotal || 0) +
+          (summary.materialTotal || 0) +
+          (summary.packagingTotal || 0) +
+          (summary.miscTotal || 0) +
+          (summary.labourTotal || 0) +
+          (summary.additionalCosts || 0);
+
+        setTentativeCost(calculatedTentative);
+      } else {
+        // Fallback: Fetch all cost components and calculate
+        await fetchAndCalculateTentativeCost();
+      }
+    } catch (error) {
+      console.error("Error fetching tentative cost:", error);
+      // Fallback to clientFinalCost if API fails
+      setTentativeCost(project.clientFinalCost);
+    } finally {
+      setLoadingCost(false);
+    }
+  };
+
+  const fetchAndCalculateTentativeCost = async () => {
+    try {
+      // Fetch all cost components
+      const [
+        upperRes,
+        componentRes,
+        materialRes,
+        packagingRes,
+        miscRes,
+        labourRes,
+      ] = await Promise.all([
+        api.get(`/projects/${project._id}/costs/upper`),
+        api.get(`/projects/${project._id}/costs/component`),
+        api.get(`/projects/${project._id}/costs/material`),
+        api.get(`/projects/${project._id}/costs/packaging`),
+        api.get(`/projects/${project._id}/costs/miscellaneous`),
+        api.get(`/projects/${project._id}/costs/labour`),
+      ]);
+
+      // Calculate totals from each category
+      const calculateTotal = (items: any[]) =>
+        items?.reduce((sum, item) => sum + (item.total || 0), 0) || 0;
+
+      const upperTotal = calculateTotal(upperRes.data.rows || []);
+      const componentTotal = calculateTotal(componentRes.data.rows || []);
+      const materialTotal = calculateTotal(materialRes.data.rows || []);
+      const packagingTotal = calculateTotal(packagingRes.data.rows || []);
+      const miscTotal = calculateTotal(miscRes.data.rows || []);
+      const labourTotal = labourRes.data.labour?.directTotal || 0;
+
+      // Calculate tentative cost (cost total + 15% profit margin)
+      const costTotal =
+        upperTotal +
+        componentTotal +
+        materialTotal +
+        packagingTotal +
+        miscTotal +
+        labourTotal;
+      const profitMargin = 15; // Default 15% profit margin
+      const tentative = costTotal * (1 + profitMargin / 100);
+
+      setTentativeCost(tentative);
+    } catch (error) {
+      console.error("Error calculating tentative cost:", error);
+      setTentativeCost(project.clientFinalCost);
+    }
+  };
 
   const calculateTotalAmount = () => {
     const qty = parseInt(orderQuantity) || 0;
@@ -100,6 +194,8 @@ export function POTargetDialog({
         qualityRequirements: qualityRequirements,
         clientFeedback: clientFeedback,
         specialInstructions: specialInstructions,
+        tentativeCost: tentativeCost, // Save tentative cost for reference
+        brandFinalCost: project.clientFinalCost, // Save brand final cost
       };
 
       await api.patch(`/projects/${project._id}/po`, poData);
@@ -140,6 +236,18 @@ export function POTargetDialog({
     });
   };
 
+  // Display difference between costs
+  const getCostDifference = () => {
+    if (!tentativeCost || !project.clientFinalCost) return null;
+    const difference = project.clientFinalCost - tentativeCost;
+    const percentage = (difference / tentativeCost) * 100;
+    return { difference, percentage };
+  };
+
+  const costDifference = getCostDifference();
+
+  if (!project) return null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -177,6 +285,7 @@ export function POTargetDialog({
                 onClick={handleSubmit}
                 className="bg-emerald-500 hover:bg-emerald-600 text-xs md:text-sm"
                 size={isMobile ? "sm" : "default"}
+                disabled={loadingCost}
               >
                 <Save className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                 {poNumber.trim()
@@ -214,7 +323,8 @@ export function POTargetDialog({
               </div>
 
               <div className="bg-white border-2 border-gray-200 rounded-xl p-4 md:p-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
+                  {/* Product Code */}
                   <div>
                     <Label className="text-xs md:text-sm font-medium text-gray-600">
                       Product Code
@@ -223,17 +333,34 @@ export function POTargetDialog({
                       {project.autoCode}
                     </div>
                   </div>
+
+                  {/* Tentative Cost */}
                   <div>
-                    <Label className="text-xs md:text-sm font-medium text-gray-600">
+                    <Label className="text-xs md:text-sm font-medium text-gray-600 flex items-center gap-1">
                       Tentative Cost
+                      {loadingCost && (
+                        <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+                      )}
                     </Label>
                     <div className="mt-1 flex items-center space-x-1 text-sm md:text-base font-semibold text-green-700">
                       <IndianRupee className="w-3 h-3 md:w-4 md:h-4" />
                       <span>
-                        {(project.clientFinalCost || 0).toLocaleString("en-IN")}
+                        {loadingCost ? (
+                          <span className="text-gray-400">Calculating...</span>
+                        ) : (
+                          (tentativeCost || 0).toLocaleString("en-IN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
+                        )}
                       </span>
                     </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      Calculated from cost breakdown
+                    </div>
                   </div>
+
+                  {/* Brand Final Cost */}
                   <div>
                     <Label className="text-xs md:text-sm font-medium text-gray-600">
                       Brand Final Cost
@@ -241,11 +368,86 @@ export function POTargetDialog({
                     <div className="mt-1 flex items-center space-x-1 text-sm md:text-base font-semibold text-blue-700">
                       <IndianRupee className="w-3 h-3 md:w-4 md:h-4" />
                       <span>
-                        {(project.clientFinalCost || 0).toLocaleString("en-IN")}
+                        {(project.clientFinalCost || 0).toLocaleString(
+                          "en-IN",
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }
+                        )}
                       </span>
                     </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      Approved by client
+                    </div>
                   </div>
+
+                  {/* Cost Difference */}
+                  {tentativeCost &&
+                    project.clientFinalCost &&
+                    costDifference && (
+                      <div>
+                        <Label className="text-xs md:text-sm font-medium text-gray-600">
+                          Price Difference
+                        </Label>
+                        <div className="mt-1 flex items-center space-x-1 text-sm md:text-base font-semibold">
+                          <IndianRupee className="w-3 h-3 md:w-4 md:h-4" />
+                          <span
+                            className={
+                              costDifference.difference >= 0
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }
+                          >
+                            {costDifference.difference >= 0 ? "+" : ""}
+                            {costDifference.difference.toLocaleString("en-IN", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                        <div
+                          className={`text-xs mt-0.5 ${
+                            costDifference.percentage >= 0
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {costDifference.percentage >= 0 ? "+" : ""}
+                          {costDifference.percentage.toFixed(1)}%
+                          {costDifference.difference >= 0
+                            ? " above tentative"
+                            : " below tentative"}
+                        </div>
+                      </div>
+                    )}
                 </div>
+
+                {/* Cost Comparison Card */}
+                {tentativeCost && project.clientFinalCost && (
+                  <div className="mt-4 md:mt-6 p-3 md:p-4 bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">
+                        Cost Comparison
+                      </span>
+                      <Calculator className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-2 bg-green-50 rounded">
+                        <div className="text-xs text-gray-600">Tentative</div>
+                        <div className="font-semibold text-green-700">
+                          ₹{tentativeCost.toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="p-2 bg-blue-50 rounded">
+                        <div className="text-xs text-gray-600">Final</div>
+                        <div className="font-semibold text-blue-700">
+                          ₹{project.clientFinalCost.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -319,29 +521,43 @@ export function POTargetDialog({
                   </div>
 
                   {/* Unit Price */}
-                  {/* <div>
+                  <div>
                     <Label
                       htmlFor="unitPrice"
                       className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
-                      Reverify Brand Final Cost
+                      Unit Price for PO
                     </Label>
                     <Input
                       id="unitPrice"
                       type="number"
                       value={unitPrice}
                       onChange={(e) => setUnitPrice(e.target.value)}
-                      placeholder={`Default: ₹${(
+                      placeholder={`Brand Final: ₹${(
                         project.clientFinalCost || 0
                       ).toLocaleString("en-IN")}`}
                       className="w-full h-8 md:h-10 text-xs md:text-sm"
                       step="0.01"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Leave empty to use brand final cost: ₹
-                      {(project.clientFinalCost || 0).toLocaleString("en-IN")}
-                    </p>
-                  </div> */}
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-xs text-gray-500">
+                        Leave empty to use brand final cost
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 text-xs"
+                        onClick={() =>
+                          setUnitPrice(
+                            project.clientFinalCost?.toString() || ""
+                          )
+                        }
+                      >
+                        Use Brand Final
+                      </Button>
+                    </div>
+                  </div>
 
                   {/* Delivery Date */}
                   <div>
@@ -460,7 +676,10 @@ export function POTargetDialog({
                       <div className="flex items-center space-x-1 text-lg md:text-2xl font-bold text-emerald-600">
                         <IndianRupee className="w-4 h-4 md:w-5 md:h-5" />
                         <span>
-                          {calculateTotalAmount().toLocaleString("en-IN")}
+                          {calculateTotalAmount().toLocaleString("en-IN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
                         </span>
                       </div>
                     </div>
@@ -470,7 +689,10 @@ export function POTargetDialog({
                         parseFloat(unitPrice) ||
                         project.clientFinalCost ||
                         0
-                      ).toLocaleString("en-IN")}{" "}
+                      ).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{" "}
                       per unit
                     </div>
                   </div>

@@ -11,6 +11,10 @@ import {
   Activity,
   ChevronDown,
   ChevronUp,
+  Printer,
+  ShirtIcon,
+  Wrench,
+  FileCheck,
 } from "lucide-react";
 import {
   Dialog,
@@ -25,6 +29,13 @@ import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
 import { toast } from "sonner@2.0.3";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 interface CuttingItem {
   id: string;
@@ -271,6 +282,65 @@ const MobileItemCard = React.memo(
               >
                 {totalAfter} {item.unit}
               </span>
+            </div>
+            <div>
+              <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
+                Advance To
+              </Label>
+              <Select
+              // value={currentEntry.advanceTo || ""}
+              // onValueChange={(value) =>
+              //   setUpdateEntries((prev) => ({
+              //     ...prev,
+              //     [record.id]: {
+              //       ...currentEntry,
+              //       advanceTo: value,
+              //     },
+              //   }))
+              // }
+              >
+                <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-gradient-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
+                  <SelectValue placeholder="Next stage..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cutting">
+                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                      <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
+                      <span>Cutting</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="printing">
+                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                      <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
+                      <span>Printing</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="stitching">
+                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                      <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
+                      <span>Stitching</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="lasting">
+                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                      <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
+                      <span>Lasting</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="packing">
+                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                      <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                      <span>Packing</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="quality">
+                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                      <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
+                      <span>Quality Check</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Today's Update Indicator */}
@@ -826,26 +896,79 @@ export function ItemCuttingDialog({
                             </div>
                           </div>
 
-                          {/* Progress Bar */}
-                          <div className="mt-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-gray-600">
-                                {stageDetails.title} Progress
-                              </span>
-                              <span className="text-xs font-semibold text-gray-900">
-                                {progressPercent.toFixed(1)}%
-                              </span>
+                          {/* Second Row with Advance To Dropdown and Progress Bar */}
+                          <div className="grid grid-cols-12 gap-4 sm:gap-6 items-center mt-4">
+                            {/* Advance To Dropdown - Takes 4 columns */}
+                            <div className="col-span-12 sm:col-span-4">
+                              <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
+                                Advance To Next Stage
+                              </Label>
+                              <Select>
+                                <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-gradient-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
+                                  <SelectValue placeholder="Select next stage..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="cutting">
+                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                                      <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
+                                      <span>Cutting</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="printing">
+                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                                      <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
+                                      <span>Printing</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="stitching">
+                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                                      <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
+                                      <span>Stitching</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="lasting">
+                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                                      <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
+                                      <span>Lasting</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="packing">
+                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                                      <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                                      <span>Packing</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="quality">
+                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
+                                      <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
+                                      <span>Quality Check</span>
+                                    </div>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                            <Progress
-                              value={progressPercent}
-                              className={`h-1.5 sm:h-2 ${
-                                progressPercent >= 100
-                                  ? "bg-green-200"
-                                  : progressPercent >= 50
-                                  ? "bg-blue-200"
-                                  : "bg-orange-200"
-                              }`}
-                            />
+
+                            {/* Progress Bar - Takes 8 columns */}
+                            <div className="col-span-12 sm:col-span-8">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs text-gray-600">
+                                  {stageDetails.title} Progress
+                                </span>
+                                <span className="text-xs font-semibold text-gray-900">
+                                  {progressPercent.toFixed(1)}%
+                                </span>
+                              </div>
+                              <Progress
+                                value={progressPercent}
+                                className={`h-1.5 sm:h-2 ${
+                                  progressPercent >= 100
+                                    ? "bg-green-200"
+                                    : progressPercent >= 50
+                                    ? "bg-blue-200"
+                                    : "bg-orange-200"
+                                }`}
+                              />
+                            </div>
                           </div>
 
                           {/* Today's Update Indicator */}

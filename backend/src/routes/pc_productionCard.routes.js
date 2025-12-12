@@ -15,6 +15,6 @@ router.get("/tracking-materials", ctrl.getTrackingMaterialsController);
 router.get("/:cardId", ctrl.getCard);
 router.put("/:cardId", ctrl.updateCard);
 router.delete("/:cardId", ctrl.deleteCard);
-router.patch("/:cardId/stage", ctrl.changeStageController);
+router.put("/:cardId/stage", ctrl.changeStageController);
 
 export default router;
