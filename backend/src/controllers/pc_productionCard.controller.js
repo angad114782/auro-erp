@@ -2,6 +2,7 @@
 
 import * as service from "../services/pc_productionCard.service.js";
 
+
 /* ------------------------- Create Skeleton ------------------------- */
 export async function createSkeleton(req, res) {
   try {
@@ -273,5 +274,24 @@ export async function getTrackingMaterialsController(req, res) {
       return res.status(400).json({ error: err.message });
 
     return res.status(500).json({ error: err.message || "Server error" });
+  }
+}
+
+
+export async function getProjectsInTrackingController(req, res) {
+  try {
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 50);
+
+    const result = await service.getProjectsInTracking({ page, limit });
+
+    return res.json({
+      success: true,
+      total: result.total,
+      items: result.items,
+    });
+  } catch (err) {
+    console.error("getProjectsInTrackingController error", err);
+    return res.status(500).json({ error: err.message });
   }
 }

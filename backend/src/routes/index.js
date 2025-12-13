@@ -18,6 +18,8 @@ import vendorRoutes from "./vendor.route.js";
 import pcProdRoutes from "./pc_productionCard.routes.js";
 import pcMrRoutes from "./pc_materialRequest.routes.js";
 import assignPlantRoutes from "./assignPlant.routes.js";
+import microTrackingRoutes from "./microTracking.routes.js";
+
 const router = Router();
 
 router.get("/health", (req, res) => {
@@ -63,5 +65,7 @@ router.use("/assign-plant", assignPlantRoutes);
 
 router.use("/projects/:projectId/production-cards", pcProdRoutes);
 router.use("/", pcMrRoutes);
+router.use("/production-cards", pcProdRoutes);
+router.use("/", microTrackingRoutes);
 
 export default router;

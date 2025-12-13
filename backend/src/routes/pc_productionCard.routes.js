@@ -10,6 +10,8 @@ router.get("/", ctrl.getProductionCards);
 router.get("/preview-next-number", ctrl.previewNextCardNumber);
 router.get("/tracking-overview", ctrl.getProjectTrackingOverviewController);
 router.get("/tracking-materials", ctrl.getTrackingMaterialsController);
+router.get("/projects-in-tracking", ctrl.getProjectsInTrackingController);
+
 
 // then param-based routes
 router.get("/:cardId", ctrl.getCard);

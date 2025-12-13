@@ -2,7 +2,11 @@ import mongoose from "mongoose";
 
 const schedulingSchema = new mongoose.Schema({
   scheduleDate: { type: Date, required: true },
-  assignedPlant: { type: String, default: "" },
+  assignedPlant: { 
+  type: mongoose.Schema.Types.ObjectId, 
+  ref: "AssignPlant", 
+  default: null 
+},
   soleFrom: { type: String, default: "" },       // e.g., supplier / mold name
   soleColor: { type: String, default: "" },
   soleExpectedDate: { type: Date, default: null },

@@ -6,6 +6,8 @@ import { PCProductionCard } from "../models/pc_productionCard.model.js";
 import { PCMaterialRequest } from "../models/pc_materialRequest.model.js";
 import { Project } from "../models/Project.model.js";
 import { PoDetails } from "../models/PoDetails.model.js";
+import ProductionCalendar from "../models/ProductionCalendar.model.js";
+
 import {
   UpperCostRow,
   ComponentCostRow,
@@ -1395,3 +1397,90 @@ export async function getTrackingByDepartmentAcrossProjectsFlattened(department,
   };
 }
 
+
+
+
+export async function getProjectsInTracking({ page = 1, limit = 50 }) {
+  const skip = (page - 1) * limit;
+
+  // 1️⃣ Get all projectIds where at least 1 card is in Tracking
+  const trackingProjectIds = await PCProductionCard.distinct("projectId", {
+    stage: "Tracking",
+    isActive: true,
+  });
+
+  if (!trackingProjectIds.length) {
+    return { total: 0, items: [] };
+  }
+
+  // 2️⃣ Fetch project documents
+  const projects = await Project.find({ _id: { $in: trackingProjectIds } })
+    .populate({ path: "company", select: "name" })
+    .populate({ path: "brand", select: "name" })
+    .populate({ path: "category", select: "name" })
+    .populate({ path: "type", select: "name" })
+    .populate({ path: "country", select: "name" })
+    .populate({ path: "assignPerson", select: "name" })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  // 3️⃣ Per-project data
+  const items = await Promise.all(
+    projects.map(async (p) => {
+      const pid = p._id;
+
+      const [
+        trackingCount,
+        totalCards,
+        po,
+        calendar,
+      ] = await Promise.all([
+        PCProductionCard.countDocuments({
+          projectId: pid,
+          stage: "Tracking",
+          isActive: true,
+        }),
+
+        PCProductionCard.countDocuments({
+          projectId: pid,
+          isActive: true,
+        }),
+
+        PoDetails.findOne({ project: pid }).lean(),
+
+        // 🔥 Real correct source of plant assignment
+        ProductionCalendar.findOne({
+          project: pid,
+          isActive: true,
+        })
+          .select("scheduling.assignedPlant")
+          .lean(),
+      ]);
+
+      return {
+        projectId: p._id,
+        autoCode: p.autoCode,
+        productName: p.productName || p.artName || "",
+        company: p.company,
+        brand: p.brand,
+        category: p.category,
+        type: p.type,
+        assignPerson: p.assignPerson,
+        po,
+        
+        // ✔ Plant from Production Calendar
+        plant: calendar?.scheduling?.assignedPlant || null,
+        
+        trackingCount,
+        totalCards,
+      };
+    })
+  );
+
+  return {
+    total: items.length,
+    items,
+  };
+}

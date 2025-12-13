@@ -64,58 +64,42 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// --- create calendar entry (fixed session/lean usage) ---
 export const createCalendarEntryService = async (payload, { session, by = null } = {}) => {
   const { projectId, scheduling, productionDetails, additional } = payload || {};
-  if (!projectId) {
-    const err = new Error("projectId is required");
-    err.status = 400;
-    throw err;
-  }
-  if (!scheduling || !scheduling.scheduleDate) {
-    const err = new Error("scheduling.scheduleDate is required");
-    err.status = 400;
-    throw err;
-  }
-  if (!productionDetails || productionDetails.quantity == null) {
-    const err = new Error("productionDetails.quantity is required");
-    err.status = 400;
-    throw err;
-  }
 
-  // fetch project — attach session to the query when provided
+  if (!projectId) throw error400("projectId is required");
+  if (!scheduling?.scheduleDate) throw error400("scheduling.scheduleDate is required");
+  if (productionDetails?.quantity == null) throw error400("productionDetails.quantity is required");
+
+  // fetch project
   let projectQuery = Project.findById(projectId)
     .populate("brand", "name")
     .populate("category", "name")
     .populate("company", "name");
+
   if (session) projectQuery = projectQuery.session(session);
   const project = await projectQuery.lean();
 
-  if (!project || project.isActive === false) {
-    const err = new Error("Project not found or not active");
-    err.status = 404;
-    throw err;
-  }
+  if (!project || !project.isActive) throw error404("Project not found or not active");
 
-  // fetch PO details if present (session-aware)
+  // fetch PO
   let poQuery = PoDetails.findOne({ project: project._id });
   if (session) poQuery = poQuery.session(session);
   const po = await poQuery.lean();
 
-  // build snapshot storing both id and readable names
+  // snapshot
   const snapshot = {
     autoCode: project.autoCode,
     artName: project.artName,
     productDesc: project.productDesc,
     color: project.color,
     size: project.size,
-    // store ids if present
-    brand: project.brand?._id ?? project.brand ?? null,
-    brandName: project.brand?.name ?? (typeof project.brand === "string" ? project.brand : null),
-    category: project.category?._id ?? project.category ?? null,
-    categoryName: project.category?.name ?? (typeof project.category === "string" ? project.category : null),
-    company: project.company?._id ?? project.company ?? null,
-    companyName: project.company?.name ?? (typeof project.company === "string" ? project.company : null),
+    brand: project.brand?._id ?? null,
+    brandName: project.brand?.name ?? null,
+    category: project.category?._id ?? null,
+    categoryName: project.category?.name ?? null,
+    company: project.company?._id ?? null,
+    companyName: project.company?.name ?? null,
     countryName: project.countryName ?? project.country ?? null,
     poNumber: po?.poNumber || "",
     poRef: po?._id || null,
@@ -126,17 +110,13 @@ export const createCalendarEntryService = async (payload, { session, by = null }
     projectSnapshot: snapshot,
     scheduling: {
       scheduleDate: new Date(scheduling.scheduleDate),
-      assignedPlant: scheduling.assignedPlant || "",
+      assignedPlant: scheduling.assignedPlant ? new mongoose.Types.ObjectId(scheduling.assignedPlant) : null,
       soleFrom: scheduling.soleFrom || "",
       soleColor: scheduling.soleColor || "",
       soleExpectedDate: scheduling.soleExpectedDate ? new Date(scheduling.soleExpectedDate) : null,
     },
-    productionDetails: {
-      quantity: Number(productionDetails.quantity),
-    },
-    additional: {
-      remarks: additional?.remarks || "",
-    },
+    productionDetails: { quantity: Number(productionDetails.quantity) },
+    additional: { remarks: additional?.remarks || "" },
     createdBy: by,
     updatedBy: by,
     isActive: true,
@@ -146,8 +126,14 @@ export const createCalendarEntryService = async (payload, { session, by = null }
   return createdArr[0];
 };
 
-// --- list (only active) with pagination ---
-// added optional projectId filter support by passing options if needed
+function error400(msg) {
+  return Object.assign(new Error(msg), { status: 400 });
+}
+function error404(msg) {
+  return Object.assign(new Error(msg), { status: 404 });
+}
+
+
 export const listCalendarEntriesService = async ({ page = 1, limit = 20, projectId = null } = {}) => {
   const skip = (page - 1) * limit;
   const filter = { isActive: true };
@@ -166,14 +152,15 @@ export const listCalendarEntriesService = async ({ page = 1, limit = 20, project
         { path: "company", select: "name" },
       ],
     })
-    // populate snapshot nested refs only if they are ObjectId refs (safe to call)
     .populate("projectSnapshot.brand", "name")
     .populate("projectSnapshot.category", "name")
+    .populate("scheduling.assignedPlant", "name")
     .lean();
 
   const total = await ProductionCalendar.countDocuments(filter);
   return { items: docs, total, page, limit };
 };
+
 
 // --- get single (only active) ---
 export const getCalendarEntryService = async (id) => {
@@ -194,8 +181,6 @@ export const getCalendarEntryService = async (id) => {
   return doc;
 };
 
-// --- update (partial replace) ---
-// simpler approach: build $set only for provided values
 export const updateCalendarEntryService = async (id, payload, { session, by = null } = {}) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
 
@@ -203,45 +188,51 @@ export const updateCalendarEntryService = async (id, payload, { session, by = nu
 
   if (payload.scheduling) {
     if (payload.scheduling.scheduleDate !== undefined)
-      setObj["scheduling.scheduleDate"] = payload.scheduling.scheduleDate ? new Date(payload.scheduling.scheduleDate) : null;
+      setObj["scheduling.scheduleDate"] = payload.scheduling.scheduleDate
+        ? new Date(payload.scheduling.scheduleDate)
+        : null;
+
     if (payload.scheduling.assignedPlant !== undefined)
-      setObj["scheduling.assignedPlant"] = payload.scheduling.assignedPlant;
+      setObj["scheduling.assignedPlant"] = payload.scheduling.assignedPlant
+        ? new mongoose.Types.ObjectId(payload.scheduling.assignedPlant)
+        : null;
+
     if (payload.scheduling.soleFrom !== undefined)
       setObj["scheduling.soleFrom"] = payload.scheduling.soleFrom;
+
     if (payload.scheduling.soleColor !== undefined)
       setObj["scheduling.soleColor"] = payload.scheduling.soleColor;
+
     if (payload.scheduling.soleExpectedDate !== undefined)
-      setObj["scheduling.soleExpectedDate"] = payload.scheduling.soleExpectedDate ? new Date(payload.scheduling.soleExpectedDate) : null;
+      setObj["scheduling.soleExpectedDate"] =
+        payload.scheduling.soleExpectedDate 
+        ? new Date(payload.scheduling.soleExpectedDate)
+        : null;
   }
 
-  if (payload.productionDetails) {
-    if (payload.productionDetails.quantity !== undefined)
-      setObj["productionDetails.quantity"] = Number(payload.productionDetails.quantity);
-  }
+  if (payload.productionDetails?.quantity !== undefined)
+    setObj["productionDetails.quantity"] = Number(payload.productionDetails.quantity);
 
-  if (payload.additional) {
-    if (payload.additional.remarks !== undefined)
-      setObj["additional.remarks"] = payload.additional.remarks;
-  }
+  if (payload.additional?.remarks !== undefined)
+    setObj["additional.remarks"] = payload.additional.remarks;
 
-  if (Object.keys(setObj).length === 0 && payload.isActive === undefined) {
-    const err = new Error("nothing to update");
-    err.status = 400;
-    throw err;
-  }
+  if (Object.keys(setObj).length === 0 && payload.isActive === undefined)
+    throw error400("nothing to update");
 
   setObj.updatedBy = by;
   setObj.updatedAt = new Date();
 
-  const query = ProductionCalendar.findOneAndUpdate(
+  const doc = await ProductionCalendar.findOneAndUpdate(
     { _id: id, isActive: true },
     { $set: setObj },
     { new: true, session }
-  );
+  )
+    .populate("scheduling.assignedPlant", "name")
+    .lean();
 
-  const doc = await query.lean();
   return doc;
 };
+
 
 // --- soft delete ---
 export const deleteCalendarEntryService = async (id, { session, by = null } = {}) => {
