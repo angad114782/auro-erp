@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Search,
   Filter,
@@ -61,6 +61,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { toast } from "sonner@2.0.3";
 import { ItemCuttingDialog } from "./ItemCuttingDialog";
 import { useERPStore } from "../lib/data-store";
+import api from "../lib/api";
 
 interface ProductionRecord {
   id: string;
@@ -170,6 +171,15 @@ export function ProductionTrackingTable() {
 
   // Get production cards from store
   const { productionCards } = useERPStore();
+
+  const getTaskdata = async () => {
+    const res = await api.get("/production-cards/projects-in-tracking");
+    console.log(res.data, "tracking data");
+  };
+
+  useEffect(() => {
+    getTaskdata();
+  }, []);
 
   // Define stages
   const stages = [
@@ -1440,7 +1450,7 @@ export function ProductionTrackingTable() {
                   <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
                   <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
                   <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
-                  <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
+                  {/* <th className="px-4 py-2 text-xs font-medium text-gray-600"></th> */}
                   {/* Dynamic Day Headers */}
                   {weekData.map((week) => (
                     <React.Fragment key={`week-days-${week.weekNumber}`}>
@@ -1470,7 +1480,7 @@ export function ProductionTrackingTable() {
                   </td>
                   <td className="px-4 py-2.5"></td>
                   <td className="px-4 py-2.5"></td>
-                  <td className="px-4 py-2.5"></td>
+                  {/* <td className="px-4 py-2.5"></td> */}
                   <td className="px-4 py-2.5 border-r border-gray-200"></td>
 
                   {/* Dynamic Daily Totals */}
@@ -1631,6 +1641,9 @@ export function ProductionTrackingTable() {
                           </div>
                         </div>
                       </td>
+
+                      {/* ADD THIS EMPTY TD TO ALIGN WITH HEADER STRUCTURE */}
+                      {/* <td className="px-4 py-2.5 border-r border-gray-200"></td> */}
 
                       {/* Dynamic Daily Data */}
                       {weekData.map((week, weekIndex) => (
@@ -1944,10 +1957,10 @@ export function ProductionTrackingTable() {
 
                             {/* Advancement Confirmation */}
                             {currentEntry.advanceTo && (
-                              <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg border-2 border-emerald-300">
+                              <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-linear-to-r from-emerald-50 to-teal-50 rounded-lg border-2 border-emerald-300">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                   <div className="flex items-center gap-2 sm:gap-3">
-                                    <div className="w-6 h-6 sm:w-8 sm:h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-sm flex-shrink-0">
+                                    <div className="w-6 h-6 sm:w-8 sm:h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-sm shrink-0">
                                       <Workflow className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                                     </div>
                                     <div className="flex-1">
@@ -1980,7 +1993,7 @@ export function ProductionTrackingTable() {
 
                             {/* Progress Indicator */}
                             {currentEntry.quantity > 0 && (
-                              <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border-2 border-green-300">
+                              <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-linear-to-r from-green-50 to-emerald-50 rounded-lg border-2 border-green-300">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-0 text-xs sm:text-sm">
                                   <span className="text-green-700 font-medium">
                                     +{currentEntry.quantity} units
@@ -2145,10 +2158,10 @@ export function ProductionTrackingTable() {
           {selectedProductionRecord && (
             <>
               {/* Sticky Header Section */}
-              <div className="sticky top-0 z-50 px-4 sm:px-8 py-4 sm:py-6 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-b border-gray-200 shadow-sm">
+              <div className="sticky top-0 z-50 px-4 sm:px-8 py-4 sm:py-6 bg-linear-to-r from-gray-50 via-white to-gray-50 border-b border-gray-200 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-start gap-3 sm:gap-6">
-                    <div className="w-10 h-10 sm:w-14 sm:h-14 bg-gradient-to-br from-[#0c9dcb] to-[#26b4e0] rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg flex-shrink-0">
+                    <div className="w-10 h-10 sm:w-14 sm:h-14 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg shrink-0">
                       <Package className="w-5 h-5 sm:w-7 sm:h-7 text-white" />
                     </div>
                     <div className="flex-1">
@@ -2199,7 +2212,7 @@ export function ProductionTrackingTable() {
                   {/* Production Progress Overview */}
                   <div className="space-y-3 sm:space-y-5">
                     <div className="flex items-center gap-3 sm:gap-5">
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md shrink-0">
                         <Target className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                       </div>
                       <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
@@ -2404,7 +2417,7 @@ export function ProductionTrackingTable() {
                     {/* Manufacturing & PO Details */}
                     <div className="space-y-4 sm:space-y-6">
                       <div className="flex items-center gap-3 sm:gap-5">
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md shrink-0">
                           <Building className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                         </div>
                         <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
@@ -2625,7 +2638,7 @@ export function ProductionTrackingTable() {
                     </div>
 
                     {/* Quick Actions Footer */}
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 sm:p-6 border border-blue-200">
+                    <div className="bg-linear-to-r from-blue-50 to-indigo-50 rounded-xl p-4 sm:p-6 border border-blue-200">
                       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                         <div>
                           <h4 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">
