@@ -47,9 +47,6 @@ export async function updateMicroTracking(req, res) {
 export async function getDepartmentWiseTracking(req, res) {
   try {
     const { projectId } = req.params;
-    if (!projectId)
-      return res.status(400).json({ error: "projectId is required" });
-
     const data = await service.getDepartmentWiseTrackingService(projectId);
 
     return res.json({ success: true, data });
@@ -64,9 +61,6 @@ export async function getDepartmentWiseTracking(req, res) {
 export async function getDepartmentRows(req, res) {
   try {
     const { projectId, department } = req.params;
-
-    if (!projectId || !department)
-      return res.status(400).json({ error: "projectId & department required" });
 
     const rows = await service.getRowsByDepartment(projectId, department);
 
