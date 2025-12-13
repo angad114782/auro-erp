@@ -170,6 +170,7 @@ export async function changeStageController(req, res) {
 }
 
 /* ---------------- Tracking Overview (Project Level) ---------------- */
+/* ---------------- Tracking Overview (Project Level) ---------------- */
 export async function getProjectTrackingOverviewController(req, res) {
   try {
     const { projectId } = req.params;
@@ -186,6 +187,14 @@ export async function getProjectTrackingOverviewController(req, res) {
       sort,
     });
 
+    // Defensive: remove any UI-only fields (e.g. monthlyPlan/monthPlan) if accidentally present
+    if (result && result.trackingCards && Array.isArray(result.trackingCards.items)) {
+      result.trackingCards.items.forEach(it => {
+        if (it.monthlyPlan) delete it.monthlyPlan;
+        if (it.monthPlan) delete it.monthPlan;
+      });
+    }
+
     return res.json({ success: true, data: result });
   } catch (err) {
     console.error("getProjectTrackingOverview error", err);
@@ -199,6 +208,41 @@ export async function getProjectTrackingOverviewController(req, res) {
     return res.status(500).json({ error: err.message || "Server error" });
   }
 }
+
+
+export async function getTrackingByDepartmentController(req, res) {
+  try {
+    const department = req.params.department ? String(req.params.department).trim() : null;
+    if (!department) return res.status(400).json({ error: "department required in URL" });
+
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 200);
+
+    const data = await service.getTrackingByDepartmentAcrossProjects(department, { page, limit });
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error("getTrackingByDepartmentController error", err);
+    return res.status(500).json({ error: err.message || "Server error" });
+  }
+}
+
+
+export async function getTrackingByDepartmentAcrossProjectsFlattenedController(req, res) {
+  try {
+    const department = req.params.department ? String(req.params.department).trim() : null;
+    if (!department) return res.status(400).json({ error: "department required in URL" });
+
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 200);
+
+    const data = await service.getTrackingByDepartmentAcrossProjectsFlattened(department, { page, limit });
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error("getTrackingByDepartmentController error", err);
+    return res.status(500).json({ error: err.message || "Server error" });
+  }
+}
+
 
 /* --------------- Tracking Materials (Department Wise + all 5 groups) --------------- */
 export async function getTrackingMaterialsController(req, res) {

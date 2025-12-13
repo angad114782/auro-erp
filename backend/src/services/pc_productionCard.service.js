@@ -326,6 +326,114 @@ export async function updateProductionCard(cardId, updates = {}, options = { com
      mr.componentsSnapshot = components + packaging + misc
  - Push MR id to card.materialRequests and update card snapshot/status inside same transaction.
 */
+// export async function createMaterialRequestForCard(cardId, mrPayload = {}, requestedBy = "Production Manager") {
+//   if (!isObjectIdLike(cardId)) throw new Error("cardId required");
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+//   try {
+//     const card = await PCProductionCard.findById(cardId).session(session);
+//     if (!card) throw new Error("Card not found");
+
+//     // determine snapshot source (client provided or card)
+//     const upper = Array.isArray(mrPayload.upper) && mrPayload.upper.length ? mrPayload.upper : (Array.isArray(card.upper) ? card.upper : []);
+//     const materials = Array.isArray(mrPayload.materials) && mrPayload.materials.length ? mrPayload.materials : (Array.isArray(card.materials) ? card.materials : []);
+//     const components = Array.isArray(mrPayload.components) && mrPayload.components.length ? mrPayload.components : (Array.isArray(card.components) ? card.components : []);
+//     const packaging = Array.isArray(mrPayload.packaging) && mrPayload.packaging.length ? mrPayload.packaging : (Array.isArray(card.packaging) ? card.packaging : []);
+//     const misc = Array.isArray(mrPayload.misc) && mrPayload.misc.length ? mrPayload.misc : (Array.isArray(card.misc) ? card.misc : []);
+
+//     // legacy combined snapshots for older UI/backends
+//     const materialsSnapshot = [...(upper || []), ...(materials || [])];
+//     const componentsSnapshot = [...(components || []), ...(packaging || []), ...(misc || [])];
+
+//     // create MR doc (we store five arrays + legacy snapshots)
+//     const [mr] = await PCMaterialRequest.create(
+//       [
+//         {
+//           productionCardId: card._id,
+//           projectId: card.projectId,
+//           cardNumber: card.cardNumber || "",
+//           requestedBy: requestedBy,
+//           status: mrPayload.status || "Pending to Store",
+//           upper: upper,
+//           materials: materials,
+//           components: components,
+//           packaging: packaging,
+//           misc: misc,
+//           // legacy convenience fields
+//           materialsSnapshot,
+//           componentsSnapshot,
+//           notes: mrPayload.notes || "Material request created from production card",
+//         },
+//       ],
+//       { session }
+//     );
+
+//     // push MR into card and update card snapshot & status (keep both separate arrays and legacy snapshots)
+//     card.materialRequests = card.materialRequests || [];
+//     card.materialRequests.push(mr._id);
+
+//     // persist the snapshot back to card (explicit five arrays)
+//     if (upper && upper.length) card.upper = upper;
+//     if (materials && materials.length) card.materials = materials;
+//     if (components && components.length) card.components = components;
+//     if (packaging && packaging.length) card.packaging = packaging;
+//     if (misc && misc.length) card.misc = misc;
+
+//     // also set legacy combined snapshots for backward compatibility
+//     card.materialsSnapshot = materialsSnapshot;
+//     card.componentsSnapshot = componentsSnapshot;
+
+//     card.materialRequestStatus = mr.status || card.materialRequestStatus;
+//     await card.save({ session });
+
+//     await session.commitTransaction();
+//     session.endSession();
+//     return { mr, card };
+//   } catch (err) {
+//     await session.abortTransaction();
+//     session.endSession();
+//     throw err;
+//   }
+// }
+
+// add near top of file with other imports
+// (no extra npm packages required)
+async function buildItemDeptMap(projectId) {
+  // fetch all cost-rows that may contain department
+  const [upperCostRows, componentCostRows, materialCostRows, packagingCostRows, miscCostRows] = await Promise.all([
+    UpperCostRow.find({ projectId }).select("_id department").lean().catch(() => []),
+    ComponentCostRow.find({ projectId }).select("_id department").lean().catch(() => []),
+    MaterialCostRow.find({ projectId }).select("_id department").lean().catch(() => []),
+    PackagingCostRow.find({ projectId }).select("_id department").lean().catch(() => []),
+    MiscCostRow.find({ projectId }).select("_id department").lean().catch(() => []),
+  ]);
+
+  const map = {};
+  (upperCostRows || []).forEach(r => { if (r._id) map[String(r._id)] = r.department || null; });
+  (componentCostRows || []).forEach(r => { if (r._id) map[String(r._id)] = r.department || null; });
+  (materialCostRows || []).forEach(r => { if (r._id) map[String(r._id)] = r.department || null; });
+  (packagingCostRows || []).forEach(r => { if (r._id) map[String(r._id)] = r.department || null; });
+  (miscCostRows || []).forEach(r => { if (r._id) map[String(r._id)] = r.department || null; });
+
+  return map; // key: itemId string -> department or null
+}
+
+// ensure each row has department if possible
+function ensureDepartments(rows = [], itemDeptMap = {}) {
+  return (rows || []).map(r => {
+    // keep original department if present
+    if (r.department) return r;
+    // if itemId provided and found in map, assign
+    if (r.itemId) {
+      const dep = itemDeptMap[String(r.itemId)];
+      if (dep) return { ...r, department: dep };
+    }
+    // fallback to unknown (optional) — you may prefer null
+    return { ...r, department: r.department ?? "unknown" };
+  });
+}
+
+// Replace existing createMaterialRequestForCard with this updated transactional version
 export async function createMaterialRequestForCard(cardId, mrPayload = {}, requestedBy = "Production Manager") {
   if (!isObjectIdLike(cardId)) throw new Error("cardId required");
   const session = await mongoose.startSession();
@@ -334,18 +442,28 @@ export async function createMaterialRequestForCard(cardId, mrPayload = {}, reque
     const card = await PCProductionCard.findById(cardId).session(session);
     if (!card) throw new Error("Card not found");
 
-    // determine snapshot source (client provided or card)
-    const upper = Array.isArray(mrPayload.upper) && mrPayload.upper.length ? mrPayload.upper : (Array.isArray(card.upper) ? card.upper : []);
-    const materials = Array.isArray(mrPayload.materials) && mrPayload.materials.length ? mrPayload.materials : (Array.isArray(card.materials) ? card.materials : []);
-    const components = Array.isArray(mrPayload.components) && mrPayload.components.length ? mrPayload.components : (Array.isArray(card.components) ? card.components : []);
-    const packaging = Array.isArray(mrPayload.packaging) && mrPayload.packaging.length ? mrPayload.packaging : (Array.isArray(card.packaging) ? card.packaging : []);
-    const misc = Array.isArray(mrPayload.misc) && mrPayload.misc.length ? mrPayload.misc : (Array.isArray(card.misc) ? card.misc : []);
+    // determine snapshots - prefer client-provided arrays if present
+    const upperSrc = Array.isArray(mrPayload.upper) && mrPayload.upper.length ? mrPayload.upper : (Array.isArray(card.upper) ? card.upper : []);
+    const materialsSrc = Array.isArray(mrPayload.materials) && mrPayload.materials.length ? mrPayload.materials : (Array.isArray(card.materials) ? card.materials : []);
+    const componentsSrc = Array.isArray(mrPayload.components) && mrPayload.components.length ? mrPayload.components : (Array.isArray(card.components) ? card.components : []);
+    const packagingSrc = Array.isArray(mrPayload.packaging) && mrPayload.packaging.length ? mrPayload.packaging : (Array.isArray(card.packaging) ? card.packaging : []);
+    const miscSrc = Array.isArray(mrPayload.misc) && mrPayload.misc.length ? mrPayload.misc : (Array.isArray(card.misc) ? card.misc : []);
+
+    // Build itemId->department map once (helps fill missing department values)
+    const itemDeptMap = await buildItemDeptMap(card.projectId);
+
+    // Ensure department present where possible
+    const upper = ensureDepartments(upperSrc, itemDeptMap);
+    const materials = ensureDepartments(materialsSrc, itemDeptMap);
+    const components = ensureDepartments(componentsSrc, itemDeptMap);
+    const packaging = ensureDepartments(packagingSrc, itemDeptMap);
+    const misc = ensureDepartments(miscSrc, itemDeptMap);
 
     // legacy combined snapshots for older UI/backends
     const materialsSnapshot = [...(upper || []), ...(materials || [])];
     const componentsSnapshot = [...(components || []), ...(packaging || []), ...(misc || [])];
 
-    // create MR doc (we store five arrays + legacy snapshots)
+    // create MR doc (store five arrays + legacy snapshots)
     const [mr] = await PCMaterialRequest.create(
       [
         {
@@ -354,12 +472,11 @@ export async function createMaterialRequestForCard(cardId, mrPayload = {}, reque
           cardNumber: card.cardNumber || "",
           requestedBy: requestedBy,
           status: mrPayload.status || "Pending to Store",
-          upper: upper,
-          materials: materials,
-          components: components,
-          packaging: packaging,
-          misc: misc,
-          // legacy convenience fields
+          upper,
+          materials,
+          components,
+          packaging,
+          misc,
           materialsSnapshot,
           componentsSnapshot,
           notes: mrPayload.notes || "Material request created from production card",
@@ -395,6 +512,7 @@ export async function createMaterialRequestForCard(cardId, mrPayload = {}, reque
     throw err;
   }
 }
+
 
 /* ---------- listMaterialRequests ---------- */
 export async function listMaterialRequests(filter = {}, options = { page: 1, limit: 50 }) {
@@ -601,6 +719,7 @@ export async function updateCardStage(cardId, projectId = null, newStage = "Trac
 }
 
 /* ---------- getProjectTrackingOverview ---------- */
+/* ---------- getProjectTrackingOverview ---------- */
 export async function getProjectTrackingOverview(projectId, opts = { page: 1, limit: 25, sort: "createdAt:desc" }) {
   if (!projectId) throw new Error("projectId required");
   if (!mongoose.Types.ObjectId.isValid(String(projectId))) throw new Error("Invalid projectId");
@@ -634,9 +753,29 @@ export async function getProjectTrackingOverview(projectId, opts = { page: 1, li
   (countsByStage || []).forEach((c) => { stageCounts[c._id || "Unknown"] = c.count; });
 
   const [cards, cardsTotal] = await Promise.all([
-    PCProductionCard.find({ projectId: projectObjId, stage: "Tracking", isActive: true }).populate({ path: "assignedPlant", select: "name" }).populate({ path: "materialRequests", select: "_id status createdAt" }).sort(sort).skip(skip).limit(limit).lean(),
+    PCProductionCard.find({ projectId: projectObjId, stage: "Tracking", isActive: true })
+      .populate({ path: "assignedPlant", select: "name" })
+      .populate({ path: "materialRequests", select: "_id status createdAt" })
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
     PCProductionCard.countDocuments({ projectId: projectObjId, stage: "Tracking", isActive: true }),
   ]);
+
+  // helper: map itemId -> department from cost rows (so we can fill missing department values)
+  async function buildItemDeptMapOnce() {
+    const [upperCostRows, componentCostRows] = await Promise.all([
+      UpperCostRow.find({ projectId: projectObjId }).select("_id department").lean().catch(() => []),
+      ComponentCostRow.find({ projectId: projectObjId }).select("_id department").lean().catch(() => []),
+    ]);
+    const map = {};
+    (upperCostRows || []).forEach(r => { if (r._id) map[String(r._id)] = r.department || null; });
+    (componentCostRows || []).forEach(r => { if (r._id) map[String(r._id)] = r.department || null; });
+    return map;
+  }
+
+  const itemDeptMap = await buildItemDeptMapOnce();
 
   const isMeaningfulName = (s) => {
     if (!s) return false;
@@ -648,9 +787,73 @@ export async function getProjectTrackingOverview(projectId, opts = { page: 1, li
 
   const defaultProductName = project.productName?.trim() || project.artName?.trim() || project.autoCode || "";
 
-  const enriched = (cards || []).map((c) => {
+  // Build trackingCards enriched list and gather per-department aggregation
+  const deptAgg = {}; // dept -> { materials: Map, components: Map }
+  const pushToDept = (dept, kind, key, row) => {
+    if (!deptAgg[dept]) deptAgg[dept] = { materials: {}, components: {} };
+    const target = deptAgg[dept][kind];
+    if (!target[key]) {
+      target[key] = {
+        itemId: row.itemId || null,
+        name: row.name || "Unknown",
+        specification: row.specification || row.description || "",
+        unit: row.unit || "unit",
+        requirement: Number(row.requirement || 0),
+        available: Number(row.available || 0),
+        issued: Number(row.issued || 0),
+        balance: Number(row.balance || 0),
+        occurrences: 1,
+        department: dept
+      };
+    } else {
+      target[key].requirement += Number(row.requirement || 0);
+      target[key].available += Number(row.available || 0);
+      target[key].issued += Number(row.issued || 0);
+      target[key].balance += Number(row.balance || 0);
+      target[key].occurrences += 1;
+    }
+  };
+
+  const trackingItems = (cards || []).map((c) => {
+    // Ensure snapshots arrays exist
+    const upper = Array.isArray(c.upper) ? c.upper : [];
+    const materials = Array.isArray(c.materials) ? c.materials : [];
+    const components = Array.isArray(c.components) ? c.components : [];
+    const packaging = Array.isArray(c.packaging) ? c.packaging : [];
+    const misc = Array.isArray(c.misc) ? c.misc : [];
+
+    // ensure dept present where possible
+    const ensureDept = (row) => {
+      if (!row) return row;
+      if (row.department) return row;
+      if (row.itemId && itemDeptMap[String(row.itemId)]) return { ...row, department: itemDeptMap[String(row.itemId)] };
+      return { ...row, department: row.department ?? "unknown" };
+    };
+
+    const upperNorm = upper.map(ensureDept);
+    const materialsNorm = materials.map(ensureDept);
+    const componentsNorm = components.map(ensureDept);
+    const packagingNorm = packaging.map(ensureDept);
+    const miscNorm = misc.map(ensureDept);
+
+    // accumulate dept-wise data (legacy combined logic: materials=upper+materials, components=components+packaging+misc)
+    const matCombined = [...upperNorm, ...materialsNorm];
+    const compCombined = [...componentsNorm, ...packagingNorm, ...miscNorm];
+
+    for (const r of matCombined) {
+      const dept = r.department || "unknown";
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushToDept(dept, "materials", key, r);
+    }
+    for (const r of compCombined) {
+      const dept = r.department || "unknown";
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushToDept(dept, "components", key, r);
+    }
+
     const rawName = c.productName;
     const finalProductName = isMeaningfulName(rawName) ? String(rawName).trim() : defaultProductName;
+
     return {
       _id: c._id,
       cardNumber: c.cardNumber,
@@ -667,10 +870,21 @@ export async function getProjectTrackingOverview(projectId, opts = { page: 1, li
     };
   });
 
+  // convert deptAgg maps to sorted arrays
+  const mapToSortedList = (mapObj) => Object.values(mapObj || {}).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+  const byDepartment = {};
+  for (const deptKey of Object.keys(deptAgg)) {
+    byDepartment[deptKey] = {
+      materials: mapToSortedList(deptAgg[deptKey].materials),
+      components: mapToSortedList(deptAgg[deptKey].components)
+    };
+  }
+
   return {
     project: { ...project, po: poDetails || null },
-    summary: { trackingCount, totalCards, stageCounts },
-    trackingCards: { items: enriched, page, limit, total: cardsTotal, pages: Math.max(1, Math.ceil(cardsTotal / limit)) },
+    summary: { trackingCount, totalCards, stageCounts, byDepartment }, // <-- department-wise summary added
+    trackingCards: { items: trackingItems, page, limit, total: cardsTotal, pages: Math.max(1, Math.ceil(cardsTotal / limit)) },
   };
 }
 
@@ -847,3 +1061,337 @@ export async function getTrackingMaterialsForProject(projectId, opts = { page: 1
     },
   };
 }
+
+
+/**
+ * Aggregate tracking materials/components across all projects for a given department.
+ * Returns: {
+ *   department: "cutting",
+ *   page, limit, totalCardsScanned,
+ *   projects: {
+ *     "<projectId>": {
+ *        project: { _id, autoCode, productName, ... },
+ *        cards: [ { _id, cardNumber, productName, cardQuantity, materials:[], components:[] } ],
+ *        aggregated: { materials: [...], components: [...] }
+ *     }, ...
+ *   },
+ *   aggregatedOverall: { materials: [...], components: [...] } // across all projects
+ * }
+ */
+export async function getTrackingByDepartmentAcrossProjects(department, opts = { page: 1, limit: 200 }) {
+  if (!department) throw new Error("department required");
+
+  const page = Math.max(Number(opts.page || 1), 1);
+  const limit = Math.min(Math.max(Number(opts.limit || 200), 1), 2000);
+  const skip = (page - 1) * limit;
+
+  // 1) fetch tracking cards across all projects (paged)
+  const [cards, totalCards] = await Promise.all([
+    PCProductionCard.find({ stage: "Tracking", isActive: true })
+      .select("cardNumber productName cardQuantity projectId upper materials components packaging misc materialRequestStatus")
+      .populate({ path: "projectId", select: "autoCode productName artName" })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    PCProductionCard.countDocuments({ stage: "Tracking", isActive: true })
+  ]);
+
+  // 2) build per-project item->department map (to fill missing department)
+  // collect unique projectIds from cards
+  const projIds = Array.from(new Set((cards || []).map(c => String(c.projectId?._id || c.projectId)).filter(Boolean)));
+
+  // helper to build map per project
+  async function buildItemDeptMapForProjects(projectIds) {
+    const mapByProject = {};
+    if (!projectIds.length) return mapByProject;
+
+    // fetch cost rows for all projects in one go
+    const [upperRows, componentRows, materialRows, packagingRows, miscRows] = await Promise.all([
+      UpperCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+      ComponentCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+      MaterialCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+      PackagingCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+      MiscCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+    ]);
+
+    const addRows = (rows) => {
+      for (const r of rows || []) {
+        const pid = String(r.projectId || "");
+        mapByProject[pid] = mapByProject[pid] || {};
+        if (r._id) mapByProject[pid][String(r._id)] = r.department || null;
+      }
+    };
+
+    addRows(upperRows); addRows(componentRows); addRows(materialRows); addRows(packagingRows); addRows(miscRows);
+    return mapByProject;
+  }
+
+  const itemDeptMapByProject = await buildItemDeptMapForProjects(projIds);
+
+  // 3) helper to ensure department on a row using project's map
+  const ensureDept = (row, projectId) => {
+    if (!row) return row;
+    if (row.department) return row;
+    if (row.itemId && itemDeptMapByProject[String(projectId)] && itemDeptMapByProject[String(projectId)][String(row.itemId)]) {
+      return { ...row, department: itemDeptMapByProject[String(projectId)][String(row.itemId)] };
+    }
+    return { ...row, department: row.department ?? "unknown" };
+  };
+
+  // 4) iterate cards, pick rows that match requested department and group by project
+  const projects = {}; // projectId -> { project, cards: [], aggregated: { materials: {}, components: {} } }
+  const overallAgg = { materials: {}, components: {} };
+
+  const pushAgg = (aggMap, key, row) => {
+    if (!aggMap[key]) {
+      aggMap[key] = {
+        itemId: row.itemId || null,
+        name: row.name || "Unknown",
+        specification: row.specification || row.description || "",
+        unit: row.unit || "unit",
+        requirement: Number(row.requirement || 0),
+        available: Number(row.available || 0),
+        issued: Number(row.issued || 0),
+        balance: Number(row.balance || 0),
+        occurrences: 1,
+        department: row.department || department
+      };
+    } else {
+      aggMap[key].requirement += Number(row.requirement || 0);
+      aggMap[key].available += Number(row.available || 0);
+      aggMap[key].issued += Number(row.issued || 0);
+      aggMap[key].balance += Number(row.balance || 0);
+      aggMap[key].occurrences += 1;
+    }
+  };
+
+  for (const c of (cards || [])) {
+    const projId = String(c.projectId?._id || c.projectId);
+    const projectObj = c.projectId || null;
+    projects[projId] = projects[projId] || { project: projectObj, cards: [], aggregated: { materials: {}, components: {} } };
+
+    // normalize rows and attach dept where possible
+    const up = (Array.isArray(c.upper) ? c.upper : []).map(r => ensureDept(r, projId));
+    const mats = (Array.isArray(c.materials) ? c.materials : []).map(r => ensureDept(r, projId));
+    const comps = (Array.isArray(c.components) ? c.components : []).map(r => ensureDept(r, projId));
+    const packs = (Array.isArray(c.packaging) ? c.packaging : []).map(r => ensureDept(r, projId));
+    const misc = (Array.isArray(c.misc) ? c.misc : []).map(r => ensureDept(r, projId));
+
+    // legacy combined groups
+    const matCombined = [...up, ...mats];
+    const compCombined = [...comps, ...packs, ...misc];
+
+    // filter for requested department and aggregate
+    const cardMaterialsForDept = matCombined.filter(r => (r.department || "unknown") === department);
+    const cardComponentsForDept = compCombined.filter(r => (r.department || "unknown") === department);
+
+    // skip if neither materials nor components for this department
+    if (cardMaterialsForDept.length === 0 && cardComponentsForDept.length === 0) {
+      // still include card in project cards? typically no — skip it
+      continue;
+    }
+
+    // add card-level object (only rows for this department)
+    projects[projId].cards.push({
+      _id: c._id,
+      cardNumber: c.cardNumber,
+      productName: c.productName,
+      cardQuantity: c.cardQuantity,
+      materials: cardMaterialsForDept,
+      components: cardComponentsForDept,
+      materialRequestStatus: c.materialRequestStatus
+    });
+
+    // update project aggregated and overall aggregated
+    for (const r of cardMaterialsForDept) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushAgg(projects[projId].aggregated.materials, key, r);
+      pushAgg(overallAgg.materials, key, r);
+    }
+    for (const r of cardComponentsForDept) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushAgg(projects[projId].aggregated.components, key, r);
+      pushAgg(overallAgg.components, key, r);
+    }
+  }
+
+  // convert per-project maps to sorted arrays
+  const mapToSortedList = (map) => Object.values(map || {}).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+  const projectsOut = {};
+  for (const pid of Object.keys(projects)) {
+    projectsOut[pid] = {
+      project: projects[pid].project,
+      cards: projects[pid].cards,
+      aggregated: {
+        materials: mapToSortedList(projects[pid].aggregated.materials),
+        components: mapToSortedList(projects[pid].aggregated.components)
+      }
+    };
+  }
+
+  return {
+    department,
+    page, limit,
+    totalCardsScanned: totalCards,
+    projects: projectsOut,
+    aggregatedOverall: {
+      materials: mapToSortedList(overallAgg.materials),
+      components: mapToSortedList(overallAgg.components)
+    }
+  };
+}
+
+
+// Add this near the other exported functions in services/pc_productionCard.service.js
+
+export async function getTrackingByDepartmentAcrossProjectsFlattened(department, opts = { page: 1, limit: 200 }) {
+  if (!department) throw new Error("department required");
+
+  const page = Math.max(Number(opts.page || 1), 1);
+  const limit = Math.min(Math.max(Number(opts.limit || 200), 1), 2000);
+  const skip = (page - 1) * limit;
+
+  // 1) fetch tracking cards across all projects (paged)
+  const [cards, totalCards] = await Promise.all([
+    PCProductionCard.find({ stage: "Tracking", isActive: true })
+      .select("cardNumber productName cardQuantity projectId upper materials components packaging misc materialRequestStatus")
+      .populate({ path: "projectId", select: "autoCode productName artName" })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    PCProductionCard.countDocuments({ stage: "Tracking", isActive: true })
+  ]);
+
+  // 2) Build itemId -> department map per project (to fill missing departments)
+  const projIds = Array.from(new Set((cards || []).map(c => String(c.projectId?._id || c.projectId)).filter(Boolean)));
+
+  async function buildItemDeptMapForProjects(projectIds) {
+    const mapByProject = {};
+    if (!projectIds.length) return mapByProject;
+
+    // fetch cost rows for these projects
+    const [upperRows, componentRows, materialRows, packagingRows, miscRows] = await Promise.all([
+      UpperCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+      ComponentCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+      MaterialCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+      PackagingCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+      MiscCostRow.find({ projectId: { $in: projectIds } }).select("_id projectId department").lean().catch(() => []),
+    ]);
+
+    const addRows = (rows) => {
+      for (const r of rows || []) {
+        const pid = String(r.projectId || "");
+        mapByProject[pid] = mapByProject[pid] || {};
+        if (r._id) mapByProject[pid][String(r._id)] = r.department || null;
+      }
+    };
+
+    addRows(upperRows); addRows(componentRows); addRows(materialRows); addRows(packagingRows); addRows(miscRows);
+    return mapByProject;
+  }
+
+  const itemDeptMapByProject = await buildItemDeptMapForProjects(projIds);
+
+  // helper: ensure department on a row using project's map
+  const ensureDept = (row, projectId) => {
+    if (!row) return row;
+    if (row.department) return row;
+    if (row.itemId && itemDeptMapByProject[String(projectId)] && itemDeptMapByProject[String(projectId)][String(row.itemId)]) {
+      return { ...row, department: itemDeptMapByProject[String(projectId)][String(row.itemId)] };
+    }
+    return { ...row, department: row.department ?? "unknown" };
+  };
+
+  // aggregator for overall aggregated lists
+  const overallAggregated = { materials: {}, components: {} };
+  const pushAgg = (map, key, row) => {
+    if (!map[key]) {
+      map[key] = {
+        itemId: row.itemId || null,
+        name: row.name || "Unknown",
+        specification: row.specification || row.description || "",
+        unit: row.unit || "unit",
+        requirement: Number(row.requirement || 0),
+        available: Number(row.available || 0),
+        issued: Number(row.issued || 0),
+        balance: Number(row.balance || 0),
+        occurrences: 1,
+        department: row.department || department
+      };
+    } else {
+      map[key].requirement += Number(row.requirement || 0);
+      map[key].available += Number(row.available || 0);
+      map[key].issued += Number(row.issued || 0);
+      map[key].balance += Number(row.balance || 0);
+      map[key].occurrences += 1;
+    }
+  };
+
+  // build flattened items array
+  const items = [];
+
+  for (const c of (cards || [])) {
+    const projId = String(c.projectId?._id || c.projectId || "");
+    const projectObj = c.projectId || null;
+
+    // normalize the five arrays and ensure departments
+    const up = (Array.isArray(c.upper) ? c.upper : []).map(r => ensureDept(r, projId));
+    const mats = (Array.isArray(c.materials) ? c.materials : []).map(r => ensureDept(r, projId));
+    const comps = (Array.isArray(c.components) ? c.components : []).map(r => ensureDept(r, projId));
+    const packs = (Array.isArray(c.packaging) ? c.packaging : []).map(r => ensureDept(r, projId));
+    const misc = (Array.isArray(c.misc) ? c.misc : []).map(r => ensureDept(r, projId));
+
+    // legacy combined groups
+    const matCombined = [...up, ...mats];
+    const compCombined = [...comps, ...packs, ...misc];
+
+    // filter rows for the requested department
+    const materialsForDept = matCombined.filter(r => (r.department || "unknown") === department);
+    const componentsForDept = compCombined.filter(r => (r.department || "unknown") === department);
+
+    // If nothing for this card in this department -> skip
+    if (materialsForDept.length === 0 && componentsForDept.length === 0) continue;
+
+    // push flattened item
+    items.push({
+      projectId: projId,
+      project: projectObj,
+      cardId: c._id,
+      cardNumber: c.cardNumber,
+      productName: c.productName,
+      cardQuantity: c.cardQuantity,
+      materialRequestStatus: c.materialRequestStatus,
+      materials: materialsForDept,
+      components: componentsForDept
+    });
+
+    // update overall aggregated maps
+    for (const r of materialsForDept) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushAgg(overallAggregated.materials, key, r);
+    }
+    for (const r of componentsForDept) {
+      const key = r.itemId ? String(r.itemId) : `__noid__:${r.name || ""}`;
+      pushAgg(overallAggregated.components, key, r);
+    }
+  }
+
+  // convert overall maps to sorted arrays
+  const mapToSortedList = (map) => Object.values(map || {}).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+  return {
+    department,
+    page, limit,
+    totalCardsScanned: totalCards,
+    count: items.length,
+    items,
+    aggregatedOverall: {
+      materials: mapToSortedList(overallAggregated.materials),
+      components: mapToSortedList(overallAggregated.components)
+    }
+  };
+}
+
