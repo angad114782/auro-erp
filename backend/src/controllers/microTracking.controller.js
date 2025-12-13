@@ -86,8 +86,13 @@ export async function updateProgressToday(req, res) {
   try {
     const { id } = req.params;
     const { progressToday } = req.body;
+    const updatedBy = req.user?.name || "system";
 
-    const updated = await service.updateProgressTodayService(id, progressToday);
+    const updated = await service.updateProgressTodayService(
+      id,
+      progressToday,
+      updatedBy
+    );
 
     return res.json({
       success: true,
