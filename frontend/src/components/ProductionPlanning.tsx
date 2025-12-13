@@ -414,6 +414,7 @@ export function ProductionPlanning() {
   );
 
   // ---------------------- fetch function (calendar) ----------------------
+  // ---------------------- fetch function (calendar) ----------------------
   const fetchCalendarEntries = async () => {
     try {
       console.log("Fetching calendar entries...");
@@ -464,6 +465,108 @@ export function ProductionPlanning() {
         const s = toLocalYMD(start);
         const e = toLocalYMD(end);
 
+        // FIXED: Properly extract plant name from object
+        const assignedPlantObj = scheduling.assignedPlant;
+        let assignedPlantName: string | null = null;
+
+        if (assignedPlantObj) {
+          if (typeof assignedPlantObj === "string") {
+            assignedPlantName = assignedPlantObj;
+          } else if (typeof assignedPlantObj === "object") {
+            // Try common name properties
+            assignedPlantName =
+              assignedPlantObj.name ||
+              assignedPlantObj.plantName ||
+              assignedPlantObj.plant ||
+              assignedPlantObj.title;
+
+            // If still no name found but it's an object with _id, use a fallback
+            if (!assignedPlantName && assignedPlantObj._id) {
+              assignedPlantName = "Assigned Plant";
+            }
+          }
+        }
+
+        // Fallback to other possible sources
+        if (!assignedPlantName) {
+          assignedPlantName = prod.assignedPlant || doc.assignedPlant || null;
+        }
+
+        // FIXED: Extract brand name properly from nested objects
+        const getBrandName = (brandObj: any): string => {
+          if (!brandObj) return "-";
+          if (typeof brandObj === "string") return brandObj;
+          if (typeof brandObj === "object") {
+            return (
+              brandObj.name ||
+              brandObj.brandName ||
+              brandObj.brand ||
+              String(brandObj)
+            );
+          }
+          return String(brandObj);
+        };
+
+        // FIXED: Extract category name properly
+        const getCategoryName = (categoryObj: any): string => {
+          if (!categoryObj) return "-";
+          if (typeof categoryObj === "string") return categoryObj;
+          if (typeof categoryObj === "object") {
+            return (
+              categoryObj.name ||
+              categoryObj.categoryName ||
+              categoryObj.category ||
+              String(categoryObj)
+            );
+          }
+          return String(categoryObj);
+        };
+
+        // FIXED: Extract type name properly
+        const getTypeName = (typeObj: any): string => {
+          if (!typeObj) return "-";
+          if (typeof typeObj === "string") return typeObj;
+          if (typeof typeObj === "object") {
+            return (
+              typeObj.name ||
+              typeObj.typeName ||
+              typeObj.type ||
+              String(typeObj)
+            );
+          }
+          return String(typeObj);
+        };
+
+        // FIXED: Extract company name properly
+        const getCompanyName = (companyObj: any): string => {
+          if (!companyObj) return "-";
+          if (typeof companyObj === "string") return companyObj;
+          if (typeof companyObj === "object") {
+            return (
+              companyObj.name ||
+              companyObj.companyName ||
+              companyObj.company ||
+              String(companyObj)
+            );
+          }
+          return String(companyObj);
+        };
+
+        // FIXED: Extract country name properly
+        const getCountryName = (countryObj: any): string => {
+          if (!countryObj) return "-";
+          if (typeof countryObj === "string") return countryObj;
+          if (typeof countryObj === "object") {
+            return (
+              countryObj.name ||
+              countryObj.countryName ||
+              countryObj.country ||
+              String(countryObj)
+            );
+          }
+          return String(countryObj);
+        };
+
         return {
           id:
             doc._id ??
@@ -506,40 +609,35 @@ export function ProductionPlanning() {
           size: snapshot.size ?? prod.size ?? doc.size ?? "-",
 
           // brand / category / type / company / country / gender
-          brand:
-            // projectSnapshot might contain embedded brand or just a name
-            (snapshot.brand && (snapshot.brand.name ?? snapshot.brand)) ??
-            snapshot.brandName ??
-            (project.brand && (project.brand.name ?? project.brand)) ??
-            project.brandName ??
-            "-",
+          // FIXED: Use helper functions to extract names properly
+          brand: getBrandName(
+            snapshot.brand ??
+              snapshot.brandName ??
+              project.brand ??
+              project.brandName
+          ),
 
-          category:
-            (snapshot.category &&
-              (snapshot.category.name ?? snapshot.category)) ??
-            snapshot.categoryName ??
-            (project.category && (project.category.name ?? project.category)) ??
-            project.categoryName ??
-            "-",
+          category: getCategoryName(
+            snapshot.category ??
+              snapshot.categoryName ??
+              project.category ??
+              project.categoryName
+          ),
 
-          type:
-            (snapshot.type && (snapshot.type.name ?? snapshot.type)) ??
-            snapshot.typeName ??
-            (project.type && (project.type.name ?? project.type)) ??
-            project.typeName ??
-            "-",
+          type: getTypeName(
+            snapshot.type ??
+              snapshot.typeName ??
+              project.type ??
+              project.typeName
+          ),
 
-          company:
-            snapshot.companyName ??
-            project.companyName ??
-            (project.company && (project.company.name ?? project.company)) ??
-            "-",
+          company: getCompanyName(
+            snapshot.companyName ?? project.companyName ?? project.company
+          ),
 
-          country:
-            snapshot.countryName ??
-            project.countryName ??
-            (project.country && (project.country.name ?? project.country)) ??
-            "-",
+          country: getCountryName(
+            snapshot.countryName ?? project.countryName ?? project.country
+          ),
 
           gender:
             snapshot.gender ??
@@ -549,11 +647,8 @@ export function ProductionPlanning() {
             "-",
 
           // scheduling / production specifics
-          assignedPlant:
-            scheduling.assignedPlant ??
-            prod.assignedPlant ??
-            doc.assignedPlant ??
-            null,
+          // FIXED: Use the extracted plant name instead of the object
+          assignedPlant: assignedPlantName,
           quantity,
 
           // Use scheduleDate as primary (s) and keep end for details

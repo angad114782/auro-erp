@@ -589,27 +589,6 @@ export function ProductionTrackingTable() {
     }
   };
 
-  const getStageIcon = (stage: string) => {
-    switch (stage) {
-      case "cutting":
-        return <Scissors className="w-4 h-4" />;
-      case "printing":
-        return <Printer className="w-4 h-4" />;
-      case "upper":
-        return <ShirtIcon className="w-4 h-4" />;
-      case "upperREJ":
-        return <X className="w-4 h-4" />;
-      case "assembly":
-        return <Wrench className="w-4 h-4" />;
-      case "packing":
-        return <Package className="w-4 h-4" />;
-      case "rfd":
-        return <FileCheck className="w-4 h-4" />;
-      default:
-        return <Clock className="w-4 h-4" />;
-    }
-  };
-
   // Calculate production cards
   const calculateProductionCards = (productionId: string): number => {
     if (!productionCards || productionCards.length === 0) {
@@ -815,12 +794,6 @@ export function ProductionTrackingTable() {
               </div>
               <div className="text-xs text-gray-500">PO Items</div>
             </div>
-            {/* <div className="bg-gray-50 rounded p-2 text-center">
-              <div className="text-sm font-semibold text-gray-900">
-                {record.monthPlan}
-              </div>
-              <div className="text-xs text-gray-500">Month Plan</div>
-            </div> */}
             <div className="bg-gray-50 rounded p-2 text-center">
               <div className="text-sm font-semibold text-gray-900">
                 {stageData.quantity}/{stageData.planned}
@@ -1438,9 +1411,6 @@ export function ProductionTrackingTable() {
                   <th className="px-4 py-3 text-left font-medium text-gray-900 text-sm min-w-[140px]">
                     PO Info
                   </th>
-                  {/* <th className="px-4 py-3 text-left font-medium text-gray-900 text-sm min-w-[100px]">
-                    Month Plan
-                  </th> */}
                   <th className="px-4 py-3 text-left font-medium text-gray-900 text-sm min-w-[120px]">
                     MNFC
                   </th>
@@ -1616,21 +1586,6 @@ export function ProductionTrackingTable() {
                           </div>
                         </div>
                       </td>
-
-                      {/* Month Plan */}
-                      {/* <td className="px-4 py-2.5">
-                        <div className="min-w-[100px]">
-                          <div className="font-medium text-gray-900 text-sm">
-                            {record.monthPlan}
-                          </div>
-                          <div className="text-xs text-gray-600 mt-0.5">
-                            units
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            Monthly Plan
-                          </div>
-                        </div>
-                      </td> */}
 
                       {/* MNFC (Manufacturing Company) */}
                       <td className="px-4 py-2.5">
@@ -1831,7 +1786,9 @@ export function ProductionTrackingTable() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3 sm:gap-6">
                 <div className="w-10 h-10 sm:w-14 sm:h-14 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg shrink-0">
-                  {getStageIcon(activeStage)}
+                  {stages.find((s) => s.key === activeStage)?.icon || (
+                    <Edit className="w-6 h-6" />
+                  )}
                 </div>
                 <div className="flex-1">
                   <DialogTitle className="text-xl sm:text-2xl md:text-3xl font-semibold text-gray-900 mb-1 sm:mb-2">
@@ -1936,7 +1893,7 @@ export function ProductionTrackingTable() {
                               {/* Product Info */}
                               <div className="lg:col-span-4">
                                 <div className="flex items-center gap-3 sm:gap-4">
-                                  <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden flex-shrink-0">
+                                  <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden shrink-0">
                                     <img
                                       src="https://images.unsplash.com/photo-1648501570189-0359dab185e6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBzbmVha2VyJTIwc2hvZSUyMHByb2R1Y3R8ZW58MXx8fHwxNzU2NzM1OTMwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
                                       alt={record.articleName}
@@ -1981,182 +1938,8 @@ export function ProductionTrackingTable() {
                                 </div>
                               </div>
 
-                              {/* Quantity Input */}
-                              {/* <div className="lg:col-span-2">
-                                <Label className="text-xs sm:text-sm font-medium text-gray-600">
-                                  Today's Quantity
-                                </Label>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max={stageData.planned - stageData.quantity}
-                                  value={currentEntry.quantity}
-                                  onChange={(e) =>
-                                    setUpdateEntries((prev) => ({
-                                      ...prev,
-                                      [record.id]: {
-                                        ...currentEntry,
-                                        quantity: parseInt(e.target.value) || 0,
-                                      },
-                                    }))
-                                  }
-                                  className="mt-1 h-9 sm:h-10 text-sm"
-                                  placeholder="0"
-                                />
-                              </div> */}
-
                               {/* Actions Column */}
-                              <div className="lg:col-span-3 space-y-2 sm:space-y-3">
-                                {/* <div>
-                                  <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
-                                    {activeStage === "cutting"
-                                      ? "Item Cutting"
-                                      : activeStage === "printing"
-                                      ? "Item Printing"
-                                      : activeStage === "upper"
-                                      ? "Item Upper"
-                                      : activeStage === "upperREJ"
-                                      ? "Item Upper Reg"
-                                      : activeStage === "assembly"
-                                      ? "Item Assembly"
-                                      : activeStage === "packing"
-                                      ? "Item Packing"
-                                      : activeStage === "rfd"
-                                      ? "Item RFD"
-                                      : "Item Action"}
-                                  </Label>
-                                  <Button
-                                    variant="outline"
-                                    className={`w-full h-9 sm:h-10 text-xs sm:text-sm border-2 transition-all font-semibold shadow-sm ${
-                                      activeStage === "cutting"
-                                        ? "border-purple-300 bg-gradient-to-r from-purple-50 to-purple-100 text-purple-700 hover:from-purple-100 hover:to-purple-200 hover:border-purple-400"
-                                        : activeStage === "printing"
-                                        ? "border-blue-300 bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 hover:from-blue-100 hover:to-blue-200 hover:border-blue-400"
-                                        : activeStage === "upper"
-                                        ? "border-indigo-300 bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-700 hover:from-indigo-100 hover:to-indigo-200 hover:border-indigo-400"
-                                        : activeStage === "upperREJ"
-                                        ? "border-orange-300 bg-gradient-to-r from-orange-50 to-orange-100 text-orange-700 hover:from-orange-100 hover:to-orange-200 hover:border-orange-400"
-                                        : activeStage === "assembly"
-                                        ? "border-green-300 bg-gradient-to-r from-green-50 to-green-100 text-green-700 hover:from-green-100 hover:to-green-200 hover:border-green-400"
-                                        : activeStage === "packing"
-                                        ? "border-teal-300 bg-gradient-to-r from-teal-50 to-teal-100 text-teal-700 hover:from-teal-100 hover:to-teal-200 hover:border-teal-400"
-                                        : activeStage === "rfd"
-                                        ? "border-emerald-300 bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 hover:from-emerald-100 hover:to-emerald-200 hover:border-emerald-400"
-                                        : "border-purple-300 bg-gradient-to-r from-purple-50 to-purple-100 text-purple-700 hover:from-purple-100 hover:to-purple-200 hover:border-purple-400"
-                                    }`}
-                                    onClick={() => {
-                                      setSelectedProductForCutting({
-                                        id: record.id,
-                                        productName: record.articleName,
-                                        productionId: record.productionId,
-                                        targetQuantity: stageData.planned,
-                                        brand: record.brand,
-                                        category: record.category,
-                                      });
-                                      setItemCuttingDialogOpen(true);
-                                    }}
-                                  >
-                                    {activeStage === "cutting" && (
-                                      <Scissors className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                    )}
-                                    {activeStage === "printing" && (
-                                      <Printer className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                    )}
-                                    {activeStage === "upper" && (
-                                      <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                    )}
-                                    {activeStage === "upperREJ" && (
-                                      <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                    )}
-                                    {activeStage === "assembly" && (
-                                      <Wrench className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                    )}
-                                    {activeStage === "packing" && (
-                                      <Package className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                    )}
-                                    {activeStage === "rfd" && (
-                                      <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                    )}
-                                    {isMobile
-                                      ? "Action"
-                                      : activeStage === "cutting"
-                                      ? "Item Cutting"
-                                      : activeStage === "printing"
-                                      ? "Item Printing"
-                                      : activeStage === "upper"
-                                      ? "Item Upper"
-                                      : activeStage === "upperREJ"
-                                      ? "Item Upper Reg"
-                                      : activeStage === "assembly"
-                                      ? "Item Assembly"
-                                      : activeStage === "packing"
-                                      ? "Item Packing"
-                                      : activeStage === "rfd"
-                                      ? "Item RFD"
-                                      : "Item Cutting"}
-                                  </Button>
-                                </div> */}
-
-                                {/* <div>
-                                  <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
-                                    Advance To
-                                  </Label>
-                                  <Select
-                                    value={currentEntry.advanceTo || ""}
-                                    onValueChange={(value) =>
-                                      setUpdateEntries((prev) => ({
-                                        ...prev,
-                                        [record.id]: {
-                                          ...currentEntry,
-                                          advanceTo: value,
-                                        },
-                                      }))
-                                    }
-                                  >
-                                    <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-gradient-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
-                                      <SelectValue placeholder="Next stage..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="cutting">
-                                        <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                          <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
-                                          <span>Cutting</span>
-                                        </div>
-                                      </SelectItem>
-                                      <SelectItem value="printing">
-                                        <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                          <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
-                                          <span>Printing</span>
-                                        </div>
-                                      </SelectItem>
-                                      <SelectItem value="stitching">
-                                        <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                          <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
-                                          <span>Stitching</span>
-                                        </div>
-                                      </SelectItem>
-                                      <SelectItem value="lasting">
-                                        <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                          <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
-                                          <span>Lasting</span>
-                                        </div>
-                                      </SelectItem>
-                                      <SelectItem value="packing">
-                                        <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                          <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
-                                          <span>Packing</span>
-                                        </div>
-                                      </SelectItem>
-                                      <SelectItem value="quality">
-                                        <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                          <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-                                          <span>Quality Check</span>
-                                        </div>
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div> */}
-                              </div>
+                              <div className="lg:col-span-3 space-y-2 sm:space-y-3"></div>
                             </div>
 
                             {/* Advancement Confirmation */}
@@ -2462,14 +2245,6 @@ export function ProductionTrackingTable() {
 
                           {/* Monthly Plan Analysis */}
                           <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                            {/* <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
-                              <div className="text-lg sm:text-2xl font-bold text-blue-600">
-                                {selectedProductionRecord.monthPlan}
-                              </div>
-                              <div className="text-xs sm:text-sm text-blue-700">
-                                Monthly Plan
-                              </div>
-                            </div> */}
                             <div className="bg-green-50 rounded-lg p-3 sm:p-4">
                               <div className="text-lg sm:text-2xl font-bold text-green-600">
                                 {selectedProductionRecord.poItems}
@@ -2693,11 +2468,11 @@ export function ProductionTrackingTable() {
                   {/* Stage-by-Stage Production Progress */}
                   <div className="space-y-4 sm:space-y-6">
                     <div className="flex items-center gap-3 sm:gap-5">
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md shrink-0">
                         <Workflow className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                       </div>
                       <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
-                        Stage Progress
+                        Stage Progress (Click to Update)
                       </h3>
                     </div>
 
@@ -2712,12 +2487,51 @@ export function ProductionTrackingTable() {
                         return (
                           <div
                             key={stage.key}
-                            className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5"
+                            className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5 hover:border-[#0c9dcb] hover:shadow-md transition-all duration-200 cursor-pointer group"
+                            onClick={() => {
+                              // Set the active stage to the clicked stage
+                              setActiveStage(stage.key);
+
+                              // Prepare product data for the ItemCuttingDialog
+                              setSelectedProductForCutting({
+                                id: selectedProductionRecord.id,
+                                productName:
+                                  selectedProductionRecord.articleName,
+                                productionId:
+                                  selectedProductionRecord.productionId,
+                                targetQuantity: stageData.planned,
+                                currentQuantity: stageData.quantity,
+                                brand: selectedProductionRecord.brand,
+                                category: selectedProductionRecord.category,
+                                color: selectedProductionRecord.color,
+                                size: selectedProductionRecord.size,
+                                poNumber: selectedProductionRecord.poNumber,
+                                manufacturingCompany:
+                                  selectedProductionRecord.manufacturingCompany,
+                                country: selectedProductionRecord.country,
+                                // Add stage-specific data
+                                stage: stage.key,
+                                stageName: stage.name,
+                                stageStatus: stageData.status,
+                                stageRemaining: remaining,
+                              });
+
+                              // Close the details dialog
+                              setSelectedProductionRecord(null);
+
+                              // Open the ItemCuttingDialog directly
+                              setItemCuttingDialogOpen(true);
+
+                              // Show toast notification
+                              toast.success(
+                                `Opening ${stage.name} update for ${selectedProductionRecord.articleName}`
+                              );
+                            }}
                           >
                             <div className="flex items-center justify-between mb-3 sm:mb-4">
                               <div className="flex items-center gap-2 sm:gap-3">
                                 <div
-                                  className={`w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg flex items-center justify-center ${
+                                  className={`w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg flex items-center justify-center group-hover:bg-[#0c9dcb] group-hover:text-white transition-colors ${
                                     stageData.status === "Completed"
                                       ? "bg-green-100 text-green-600"
                                       : stageData.status === "In Progress"
@@ -2728,10 +2542,10 @@ export function ProductionTrackingTable() {
                                   {stage.icon}
                                 </div>
                                 <div>
-                                  <div className="font-semibold text-gray-900 text-sm sm:text-base">
+                                  <div className="font-semibold text-gray-900 text-sm sm:text-base group-hover:text-[#0c9dcb]">
                                     {isMobile ? stage.shortName : stage.name}
                                   </div>
-                                  <div className="text-xs text-gray-500">
+                                  <div className="text-xs text-gray-500 group-hover:text-[#0a87a5]">
                                     {stageData.status}
                                   </div>
                                 </div>
@@ -2748,46 +2562,94 @@ export function ProductionTrackingTable() {
 
                             <div className="space-y-2 sm:space-y-3">
                               <div className="flex justify-between text-xs sm:text-sm">
-                                <span className="text-gray-600">Progress</span>
-                                <span className="font-medium">
+                                <span className="text-gray-600 group-hover:text-gray-800">
+                                  Progress
+                                </span>
+                                <span className="font-medium group-hover:text-[#0c9dcb]">
                                   {Math.round(progress)}%
                                 </span>
                               </div>
                               <Progress
                                 value={progress}
-                                className="h-1.5 sm:h-2"
+                                className="h-1.5 sm:h-2 group-hover:h-2.5 transition-all"
                               />
 
                               <div className="grid grid-cols-2 gap-2 sm:gap-4 text-xs sm:text-sm">
                                 <div>
-                                  <div className="text-gray-600">Completed</div>
-                                  <div className="font-medium text-green-600">
+                                  <div className="text-gray-600 group-hover:text-gray-800">
+                                    Completed
+                                  </div>
+                                  <div className="font-medium text-green-600 group-hover:text-green-700">
                                     {stageData.quantity}
                                   </div>
                                 </div>
                                 <div>
-                                  <div className="text-gray-600">Planned</div>
-                                  <div className="font-medium">
+                                  <div className="text-gray-600 group-hover:text-gray-800">
+                                    Planned
+                                  </div>
+                                  <div className="font-medium group-hover:text-[#0c9dcb]">
                                     {stageData.planned}
                                   </div>
                                 </div>
                                 <div>
-                                  <div className="text-gray-600">Remaining</div>
-                                  <div className="font-medium text-orange-600">
+                                  <div className="text-gray-600 group-hover:text-gray-800">
+                                    Remaining
+                                  </div>
+                                  <div className="font-medium text-orange-600 group-hover:text-orange-700">
                                     {remaining}
                                   </div>
                                 </div>
                                 <div>
-                                  <div className="text-gray-600">Rate</div>
-                                  <div className="font-medium">
+                                  <div className="text-gray-600 group-hover:text-gray-800">
+                                    Rate
+                                  </div>
+                                  <div className="font-medium group-hover:text-[#0c9dcb]">
                                     {Math.round(progress)}%
                                   </div>
                                 </div>
                               </div>
                             </div>
+
+                            {/* Click hint */}
+                            <div className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-gray-100 group-hover:border-[#0c9dcb]/30">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500 group-hover:text-[#0c9dcb]">
+                                  Click to update {stage.name.toLowerCase()}
+                                </span>
+                                <Edit className="w-3 h-3 text-gray-400 group-hover:text-[#0c9dcb]" />
+                              </div>
+                            </div>
                           </div>
                         );
                       })}
+                    </div>
+
+                    {/* Quick Actions Footer */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 sm:p-6 border border-blue-200">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">
+                            Quick Update Actions
+                          </h4>
+                          <p className="text-xs sm:text-sm text-gray-600">
+                            Click any stage card above to update directly
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => {
+                              setSelectedProductionRecord(null);
+                              setStageUpdateDialogOpen(true);
+                            }}
+                          >
+                            <Edit className="w-3 h-3 mr-1" />
+                            Bulk Update
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

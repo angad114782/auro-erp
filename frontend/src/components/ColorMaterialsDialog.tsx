@@ -1,4 +1,4 @@
-// ColorMaterialsDialog.tsx - FULL RESPONSIVE VERSION
+// ColorMaterialsDialog.tsx - FULL UPDATED VERSION WITH 5 DUMMY ROWS
 import {
   CheckCircle,
   Palette,
@@ -28,7 +28,10 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
-// Interfaces
+// Constants
+const TOTAL_ROWS_PER_CATEGORY = 5;
+
+// Interfaces - Updated to include _id and isNew
 interface Material {
   name: string;
   desc: string;
@@ -42,15 +45,19 @@ interface Component {
 }
 
 interface CostRow {
+  _id?: string;
   item: string;
   description: string;
-  consumption: string;
+  consumption: number; // Changed from string to number
   cost: number;
+  isNew?: boolean;
 }
 
 interface LabourRow {
+  _id?: string;
   name: string;
   cost: number;
+  isNew?: boolean;
 }
 
 interface LabourData {
@@ -97,6 +104,87 @@ interface ColorMaterialsDialogProps {
   colors?: any[];
   onSave?: (savedColorIds: string[]) => void;
 }
+
+// Helper functions
+const getEmptyCostDummyRows = (count: number, category: string): CostRow[] => {
+  return Array.from({ length: count }).map((_, index) => ({
+    _id: `dummy_${category}_${Date.now()}_${index}_${Math.random()}`,
+    item: "",
+    description: "",
+    consumption: 0, // Changed from "" to 0
+    cost: 0,
+    isNew: true,
+  }));
+};
+
+const getEmptyLabourDummyRows = (count: number): LabourRow[] => {
+  return Array.from({ length: count }).map((_, index) => ({
+    _id: `dummy_labour_${Date.now()}_${index}_${Math.random()}`,
+    name: "",
+    cost: 0,
+    isNew: true,
+  }));
+};
+
+const maintainFiveRowsPerCategory = (
+  data: CostRow[],
+  category: string
+): CostRow[] => {
+  const existingItems = data.filter((item: any) => !item.isNew);
+  const dummyItems = data.filter((item: any) => item.isNew);
+
+  const totalItems = existingItems.length + dummyItems.length;
+  const neededDummyRows = Math.max(0, TOTAL_ROWS_PER_CATEGORY - totalItems);
+
+  if (neededDummyRows > 0) {
+    const newDummyRows = getEmptyCostDummyRows(neededDummyRows, category);
+    return [...existingItems, ...dummyItems, ...newDummyRows];
+  } else if (totalItems > TOTAL_ROWS_PER_CATEGORY) {
+    const excessDummyCount = totalItems - TOTAL_ROWS_PER_CATEGORY;
+    const dummyToKeep = dummyItems.slice(
+      0,
+      Math.max(0, dummyItems.length - excessDummyCount)
+    );
+    return [...existingItems, ...dummyToKeep];
+  }
+
+  return data;
+};
+
+const maintainFiveLabourItems = (data: LabourRow[]): LabourRow[] => {
+  const existingItems = data.filter((item: any) => !item.isNew);
+  const dummyItems = data.filter((item: any) => item.isNew);
+
+  const totalItems = existingItems.length + dummyItems.length;
+  const neededDummyRows = Math.max(0, TOTAL_ROWS_PER_CATEGORY - totalItems);
+
+  if (neededDummyRows > 0) {
+    const newDummyRows = getEmptyLabourDummyRows(neededDummyRows);
+    return [...existingItems, ...dummyItems, ...newDummyRows];
+  } else if (totalItems > TOTAL_ROWS_PER_CATEGORY) {
+    const excessDummyCount = totalItems - TOTAL_ROWS_PER_CATEGORY;
+    const dummyToKeep = dummyItems.slice(
+      0,
+      Math.max(0, dummyItems.length - excessDummyCount)
+    );
+    return [...existingItems, ...dummyToKeep];
+  }
+
+  return data;
+};
+
+const isEmptyRow = (row: CostRow): boolean => {
+  return (
+    !row.item.trim() &&
+    !row.description.trim() &&
+    row.consumption === 0 && // Changed from !row.consumption.trim()
+    row.cost === 0
+  );
+};
+
+const isEmptyLabourRow = (row: LabourRow): boolean => {
+  return !row.name.trim() && row.cost === 0;
+};
 
 export function ColorMaterialsDialog({
   open,
@@ -155,6 +243,20 @@ export function ColorMaterialsDialog({
     profitAmount: 0,
     tentativeCost: 0,
   });
+
+  const getEmptyCosting = (): CostingData => ({
+    upper: getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "upper"),
+    material: getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "material"),
+    component: getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "component"),
+    packaging: getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "packaging"),
+    misc: getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "misc"),
+    labour: {
+      items: getEmptyLabourDummyRows(TOTAL_ROWS_PER_CATEGORY),
+      directTotal: 0,
+    },
+    summary: getEmptySummary(),
+  });
+
   const [currentSummary, setCurrentSummary] = useState<SummaryData>(
     getEmptySummary()
   );
@@ -180,7 +282,7 @@ export function ColorMaterialsDialog({
   const [newCostItem, setNewCostItem] = useState({
     item: "",
     description: "",
-    consumption: "",
+    consumption: 0, // Changed from "" to 0
     cost: 0,
   });
   const [newLabourItem, setNewLabourItem] = useState({ name: "", cost: 0 });
@@ -201,17 +303,6 @@ export function ColorMaterialsDialog({
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
-
-  // Helper functions
-  const getEmptyCosting = (): CostingData => ({
-    upper: [],
-    material: [],
-    component: [],
-    packaging: [],
-    misc: [],
-    labour: { items: [], directTotal: 0 },
-    summary: getEmptySummary(),
-  });
 
   const getDefaultComponents = (): Component[] => [
     { name: "Foam", desc: "-", consumption: "7.5grm" },
@@ -266,11 +357,37 @@ export function ColorMaterialsDialog({
       // Load existing variants
       if (project.colorVariants instanceof Map) {
         for (const [colorId, data] of project.colorVariants.entries()) {
+          // Process each category to ensure 5 rows
+          const processedCosting: CostingData = {
+            upper: maintainFiveRowsPerCategory(
+              data.costing?.upper || [],
+              "upper"
+            ),
+            material: maintainFiveRowsPerCategory(
+              data.costing?.material || [],
+              "material"
+            ),
+            component: maintainFiveRowsPerCategory(
+              data.costing?.component || [],
+              "component"
+            ),
+            packaging: maintainFiveRowsPerCategory(
+              data.costing?.packaging || [],
+              "packaging"
+            ),
+            misc: maintainFiveRowsPerCategory(data.costing?.misc || [], "misc"),
+            labour: {
+              items: maintainFiveLabourItems(data.costing?.labour?.items || []),
+              directTotal: data.costing?.labour?.directTotal || 0,
+            },
+            summary: data.costing?.summary || getEmptySummary(),
+          };
+
           variants[colorId] = {
             materials: data.materials || [],
             components: data.components || [],
             images: data.images || [],
-            costing: data.costing || getEmptyCosting(),
+            costing: processedCosting,
             updatedBy: data.updatedBy,
             updatedAt: data.updatedAt,
           };
@@ -279,16 +396,6 @@ export function ColorMaterialsDialog({
         Object.assign(variants, project.colorVariants);
       }
 
-      // Create default variant if none exist
-      // if (Object.keys(variants).length === 0 && project.color) {
-      //   variants[project.color] = {
-      //     materials: getDefaultMaterials(),
-      //     components: getDefaultComponents(),
-      //     images: [],
-      //     costing: getEmptyCosting(),
-      //   };
-      // }
-
       setColorVariantsData(variants);
       setPendingColorVariants({});
       setNewColorVariants([]);
@@ -296,7 +403,6 @@ export function ColorMaterialsDialog({
       const colorIds = Object.keys(variants);
       if (colorIds.length > 0) {
         setSelectedColors(colorIds);
-        // Always set active color to first one
         setActiveColorTab(colorIds[0]);
       } else {
         setSelectedColors([]);
@@ -328,25 +434,60 @@ export function ColorMaterialsDialog({
       if (variantData) {
         setCurrentComponents(variantData.components || []);
         setCurrentMaterials(variantData.materials || []);
-        setCurrentUpperCosts(variantData.costing?.upper || []);
-        setCurrentMaterialCosts(variantData.costing?.material || []);
-        setCurrentComponentCosts(variantData.costing?.component || []);
-        setCurrentPackagingCosts(variantData.costing?.packaging || []);
-        setCurrentMiscCosts(variantData.costing?.misc || []);
-        setCurrentLabour(
-          variantData.costing?.labour || { items: [], directTotal: 0 }
+        setCurrentUpperCosts(
+          maintainFiveRowsPerCategory(variantData.costing?.upper || [], "upper")
         );
+        setCurrentMaterialCosts(
+          maintainFiveRowsPerCategory(
+            variantData.costing?.material || [],
+            "material"
+          )
+        );
+        setCurrentComponentCosts(
+          maintainFiveRowsPerCategory(
+            variantData.costing?.component || [],
+            "component"
+          )
+        );
+        setCurrentPackagingCosts(
+          maintainFiveRowsPerCategory(
+            variantData.costing?.packaging || [],
+            "packaging"
+          )
+        );
+        setCurrentMiscCosts(
+          maintainFiveRowsPerCategory(variantData.costing?.misc || [], "misc")
+        );
+        setCurrentLabour({
+          items: maintainFiveLabourItems(
+            variantData.costing?.labour?.items || []
+          ),
+          directTotal: variantData.costing?.labour?.directTotal || 0,
+        });
         setCurrentSummary(variantData.costing?.summary || getEmptySummary());
       } else {
         // New variant or no data
         setCurrentComponents(getDefaultComponents());
         setCurrentMaterials(getDefaultMaterials());
-        setCurrentUpperCosts([]);
-        setCurrentMaterialCosts([]);
-        setCurrentComponentCosts([]);
-        setCurrentPackagingCosts([]);
-        setCurrentMiscCosts([]);
-        setCurrentLabour({ items: [], directTotal: 0 });
+        setCurrentUpperCosts(
+          getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "upper")
+        );
+        setCurrentMaterialCosts(
+          getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "material")
+        );
+        setCurrentComponentCosts(
+          getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "component")
+        );
+        setCurrentPackagingCosts(
+          getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "packaging")
+        );
+        setCurrentMiscCosts(
+          getEmptyCostDummyRows(TOTAL_ROWS_PER_CATEGORY, "misc")
+        );
+        setCurrentLabour({
+          items: getEmptyLabourDummyRows(TOTAL_ROWS_PER_CATEGORY),
+          directTotal: 0,
+        });
         setCurrentSummary(getEmptySummary());
       }
     }
@@ -543,24 +684,25 @@ export function ColorMaterialsDialog({
   };
 
   const setCostTableData = (table: string, data: CostRow[]) => {
+    const processedData = maintainFiveRowsPerCategory(data, table);
     switch (table) {
       case "upper":
-        setCurrentUpperCosts(data);
+        setCurrentUpperCosts(processedData);
         break;
       case "material":
-        setCurrentMaterialCosts(data);
+        setCurrentMaterialCosts(processedData);
         break;
       case "component":
-        setCurrentComponentCosts(data);
+        setCurrentComponentCosts(processedData);
         break;
       case "packaging":
-        setCurrentPackagingCosts(data);
+        setCurrentPackagingCosts(processedData);
         break;
       case "misc":
-        setCurrentMiscCosts(data);
+        setCurrentMiscCosts(processedData);
         break;
     }
-    updatePendingCosting(table, data);
+    updatePendingCosting(table, processedData);
   };
 
   const updateCostRow = (
@@ -571,14 +713,47 @@ export function ColorMaterialsDialog({
   ) => {
     const data = getCostTableData(table);
     const updated = [...data];
-    updated[index] = { ...updated[index], [field]: value };
+
+    // Handle empty string conversion for numbers
+    let processedValue = value;
+    if ((field === "consumption" || field === "cost") && value === "") {
+      processedValue = 0;
+    } else if (field === "consumption" || field === "cost") {
+      processedValue = Number(value) || 0;
+    }
+
+    updated[index] = { ...updated[index], [field]: processedValue };
+
+    // Check if we need to add new row when all 5 are filled
+    const filledRows = updated.filter(
+      (row) =>
+        row.item.trim() ||
+        row.description.trim() ||
+        row.consumption > 0 || // Changed from row.consumption.trim()
+        row.cost > 0
+    );
+
+    // If all 5 rows have some data, add a new empty row
+    if (filledRows.length === TOTAL_ROWS_PER_CATEGORY) {
+      const newDummyRow: CostRow = {
+        _id: `dummy_${table}_${Date.now()}_${Math.random()}`,
+        item: "",
+        description: "",
+        consumption: 0,
+        cost: 0,
+        isNew: true,
+      };
+      updated.push(newDummyRow);
+    }
+
     setCostTableData(table, updated);
   };
 
   const deleteCostRow = (table: string, index: number) => {
     const data = getCostTableData(table);
     const updated = data.filter((_, i) => i !== index);
-    setCostTableData(table, updated);
+    const updatedWithDummies = maintainFiveRowsPerCategory(updated, table);
+    setCostTableData(table, updatedWithDummies);
     toast.success("Cost item removed");
   };
 
@@ -588,12 +763,36 @@ export function ColorMaterialsDialog({
       return;
     }
 
+    // Validate consumption - make it required and must be a number > 0
+    if (!newCostItem.consumption || newCostItem.consumption <= 0) {
+      toast.error("Please enter valid consumption (must be greater than 0)");
+      return;
+    }
+
+    // Validate cost - must be a number >= 0
+    if (newCostItem.cost < 0) {
+      toast.error("Cost cannot be negative");
+      return;
+    }
+
     const table = activeCostTable;
     const data = getCostTableData(table);
-    const updated = [...data, { ...newCostItem }];
-    setCostTableData(table, updated);
+
+    // Create new row with proper structure
+    const newRow: CostRow = {
+      _id: `cost_${table}_${Date.now()}_${Math.random()}`,
+      item: newCostItem.item,
+      description: newCostItem.description,
+      consumption: Number(newCostItem.consumption),
+      cost: Number(newCostItem.cost) || 0,
+      isNew: false,
+    };
+
+    const updated = [...data, newRow];
+    const updatedWithDummies = maintainFiveRowsPerCategory(updated, table);
+    setCostTableData(table, updatedWithDummies);
     setAddCostDialogOpen(false);
-    setNewCostItem({ item: "", description: "", consumption: "", cost: 0 });
+    setNewCostItem({ item: "", description: "", consumption: 0, cost: 0 });
     toast.success("Cost item added");
   };
 
@@ -604,23 +803,51 @@ export function ColorMaterialsDialog({
     value: string | number
   ) => {
     const updated = [...currentLabour.items];
-    updated[index] = { ...updated[index], [field]: value };
-    const directTotal = updated.reduce(
+
+    // Handle empty string conversion for cost
+    let processedValue = value;
+    if (field === "cost" && value === "") {
+      processedValue = 0;
+    } else if (field === "cost") {
+      processedValue = Number(value) || 0;
+    }
+
+    updated[index] = { ...updated[index], [field]: processedValue };
+
+    // Check if we need to add new row when all 5 are filled
+    const filledItems = updated.filter(
+      (item) => item.name.trim() || item.cost > 0
+    );
+
+    // If all 5 rows have some data, add a new empty row
+    if (filledItems.length === TOTAL_ROWS_PER_CATEGORY) {
+      const newDummyRow = {
+        _id: `dummy_labour_${Date.now()}_${Math.random()}`,
+        name: "",
+        cost: 0,
+        isNew: true,
+      };
+      updated.push(newDummyRow);
+    }
+
+    const updatedWithDummies = maintainFiveLabourItems(updated);
+    const directTotal = updatedWithDummies.reduce(
       (sum, item) => sum + (Number(item.cost) || 0),
       0
     );
-    setCurrentLabour({ items: updated, directTotal });
-    updatePendingCosting("labour", { items: updated, directTotal });
+    setCurrentLabour({ items: updatedWithDummies, directTotal });
+    updatePendingCosting("labour", { items: updatedWithDummies, directTotal });
   };
 
   const deleteLabour = (index: number) => {
     const updated = currentLabour.items.filter((_, i) => i !== index);
-    const directTotal = updated.reduce(
+    const updatedWithDummies = maintainFiveLabourItems(updated);
+    const directTotal = updatedWithDummies.reduce(
       (sum, item) => sum + (Number(item.cost) || 0),
       0
     );
-    setCurrentLabour({ items: updated, directTotal });
-    updatePendingCosting("labour", { items: updated, directTotal });
+    setCurrentLabour({ items: updatedWithDummies, directTotal });
+    updatePendingCosting("labour", { items: updatedWithDummies, directTotal });
     toast.success("Labour item removed");
   };
 
@@ -630,13 +857,21 @@ export function ColorMaterialsDialog({
       return;
     }
 
-    const updated = [...currentLabour.items, { ...newLabourItem }];
-    const directTotal = updated.reduce(
+    const newLabourRow = {
+      _id: `labour_${Date.now()}_${Math.random()}`,
+      name: newLabourItem.name,
+      cost: newLabourItem.cost,
+      isNew: false,
+    };
+
+    const updated = [...currentLabour.items, newLabourRow];
+    const updatedWithDummies = maintainFiveLabourItems(updated);
+    const directTotal = updatedWithDummies.reduce(
       (sum, item) => sum + (Number(item.cost) || 0),
       0
     );
-    setCurrentLabour({ items: updated, directTotal });
-    updatePendingCosting("labour", { items: updated, directTotal });
+    setCurrentLabour({ items: updatedWithDummies, directTotal });
+    updatePendingCosting("labour", { items: updatedWithDummies, directTotal });
     setAddLabourDialogOpen(false);
     setNewLabourItem({ name: "", cost: 0 });
     toast.success("Labour item added");
@@ -680,9 +915,37 @@ export function ColorMaterialsDialog({
             costing: getEmptyCosting(),
           });
 
+    // Filter out empty dummy rows before saving
+    const processedData = { ...currentData, ...data };
+
+    if (processedData.costing) {
+      const categories = [
+        "upper",
+        "material",
+        "component",
+        "packaging",
+        "misc",
+      ];
+      categories.forEach((category) => {
+        if (processedData.costing[category]) {
+          processedData.costing[category] = processedData.costing[
+            category
+          ].filter((row: CostRow) => !row.isNew || !isEmptyRow(row));
+        }
+      });
+
+      if (processedData.costing.labour) {
+        processedData.costing.labour.items =
+          processedData.costing.labour.items.filter(
+            (item: LabourRow) =>
+              !item.isNew || item.name.trim() || item.cost > 0
+          );
+      }
+    }
+
     setPendingColorVariants((prev) => ({
       ...prev,
-      [activeColorTab]: { ...currentData, ...data },
+      [activeColorTab]: processedData,
     }));
   };
 
@@ -702,6 +965,19 @@ export function ColorMaterialsDialog({
 
     const updatedCosting = { ...currentData.costing, [section]: data };
 
+    // Filter out empty dummy rows
+    if (section === "labour") {
+      updatedCosting[section].items = updatedCosting[section].items.filter(
+        (item: LabourRow) => !item.isNew || item.name.trim() || item.cost > 0
+      );
+    } else if (
+      ["upper", "material", "component", "packaging", "misc"].includes(section)
+    ) {
+      updatedCosting[section] = updatedCosting[section].filter(
+        (row: CostRow) => !row.isNew || !isEmptyRow(row)
+      );
+    }
+
     setPendingColorVariants((prev) => ({
       ...prev,
       [activeColorTab]: { ...currentData, costing: updatedCosting },
@@ -718,12 +994,33 @@ export function ColorMaterialsDialog({
       for (const [colorId, variantData] of Object.entries(
         pendingColorVariants
       )) {
+        // Clean data before saving (remove empty dummy rows)
+        const cleanedData = { ...variantData };
+        if (cleanedData.costing) {
+          const categories = [
+            "upper",
+            "material",
+            "component",
+            "packaging",
+            "misc",
+          ];
+          categories.forEach((category) => {
+            cleanedData.costing[category] = cleanedData.costing[
+              category
+            ].filter((row: CostRow) => !isEmptyRow(row));
+          });
+          cleanedData.costing.labour.items =
+            cleanedData.costing.labour.items.filter(
+              (item: LabourRow) => !isEmptyLabourRow(item)
+            );
+        }
+
         updates.push(
           api.put(`/projects/${project._id}/color-variants/${colorId}`, {
-            materials: variantData.materials,
-            components: variantData.components,
-            images: variantData.images,
-            costing: variantData.costing,
+            materials: cleanedData.materials,
+            components: cleanedData.components,
+            images: cleanedData.images,
+            costing: cleanedData.costing,
           })
         );
       }
@@ -753,9 +1050,21 @@ export function ColorMaterialsDialog({
   const renderResponsiveTable = (
     title: string,
     table: string,
-    rows: any[],
-    renderRow: (row: any, index: number) => any
+    rows: CostRow[],
+    renderRow: (row: CostRow, index: number) => any
   ) => {
+    // Always ensure we show exactly 5 rows
+    const displayData =
+      rows.length >= TOTAL_ROWS_PER_CATEGORY
+        ? rows
+        : [
+            ...rows,
+            ...getEmptyCostDummyRows(
+              TOTAL_ROWS_PER_CATEGORY - rows.length,
+              table
+            ),
+          ];
+
     if (isMobile) {
       return (
         <div className="space-y-3">
@@ -763,35 +1072,25 @@ export function ColorMaterialsDialog({
             className={`text-white p-3 rounded-lg ${getTableColor(table).bg}`}
           >
             <div className="text-sm font-medium">{title}</div>
-            <div className="text-xs opacity-90">{rows.length} items</div>
+            <div className="text-xs opacity-90">
+              {
+                displayData.filter(
+                  (r) => r.item.trim() || r.cost > 0 || r.consumption > 0
+                ).length
+              }{" "}
+              of 5 rows filled
+            </div>
           </div>
           <ScrollArea className="h-[300px]">
             <div className="space-y-3 pr-2">
-              {rows.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <div className="text-sm">No items added</div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => {
-                      setActiveCostTable(table);
-                      setAddCostDialogOpen(true);
-                    }}
-                  >
-                    <Plus className="w-3 h-3 mr-1" /> Add First Item
-                  </Button>
+              {displayData.map((row, index) => (
+                <div
+                  key={row._id || index}
+                  className="bg-white border rounded-lg p-3 shadow-sm"
+                >
+                  {renderRow(row, index)}
                 </div>
-              ) : (
-                rows.map((row, index) => (
-                  <div
-                    key={index}
-                    className="bg-white border rounded-lg p-3 shadow-sm"
-                  >
-                    {renderRow(row, index)}
-                  </div>
-                ))
-              )}
+              ))}
             </div>
           </ScrollArea>
           <Button
@@ -814,22 +1113,40 @@ export function ColorMaterialsDialog({
     // Desktop version
     return (
       <div className="space-y-2">
+        <div className="flex items-center justify-between mb-2">
+          <div
+            className={`text-white px-3 py-1 rounded text-xs font-medium ${
+              getTableColor(table).bg
+            }`}
+          >
+            {title} (
+            {
+              displayData.filter(
+                (r) => r.item.trim() || r.cost > 0 || r.consumption > 0
+              ).length
+            }
+            /5 filled)
+          </div>
+          <div className="text-xs text-gray-500">
+            Fill all 5 rows to add more
+          </div>
+        </div>
         <div
           className={`grid grid-cols-12 gap-1 md:gap-2 text-xs font-medium text-white p-2 rounded ${
             getTableColor(table).bg
           }`}
         >
-          <div className="col-span-3">Item</div>
+          <div className="col-span-3">Item *</div>
           <div className="col-span-3">Description</div>
-          <div className="col-span-3">Consumption</div>
-          <div className="col-span-2">Cost</div>
+          <div className="col-span-3">Consumption *</div>
+          <div className="col-span-2">Cost *</div>
           <div className="col-span-1 text-center">Action</div>
         </div>
         <ScrollArea className="h-[300px]">
           <div className="space-y-1">
-            {rows.map((row, index) => (
+            {displayData.map((row, index) => (
               <div
-                key={index}
+                key={row._id || index}
                 className={`grid grid-cols-12 gap-1 md:gap-2 items-center text-xs py-2 border-b border-gray-200 hover:${
                   getTableColor(table).hover
                 } transition-colors`}
@@ -846,6 +1163,7 @@ export function ColorMaterialsDialog({
                       "200",
                       "400"
                     )}`}
+                    placeholder="Required"
                   />
                 </div>
                 <div className="col-span-3">
@@ -860,51 +1178,60 @@ export function ColorMaterialsDialog({
                       "200",
                       "400"
                     )}`}
+                    placeholder="Optional"
                   />
                 </div>
                 <div className="col-span-3">
                   <Input
-                    value={row.consumption}
-                    onChange={(e) =>
-                      updateCostRow(table, index, "consumption", e.target.value)
-                    }
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={row.consumption || ""}
+                    onChange={(e) => {
+                      const value =
+                        e.target.value === "" ? 0 : Number(e.target.value);
+                      updateCostRow(table, index, "consumption", value);
+                    }}
                     className={`h-7 text-xs ${
                       getTableColor(table).border
                     } focus:${getTableColor(table).border.replace(
                       "200",
                       "400"
                     )}`}
+                    placeholder="Required"
                   />
                 </div>
                 <div className="col-span-2">
                   <Input
                     type="number"
-                    value={row.cost}
-                    onChange={(e) =>
-                      updateCostRow(
-                        table,
-                        index,
-                        "cost",
-                        Number(e.target.value) || 0
-                      )
-                    }
+                    step="0.01"
+                    min="0"
+                    value={row.cost || ""}
+                    onChange={(e) => {
+                      const value =
+                        e.target.value === "" ? 0 : Number(e.target.value);
+                      updateCostRow(table, index, "cost", value);
+                    }}
                     className={`h-7 text-xs ${
                       getTableColor(table).border
                     } focus:${getTableColor(table).border.replace(
                       "200",
                       "400"
                     )}`}
+                    placeholder="0.00"
                   />
                 </div>
                 <div className="col-span-1 flex justify-center">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deleteCostRow(table, index)}
-                    className="h-6 w-6 p-0 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-3 h-3 text-gray-400 hover:text-red-500" />
-                  </Button>
+                  {(row.item.trim() || row.cost > 0 || row.consumption > 0) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteCostRow(table, index)}
+                      className="h-6 w-6 p-0 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3 h-3 text-gray-400 hover:text-red-500" />
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -983,13 +1310,14 @@ export function ColorMaterialsDialog({
         <>
           <div className="space-y-2">
             <div>
-              <div className="text-xs font-medium text-gray-500">Item</div>
+              <div className="text-xs font-medium text-gray-500">Item *</div>
               <Input
                 value={row.item}
                 onChange={(e) =>
                   updateCostRow(table, index, "item", e.target.value)
                 }
                 className="h-8 text-sm"
+                placeholder="Required"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -1003,48 +1331,57 @@ export function ColorMaterialsDialog({
                     updateCostRow(table, index, "description", e.target.value)
                   }
                   className="h-8 text-sm"
+                  placeholder="Optional"
                 />
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500">
-                  Consumption
+                  Consumption *
                 </div>
                 <Input
-                  value={row.consumption}
-                  onChange={(e) =>
-                    updateCostRow(table, index, "consumption", e.target.value)
-                  }
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={row.consumption || ""}
+                  onChange={(e) => {
+                    const value =
+                      e.target.value === "" ? 0 : Number(e.target.value);
+                    updateCostRow(table, index, "consumption", value);
+                  }}
                   className="h-8 text-sm"
+                  placeholder="Required"
                 />
               </div>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <div className="text-xs font-medium text-gray-500">
-                  Cost (Rs.)
+                  Cost (Rs.) *
                 </div>
                 <Input
                   type="number"
-                  value={row.cost}
-                  onChange={(e) =>
-                    updateCostRow(
-                      table,
-                      index,
-                      "cost",
-                      Number(e.target.value) || 0
-                    )
-                  }
+                  step="0.01"
+                  min="0"
+                  value={row.cost || ""}
+                  onChange={(e) => {
+                    const value =
+                      e.target.value === "" ? 0 : Number(e.target.value);
+                    updateCostRow(table, index, "cost", value);
+                  }}
                   className="h-8 text-sm"
+                  placeholder="0.00"
                 />
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => deleteCostRow(table, index)}
-                className="ml-2 mt-5 h-8 w-8 p-0 hover:bg-red-50"
-              >
-                <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
-              </Button>
+              {(row.item.trim() || row.cost > 0 || row.consumption > 0) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => deleteCostRow(table, index)}
+                  className="ml-2 mt-5 h-8 w-8 p-0 hover:bg-red-50"
+                >
+                  <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                </Button>
+              )}
             </div>
           </div>
         </>
@@ -1053,67 +1390,74 @@ export function ColorMaterialsDialog({
   };
 
   const renderLabourTable = () => {
+    // Always ensure we show exactly 5 labour items
+    const displayLabourItems =
+      currentLabour.items.length >= TOTAL_ROWS_PER_CATEGORY
+        ? currentLabour.items
+        : [
+            ...currentLabour.items,
+            ...getEmptyLabourDummyRows(
+              TOTAL_ROWS_PER_CATEGORY - currentLabour.items.length
+            ),
+          ];
+
     if (isMobile) {
       return (
         <div className="space-y-3">
           <div className="bg-sky-600 text-white p-3 rounded-lg">
             <div className="text-sm font-medium">Labour Cost</div>
             <div className="text-xs opacity-90">
-              {currentLabour.items.length} items • Total: Rs.{" "}
+              {
+                displayLabourItems.filter((i) => i.name.trim() || i.cost > 0)
+                  .length
+              }{" "}
+              of 5 items filled • Total: Rs.{" "}
               {currentLabour.directTotal.toLocaleString("en-IN")}
             </div>
           </div>
           <ScrollArea className="h-[300px]">
             <div className="space-y-3 pr-2">
-              {currentLabour.items.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <div className="text-sm">No labour items added</div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => setAddLabourDialogOpen(true)}
-                  >
-                    <Plus className="w-3 h-3 mr-1" /> Add First Labour
-                  </Button>
-                </div>
-              ) : (
-                currentLabour.items.map((item, index) => (
-                  <div
-                    key={index}
-                    className="bg-white border rounded-lg p-3 shadow-sm"
-                  >
-                    <div className="space-y-2">
-                      <div>
+              {displayLabourItems.map((item, index) => (
+                <div
+                  key={item._id || index}
+                  className="bg-white border rounded-lg p-3 shadow-sm"
+                >
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-xs font-medium text-gray-500">
+                        Labour Item *
+                      </div>
+                      <Input
+                        value={item.name}
+                        onChange={(e) =>
+                          updateLabour(index, "name", e.target.value)
+                        }
+                        className="h-8 text-sm border-sky-200 focus:border-sky-400"
+                        placeholder="Required"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
                         <div className="text-xs font-medium text-gray-500">
-                          Labour Item
+                          Cost (Rs.) *
                         </div>
                         <Input
-                          value={item.name}
-                          onChange={(e) =>
-                            updateLabour(index, "name", e.target.value)
-                          }
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.cost || ""}
+                          onChange={(e) => {
+                            const value =
+                              e.target.value === ""
+                                ? 0
+                                : Number(e.target.value);
+                            updateLabour(index, "cost", value);
+                          }}
                           className="h-8 text-sm border-sky-200 focus:border-sky-400"
+                          placeholder="0.00"
                         />
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="text-xs font-medium text-gray-500">
-                            Cost (Rs.)
-                          </div>
-                          <Input
-                            type="number"
-                            value={item.cost}
-                            onChange={(e) =>
-                              updateLabour(
-                                index,
-                                "cost",
-                                Number(e.target.value) || 0
-                              )
-                            }
-                            className="h-8 text-sm border-sky-200 focus:border-sky-400"
-                          />
-                        </div>
+                      {(item.name.trim() || item.cost > 0) && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -1122,11 +1466,11 @@ export function ColorMaterialsDialog({
                         >
                           <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
                         </Button>
-                      </div>
+                      )}
                     </div>
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
           </ScrollArea>
           <div className="bg-sky-50 p-3 rounded-lg border border-sky-200">
@@ -1150,16 +1494,29 @@ export function ColorMaterialsDialog({
     // Desktop version
     return (
       <div className="space-y-2">
+        <div className="flex items-center justify-between mb-2">
+          <div className="bg-sky-600 text-white px-3 py-1 rounded text-xs font-medium">
+            Labour Cost (
+            {
+              displayLabourItems.filter((i) => i.name.trim() || i.cost > 0)
+                .length
+            }
+            /5 filled)
+          </div>
+          <div className="text-xs text-gray-500">
+            Fill all 5 items to add more
+          </div>
+        </div>
         <div className="grid grid-cols-12 gap-1 md:gap-2 text-xs font-medium text-white bg-sky-600 p-2 rounded">
-          <div className="col-span-9">Labour Item</div>
-          <div className="col-span-2">Cost</div>
+          <div className="col-span-9">Labour Item *</div>
+          <div className="col-span-2">Cost *</div>
           <div className="col-span-1 text-center">Action</div>
         </div>
         <ScrollArea className="h-[300px]">
           <div className="space-y-1">
-            {currentLabour.items.map((item, index) => (
+            {displayLabourItems.map((item, index) => (
               <div
-                key={index}
+                key={item._id || index}
                 className="grid grid-cols-12 gap-1 md:gap-2 items-center text-xs py-2 border-b border-gray-200 hover:bg-sky-50 transition-colors"
               >
                 <div className="col-span-9">
@@ -1169,27 +1526,35 @@ export function ColorMaterialsDialog({
                       updateLabour(index, "name", e.target.value)
                     }
                     className="h-7 text-xs border-sky-200 focus:border-sky-400"
+                    placeholder="Required"
                   />
                 </div>
                 <div className="col-span-2">
                   <Input
                     type="number"
-                    value={item.cost}
-                    onChange={(e) =>
-                      updateLabour(index, "cost", Number(e.target.value) || 0)
-                    }
+                    step="0.01"
+                    min="0"
+                    value={item.cost || ""}
+                    onChange={(e) => {
+                      const value =
+                        e.target.value === "" ? 0 : Number(e.target.value);
+                      updateLabour(index, "cost", value);
+                    }}
                     className="h-7 text-xs border-sky-200 focus:border-sky-400"
+                    placeholder="0.00"
                   />
                 </div>
                 <div className="col-span-1 flex justify-center">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deleteLabour(index)}
-                    className="h-6 w-6 p-0 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-3 h-3 text-gray-400 hover:text-red-500" />
-                  </Button>
+                  {(item.name.trim() || item.cost > 0) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteLabour(index)}
+                      className="h-6 w-6 p-0 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3 h-3 text-gray-400 hover:text-red-500" />
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -1219,11 +1584,13 @@ export function ColorMaterialsDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className={`${
-            isMobile
-              ? "max-w-[95vw]! w-[95vw]! h-[95vh]! max-h-[95vh]! m-0! "
-              : "max-w-[90vw]! w-[90vw]! max-h-[90vh]!"
-          } p-0 flex flex-col overflow-hidden rounded-lg`}
+          className={`
+            ${
+              isMobile
+                ? "max-w-[95vw]! w-[95vw]! max-h-[95vh] top-[2.5vh] translate-y-0"
+                : "max-w-[85vw]! w-[85vw]! h-[95vh]! max-h-[90vh]"
+            } overflow-hidden p-0 m-0 flex flex-col
+          `}
         >
           {/* Header - Responsive */}
           <div className="sticky top-0 z-50 px-4 md:px-6 py-3 md:py-4 bg-linear-to-r from-purple-50 to-blue-50 border-b shadow-sm">
@@ -1806,45 +2173,42 @@ export function ColorMaterialsDialog({
           </div>
         </DialogContent>
       </Dialog>
-
       {/* Dialogs - Responsive */}
       <Dialog
         open={addMaterialDialogOpen}
         onOpenChange={setAddMaterialDialogOpen}
       >
-        <DialogContent
-          className={isMobile ? "max-w-[95vw] w-[95vw] rounded-lg" : "max-w-md"}
-        >
+        <DialogContent className="max-w-md w-[95vw] p-4 sm:w-full rounded-lg">
           <DialogHeader>
-            <DialogTitle className="text-lg md:text-xl">
+            <DialogTitle className="text-lg sm:text-xl">
               Add New Material
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 md:space-y-4">
+          <div className="space-y-4">
             <div>
-              <Label className="text-sm">Material Name *</Label>
+              <Label className="text-sm font-medium">Material Name *</Label>
               <Input
                 value={newMaterial.name}
                 onChange={(e) =>
                   setNewMaterial({ ...newMaterial, name: e.target.value })
                 }
-                className="h-9 md:h-10 text-sm"
+                className="h-10 mt-1"
                 placeholder="e.g., Upper, Lining"
               />
             </div>
             <div>
-              <Label className="text-sm">Description</Label>
+              <Label className="text-sm font-medium">Description</Label>
               <Input
                 value={newMaterial.desc}
                 onChange={(e) =>
                   setNewMaterial({ ...newMaterial, desc: e.target.value })
                 }
-                className="h-9 md:h-10 text-sm"
+                className="h-10 mt-1"
                 placeholder="e.g., Rexine, Skinfit"
               />
             </div>
             <div>
-              <Label className="text-sm">Consumption</Label>
+              <Label className="text-sm font-medium">Consumption *</Label>
               <Input
                 value={newMaterial.consumption}
                 onChange={(e) =>
@@ -1853,17 +2217,16 @@ export function ColorMaterialsDialog({
                     consumption: e.target.value,
                   })
                 }
-                className="h-9 md:h-10 text-sm"
+                className="h-10 mt-1"
                 placeholder="e.g., 26 pairs/mtr"
               />
             </div>
           </div>
-          <div className="flex flex-col md:flex-row justify-end gap-2 mt-6">
+          <div className="flex flex-col sm:flex-row gap-2 mt-6">
             <Button
               variant="outline"
               onClick={() => setAddMaterialDialogOpen(false)}
-              size={isMobile ? "default" : "default"}
-              className="w-full md:w-auto"
+              className="flex-1 h-10"
             >
               Cancel
             </Button>
@@ -1876,52 +2239,51 @@ export function ColorMaterialsDialog({
                 setNewMaterial({ name: "", desc: "", consumption: "" });
                 toast.success("Material added");
               }}
-              size={isMobile ? "default" : "default"}
-              className="w-full md:w-auto"
+              className="flex-1 h-10"
+              disabled={
+                !newMaterial.name.trim() || !newMaterial.consumption.trim()
+              }
             >
               Add Material
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-
       <Dialog
         open={addComponentDialogOpen}
         onOpenChange={setAddComponentDialogOpen}
       >
-        <DialogContent
-          className={isMobile ? "max-w-[95vw] w-[95vw] rounded-lg" : "max-w-md"}
-        >
+        <DialogContent className="max-w-md w-[95vw] p-4 sm:w-full rounded-lg">
           <DialogHeader>
-            <DialogTitle className="text-lg md:text-xl">
+            <DialogTitle className="text-lg sm:text-xl">
               Add New Component
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 md:space-y-4">
+          <div className="space-y-4">
             <div>
-              <Label className="text-sm">Component Name *</Label>
+              <Label className="text-sm font-medium">Component Name *</Label>
               <Input
                 value={newComponent.name}
                 onChange={(e) =>
                   setNewComponent({ ...newComponent, name: e.target.value })
                 }
-                className="h-9 md:h-10 text-sm"
+                className="h-10 mt-1"
                 placeholder="e.g., Foam, Velcro"
               />
             </div>
             <div>
-              <Label className="text-sm">Description</Label>
+              <Label className="text-sm font-medium">Description</Label>
               <Input
                 value={newComponent.desc}
                 onChange={(e) =>
                   setNewComponent({ ...newComponent, desc: e.target.value })
                 }
-                className="h-9 md:h-10 text-sm"
+                className="h-10 mt-1"
                 placeholder="e.g., 75mm, sticker"
               />
             </div>
             <div>
-              <Label className="text-sm">Consumption</Label>
+              <Label className="text-sm font-medium">Consumption *</Label>
               <Input
                 value={newComponent.consumption}
                 onChange={(e) =>
@@ -1930,17 +2292,16 @@ export function ColorMaterialsDialog({
                     consumption: e.target.value,
                   })
                 }
-                className="h-9 md:h-10 text-sm"
+                className="h-10 mt-1"
                 placeholder="e.g., 7.5grm, 2pcs"
               />
             </div>
           </div>
-          <div className="flex flex-col md:flex-row justify-end gap-2 mt-6">
+          <div className="flex flex-col sm:flex-row gap-2 mt-6">
             <Button
               variant="outline"
               onClick={() => setAddComponentDialogOpen(false)}
-              size={isMobile ? "default" : "default"}
-              className="w-full md:w-auto"
+              className="flex-1 h-10"
             >
               Cancel
             </Button>
@@ -1953,38 +2314,37 @@ export function ColorMaterialsDialog({
                 setNewComponent({ name: "", desc: "", consumption: "" });
                 toast.success("Component added");
               }}
-              size={isMobile ? "default" : "default"}
-              className="w-full md:w-auto"
+              className="flex-1 h-10"
+              disabled={
+                !newComponent.name.trim() || !newComponent.consumption.trim()
+              }
             >
               Add Component
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-
       <Dialog open={addCostDialogOpen} onOpenChange={setAddCostDialogOpen}>
-        <DialogContent
-          className={isMobile ? "max-w-[95vw] w-[95vw] rounded-lg" : "max-w-md"}
-        >
+        <DialogContent className="max-w-md w-[95vw] p-4 sm:w-full rounded-lg">
           <DialogHeader>
-            <DialogTitle className="text-lg md:text-xl">
+            <DialogTitle className="text-lg sm:text-xl">
               Add Cost Item
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 md:space-y-4">
+          <div className="space-y-4">
             <div>
-              <Label className="text-sm">Item Name *</Label>
+              <Label className="text-sm font-medium">Item Name *</Label>
               <Input
                 value={newCostItem.item}
                 onChange={(e) =>
                   setNewCostItem({ ...newCostItem, item: e.target.value })
                 }
-                className="h-9 md:h-10 text-sm"
+                className="h-10 mt-1"
                 placeholder="e.g., Upper Material"
               />
             </div>
             <div>
-              <Label className="text-sm">Description</Label>
+              <Label className="text-sm font-medium">Description</Label>
               <Input
                 value={newCostItem.description}
                 onChange={(e) =>
@@ -1993,110 +2353,122 @@ export function ColorMaterialsDialog({
                     description: e.target.value,
                   })
                 }
-                className="h-9 md:h-10 text-sm"
+                className="h-10 mt-1"
                 placeholder="e.g., Rexine, Leather"
               />
             </div>
             <div>
-              <Label className="text-sm">Consumption</Label>
+              <Label className="text-sm font-medium">Consumption *</Label>
               <Input
-                value={newCostItem.consumption}
-                onChange={(e) =>
+                type="number"
+                step="0.01"
+                min="0"
+                value={newCostItem.consumption || ""}
+                onChange={(e) => {
+                  const value =
+                    e.target.value === "" ? 0 : Number(e.target.value);
                   setNewCostItem({
                     ...newCostItem,
-                    consumption: e.target.value,
-                  })
-                }
-                className="h-9 md:h-10 text-sm"
-                placeholder="e.g., 26 pairs/mtr"
+                    consumption: value,
+                  });
+                }}
+                className="h-10 mt-1"
+                placeholder="e.g., 26"
               />
             </div>
             <div>
-              <Label className="text-sm">Cost (Rs.)</Label>
+              <Label className="text-sm font-medium">Cost (Rs.) *</Label>
               <Input
                 type="number"
-                value={newCostItem.cost}
-                onChange={(e) =>
+                step="0.01"
+                min="0"
+                value={newCostItem.cost || ""}
+                onChange={(e) => {
+                  const value =
+                    e.target.value === "" ? 0 : Number(e.target.value);
                   setNewCostItem({
                     ...newCostItem,
-                    cost: Number(e.target.value) || 0,
-                  })
-                }
-                className="h-9 md:h-10 text-sm"
+                    cost: value,
+                  });
+                }}
+                className="h-10 mt-1"
                 placeholder="e.g., 1500"
               />
             </div>
           </div>
-          <div className="flex flex-col md:flex-row justify-end gap-2 mt-6">
+          <div className="flex flex-col sm:flex-row gap-2 mt-6">
             <Button
               variant="outline"
               onClick={() => setAddCostDialogOpen(false)}
-              size={isMobile ? "default" : "default"}
-              className="w-full md:w-auto"
+              className="flex-1 h-10"
             >
               Cancel
             </Button>
             <Button
               onClick={addCostRow}
-              size={isMobile ? "default" : "default"}
-              className="w-full md:w-auto"
+              className="flex-1 h-10"
+              disabled={
+                !newCostItem.item.trim() ||
+                !newCostItem.consumption ||
+                newCostItem.consumption <= 0
+              }
             >
               Add Item
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-
       <Dialog open={addLabourDialogOpen} onOpenChange={setAddLabourDialogOpen}>
-        <DialogContent
-          className={isMobile ? "max-w-[95vw] w-[95vw] rounded-lg" : "max-w-md"}
-        >
+        <DialogContent className="max-w-md w-[95vw] p-4 sm:w-full rounded-lg">
           <DialogHeader>
-            <DialogTitle className="text-lg md:text-xl">
+            <DialogTitle className="text-lg sm:text-xl">
               Add Labour Item
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 md:space-y-4">
+          <div className="space-y-4">
             <div>
-              <Label className="text-sm">Labour Name *</Label>
+              <Label className="text-sm font-medium">Labour Name *</Label>
               <Input
                 value={newLabourItem.name}
                 onChange={(e) =>
                   setNewLabourItem({ ...newLabourItem, name: e.target.value })
                 }
-                className="h-9 md:h-10 text-sm"
+                className="h-10 mt-1"
                 placeholder="e.g., Stitching, Assembly"
               />
             </div>
             <div>
-              <Label className="text-sm">Cost (Rs.)</Label>
+              <Label className="text-sm font-medium">Cost (Rs.) *</Label>
               <Input
                 type="number"
-                value={newLabourItem.cost}
-                onChange={(e) =>
+                step="0.01"
+                min="0"
+                value={newLabourItem.cost || ""}
+                onChange={(e) => {
+                  const value =
+                    e.target.value === "" ? 0 : Number(e.target.value);
                   setNewLabourItem({
                     ...newLabourItem,
-                    cost: Number(e.target.value) || 0,
-                  })
-                }
-                className="h-9 md:h-10 text-sm"
+                    cost: value,
+                  });
+                }}
+                className="h-10 mt-1"
                 placeholder="e.g., 500"
               />
             </div>
           </div>
-          <div className="flex flex-col md:flex-row justify-end gap-2 mt-6">
+          <div className="flex flex-col sm:flex-row gap-2 mt-6">
             <Button
               variant="outline"
               onClick={() => setAddLabourDialogOpen(false)}
-              size={isMobile ? "default" : "default"}
-              className="w-full md:w-auto"
+              className="flex-1 h-10"
             >
               Cancel
             </Button>
             <Button
               onClick={addLabour}
-              size={isMobile ? "default" : "default"}
-              className="w-full md:w-auto"
+              className="flex-1 h-10"
+              disabled={!newLabourItem.name.trim()}
             >
               Add Labour
             </Button>

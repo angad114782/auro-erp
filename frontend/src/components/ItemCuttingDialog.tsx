@@ -47,6 +47,7 @@ interface CuttingItem {
   status: "pending" | "in-progress" | "completed";
 }
 
+// In your ItemCuttingDialog component, update the props interface:
 interface ItemCuttingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -55,17 +56,21 @@ interface ItemCuttingDialogProps {
     productName: string;
     productionId: string;
     targetQuantity: number;
+    currentQuantity?: number;
     brand: string;
     category: string;
+    color?: string;
+    size?: string;
+    poNumber?: string;
+    manufacturingCompany?: string;
+    country?: string;
+    // New fields for stage info
+    stage?: string;
+    stageName?: string;
+    stageStatus?: string;
+    stageRemaining?: number;
   } | null;
-  stage?:
-    | "cutting"
-    | "printing"
-    | "upper"
-    | "upperREJ"
-    | "assembly"
-    | "packing"
-    | "rfd";
+  stage: any;
 }
 
 // MobileItemCard component defined OUTSIDE the main component
