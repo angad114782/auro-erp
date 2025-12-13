@@ -5,6 +5,14 @@ import { PCProductionCard } from "../models/pc_productionCard.model.js";
    1) CREATE rows for a Production Card
 ---------------------------------------------------- */
 export async function createMicroTrackingForCard(cardId) {
+  // check if tracking already exists
+  const existing = await MicroTracking.findOne({ cardId }).lean();
+
+  if (existing) {
+    // Return all rows for this card
+    return await MicroTracking.find({ cardId }).lean();
+  }
+
   const card = await PCProductionCard.findById(cardId).lean();
   if (!card) throw new Error("Production Card not found");
 
@@ -17,7 +25,6 @@ export async function createMicroTrackingForCard(cardId) {
         cardId: card._id,
         cardNumber: card.cardNumber,
         cardQuantity: card.cardQuantity,
-
         category,
         itemId: item.itemId,
         name: item.name,
@@ -26,11 +33,9 @@ export async function createMicroTrackingForCard(cardId) {
         requirement: item.requirement,
         issued: item.issued,
         balance: item.balance,
-
         department: item.department || "unknown",
         progressDone: 0,
         progressToday: 0,
-        history: []
       });
     });
   };
@@ -42,6 +47,7 @@ export async function createMicroTrackingForCard(cardId) {
 
   return await MicroTracking.insertMany(rows);
 }
+
 
 /* ----------------------------------------------------
    2) GET all rows for a Project

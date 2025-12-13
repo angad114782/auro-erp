@@ -3,19 +3,26 @@ import * as service from "../services/microTracking.service.js";
 /* ---------------- Create Micro Tracking for card ---------------- */
 export async function createMicroTracking(req, res) {
   try {
-    const { cardId } = req.params;
+    let cardId = req.params.cardId?.replace(/[^a-fA-F0-9]/g, "");
+    if (!cardId || cardId.length !== 24) {
+      return res.status(400).json({ error: "Invalid cardId" });
+    }
+
     const rows = await service.createMicroTrackingForCard(cardId);
 
-    return res.status(201).json({
+    return res.status(200).json({
       success: true,
-      message: "Micro tracking rows created",
+      alreadyExists: Array.isArray(rows) && rows.length > 0,
+      message: rows.length > 0 ? "Micro tracking already exists" : "Created",
       items: rows,
     });
+
   } catch (err) {
     console.error("createMicroTracking error:", err);
     return res.status(500).json({ error: err.message });
   }
 }
+
 
 /* ---------------- Get Micro Tracking by project ---------------- */
 export async function getMicroTracking(req, res) {
