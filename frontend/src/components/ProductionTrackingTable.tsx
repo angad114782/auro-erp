@@ -1,35 +1,39 @@
-import React, { useEffect, useState, useCallback } from "react";
 import {
-  Search,
+  AlertTriangle,
+  ArrowUpDown,
+  Building,
+  Calendar as CalendarIcon,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Clock,
   Download,
   Edit,
   Eye,
-  ArrowUpDown,
-  CheckCircle,
-  AlertTriangle,
-  Clock,
-  Scissors,
-  Printer,
-  ShirtIcon,
-  X,
-  Wrench,
-  Package,
   FileCheck,
   MessageSquare,
-  Target,
-  Building,
-  Workflow,
-  Calendar,
-  Save,
+  Package,
+  Printer,
   RefreshCw,
-  ChevronDown,
-  ChevronUp,
-  Calendar as CalendarIcon,
+  Save,
+  Scissors,
+  Search,
+  ShirtIcon,
+  Target,
+  Workflow,
+  Wrench,
+  X,
 } from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Card, CardContent } from "./ui/card";
+import React, { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import api from "../lib/api";
+import { ItemCuttingDialog } from "./ItemCuttingDialog";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
+import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+import { Input } from "./ui/input";
+import { Progress } from "./ui/progress";
 import {
   Select,
   SelectContent,
@@ -37,15 +41,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { Separator } from "./ui/separator";
-import { Progress } from "./ui/progress";
-import { Textarea } from "./ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { toast } from "sonner";
-import { ItemCuttingDialog } from "./ItemCuttingDialog";
-import { useERPStore } from "../lib/data-store";
-import api from "../lib/api";
 
 // Types for API response
 interface APITrackingData {
@@ -264,9 +261,6 @@ export function ProductionTrackingTable() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Get production cards from store
-  const { productionCards } = useERPStore();
-
   // Fetch tracking data based on department, month, and year
   const fetchTrackingData = useCallback(async () => {
     setLoading(true);
@@ -277,7 +271,7 @@ export function ProductionTrackingTable() {
           selectedMonth
         )}&year=${selectedYear}`
       );
-
+      console.log(res.data.data, "tracking data");
       if (res.data?.success) {
         setTrackingData(res.data.data || []);
       } else {
@@ -293,6 +287,10 @@ export function ProductionTrackingTable() {
     }
   }, [selectedDepartment, selectedMonth, selectedYear]);
 
+  // const fetchTrackingCard=async ()=>{
+  //   await api.get("micro-tracking/project/693eb8f85f188cf0b8cf8e86/:cardId");
+  // }
+
   useEffect(() => {
     fetchTrackingData();
   }, [fetchTrackingData]);
@@ -300,7 +298,7 @@ export function ProductionTrackingTable() {
   // Map API data to ProductionRecord format
   const transformAPIDataToProductionRecords = (
     apiData: APITrackingData[]
-  ): ProductionRecord[] => {
+  ): any[] => {
     return apiData.map((item, index) => {
       // Get department-specific data from summary
       const departmentTotal = item.summary.monthTotal || 0;
@@ -2602,7 +2600,7 @@ export function ProductionTrackingTable() {
                     {/* Product & R&D Information */}
                     <div className="space-y-4 sm:space-y-6">
                       <div className="flex items-center gap-3 sm:gap-5">
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md shrink-0">
                           <Eye className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                         </div>
                         <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
@@ -2614,7 +2612,7 @@ export function ProductionTrackingTable() {
                         {/* Product Image Preview */}
                         <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
                           <div className="flex items-center gap-3 sm:gap-4">
-                            <div className="w-16 h-16 sm:w-24 sm:h-24 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm flex-shrink-0">
+                            <div className="w-16 h-16 sm:w-24 sm:h-24 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm shrink-0">
                               <img
                                 src="https://images.unsplash.com/photo-1648501570189-0359dab185e6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBzbmVha2VyJTIwc2hvZSUyMHByb2R1Y3R8ZW58MXx8fHwxNzU2NzM1OTMwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
                                 alt={selectedProductionRecord.articleName}
@@ -2629,7 +2627,7 @@ export function ProductionTrackingTable() {
                                 Production Sample
                               </div>
                               <div className="flex items-center gap-1 sm:gap-2 mt-1 sm:mt-2">
-                                <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-gray-400 flex-shrink-0"></div>
+                                <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-gray-400 shrink-0"></div>
                                 <span className="text-xs text-gray-400 truncate">
                                   {selectedProductionRecord.color}
                                 </span>

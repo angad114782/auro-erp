@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Package,
   Truck,
@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Save,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -50,22 +51,58 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Calendar as CalendarComponent } from "./ui/calendar";
 import { Separator } from "./ui/separator";
 import { useERPStore } from "../lib/data-store";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { format } from "date-fns";
+import api from "../lib/api";
 
 interface DeliveryManagementProps {
   currentSubModule: string;
+}
+
+interface DeliveryItem {
+  _id: string;
+  projectCode: string;
+  productName: string;
+  category: string;
+  brand: string;
+  gender: string;
+  poNumber: string;
+  poReceivedDate: string;
+  deliveryDateExpected: string;
+  orderQuantity: number;
+  status: "pending" | "parcel_delivered" | "delivered";
+  agingDays: number;
+  project?: {
+    _id: string;
+    autoCode: string;
+    artName: string;
+    brand: { name: string };
+    category: { name: string };
+    country: { name: string };
+    gender: string;
+  };
+  poDetails?: {
+    poNumber: string;
+    deliveryDate: string;
+  };
+  createdAt: string;
+  updatedAt: string;
 }
 
 export function DeliveryManagement({
   currentSubModule,
 }: DeliveryManagementProps) {
   const {
-    deliveryItems,
+    deliveryItems: localDeliveryItems,
     updateDeliveryItem,
     addDeliveryItem,
     deleteDeliveryItem,
   } = useERPStore();
+
+  const [backendDeliveries, setBackendDeliveries] = useState<DeliveryItem[]>(
+    []
+  );
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDelivery, setSelectedDelivery] = useState<any>(null);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
@@ -79,51 +116,77 @@ export function DeliveryManagement({
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [isDateFromOpen, setIsDateFromOpen] = useState(false);
   const [isDateToOpen, setIsDateToOpen] = useState(false);
+  const [editStatus, setEditStatus] = useState<string>("");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
-  // Form state for editing
-  const [editedData, setEditedData] = useState<any>({});
+  // Fetch data from backend
+  const fetchBackendData = async () => {
+    try {
+      setLoading(true);
+      let endpoint = "";
 
-  // Form state for adding
-  const [formData, setFormData] = useState<any>({
-    projectCode: "",
-    productName: "",
-    brandName: "",
-    categoryName: "",
-    poNumber: "",
-    poReceivedDate: "",
-    quantity: 0,
-    deliveryStatus: "Pending",
-    deliveryDate: "",
-    expectedDeliveryDate: "",
-    totalAmount: 0,
-    advance: 0,
-    advancePercentage: 0,
-    trackingNumber: "",
-    courierService: "",
-    deliveryAddress: "",
-    customerName: "",
-    customerContact: "",
-    remarks: "",
-  });
+      if (currentSubModule === "delivery-pending") {
+        endpoint = "/delivery/pending";
+      } else if (currentSubModule === "parcel-delivered") {
+        endpoint = "/delivery/parcel-delivered";
+      } else if (currentSubModule === "delivered") {
+        endpoint = "/delivery/delivered";
+      }
+
+      if (endpoint) {
+        const res = await api.get(endpoint);
+        console.log("Backend response:", res.data);
+        if (res.data.success) {
+          setBackendDeliveries(res.data.items || []);
+        } else {
+          setBackendDeliveries([]);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      toast.error("Failed to fetch data from server");
+      setBackendDeliveries([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBackendData();
+  }, [currentSubModule]);
+
+  // Convert backend data to display format for the list
+  const displayItems = useMemo(() => {
+    return backendDeliveries.map((item) => ({
+      id: item._id,
+      projectCode: item.projectCode || "N/A",
+      productName: item.productName || "N/A",
+      brandName: item.brand || "N/A",
+      categoryName: item.category || "N/A",
+      poNumber: item.poNumber || "N/A",
+      poReceivedDate:
+        item.poReceivedDate || new Date().toISOString().split("T")[0],
+      quantity: item.orderQuantity || 0,
+      deliveryStatus:
+        item.status === "pending"
+          ? "Pending"
+          : item.status === "parcel_delivered"
+          ? "Parcel Delivered"
+          : "Delivered",
+      deliveryDate: item.deliveryDateExpected || "",
+      expectedDeliveryDate: item.deliveryDateExpected || "",
+      aging: item.agingDays || 0,
+      // Store original backend data for details
+      backendData: item,
+    }));
+  }, [backendDeliveries]);
 
   // Filter deliveries based on current sub-module
   const filteredDeliveries = useMemo(() => {
-    let filtered = deliveryItems;
-
-    // Filter by sub-module
-    if (currentSubModule === "delivery-pending") {
-      filtered = filtered.filter((item) => item.deliveryStatus === "Pending");
-    } else if (currentSubModule === "parcel-delivered") {
-      filtered = filtered.filter(
-        (item) => item.deliveryStatus === "Parcel Delivered"
-      );
-    } else if (currentSubModule === "delivered") {
-      filtered = filtered.filter((item) => item.deliveryStatus === "Delivered");
-    }
+    let filtered = displayItems;
 
     // Search filter
     if (searchTerm) {
@@ -132,8 +195,7 @@ export function DeliveryManagement({
           item.projectCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
           item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
           item.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.brandName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.customerName?.toLowerCase().includes(searchTerm.toLowerCase())
+          item.brandName.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -188,15 +250,7 @@ export function DeliveryManagement({
       }
       return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
     });
-  }, [
-    deliveryItems,
-    currentSubModule,
-    searchTerm,
-    sortBy,
-    sortOrder,
-    dateFrom,
-    dateTo,
-  ]);
+  }, [displayItems, searchTerm, sortBy, sortOrder, dateFrom, dateTo]);
 
   // Paginate deliveries
   const paginatedDeliveries = useMemo(() => {
@@ -206,35 +260,25 @@ export function DeliveryManagement({
 
   const totalPages = Math.ceil(filteredDeliveries.length / itemsPerPage);
 
-  // Calculate statistics
+  // Calculate statistics based on backend data
   const stats = useMemo(() => {
-    const pending = deliveryItems.filter(
-      (item) => item.deliveryStatus === "Pending"
+    const pending = backendDeliveries.filter(
+      (item) => item.status === "pending"
     );
-    const parcelDelivered = deliveryItems.filter(
-      (item) => item.deliveryStatus === "Parcel Delivered"
+    const parcelDelivered = backendDeliveries.filter(
+      (item) => item.status === "parcel_delivered"
     );
-    const delivered = deliveryItems.filter(
-      (item) => item.deliveryStatus === "Delivered"
+    const delivered = backendDeliveries.filter(
+      (item) => item.status === "delivered"
     );
 
-    const totalRevenue = deliveryItems.reduce(
-      (sum, item) => sum + (item.totalAmount || 0),
-      0
-    );
-    const advanceCollected = deliveryItems.reduce(
-      (sum, item) => sum + (item.advance || 0),
-      0
-    );
-    const balancePending = deliveryItems.reduce(
-      (sum, item) => sum + (item.balance || 0),
-      0
-    );
     const avgAging =
-      deliveryItems.length > 0
+      backendDeliveries.length > 0
         ? Math.round(
-            deliveryItems.reduce((sum, item) => sum + item.aging, 0) /
-              deliveryItems.length
+            backendDeliveries.reduce(
+              (sum, item) => sum + (item.agingDays || 0),
+              0
+            ) / backendDeliveries.length
           )
         : 0;
 
@@ -242,17 +286,15 @@ export function DeliveryManagement({
       pending: pending.length,
       parcelDelivered: parcelDelivered.length,
       delivered: delivered.length,
-      total: deliveryItems.length,
-      totalRevenue,
-      advanceCollected,
-      balancePending,
+      total: backendDeliveries.length,
       avgAging,
     };
-  }, [deliveryItems]);
+  }, [backendDeliveries]);
 
   const handleRowClick = (delivery: any) => {
     setSelectedDelivery(delivery);
     setEditedData(delivery);
+    setEditStatus(delivery.deliveryStatus);
     setIsEditing(false);
     setIsDetailsDialogOpen(true);
   };
@@ -263,34 +305,40 @@ export function DeliveryManagement({
 
   const handleCancelEdit = () => {
     setEditedData(selectedDelivery);
+    setEditStatus(selectedDelivery?.deliveryStatus || "");
     setIsEditing(false);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!selectedDelivery) return;
 
-    // Calculate aging if delivery date is set
-    const aging =
-      editedData.deliveryDate && editedData.poReceivedDate
-        ? Math.floor(
-            (new Date(editedData.deliveryDate).getTime() -
-              new Date(editedData.poReceivedDate).getTime()) /
-              (1000 * 60 * 60 * 24)
-          )
-        : editedData.aging;
+    try {
+      // If editing status, call the API
+      if (editStatus !== selectedDelivery.deliveryStatus) {
+        const endpoint =
+          editStatus === "Parcel Delivered"
+            ? `/delivery/parcel/${selectedDelivery.id}`
+            : editStatus === "Delivered"
+            ? `/delivery/final/${selectedDelivery.id}`
+            : null;
 
-    // Calculate balance
-    const balance = (editedData.totalAmount || 0) - (editedData.advance || 0);
+        if (endpoint) {
+          const res = await api.put(endpoint);
+          if (res.data.success) {
+            toast.success(res.data.message);
+            // Refresh data after status update
+            fetchBackendData();
+          }
+        }
+      }
 
-    updateDeliveryItem(selectedDelivery.id, {
-      ...editedData,
-      aging,
-      balance,
-    });
-
-    toast.success("Delivery updated successfully");
-    setIsEditing(false);
-    setSelectedDelivery({ ...editedData, aging, balance });
+      toast.success("Delivery updated successfully");
+      setIsEditing(false);
+      setIsDetailsDialogOpen(false);
+    } catch (error: any) {
+      console.error("Error updating:", error);
+      toast.error(error.response?.data?.error || "Failed to update delivery");
+    }
   };
 
   const handleAddDelivery = () => {
@@ -334,6 +382,32 @@ export function DeliveryManagement({
       remarks: "",
     });
   };
+
+  // Form state for editing
+  const [editedData, setEditedData] = useState<any>({});
+
+  // Form state for adding
+  const [formData, setFormData] = useState<any>({
+    projectCode: "",
+    productName: "",
+    brandName: "",
+    categoryName: "",
+    poNumber: "",
+    poReceivedDate: "",
+    quantity: 0,
+    deliveryStatus: "Pending",
+    deliveryDate: "",
+    expectedDeliveryDate: "",
+    totalAmount: 0,
+    advance: 0,
+    advancePercentage: 0,
+    trackingNumber: "",
+    courierService: "",
+    deliveryAddress: "",
+    customerName: "",
+    customerContact: "",
+    remarks: "",
+  });
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -403,9 +477,16 @@ export function DeliveryManagement({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Export
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchBackendData}
+            disabled={loading}
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
+            />
+            {loading ? "Refreshing..." : "Refresh"}
           </Button>
           <Button
             className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white"
@@ -491,7 +572,7 @@ export function DeliveryManagement({
             <div className="flex-1 relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <Input
-                placeholder="Search by project code, PO number, product name, brand, or customer..."
+                placeholder="Search by project code, PO number, product name, or brand..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -593,7 +674,7 @@ export function DeliveryManagement({
         </CardContent>
       </Card>
 
-      {/* Deliveries Table - Green Seal Style */}
+      {/* Deliveries Table - Only shows backend data */}
       <Card className="shadow-lg border-0">
         <CardHeader className="bg-linear-to-r from-gray-50 to-gray-100 rounded-t-lg">
           <div className="flex items-center justify-between">
@@ -616,6 +697,12 @@ export function DeliveryManagement({
                 </p>
               </div>
             </div>
+            {loading && (
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#0c9dcb]"></div>
+                Loading...
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -681,10 +768,14 @@ export function DeliveryManagement({
                         <Package className="w-8 h-8 text-gray-400" />
                       </div>
                       <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        No deliveries found
+                        {loading
+                          ? "Loading deliveries..."
+                          : "No deliveries found"}
                       </h3>
                       <p className="text-gray-600">
-                        Try adjusting your search or filters
+                        {loading
+                          ? "Please wait..."
+                          : "Try adjusting your search or filters"}
                       </p>
                     </td>
                   </tr>
@@ -821,7 +912,7 @@ export function DeliveryManagement({
         </CardContent>
       </Card>
 
-      {/* Delivery Details Dialog */}
+      {/* Delivery Details Dialog - Shows only available data */}
       <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
         <DialogContent className="!max-w-[85vw] !w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
           {/* Sticky Header */}
@@ -886,7 +977,7 @@ export function DeliveryManagement({
 
           {/* Scrollable Content */}
           <div className="overflow-y-auto flex-1 px-8 py-6">
-            {selectedDelivery && (
+            {selectedDelivery && selectedDelivery.backendData && (
               <div className="space-y-6">
                 {/* Project Information */}
                 <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
@@ -911,7 +1002,7 @@ export function DeliveryManagement({
                         />
                       ) : (
                         <p className="text-sm text-gray-900 mt-1">
-                          {selectedDelivery.projectCode}
+                          {selectedDelivery.projectCode || "-"}
                         </p>
                       )}
                     </div>
@@ -930,7 +1021,7 @@ export function DeliveryManagement({
                         />
                       ) : (
                         <p className="text-sm text-gray-900 mt-1">
-                          {selectedDelivery.poNumber}
+                          {selectedDelivery.poNumber || "-"}
                         </p>
                       )}
                     </div>
@@ -951,7 +1042,7 @@ export function DeliveryManagement({
                         />
                       ) : (
                         <p className="text-sm text-gray-900 mt-1">
-                          {selectedDelivery.productName}
+                          {selectedDelivery.productName || "-"}
                         </p>
                       )}
                     </div>
@@ -970,7 +1061,7 @@ export function DeliveryManagement({
                         />
                       ) : (
                         <p className="text-sm text-gray-900 mt-1">
-                          {selectedDelivery.brandName}
+                          {selectedDelivery.brandName || "-"}
                         </p>
                       )}
                     </div>
@@ -989,7 +1080,7 @@ export function DeliveryManagement({
                         />
                       ) : (
                         <p className="text-sm text-gray-900 mt-1">
-                          {selectedDelivery.categoryName}
+                          {selectedDelivery.categoryName || "-"}
                         </p>
                       )}
                     </div>
@@ -1009,7 +1100,7 @@ export function DeliveryManagement({
                         />
                       ) : (
                         <p className="text-sm text-gray-900 mt-1">
-                          {selectedDelivery.quantity.toLocaleString()}
+                          {selectedDelivery.quantity.toLocaleString() || "0"}
                         </p>
                       )}
                     </div>
@@ -1040,7 +1131,7 @@ export function DeliveryManagement({
                         />
                       ) : (
                         <p className="text-sm text-gray-900 mt-1">
-                          {formatDate(selectedDelivery.poReceivedDate)}
+                          {formatDate(selectedDelivery.poReceivedDate) || "-"}
                         </p>
                       )}
                     </div>
@@ -1062,7 +1153,8 @@ export function DeliveryManagement({
                         />
                       ) : (
                         <p className="text-sm text-gray-900 mt-1">
-                          {formatDate(selectedDelivery.expectedDeliveryDate)}
+                          {formatDate(selectedDelivery.expectedDeliveryDate) ||
+                            "-"}
                         </p>
                       )}
                     </div>
@@ -1098,7 +1190,7 @@ export function DeliveryManagement({
                           selectedDelivery.aging
                         )}`}
                       >
-                        {selectedDelivery.aging} days
+                        {selectedDelivery.aging || 0} days
                       </span>
                     </div>
                   </div>
@@ -1116,13 +1208,8 @@ export function DeliveryManagement({
                       </Label>
                       {isEditing ? (
                         <Select
-                          value={editedData.deliveryStatus}
-                          onValueChange={(value) =>
-                            setEditedData({
-                              ...editedData,
-                              deliveryStatus: value,
-                            })
-                          }
+                          value={editStatus}
+                          onValueChange={(value) => setEditStatus(value)}
                         >
                           <SelectTrigger className="mt-1">
                             <SelectValue />
@@ -1154,7 +1241,7 @@ export function DeliveryManagement({
                       {isEditing ? (
                         <Input
                           type="number"
-                          value={editedData.totalAmount}
+                          value={editedData.totalAmount || ""}
                           onChange={(e) =>
                             setEditedData({
                               ...editedData,
@@ -1165,14 +1252,16 @@ export function DeliveryManagement({
                         />
                       ) : (
                         <p className="text-lg text-gray-900 mt-1">
-                          {formatCurrency(selectedDelivery.totalAmount || 0)}
+                          {selectedDelivery.totalAmount
+                            ? formatCurrency(selectedDelivery.totalAmount)
+                            : "-"}
                         </p>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Shipping & Customer Details */}
+                {/* Shipping & Customer Details - These will be empty for backend data */}
                 <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
                     Shipping & Customer Information
