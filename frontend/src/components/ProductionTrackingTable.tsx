@@ -58,7 +58,7 @@ import { Progress } from "./ui/progress";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { ItemCuttingDialog } from "./ItemCuttingDialog";
 import { useERPStore } from "../lib/data-store";
 import api from "../lib/api";
@@ -160,6 +160,7 @@ export function ProductionTrackingTable() {
   const [showWeekTable, setShowWeekTable] = useState(false);
   const [currentWeek, setCurrentWeek] = useState<number>(1);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState(false);
+  const [trackingData, setTrackingData] = useState([]);
 
   // Check for mobile on mount and resize
   React.useEffect(() => {
@@ -174,6 +175,8 @@ export function ProductionTrackingTable() {
 
   const getTaskdata = async () => {
     const res = await api.get("/production-cards/projects-in-tracking");
+    setTrackingData(res?.items!);
+
     console.log(res.data, "tracking data");
   };
 

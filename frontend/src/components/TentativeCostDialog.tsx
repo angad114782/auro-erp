@@ -1193,9 +1193,9 @@ export function TentativeCostDialog({
       });
 
       setDataLoaded(true);
-      toast.info(
-        `Each category shows ${TOTAL_ROWS_PER_CATEGORY} rows. Fill in the empty rows and save when done.`
-      );
+      // toast.info(
+      //   `Each category shows ${TOTAL_ROWS_PER_CATEGORY} rows. Fill in the empty rows and save when done.`
+      // );
     } catch (error) {
       console.error("Failed to load cost data:", error);
       toast.error("Failed to load cost data. Starting with empty rows.");

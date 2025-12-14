@@ -165,6 +165,30 @@ export function CreateProjectDialog({
   const [newCountryName, setNewCountryName] = useState("");
   const [newAssignPersonName, setNewAssignPersonName] = useState("");
 
+  const getUploadToastMessage = (error: any) => {
+    // Request blocked by server / proxy
+    if (error?.response?.status === 413) {
+      return "Image is too large. Please upload images under 5MB.";
+    }
+
+    // Backend sent message
+    if (error?.response?.data?.message) {
+      return error.response.data.message;
+    }
+
+    // HTML / unknown response (common in prod)
+    if (typeof error?.response?.data === "string") {
+      return "Upload failed due to server size limit.";
+    }
+
+    // Network / tunnel issues
+    if (error?.message === "Network Error") {
+      return "Network error. Please try again.";
+    }
+
+    return "Something went wrong while uploading. Please try again.";
+  };
+
   // Check screen size
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -276,12 +300,20 @@ export function CreateProjectDialog({
   const handleCoverPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024)
-      return toast.error("Image size must be less than 5MB");
+
+    // ✅ SIZE CHECK GOES HERE
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size must be less than 5MB");
+      e.target.value = ""; // 👈 important
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onloadend = () => setCoverPhoto(reader.result as string);
+    reader.onloadend = () => {
+      setCoverPhoto(reader.result as string);
+      toast.success("Cover photo uploaded");
+    };
     reader.readAsDataURL(file);
-    toast.success("Cover photo uploaded");
   };
 
   const handleAdditionalImageUpload = (
@@ -290,8 +322,14 @@ export function CreateProjectDialog({
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024)
-      return toast.error("Image size must be less than 5MB");
+
+    // ✅ SIZE CHECK GOES HERE
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size must be less than 5MB");
+      e.target.value = ""; // 👈 important
+      return;
+    }
+
     const reader = new FileReader();
     reader.onloadend = () => {
       const newImages = [...additionalImages];
@@ -324,8 +362,14 @@ export function CreateProjectDialog({
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024)
-      return toast.error("Image size must be less than 5MB");
+
+    // ✅ SIZE CHECK GOES HERE
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size must be less than 5MB");
+      e.target.value = ""; // 👈 important
+      return;
+    }
+
     const reader = new FileReader();
     reader.onloadend = () => {
       const newImages = [...dynamicImages];
@@ -549,7 +593,7 @@ export function CreateProjectDialog({
       setDynamicImages([]);
       onClose();
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Failed to create project");
+      toast.error(getUploadToastMessage(e));
     }
   };
 
@@ -1904,7 +1948,7 @@ export function CreateProjectDialog({
                 <Button
                   onClick={handleCreateProject}
                   size={isMobile ? "default" : "lg"}
-                  className="px-4 md:px-6 lg:px-8 py-2 md:py-3 text-sm md:text-base bg-[#0c9dcb] hover:bg-[#0c9dcb]/90 w-full sm:w-auto min-w-[160px]"
+                  className="px-4 md:px-6 lg:px-8 py-2 md:py-3 text-sm md:text-base bg-[#0c9dcb] hover:bg-[#0c9dcb]/90 w-full sm:w-auto min-w-40"
                   type="button"
                 >
                   <Plus className="w-4 h-4 md:w-5 md:h-5 mr-2 md:mr-3" />
