@@ -7,8 +7,10 @@ const router = express.Router();
 router.get("/micro-tracking/project/:projectId", ctrl.getMicroTracking);
 
 // Update one row
-router.put("/micro-tracking/:id", ctrl.updateMicroTracking);
+router.put("/micro-tracking/:id", ctrl.updateMicroTracking); //wast
 router.get("/micro-tracking/department/:projectId", ctrl.getDepartmentWiseTracking);
+router.get("/micro-tracking/project/:projectId/:cardId",ctrl.getProjectCardTracking);
+
 router.get(
   "/micro-tracking/department/:projectId/:department",
   ctrl.getDepartmentRows

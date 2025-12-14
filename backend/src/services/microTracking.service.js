@@ -445,3 +445,52 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
 
   return response;
 }
+
+
+export async function getMicroTrackingByProjectAndCard(projectId, cardId) {
+  const project = await Project.findById(projectId)
+    .populate("brand", "name")
+    .populate("country", "name")
+    .lean();
+
+  if (!project) throw new Error("Project not found");
+
+  const card = await PCProductionCard.findById(cardId)
+    .lean();
+
+  if (!card) throw new Error("Card not found");
+
+  // fetch rows for this card only
+  const rows = await MicroTracking.find({ projectId, cardId })
+    .populate({
+      path: "cardId",
+      select: "cardNumber productName cardQuantity assignedPlant stage"
+    })
+    .lean();
+
+  const DEPARTMENTS = [
+    "cutting",
+    "printing",
+    "upper",
+    "upper_rej",
+    "assembly",
+    "packing",
+    "rfd"
+  ];
+
+  const grouped = {};
+
+  DEPARTMENTS.forEach(d => (grouped[d] = []));
+
+  rows.forEach(r => {
+    const d = r.department || "unknown";
+    if (!grouped[d]) grouped[d] = [];
+    grouped[d].push(r);
+  });
+
+  return {
+    project,
+    card,
+    departments: grouped
+  };
+}

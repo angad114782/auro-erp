@@ -119,3 +119,21 @@ export async function trackingDashboardDepartmentController(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+
+export async function getProjectCardTracking(req, res) {
+  try {
+    const { projectId, cardId } = req.params;
+
+    const data = await service.getMicroTrackingByProjectAndCard(
+      projectId,
+      cardId
+    );
+
+    return res.json({ success: true, ...data });
+
+  } catch (err) {
+    console.error("getProjectCardTracking error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}
