@@ -83,3 +83,21 @@ export async function updateProgressToday(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+
+export async function trackingDashboardController(req, res) {
+  try {
+    const { month, year } = req.query;
+
+    if (!month || !year)
+      return res.status(400).json({ error: "month & year required" });
+
+    const data = await service.getTrackingDashboard(month, year);
+
+    return res.json({ success: true, data });
+
+  } catch (err) {
+    console.error("trackingDashboardController error", err);
+    return res.status(500).json({ error: err.message });
+  }
+}

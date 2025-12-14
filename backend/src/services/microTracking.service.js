@@ -234,3 +234,121 @@ export async function getDepartmentWiseTrackingService(projectId) {
     };
   });
 }
+
+
+import { Project } from "../models/Project.model.js";
+import { PoDetails } from "../models/PoDetails.model.js";
+
+export async function getTrackingDashboard(month, year) {
+  const m = Number(month);
+  const y = Number(year);
+
+  const start = new Date(y, m - 1, 1);
+  const end = new Date(y, m, 0, 23, 59, 59);
+
+  // STEP 1 → MicroTracking वाले unique projects
+  const activeProjectIds = await MicroTracking.distinct("projectId");
+
+  if (activeProjectIds.length === 0) return [];
+
+  // STEP 2 → FULL PROJECT DETAILS + BRAND + CATEGORY + COUNTRY + ASSIGN PERSON
+  const projects = await Project.find({ _id: { $in: activeProjectIds } })
+    .populate("company", "name")
+    .populate("brand", "name")
+    .populate("category", "name")
+    .populate("type", "name")
+    .populate("country", "name")
+    .populate("assignPerson", "name email mobile")
+    .lean();
+
+  const departments = [
+    "cutting", "printing", "upper",
+    "upper_rej", "assembly", "packing", "rfd"
+  ];
+
+  const response = [];
+
+  for (const p of projects) {
+
+    // STEP 3 → Get PO Details for this project
+    const po = await PoDetails.findOne({ project: p._id }).lean();
+
+    // STEP 4 → fetch all cards
+    const cards = await PCProductionCard.find({ projectId: p._id })
+      .populate("assignedPlant", "name")
+      .populate("materialRequests")
+      .lean();
+
+    // STEP 5 → fetch microtracking rows
+    const microRows = await MicroTracking.find({
+      projectId: p._id
+    }).lean();
+
+    // STEP 6 → Department summary initialize
+    const resultDept = {};
+    departments.forEach(dept => {
+      resultDept[dept] = {
+        daily: {},
+        weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 },
+        monthTotal: 0
+      };
+    });
+
+    // STEP 7 → Calculate daily, weekly, monthly using FULL HISTORY
+    for (const row of microRows) {
+      const dept = row.department;
+      if (!departments.includes(dept)) continue;
+
+      for (const h of row.history || []) {
+        if (!h.addedToday) continue;
+
+        const dateObj = new Date(h.date);
+        if (dateObj < start || dateObj > end) continue;
+
+        const day = dateObj.getDate();
+        const added = Number(h.addedToday || 0);
+
+        const week =
+          day <= 7 ? "W1" :
+          day <= 14 ? "W2" :
+          day <= 21 ? "W3" :
+          day <= 28 ? "W4" : "W5";
+
+        // Daily
+        resultDept[dept].daily[day] =
+          (resultDept[dept].daily[day] || 0) + added;
+
+        // Weekly
+        resultDept[dept].weekly[week] += added;
+
+        // Month total
+        resultDept[dept].monthTotal += added;
+      }
+    }
+
+    // FINAL PROJECT SUMMARY RECORD
+    response.push({
+      projectId: p._id,
+      autoCode: p.autoCode,
+      artName: p.artName,
+      size: p.size,
+      color: p.color,
+      gender: p.gender,
+      status: p.status,
+
+      company: p.company,
+      brand: p.brand,
+      category: p.category,
+      type: p.type,
+      country: p.country,
+      assignPerson: p.assignPerson,
+
+      poDetails: po || {},
+
+      cards,
+      departments: resultDept
+    });
+  }
+
+  return response;
+}

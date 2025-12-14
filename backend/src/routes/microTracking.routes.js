@@ -19,5 +19,8 @@ router.put(
   ctrl.updateProgressToday
 );
 
+router.get("/tracking/dashboard", ctrl.trackingDashboardController);
+
+
 
 export default router;
