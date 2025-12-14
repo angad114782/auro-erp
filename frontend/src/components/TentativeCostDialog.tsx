@@ -1345,7 +1345,9 @@ const DesktopLabourCostCard = ({
                   type="number"
                   step="0.01"
                   min="0"
-                  value={labourCost.directTotal || 0}
+                  value={
+                    labourCost.directTotal === 0 ? "" : labourCost.directTotal
+                  }
                   onChange={(e) =>
                     handleDirectTotalChange(Number(e.target.value) || 0)
                   }
