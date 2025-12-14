@@ -11,26 +11,12 @@ const safe = (v: any) =>
 const formatINR = (v: number | string) => {
   const num = Number(v || 0);
 
-  // For very large numbers (over 1 crore), show full number
-  if (num >= 10000000) {
-    return (
-      "₹ " +
-      num.toLocaleString("en-IN", {
-        maximumFractionDigits: 0,
-        minimumFractionDigits: 0,
-      })
-    );
-  }
-
-  // For regular numbers
-  return (
-    "₹ " +
-    num.toLocaleString("en-IN", {
-      maximumFractionDigits: 2,
-      minimumFractionDigits: 0,
-    })
-  );
+  return num.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 };
+
 const formatDate = (d?: string) => {
   if (!d) return "N/A";
   const dt = new Date(d);
