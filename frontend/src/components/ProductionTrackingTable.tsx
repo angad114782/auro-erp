@@ -1,11 +1,9 @@
 import React, { useEffect, useState, useCallback } from "react";
 import {
   Search,
-  Filter,
   Download,
   Edit,
   Eye,
-  MoreHorizontal,
   ArrowUpDown,
   CheckCircle,
   AlertTriangle,
@@ -22,7 +20,6 @@ import {
   Building,
   Workflow,
   Calendar,
-  Plus,
   Save,
   RefreshCw,
   ChevronDown,
@@ -31,14 +28,8 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -46,16 +37,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "./ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { Separator } from "./ui/separator";
 import { Progress } from "./ui/progress";
-import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { toast } from "sonner";
@@ -266,7 +250,6 @@ export function ProductionTrackingTable() {
     useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [showWeekTable, setShowWeekTable] = useState(false);
   const [currentWeek, setCurrentWeek] = useState<number>(1);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState(false);
   const [trackingData, setTrackingData] = useState<APITrackingData[]>([]);
@@ -933,64 +916,38 @@ export function ProductionTrackingTable() {
       record.brand.toLowerCase().includes(stageUpdateSearchTerm.toLowerCase())
   );
 
-  // Loading state
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0c9dcb] mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading production data...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto" />
-          <h3 className="mt-4 text-lg font-semibold text-gray-900">
-            Error Loading Data
-          </h3>
-          <p className="mt-2 text-gray-600">{error}</p>
-          <Button
-            onClick={fetchTrackingData}
-            className="mt-4 bg-[#0c9dcb] hover:bg-[#0a87a5]"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Retry
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Empty state
-  if (trackingData.length === 0 && !loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <Package className="h-12 w-12 text-gray-400 mx-auto" />
-          <h3 className="mt-4 text-lg font-semibold text-gray-900">
-            No Production Data
-          </h3>
-          <p className="mt-2 text-gray-600">
-            No production data found for {getMonthName(selectedMonth)}{" "}
-            {selectedYear}
-          </p>
-          <Button
-            onClick={fetchTrackingData}
-            className="mt-4 bg-[#0c9dcb] hover:bg-[#0a87a5]"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // Empty state component
+  const EmptyState = () => (
+    <div className="flex flex-col items-center justify-center py-12 px-4">
+      <Package className="h-16 w-16 text-gray-300 mb-4" />
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        No Production Data
+      </h3>
+      <p className="text-sm text-gray-600 text-center mb-4">
+        No production data found for {getCurrentStageName()} department in{" "}
+        {getMonthName(selectedMonth)} {selectedYear}
+      </p>
+      {/* <div className="flex gap-2">
+        <Button
+          onClick={fetchTrackingData}
+          variant="outline"
+          size="sm"
+          className="text-xs"
+        >
+          <RefreshCw className="w-3 h-3 mr-2" />
+          Refresh Data
+        </Button>
+        <Button
+          onClick={() => setStageUpdateDialogOpen(true)}
+          size="sm"
+          className="bg-[#0c9dcb] hover:bg-[#0a87a5] text-xs"
+        >
+          <Edit className="w-3 h-3 mr-2" />
+          Add Production Data
+        </Button>
+      </div> */}
+    </div>
+  );
 
   // Mobile Card View with ALL Information
   const MobileProductionCard = ({
@@ -1491,38 +1448,6 @@ export function ProductionTrackingTable() {
     );
   };
 
-  // Add this empty state component after the MobileProductionCard component
-  const EmptyState = () => (
-    <div className="flex flex-col items-center justify-center py-12 px-4">
-      <Package className="h-16 w-16 text-gray-300 mb-4" />
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        No Production Data
-      </h3>
-      <p className="text-sm text-gray-600 text-center mb-4">
-        No production data found for {getCurrentStageName()} department in{" "}
-        {getMonthName(selectedMonth)} {selectedYear}
-      </p>
-      <div className="flex gap-2">
-        <Button
-          onClick={fetchTrackingData}
-          variant="outline"
-          size="sm"
-          className="text-xs"
-        >
-          <RefreshCw className="w-3 h-3 mr-2" />
-          Refresh Data
-        </Button>
-        <Button
-          onClick={() => setStageUpdateDialogOpen(true)}
-          size="sm"
-          className="bg-[#0c9dcb] hover:bg-[#0a87a5] text-xs"
-        >
-          <Edit className="w-3 h-3 mr-2" />
-          Add Production Data
-        </Button>
-      </div>
-    </div>
-  );
   return (
     <div className="space-y-4 md:space-y-6">
       {/* Header */}
@@ -1536,10 +1461,31 @@ export function ProductionTrackingTable() {
             across all manufacturing orders
           </p>
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            <span>
-              Showing {filteredData.length} of {baseProductionData.length}{" "}
-              records
-            </span>
+            {loading ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#0c9dcb]"></div>
+                <span>Loading...</span>
+              </div>
+            ) : error ? (
+              <div className="flex items-center gap-2 text-red-500">
+                <AlertTriangle className="w-3 h-3" />
+                <span>Error: {error}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0"
+                  onClick={fetchTrackingData}
+                  title="Retry"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                </Button>
+              </div>
+            ) : (
+              <span>
+                Showing {filteredData.length} of {baseProductionData.length}{" "}
+                records
+              </span>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -1569,7 +1515,7 @@ export function ProductionTrackingTable() {
         </div>
       </div>
 
-      {/* Process Flow Tabs */}
+      {/* Process Flow Tabs - Always show these even if no data */}
       <Card className="border-0 shadow-lg bg-linear-to-r from-gray-50 to-gray-100">
         <CardContent className="p-3 sm:p-6">
           <div className="flex items-center justify-center overflow-x-auto pb-2">
@@ -1617,7 +1563,7 @@ export function ProductionTrackingTable() {
         </CardContent>
       </Card>
 
-      {/* Filters */}
+      {/* Filters - Always show these even if no data */}
       <Card>
         <CardContent className="p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
@@ -1661,68 +1607,45 @@ export function ProductionTrackingTable() {
             </div>
             {!isMobile && (
               <div className="text-sm text-gray-600">
-                Showing {filteredData.length} of {baseProductionData.length}{" "}
-                results
+                {loading
+                  ? "Loading..."
+                  : filteredData.length === 0
+                  ? "No data found"
+                  : `Showing ${filteredData.length} of ${baseProductionData.length} results`}
               </div>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Daily Totals Summary - Mobile */}
-      {isMobile && (
-        <Card className="shadow-sm border border-orange-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold text-orange-800">
-                  Daily Totals
-                </div>
-                <div className="text-xs text-orange-600">
-                  {getMonthName(selectedMonth)} {selectedYear}
-                </div>
-              </div>
-              <div className="text-lg font-bold text-orange-800">
-                {Object.values(dailyTotals).reduce(
-                  (sum, total) => sum + total,
-                  0
-                )}
-              </div>
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-              {weekData.slice(0, 3).map((week) => {
-                const weekTotal = week.days.reduce((sum, day) => {
-                  const year = parseInt(selectedYear);
-                  const month = parseInt(selectedMonth);
-                  const dateKey = `${year}-${month
-                    .toString()
-                    .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
-                  return sum + (dailyTotals[dateKey] || 0);
-                }, 0);
-
-                return (
-                  <div
-                    key={week.weekNumber}
-                    className="bg-orange-50 p-2 rounded"
-                  >
-                    <div className="text-xs font-medium text-orange-700">
-                      W{week.weekNumber}
-                    </div>
-                    <div className="text-sm font-bold text-orange-800">
-                      {weekTotal}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Production Table - Desktop */}
+      {/* Main Content Area - Shows empty state only in content area */}
       {!isMobile ? (
         <Card className="shadow-sm border border-gray-200">
-          {filteredData.length === 0 ? (
+          {loading ? (
+            <div className="py-12">
+              <div className="flex flex-col items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0c9dcb] mb-4"></div>
+                <p className="text-gray-600">Loading production data...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="py-12">
+              <div className="flex flex-col items-center justify-center">
+                <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Error Loading Data
+                </h3>
+                <p className="text-gray-600 mb-4">{error}</p>
+                <Button
+                  onClick={fetchTrackingData}
+                  className="bg-[#0c9dcb] hover:bg-[#0a87a5]"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : filteredData.length === 0 ? (
             <div className="py-12">
               <EmptyState />
             </div>
@@ -1730,24 +1653,367 @@ export function ProductionTrackingTable() {
             <>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  {/* Table headers and content */}
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="px-4 py-3 text-left font-medium text-gray-900 sticky left-0 bg-gray-50 z-20 border-r border-gray-200 shadow-sm min-w-[260px]">
+                        <button
+                          onClick={() => handleSort("articleName")}
+                          className="flex items-center gap-1 hover:text-gray-700 text-sm"
+                        >
+                          Product Details
+                          <ArrowUpDown className="w-3 h-3" />
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-900 text-sm min-w-[140px]">
+                        PO Info
+                      </th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-900 text-sm min-w-[120px]">
+                        MNFC
+                      </th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-900 text-sm min-w-[110px]">
+                        {getCurrentStageName()} Status
+                      </th>
+                      {/* Dynamic Week Headers */}
+                      {weekData.map((week, index) => (
+                        <React.Fragment key={`week-${week.weekNumber}`}>
+                          <th
+                            className="px-2 py-3 text-center font-medium text-gray-900 border-l border-gray-200 text-xs"
+                            colSpan={week.days.length}
+                          >
+                            {week.label}
+                          </th>
+                          <th className="px-3 py-3 text-center font-medium text-gray-900 bg-green-50 border border-green-200 text-xs min-w-[45px]">
+                            W{week.weekNumber} Total
+                          </th>
+                        </React.Fragment>
+                      ))}
+                      <th className="px-3 py-3 text-center font-medium text-gray-900 bg-blue-50 border border-blue-200 sticky right-0 z-20 shadow-lg text-xs min-w-[45px]">
+                        Monthly Total
+                      </th>
+                    </tr>
+                    <tr className="border-b border-gray-200 bg-gray-100">
+                      <th className="px-4 py-2 text-xs font-medium text-gray-600 sticky left-0 bg-gray-100 z-20 border-r border-gray-200 shadow-sm"></th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
+                      <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
+                      {/* Dynamic Day Headers */}
+                      {weekData.map((week) => (
+                        <React.Fragment key={`week-days-${week.weekNumber}`}>
+                          {week.days.map((day) => (
+                            <th
+                              key={`w${week.weekNumber}-${day}`}
+                              className="px-1.5 py-2 text-xs font-medium text-gray-600 text-center min-w-[30px] border-r border-gray-100"
+                            >
+                              {day}
+                            </th>
+                          ))}
+                          <th className="px-2 py-2 text-xs font-medium text-green-700 text-center min-w-[45px] bg-green-50 border border-green-200">
+                            W{week.weekNumber}
+                          </th>
+                        </React.Fragment>
+                      ))}
+                      <th className="px-2 py-2 text-xs font-medium text-blue-700 text-center min-w-[45px] bg-blue-50 border border-blue-200 sticky right-0 z-20 shadow-lg">
+                        Month
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {/* Daily Totals Row - At Top */}
+                    <tr className="bg-orange-50 border-t-2 border-orange-200">
+                      <td className="px-4 py-2.5 sticky left-0 bg-orange-50 z-10 border-r border-gray-200 font-semibold text-orange-800 shadow-sm text-sm">
+                        Daily Totals
+                      </td>
+                      <td className="px-4 py-2.5"></td>
+                      <td className="px-4 py-2.5"></td>
+                      <td className="px-4 py-2.5 border-r border-gray-200"></td>
+
+                      {/* Dynamic Daily Totals */}
+                      {weekData.map((week) => (
+                        <React.Fragment key={`totals-week-${week.weekNumber}`}>
+                          {week.days.map((day) => {
+                            const year = parseInt(selectedYear);
+                            const month = parseInt(selectedMonth);
+                            const dateKey = `${year}-${month
+                              .toString()
+                              .padStart(2, "0")}-${day
+                              .toString()
+                              .padStart(2, "0")}`;
+                            const dailyTotal = dailyTotals[dateKey] || 0;
+
+                            return (
+                              <td
+                                key={`total-w${week.weekNumber}-${day}`}
+                                className="px-1.5 py-2.5 text-center border-r border-gray-100 bg-orange-50"
+                              >
+                                {dailyTotal > 0 ? (
+                                  <span className="text-orange-800 font-semibold text-xs">
+                                    {dailyTotal}
+                                  </span>
+                                ) : (
+                                  <span className="text-orange-400 text-xs">
+                                    -
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          })}
+                          {/* Week Total */}
+                          <td className="px-2 py-2.5 text-center bg-green-50 border border-green-200">
+                            <span className="text-green-800 font-semibold text-xs">
+                              {week.days.reduce((sum, day) => {
+                                const year = parseInt(selectedYear);
+                                const month = parseInt(selectedMonth);
+                                const dateKey = `${year}-${month
+                                  .toString()
+                                  .padStart(2, "0")}-${day
+                                  .toString()
+                                  .padStart(2, "0")}`;
+                                return sum + (dailyTotals[dateKey] || 0);
+                              }, 0)}
+                            </span>
+                          </td>
+                        </React.Fragment>
+                      ))}
+                      {/* Monthly Total */}
+                      <td className="px-2 py-2.5 text-center bg-blue-50 border border-blue-200 sticky right-0 z-10 shadow-lg">
+                        <span className="text-blue-800 font-bold text-xs">
+                          {Object.values(dailyTotals).reduce(
+                            (sum, total) => sum + total,
+                            0
+                          )}
+                        </span>
+                      </td>
+                    </tr>
+
+                    {filteredData.map(({ record, dailyProduction }) => {
+                      const weekTotals = getWeeklyTotalsFromAPI(record);
+                      const monthlyTotal = record.summary?.monthTotal || 0;
+                      const stageData =
+                        record[selectedDepartment as ProductionStage];
+
+                      return (
+                        <tr key={record.id} className="hover:bg-gray-50 group">
+                          {/* Product Details - Sticky Column */}
+                          <td
+                            className="px-4 py-2.5 sticky left-0 bg-white group-hover:bg-gray-50 z-10 border-r border-gray-200 shadow-sm cursor-pointer hover:bg-blue-50 transition-colors duration-200"
+                            onClick={() => setSelectedProductionRecord(record)}
+                          >
+                            <div className="min-w-[260px]">
+                              <div className="font-medium text-gray-900 text-sm">
+                                {record.articleName}
+                              </div>
+                              <div className="text-xs text-gray-600 mt-0.5">
+                                {record.brand} • {record.category}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {record.type} • {record.gender}
+                              </div>
+                              <div className="text-xs text-[#0c9dcb] font-medium mt-1 bg-blue-50 px-2 py-0.5 rounded-md inline-block">
+                                {record.productionId}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* PO Info */}
+                          <td className="px-4 py-2.5">
+                            <div className="min-w-[140px]">
+                              <div className="font-medium text-gray-900 text-sm">
+                                {record.poNumber}
+                              </div>
+                              <div className="text-xs text-gray-600 mt-0.5">
+                                {record.poItems} items
+                              </div>
+                              <div className="text-xs text-blue-600 font-semibold mt-0.5">
+                                {calculateProductionCards(record.id)} cards
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {getMonthName(selectedMonth)} {selectedYear}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* MNFC (Manufacturing Company) */}
+                          <td className="px-4 py-2.5">
+                            <div className="min-w-[120px]">
+                              <div className="font-medium text-gray-900 text-sm">
+                                {record.manufacturingCompany}
+                              </div>
+                              <div className="text-xs text-gray-600 mt-0.5">
+                                Manufacturing
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {record.country}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Stage Status */}
+                          <td className="px-4 py-2.5 border-r border-gray-200">
+                            <div className="min-w-[110px]">
+                              <div className="mb-1">
+                                {getStatusBadge(
+                                  stageData.status,
+                                  selectedDepartment === "upperREJ"
+                                    ? "upperREJ"
+                                    : selectedDepartment === "rfd"
+                                    ? "rfd"
+                                    : "production"
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                {stageData.quantity}/{stageData.planned} units
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                                <div
+                                  className="bg-[#0c9dcb] h-1.5 rounded-full"
+                                  style={{
+                                    width: `${Math.min(
+                                      100,
+                                      (stageData.quantity / stageData.planned) *
+                                        100
+                                    )}%`,
+                                  }}
+                                ></div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Dynamic Daily Data */}
+                          {weekData.map((week, weekIndex) => (
+                            <React.Fragment
+                              key={`week-data-${week.weekNumber}`}
+                            >
+                              {week.days.map((day) => {
+                                const year = parseInt(selectedYear);
+                                const month = parseInt(selectedMonth);
+                                const dateKey = `${year}-${month
+                                  .toString()
+                                  .padStart(2, "0")}-${day
+                                  .toString()
+                                  .padStart(2, "0")}`;
+                                const quantity = dailyProduction[dateKey] || 0;
+
+                                return (
+                                  <td
+                                    key={`w${week.weekNumber}-${day}`}
+                                    className="px-1.5 py-2.5 text-center border-r border-gray-100"
+                                  >
+                                    <div className="min-w-[25px]">
+                                      {quantity > 0 ? (
+                                        <span className="text-gray-900 font-medium text-xs">
+                                          {quantity}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-400 text-xs">
+                                          -
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                              {/* Week Total */}
+                              <td className="px-2 py-2.5 text-center bg-green-50 border border-green-200">
+                                <span className="text-green-800 font-semibold text-xs">
+                                  {weekTotals[weekIndex]}
+                                </span>
+                              </td>
+                            </React.Fragment>
+                          ))}
+
+                          {/* Monthly Total */}
+                          <td className="px-2 py-2.5 text-center bg-blue-50 border border-blue-200 sticky right-0 z-10 shadow-lg">
+                            <span className="text-blue-800 font-bold text-xs">
+                              {monthlyTotal}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
                 </table>
               </div>
+
               {/* Pagination */}
+              <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-white">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="text-sm text-gray-700">
+                    Showing{" "}
+                    <span className="font-medium">{filteredData.length}</span>{" "}
+                    of{" "}
+                    <span className="font-medium">{filteredData.length}</span>{" "}
+                    results for {getCurrentStageName()}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled
+                      className="text-gray-400"
+                    >
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        className="bg-[#0c9dcb] text-white hover:bg-[#0a87a5]"
+                      >
+                        1
+                      </Button>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled
+                      className="text-gray-400"
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </Card>
       ) : (
-        /* Mobile View - Cards with ALL Information */
-        <div className="space-y-4">
-          {filteredData.length === 0 ? (
+        /* Mobile View */
+        <>
+          {loading ? (
+            <Card className="shadow-sm border border-gray-200">
+              <CardContent className="py-12">
+                <div className="flex flex-col items-center justify-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0c9dcb] mb-4"></div>
+                  <p className="text-gray-600">Loading production data...</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : error ? (
+            <Card className="shadow-sm border border-gray-200">
+              <CardContent className="py-12">
+                <div className="flex flex-col items-center justify-center">
+                  <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Error Loading Data
+                  </h3>
+                  <p className="text-gray-600 mb-4">{error}</p>
+                  <Button
+                    onClick={fetchTrackingData}
+                    className="bg-[#0c9dcb] hover:bg-[#0a87a5]"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Retry
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : filteredData.length === 0 ? (
             <Card className="shadow-sm border border-gray-200">
               <CardContent className="py-12">
                 <EmptyState />
               </CardContent>
             </Card>
           ) : (
-            <>
+            <div className="space-y-4">
               {/* Mobile Header Summary */}
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium text-gray-700">
@@ -1794,9 +2060,9 @@ export function ProductionTrackingTable() {
                   Next
                 </Button>
               </div>
-            </>
+            </div>
           )}
-        </div>
+        </>
       )}
 
       {/* Stage Update Dialog */}
