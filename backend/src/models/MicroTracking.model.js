@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const MicroTrackingSchema = new mongoose.Schema(
   {
     projectId: mongoose.Schema.Types.ObjectId,
-    cardId: mongoose.Schema.Types.ObjectId,
+    cardId: { type: mongoose.Schema.Types.ObjectId, ref: "PCProductionCard", required: true },
     cardNumber: String,
     cardQuantity: Number,
 

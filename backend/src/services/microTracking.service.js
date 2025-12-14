@@ -54,9 +54,14 @@ export async function createMicroTrackingForCard(cardId) {
 ---------------------------------------------------- */
 export async function getMicroTrackingByProject(projectId) {
   return await MicroTracking.find({ projectId })
+    .populate({
+      path: "cardId",
+      select: "cardNumber productName cardQuantity stage assignedPlant"
+    })
     .sort({ department: 1, name: 1 })
     .lean();
 }
+
 
 /* ----------------------------------------------------
    3) UPDATE full row
@@ -80,9 +85,14 @@ export async function updateMicroTracking(id, payload) {
 ---------------------------------------------------- */
 export async function getRowsByDepartment(projectId, department) {
   return await MicroTracking.find({ projectId, department })
+    .populate({
+      path: "cardId",
+      select: "cardNumber productName cardQuantity stage assignedPlant"
+    })
     .sort({ name: 1 })
     .lean();
 }
+
 
 /* ----------------------------------------------------
    5) UPDATE only progressToday + push history
@@ -115,8 +125,14 @@ export async function updateProgressTodayService(id, progressToday, updatedBy = 
       $push: { history: historyEntry }
     },
     { new: true }
-  ).lean();
+  )
+    .populate({
+      path: "cardId",
+      select: "cardNumber productName cardQuantity stage assignedPlant"
+    })
+    .lean();
 }
+
 
 /* ----------------------------------------------------
    6) DEPARTMENT WISE SUMMARY
