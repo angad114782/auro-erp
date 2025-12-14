@@ -3,9 +3,6 @@ import * as ctrl from "../controllers/microTracking.controller.js";
 
 const router = express.Router();
 
-// Create micro rows for a card
-router.post("/micro-tracking/:cardId", ctrl.createMicroTracking);
-
 // Get project micro tracking
 router.get("/micro-tracking/project/:projectId", ctrl.getMicroTracking);
 

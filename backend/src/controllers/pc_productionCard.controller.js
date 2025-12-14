@@ -138,6 +138,7 @@ export async function deleteCard(req, res) {
     });
   }
 }
+import * as microTrackingService from "../services/microTracking.service.js";
 
 /* --------------------------- Change Stage -------------------------- */
 export async function changeStageController(req, res) {
@@ -159,6 +160,9 @@ export async function changeStageController(req, res) {
       updatedBy
     );
 
+    if (stage === "Tracking") {
+  await microTrackingService.createMicroTrackingForCard(cardId);
+}
     return res.json({ success: true, productionCard: updatedCard });
   } catch (err) {
     console.error("changeStageController error", err);
