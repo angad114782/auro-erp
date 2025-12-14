@@ -3,10 +3,11 @@ import mongoose, { Schema } from "mongoose";
 export const DEPARTMENTS = [
   "cutting",
   "printing",
-  "stitching",
-  "lasting",
+  "upper",
+  "upperREJ",
+  "assembly",
   "packing",
-  "quality",
+  "rfd",
 ];
 
 function mkRowSchema({ withDepartment = false } = {}) {

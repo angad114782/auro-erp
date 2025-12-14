@@ -2,6 +2,7 @@ import {
   ArrowRight,
   Calculator,
   CheckCircle,
+  Cross,
   FileCheck,
   IndianRupee,
   Package,
@@ -10,12 +11,15 @@ import {
   Printer,
   Save,
   Scissors,
+  Send,
   Shirt,
   Trash2,
   Wrench,
   X,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
-import { useEffect, useState, useCallback, useMemo, JSX } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, JSX } from "react";
 import { toast } from "sonner";
 import { useRedirect } from "../hooks/useRedirect";
 import api from "../lib/api";
@@ -109,36 +113,49 @@ const STAGES = [
     label: "Cutting",
     icon: Scissors,
     color: "text-purple-600",
+    bgColor: "bg-purple-100",
   },
   {
     value: "printing",
     label: "Printing",
     icon: Printer,
     color: "text-blue-600",
+    bgColor: "bg-blue-100",
   },
   {
-    value: "stitching",
-    label: "Stitching",
+    value: "upper",
+    label: "Upper",
     icon: Shirt,
     color: "text-indigo-600",
+    bgColor: "bg-indigo-100",
   },
   {
-    value: "lasting",
-    label: "Lasting",
+    value: "upperREJ",
+    label: "Upper Reject",
+    icon: X,
+    color: "text-orange-600",
+    bgColor: "bg-orange-100",
+  },
+  {
+    value: "assembly",
+    label: "Assembly",
     icon: Wrench,
     color: "text-orange-600",
+    bgColor: "bg-orange-100",
   },
   {
     value: "packing",
     label: "Packing",
     icon: Package,
     color: "text-green-600",
+    bgColor: "bg-green-100",
   },
   {
-    value: "quality",
-    label: "Quality Check",
-    icon: FileCheck,
+    value: "rfd",
+    label: "Ready for Dispatch",
+    icon: Send,
     color: "text-emerald-600",
+    bgColor: "bg-emerald-100",
   },
 ] as const;
 
@@ -220,6 +237,7 @@ const AddNewItemDialog = ({
     consumption?: string;
     cost?: string;
   }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const validateForm = () => {
     const newErrors: {
@@ -244,9 +262,14 @@ const AddNewItemDialog = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
-    if (validateForm()) {
-      onAddItem();
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    try {
+      await onAddItem();
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -366,14 +389,23 @@ const AddNewItemDialog = ({
               variant="outline"
               onClick={onClose}
               className="w-full sm:flex-1 h-10 sm:h-12"
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
               className="w-full sm:flex-1 h-10 sm:h-12"
+              disabled={isSubmitting}
             >
-              Add Item
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Item"
+              )}
             </Button>
           </div>
         </div>
@@ -387,11 +419,13 @@ const StageSelector = ({
   itemId,
   category,
   onStageSelect,
+  currentDepartment = "",
   isMobile = false,
 }: {
   itemId: string;
   category: string;
   onStageSelect: (itemId: string, department: string) => void;
+  currentDepartment?: string;
   isMobile?: boolean;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -399,6 +433,10 @@ const StageSelector = ({
   if (!["upper", "component"].includes(category)) {
     return null;
   }
+
+  const currentStage = STAGES.find(
+    (stage) => stage.value === currentDepartment
+  );
 
   const handleStageSelect = (department: string, label: string) => {
     setIsOpen(false);
@@ -408,78 +446,167 @@ const StageSelector = ({
 
   if (isMobile) {
     return (
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 transition-all"
-            title="Advance to stage"
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="bottom" className="h-[70vh]">
-          <SheetHeader>
-            <SheetTitle>Select Stage</SheetTitle>
-            <SheetDescription>
-              Choose a department to advance this item
-            </SheetDescription>
-          </SheetHeader>
-          <div className="py-4">
-            <div className="grid grid-cols-2 gap-2">
+      <div className="relative">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsOpen(true)}
+          className={`h-8 px-3 text-xs border min-w-[100px] ${
+            currentDepartment
+              ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+              : "bg-gray-50 text-gray-600 border-gray-300"
+          }`}
+          title={
+            currentDepartment
+              ? `Selected: ${currentStage?.label}`
+              : "Select stage"
+          }
+        >
+          {currentDepartment ? (
+            <>
+              <ArrowRight className="w-3 h-3 mr-1" />
+              {currentStage?.label.substring(0, 8)}
+              {currentStage?.label.length > 8 ? "..." : ""}
+            </>
+          ) : (
+            <>
+              <Plus className="w-3 h-3 mr-1" />
+              Stage
+            </>
+          )}
+        </Button>
+
+        <Sheet open={isOpen} onOpenChange={setIsOpen}>
+          <SheetContent side="bottom" className="h-[70vh] rounded-t-xl">
+            <SheetHeader className="pb-4">
+              <SheetTitle>Select Department</SheetTitle>
+              <SheetDescription>
+                Choose a department to advance this item
+              </SheetDescription>
+            </SheetHeader>
+            <div className="space-y-2 max-h-[calc(70vh-120px)] overflow-y-auto">
               {STAGES.map((stage) => {
                 const Icon = stage.icon;
+                const isSelected = currentDepartment === stage.value;
                 return (
                   <button
                     key={stage.value}
                     onClick={() => handleStageSelect(stage.value, stage.label)}
-                    className="p-3 border rounded-lg hover:bg-gray-50 flex flex-col items-center gap-2 transition-colors"
+                    className={`w-full p-4 rounded-lg flex items-center gap-4 transition-all ${
+                      isSelected
+                        ? "bg-emerald-50 border-2 border-emerald-300"
+                        : "bg-gray-50 hover:bg-gray-100 border border-gray-200"
+                    }`}
                   >
-                    <Icon className={`w-5 h-5 ${stage.color}`} />
-                    <span className="text-sm">{stage.label}</span>
+                    <div className={`p-2 rounded-full ${stage.bgColor}`}>
+                      <Icon className={`w-5 h-5 ${stage.color}`} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="font-medium">{stage.label}</div>
+                      {isSelected && (
+                        <div className="text-xs text-emerald-600 mt-1">
+                          ✓ Currently selected
+                        </div>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <CheckCircle className="w-5 h-5 text-emerald-500" />
+                    )}
                   </button>
                 );
               })}
             </div>
-          </div>
-        </SheetContent>
-      </Sheet>
+            <div className="mt-6 pt-4 border-t">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setIsOpen(false)}
+              >
+                Close
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
     );
   }
 
+  // Desktop version
   return (
     <div className="relative">
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => setIsOpen(!isOpen)}
-        className="h-8 w-8 p-0 text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 transition-all"
-        title="Advance to stage"
+        className={`h-8 px-3 text-xs border min-w-[100px] ${
+          currentDepartment
+            ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+            : "bg-gray-50 text-gray-600 border-gray-300"
+        }`}
+        title={
+          currentDepartment
+            ? `Selected: ${currentStage?.label}`
+            : "Select stage"
+        }
       >
-        <Plus className="w-4 h-4" />
+        {currentDepartment ? (
+          <>
+            <ArrowRight className="w-3 h-3 mr-1" />
+            {currentStage?.label.substring(0, 12)}
+            {currentStage?.label.length > 12 ? "..." : ""}
+          </>
+        ) : (
+          <>
+            <Plus className="w-3 h-3 mr-1" />
+            Stage
+          </>
+        )}
       </Button>
 
       {isOpen && (
         <>
           <div
-            className="fixed inset-0 z-40"
+            className="fixed inset-0 z-[100]"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
-            {STAGES.map((stage) => {
-              const Icon = stage.icon;
-              return (
-                <button
-                  key={stage.value}
-                  onClick={() => handleStageSelect(stage.value, stage.label)}
-                  className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2 transition-colors"
-                >
-                  <Icon className={`w-4 h-4 ${stage.color}`} />
-                  <span className="text-sm">{stage.label}</span>
-                </button>
-              );
-            })}
+          <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-xl z-100 py-2">
+            <div className="px-3 py-2 border-b">
+              <div className="text-xs font-semibold text-gray-600">
+                Select Department
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Item will be tagged for this department
+              </div>
+            </div>
+
+            <div className="max-h-64 overflow-y-auto">
+              {STAGES.map((stage) => {
+                const Icon = stage.icon;
+                const isSelected = currentDepartment === stage.value;
+                return (
+                  <button
+                    key={stage.value}
+                    onClick={() => handleStageSelect(stage.value, stage.label)}
+                    className={`w-full px-3 py-3 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors ${
+                      isSelected ? "bg-emerald-50" : ""
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${stage.color}`} />
+                    <div className="flex-1">
+                      <div className="text-sm">{stage.label}</div>
+                      {isSelected && (
+                        <div className="text-xs text-emerald-600 mt-0.5">
+                          Currently selected
+                        </div>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </>
       )}
@@ -521,6 +648,7 @@ const CostCategoryCard = ({
         icon: "text-orange-600",
         button: "text-orange-600 border-orange-200 hover:bg-orange-50",
         total: "bg-orange-50 text-orange-900",
+        badge: "bg-orange-100 text-orange-700 border-orange-300",
       },
       purple: {
         border: "border-purple-200",
@@ -528,6 +656,7 @@ const CostCategoryCard = ({
         icon: "text-purple-600",
         button: "text-purple-600 border-purple-200 hover:bg-purple-50",
         total: "bg-purple-50 text-purple-900",
+        badge: "bg-purple-100 text-purple-700 border-purple-300",
       },
       teal: {
         border: "border-teal-200",
@@ -535,6 +664,7 @@ const CostCategoryCard = ({
         icon: "text-teal-600",
         button: "text-teal-600 border-teal-200 hover:bg-teal-50",
         total: "bg-teal-50 text-teal-900",
+        badge: "bg-teal-100 text-teal-700 border-teal-300",
       },
       rose: {
         border: "border-rose-200",
@@ -542,6 +672,7 @@ const CostCategoryCard = ({
         icon: "text-rose-600",
         button: "text-rose-600 border-rose-200 hover:bg-rose-50",
         total: "bg-rose-50 text-rose-900",
+        badge: "bg-rose-100 text-rose-700 border-rose-300",
       },
       gray: {
         border: "border-gray-200",
@@ -549,6 +680,7 @@ const CostCategoryCard = ({
         icon: "text-gray-600",
         button: "text-gray-600 border-gray-200 hover:bg-gray-50",
         total: "bg-gray-50 text-gray-900",
+        badge: "bg-gray-100 text-gray-700 border-gray-300",
       },
       amber: {
         border: "border-amber-200",
@@ -556,6 +688,7 @@ const CostCategoryCard = ({
         icon: "text-amber-600",
         button: "text-amber-600 border-amber-200 hover:bg-amber-50",
         total: "bg-amber-50 text-amber-900",
+        badge: "bg-amber-100 text-amber-700 border-amber-300",
       },
     }),
     []
@@ -620,14 +753,36 @@ const CostCategoryCard = ({
                     >
                       <Trash2 className="w-3 h-3" />
                     </Button>
-                    <StageSelector
-                      itemId={item._id}
-                      category={category}
-                      onStageSelect={onStageSelect}
-                      isMobile={isMobile}
-                    />
                   </div>
                 </div>
+
+                {["upper", "component"].includes(category) && (
+                  <div className="mb-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-500 mb-1">
+                        Department:
+                      </span>
+                      <StageSelector
+                        itemId={item._id}
+                        category={category}
+                        onStageSelect={onStageSelect}
+                        currentDepartment={item.department || ""}
+                        isMobile={isMobile}
+                      />
+                    </div>
+                    {item.department && (
+                      <div className="mt-1 flex justify-center">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-1.5 py-0 h-4 ${currentColor.badge}`}
+                        >
+                          {STAGES.find((s) => s.value === item.department)
+                            ?.label || item.department}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="space-y-1">
@@ -694,16 +849,16 @@ const CostCategoryCard = ({
   );
 
   const renderDesktopView = () => (
-    <Card className={`border-2 ${currentColor.border} h-148`}>
+    <Card className={`border-2 ${currentColor.border} h-[500px] flex flex-col`}>
       <CardHeader className={currentColor.header}>
         <CardTitle className="text-lg flex items-center gap-2">
           <Calculator className={`w-5 h-5 ${currentColor.icon}`} />
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-4">
-        <div className="space-y-4">
-          <div className="grid grid-cols-12 gap-2 bg-gray-100 p-2 rounded text-sm font-medium">
+      <CardContent className="p-4 flex-1 flex flex-col">
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="grid grid-cols-13 gap-2 bg-gray-100 p-2 rounded text-sm font-medium mb-2 flex-shrink-0">
             <div className="col-span-3 text-center">
               {category === "component"
                 ? "COMPONENT"
@@ -716,14 +871,15 @@ const CostCategoryCard = ({
             <div className="col-span-3 text-center">DESCRIPTION</div>
             <div className="col-span-2 text-center">CONSUMPTION *</div>
             <div className="col-span-2 text-center">COST *</div>
-            <div className="col-span-2 text-center">ACTIONS</div>
+            <div className="col-span-2 text-center">DEPARTMENT</div>
+            <div className="col-span-1 text-center">ACTIONS</div>
           </div>
 
-          <div className="h-64 overflow-y-auto scrollbar-hide space-y-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 space-y-2">
             {safeItems.map((item) => (
               <div
                 key={item._id}
-                className="grid grid-cols-12 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded"
+                className="grid grid-cols-13 gap-2 items-center border-b pb-2 group hover:bg-gray-50 transition-colors px-2 -mx-2 rounded"
               >
                 <div className="col-span-3">
                   <Input
@@ -731,7 +887,7 @@ const CostCategoryCard = ({
                     onChange={(e) =>
                       onUpdateItem(item._id, "item", e.target.value)
                     }
-                    className="text-center text-sm h-8"
+                    className="text-sm h-8"
                     placeholder="Enter item name"
                   />
                 </div>
@@ -756,7 +912,7 @@ const CostCategoryCard = ({
                         e.target.value === "" ? 0 : Number(e.target.value);
                       onUpdateConsumption(item._id, value);
                     }}
-                    className="text-sm h-8 text-center"
+                    className="text-sm h-8"
                     placeholder="0.00"
                   />
                 </div>
@@ -776,7 +932,26 @@ const CostCategoryCard = ({
                     />
                   </div>
                 </div>
-                <div className="col-span-2 flex justify-center gap-1">
+                <div className="col-span-2">
+                  <div className="flex flex-col items-center gap-1">
+                    <StageSelector
+                      itemId={item._id}
+                      category={category}
+                      onStageSelect={onStageSelect}
+                      currentDepartment={item.department || ""}
+                    />
+                    {item.department && (
+                      <Badge
+                        variant="outline"
+                        className={`text-xs px-2 py-0 h-5 ${currentColor.badge}`}
+                      >
+                        {STAGES.find((s) => s.value === item.department)
+                          ?.label || item.department}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="col-span-1 flex justify-center">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -785,32 +960,31 @@ const CostCategoryCard = ({
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
-                  <StageSelector
-                    itemId={item._id}
-                    category={category}
-                    onStageSelect={onStageSelect}
-                  />
                 </div>
               </div>
             ))}
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className={`w-full ${currentColor.button}`}
-            onClick={onAddItem}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add New Item
-          </Button>
+          <div className="flex-shrink-0 pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className={`w-full ${currentColor.button}`}
+              onClick={onAddItem}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add New Item
+            </Button>
 
-          <Separator />
+            <Separator className="my-4" />
 
-          <div className={`p-3 rounded-lg ${currentColor.total}`}>
-            <div className="flex justify-between items-center">
-              <span className="font-medium">Total {title}:</span>
-              <span className="text-lg font-bold">₹{totalCost.toFixed(2)}</span>
+            <div className={`p-3 rounded-lg ${currentColor.total}`}>
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Total {title}:</span>
+                <span className="text-lg font-bold">
+                  ₹{totalCost.toFixed(2)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -827,12 +1001,38 @@ const MobileLabourCostCard = ({
   onUpdateLabour,
   onDeleteLabourItem,
   onAddItem,
+  isLoading = false,
 }: {
   labourCost: LabourCost;
   onUpdateLabour: (updates: Partial<LabourCost>) => void;
   onDeleteLabourItem: (itemId: string) => void;
   onAddItem: () => void;
+  isLoading?: boolean;
 }) => {
+  const [localLabourCost, setLocalLabourCost] =
+    useState<LabourCost>(labourCost);
+
+  // Update local state when prop changes
+  useEffect(() => {
+    setLocalLabourCost(labourCost);
+  }, [labourCost]);
+
+  // Debounced update function
+  const handleDirectTotalChange = useCallback(
+    (value: number) => {
+      const newValue = Number(value) || 0;
+      setLocalLabourCost((prev) => ({ ...prev, directTotal: newValue }));
+
+      // Debounce the API call
+      const timeoutId = setTimeout(() => {
+        onUpdateLabour({ directTotal: newValue });
+      }, 500);
+
+      return () => clearTimeout(timeoutId);
+    },
+    [onUpdateLabour]
+  );
+
   return (
     <Card className="border-2 border-amber-200">
       <CardHeader className="bg-amber-50">
@@ -854,20 +1054,22 @@ const MobileLabourCostCard = ({
                   type="number"
                   step="0.01"
                   min="0"
-                  value={labourCost.directTotal || 0}
+                  value={localLabourCost.directTotal || 0}
                   onChange={(e) =>
-                    onUpdateLabour({
-                      directTotal: Number(e.target.value) || 0,
-                    })
+                    handleDirectTotalChange(Number(e.target.value) || 0)
                   }
+                  disabled={isLoading}
                   className="pl-7 text-base font-bold text-amber-900 bg-white border-amber-300 w-28 h-9"
                 />
+                {isLoading && (
+                  <Loader2 className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600 animate-spin" />
+                )}
               </div>
             </div>
           </div>
 
           <div className="space-y-3">
-            {labourCost.items.map((item) => (
+            {localLabourCost.items.map((item) => (
               <div
                 key={item._id}
                 className="flex items-center justify-between border-b border-amber-100 pb-2"
@@ -876,16 +1078,22 @@ const MobileLabourCostCard = ({
                   <Input
                     value={item.name || ""}
                     onChange={(e) => {
-                      const updatedItems = labourCost.items.map((labourItem) =>
-                        labourItem._id === item._id
-                          ? {
-                              ...labourItem,
-                              name: e.target.value,
-                            }
-                          : labourItem
+                      const updatedItems = localLabourCost.items.map(
+                        (labourItem) =>
+                          labourItem._id === item._id
+                            ? {
+                                ...labourItem,
+                                name: e.target.value,
+                              }
+                            : labourItem
                       );
+                      setLocalLabourCost((prev) => ({
+                        ...prev,
+                        items: updatedItems,
+                      }));
                       onUpdateLabour({ items: updatedItems });
                     }}
+                    disabled={isLoading}
                     placeholder="Labour item name"
                     className="text-sm h-8"
                   />
@@ -899,7 +1107,7 @@ const MobileLabourCostCard = ({
                       min="0"
                       value={item.cost || 0}
                       onChange={(e) => {
-                        const updatedItems = labourCost.items.map(
+                        const updatedItems = localLabourCost.items.map(
                           (labourItem) =>
                             labourItem._id === item._id
                               ? {
@@ -908,8 +1116,13 @@ const MobileLabourCostCard = ({
                                 }
                               : labourItem
                         );
+                        setLocalLabourCost((prev) => ({
+                          ...prev,
+                          items: updatedItems,
+                        }));
                         onUpdateLabour({ items: updatedItems });
                       }}
+                      disabled={isLoading}
                       className="pl-7 text-sm h-8 w-24"
                       placeholder="0.00"
                     />
@@ -918,6 +1131,7 @@ const MobileLabourCostCard = ({
                     variant="ghost"
                     size="sm"
                     onClick={() => onDeleteLabourItem(item._id)}
+                    disabled={isLoading}
                     className="h-7 w-7 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -932,6 +1146,7 @@ const MobileLabourCostCard = ({
             size="sm"
             className="w-full text-amber-600 border-amber-200 hover:bg-amber-50 h-9"
             onClick={onAddItem}
+            disabled={isLoading}
           >
             <Plus className="w-3 h-3 mr-2" />
             Add Labour Component
@@ -945,8 +1160,200 @@ const MobileLabourCostCard = ({
                 Total Labour Cost:
               </span>
               <span className="text-base font-bold text-amber-900">
-                ₹{(labourCost.directTotal || 0).toFixed(2)}
+                ₹{(localLabourCost.directTotal || 0).toFixed(2)}
               </span>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Desktop Labour Cost Card
+const DesktopLabourCostCard = ({
+  labourCost,
+  onUpdateLabour,
+  onDeleteLabourItem,
+  onAddItem,
+  isLoading = false,
+}: {
+  labourCost: LabourCost;
+  onUpdateLabour: (updates: Partial<LabourCost>) => void;
+  onDeleteLabourItem: (itemId: string) => void;
+  onAddItem: () => void;
+  isLoading?: boolean;
+}) => {
+  const [localLabourCost, setLocalLabourCost] =
+    useState<LabourCost>(labourCost);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update local state when prop changes
+  useEffect(() => {
+    setLocalLabourCost(labourCost);
+  }, [labourCost]);
+
+  // Debounced update function for directTotal
+  const handleDirectTotalChange = useCallback(
+    (value: number) => {
+      const newValue = Number(value) || 0;
+      setLocalLabourCost((prev) => ({ ...prev, directTotal: newValue }));
+
+      // Clear existing timeout
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+
+      // Set new timeout for API call
+      debounceTimeoutRef.current = setTimeout(() => {
+        onUpdateLabour({ directTotal: newValue });
+      }, 800);
+    },
+    [onUpdateLabour]
+  );
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <Card className="border-2 border-amber-200 h-[500px] flex flex-col">
+      <CardHeader className="bg-amber-50">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Calculator className="w-5 h-5 text-amber-600" />
+          Labour Cost + OH Breakdown
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 flex-1 flex flex-col">
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="bg-amber-100 p-4 rounded-lg border-2 border-amber-300 mb-4">
+            <div className="flex justify-between items-center">
+              <span className="font-medium text-amber-900">
+                Labour + OH Total Cost:
+              </span>
+              <div className="relative">
+                <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 text-amber-600 w-4 h-4" />
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={localLabourCost.directTotal || 0}
+                  onChange={(e) =>
+                    handleDirectTotalChange(Number(e.target.value) || 0)
+                  }
+                  disabled={isLoading}
+                  className="pl-10 text-lg font-bold text-amber-900 bg-white border-amber-300 w-36 h-10"
+                />
+                {isLoading && (
+                  <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600 animate-spin" />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <h4 className="font-medium text-amber-900 mb-3">
+            Individual Labour Components:
+          </h4>
+
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-amber-300 scrollbar-track-amber-100 space-y-3 pr-2">
+            {localLabourCost.items.map((item) => (
+              <div
+                key={item._id}
+                className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-3 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors"
+              >
+                <div>
+                  <Input
+                    value={item.name || ""}
+                    onChange={(e) => {
+                      const updatedItems = localLabourCost.items.map(
+                        (labourItem) =>
+                          labourItem._id === item._id
+                            ? {
+                                ...labourItem,
+                                name: e.target.value,
+                              }
+                            : labourItem
+                      );
+                      setLocalLabourCost((prev) => ({
+                        ...prev,
+                        items: updatedItems,
+                      }));
+                      onUpdateLabour({ items: updatedItems });
+                    }}
+                    disabled={isLoading}
+                    placeholder="Labour item name"
+                    className="text-sm h-9"
+                  />
+                </div>
+                <div className="relative">
+                  <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={item.cost || 0}
+                    onChange={(e) => {
+                      const updatedItems = localLabourCost.items.map(
+                        (labourItem) =>
+                          labourItem._id === item._id
+                            ? {
+                                ...labourItem,
+                                cost: Number(e.target.value) || 0,
+                              }
+                            : labourItem
+                      );
+                      setLocalLabourCost((prev) => ({
+                        ...prev,
+                        items: updatedItems,
+                      }));
+                      onUpdateLabour({ items: updatedItems });
+                    }}
+                    disabled={isLoading}
+                    className="pl-8 text-sm h-9"
+                    placeholder="0.00"
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDeleteLabourItem(item._id)}
+                  disabled={isLoading}
+                  className="h-9 w-9 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex-shrink-0 pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-amber-600 border-amber-200 hover:bg-amber-50"
+              onClick={onAddItem}
+              disabled={isLoading}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add New Labour Component
+            </Button>
+
+            <Separator className="my-4" />
+
+            <div className="bg-amber-50 p-3 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="font-medium text-amber-900">
+                  Total Labour Cost:
+                </span>
+                <span className="text-lg font-bold text-amber-900">
+                  ₹{(localLabourCost.directTotal || 0).toFixed(2)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -967,6 +1374,7 @@ export function TentativeCostDialog({
   const [activeMobileCategory, setActiveMobileCategory] = useState("upper");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [dataLoaded, setDataLoaded] = useState<boolean>(false);
+  const [isSavingLabour, setIsSavingLabour] = useState<boolean>(false);
 
   // State management
   const [costRows, setCostRows] = useState<Record<string, CostItem[]>>({
@@ -1045,6 +1453,7 @@ export function TentativeCostDialog({
       setDataLoaded(false);
       setRealTimeSummary(null);
       setActiveMobileCategory("upper");
+      setIsSavingLabour(false);
     }
   }, [open]);
 
@@ -1133,7 +1542,7 @@ export function TentativeCostDialog({
         ),
         api.get(`/projects/${project._id}/costs/labour`),
       ]);
-      console.log(rowResponses, "ddddddddddddddd");
+
       // Process summary
       const summaryData = summaryResponse.data.summary || summaryResponse.data;
       if (summaryData) {
@@ -1193,9 +1602,6 @@ export function TentativeCostDialog({
       });
 
       setDataLoaded(true);
-      // toast.info(
-      //   `Each category shows ${TOTAL_ROWS_PER_CATEGORY} rows. Fill in the empty rows and save when done.`
-      // );
     } catch (error) {
       console.error("Failed to load cost data:", error);
       toast.error("Failed to load cost data. Starting with empty rows.");
@@ -1262,8 +1668,8 @@ export function TentativeCostDialog({
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount);
   }, []);
 
@@ -1518,7 +1924,34 @@ export function TentativeCostDialog({
     async (itemId: string, department: string) => {
       if (!project) return;
 
+      // Find the item and check if it's saved
       const section = findItemSection(itemId);
+      const item = costRows[section]?.find((item) => item._id === itemId);
+      const isDummyItem = item?.isNew;
+      const hasRequiredFields =
+        item?.item?.trim() && (item?.cost > 0 || item?.consumption > 0);
+
+      if (isDummyItem && !hasRequiredFields) {
+        // For unsaved (dummy) items that don't have required fields, show warning
+        toast.warning(
+          "Please fill in item details before assigning department",
+          {
+            description:
+              "Enter item name and cost/consumption, then save before assigning department.",
+            duration: 5000,
+          }
+        );
+
+        // Still update UI locally so user can see their selection
+        setCostRows((prev) => ({
+          ...prev,
+          [section]: prev[section].map((item) =>
+            item._id === itemId ? { ...item, department } : item
+          ),
+        }));
+        return;
+      }
+
       if (!section || !["upper", "component"].includes(section)) {
         toast.error(
           "Department tagging only allowed for upper and component items"
@@ -1527,11 +1960,15 @@ export function TentativeCostDialog({
       }
 
       try {
+        // If it's a dummy item with required fields, save it first
+        if (isDummyItem && hasRequiredFields) {
+          await handleAddItemFromExisting(itemId, section, item);
+        }
+
+        // Now update the department
         await api.patch(
           `/projects/${project._id}/costs/${section}/${itemId}/department`,
-          {
-            department,
-          }
+          { department }
         );
 
         setCostRows((prev) => ({
@@ -1541,14 +1978,60 @@ export function TentativeCostDialog({
           ),
         }));
 
-        toast.success("Department updated successfully");
+        const stageLabel =
+          STAGES.find((s) => s.value === department)?.label || department;
+        toast.success(`Department updated to ${stageLabel}`);
       } catch (error) {
         console.error("Failed to update department:", error);
         toast.error("Failed to update department");
       }
     },
-    [project, findItemSection]
+    [project, findItemSection, costRows]
   );
+
+  const handleAddItemFromExisting = async (
+    itemId: string,
+    section: string,
+    itemData: CostItem
+  ) => {
+    if (!project) return;
+
+    try {
+      const payload = {
+        item: itemData.item.trim(),
+        description: itemData.description || "",
+        consumption: Number(itemData.consumption) || 0,
+        cost: Number(itemData.cost) || 0,
+      };
+
+      const response = await api.post(
+        `/projects/${project._id}/costs/${section}`,
+        payload
+      );
+
+      if (response.data.row) {
+        setCostRows((prev) => {
+          const updatedItems = prev[section].map((item) =>
+            item._id === itemId
+              ? {
+                  ...item,
+                  _id: response.data.row._id,
+                  isNew: false,
+                }
+              : item
+          );
+
+          return { ...prev, [section]: updatedItems };
+        });
+
+        return response.data.row._id; // Return the new ID
+      }
+    } catch (error) {
+      console.error("Failed to save item:", error);
+      toast.error("Failed to save item");
+      throw error;
+    }
+  };
 
   const loadSummary = useCallback(async () => {
     if (!project) return;
@@ -1671,46 +2154,61 @@ export function TentativeCostDialog({
 
     return true;
   };
+
   const updateLabourCost = useCallback(
     async (updates: Partial<LabourCost>) => {
       if (!project) return;
 
-      // Update UI immediately & get fresh state snapshot
-      setLabourCost((prev) => {
-        const updated = { ...prev, ...updates };
-
-        const cleanItems = updated.items
+      setIsSavingLabour(true);
+      try {
+        // Clean items before sending
+        const cleanItems = (updates.items || labourCost.items)
           .filter((i) => i.name.trim() || i.cost > 0)
           .map((i) => ({
             _id: i.isNew ? undefined : i._id,
-            name: i.name.trim(),
+            name: i.name.trim() || "Labour Component",
             cost: Number(i.cost) || 0,
           }));
 
-        // Send correct data
-        api
-          .patch(`/projects/${project._id}/costs/labour`, {
-            directTotal: updated.directTotal,
-            items: cleanItems,
-          })
-          .then((res) => {
-            setLabourCost({
-              directTotal: res.data.labour.directTotal,
-              items: res.data.labour.items.map((it: any) => ({
-                _id: it._id,
-                name: it.name,
-                cost: it.cost,
-                isNew: false,
-              })),
-            });
-            loadSummary();
-          })
-          .catch(() => toast.error("Failed to update labour"));
+        const payload = {
+          directTotal:
+            updates.directTotal !== undefined
+              ? updates.directTotal
+              : labourCost.directTotal,
+          items: cleanItems,
+        };
 
-        return updated;
-      });
+        const response = await api.patch(
+          `/projects/${project._id}/costs/labour`,
+          payload
+        );
+
+        if (response.data.labour) {
+          const updatedLabour = response.data.labour;
+          setLabourCost({
+            directTotal: updatedLabour.directTotal,
+            items: updatedLabour.items.map((it: any) => ({
+              _id: it._id,
+              name: it.name,
+              cost: it.cost,
+              isNew: false,
+            })),
+          });
+
+          // Ensure we have 5 items
+          setTimeout(() => maintainFiveLabourItems(), 100);
+
+          // Update summary
+          await loadSummary();
+        }
+      } catch (error) {
+        console.error("Failed to update labour:", error);
+        toast.error("Failed to update labour cost");
+      } finally {
+        setIsSavingLabour(false);
+      }
     },
-    [project, loadSummary]
+    [project, labourCost, maintainFiveLabourItems, loadSummary]
   );
 
   const updateLabourItem = useCallback(
@@ -1754,9 +2252,8 @@ export function TentativeCostDialog({
         costSummary.labourTotal;
 
       const subtotalBeforeProfit = totalAllCosts + newAdditionalCosts;
-      const profitAmount = Math.round(
-        (subtotalBeforeProfit * Number(newProfitMargin)) / 100
-      );
+      const profitAmount =
+        (subtotalBeforeProfit * Number(newProfitMargin)) / 100;
       const tentativeCost = subtotalBeforeProfit + profitAmount;
 
       setRealTimeSummary({
@@ -1832,6 +2329,24 @@ export function TentativeCostDialog({
     [realTimeSummary]
   );
 
+  const hasUnsavedChanges = useCallback(() => {
+    // Check for unsaved dummy rows
+    const hasUnsavedRows = Object.values(costRows).some((items) =>
+      items.some(
+        (item) =>
+          item.isNew &&
+          (item.item.trim() || item.cost > 0 || item.consumption > 0)
+      )
+    );
+
+    // Check for unsaved labour items
+    const hasUnsavedLabour = labourCost.items.some(
+      (item) => item.isNew && (item.name.trim() || item.cost > 0)
+    );
+
+    return hasUnsavedRows || hasUnsavedLabour;
+  }, [costRows, labourCost]);
+
   const handleSaveSummary = useCallback(async () => {
     if (!project) return;
 
@@ -1867,6 +2382,7 @@ export function TentativeCostDialog({
       setIsLoading(false);
     }
   }, [project, costSummary]);
+
   const saveAllFilledDummyRows = useCallback(async () => {
     if (!project) return;
 
@@ -1909,68 +2425,76 @@ export function TentativeCostDialog({
                 ),
               }));
             })
+            .catch((error) => {
+              console.error(`Failed to save ${category} item:`, error);
+              toast.error(`Failed to save ${category} item: ${item.item}`);
+            })
         );
       });
     });
 
     /* ---------------------------------------------------------
-     * 2️⃣ SAVE LABOUR — MUST USE FUNCTIONAL STATE (IMPORTANT)
+     * 2️⃣ SAVE LABOUR ITEMS
      * --------------------------------------------------------- */
-    savePromises.push(
-      new Promise((resolve) => {
-        setLabourCost((prev) => {
-          // Build final cleaned labour array
-          const cleanItems = prev.items
-            .filter((i) => i.name.trim() || i.cost > 0) // remove empty
-            .map((i) => ({
-              _id: i.isNew ? undefined : i._id,
-              name: i.name.trim(),
-              cost: Number(i.cost) || 0,
-            }));
-
-          api
-            .patch(`/projects/${project._id}/costs/labour`, {
-              directTotal: prev.directTotal,
-              items: cleanItems,
-            })
-            .then((res) => {
-              const updated = res.data.labour;
-
-              // Replace UI with fresh backend data
-              setLabourCost({
-                directTotal: updated.directTotal,
-                items: updated.items.map((it: any) => ({
-                  _id: it._id,
-                  name: it.name,
-                  cost: it.cost,
-                  isNew: false,
-                })),
-              });
-
-              resolve(null);
-            })
-            .catch(() => {
-              toast.error("Failed to save labour");
-              resolve(null);
-            });
-
-          return prev; // return old state until server confirms new data
-        });
-      })
+    const labourItemsToSave = labourCost.items.filter(
+      (item) => item.isNew && (item.name.trim() || item.cost > 0)
     );
+
+    if (labourItemsToSave.length > 0 || labourCost.directTotal !== 0) {
+      const cleanLabourItems = labourCost.items
+        .filter((i) => i.name.trim() || i.cost > 0)
+        .map((i) => ({
+          _id: i.isNew ? undefined : i._id,
+          name: i.name.trim() || "Labour Component",
+          cost: Number(i.cost) || 0,
+        }));
+
+      savePromises.push(
+        api
+          .patch(`/projects/${project._id}/costs/labour`, {
+            directTotal: labourCost.directTotal,
+            items: cleanLabourItems,
+          })
+          .then((res) => {
+            const updated = res.data.labour;
+
+            // Replace UI with fresh backend data
+            setLabourCost({
+              directTotal: updated.directTotal,
+              items: updated.items.map((it: any) => ({
+                _id: it._id,
+                name: it.name,
+                cost: it.cost,
+                isNew: false,
+              })),
+            });
+          })
+          .catch((error) => {
+            console.error("Failed to save labour:", error);
+            toast.error("Failed to save labour items");
+          })
+      );
+    }
 
     /* ---------------------------------------------------------
      * 3️⃣ EXECUTE ALL SAVES
      * --------------------------------------------------------- */
-    await Promise.all(savePromises);
-    toast.success("All new items saved successfully!");
-  }, [project, costRows]);
+    if (savePromises.length > 0) {
+      await Promise.all(savePromises);
+      await loadSummary();
+      toast.success("All new items saved successfully!");
+    }
+  }, [project, costRows, labourCost, loadSummary]);
 
   const handleApprove = useCallback(async () => {
     if (!project) return;
 
     try {
-      await handleSaveSummary();
+      // Save all unsaved changes first
+      if (hasUnsavedChanges()) {
+        await handleSaveSummary();
+      }
+
       await api.post(`/projects/${project._id}/costs/approve`);
 
       toast.success("Tentative cost saved and approved! Moving to Red Seal.");
@@ -2001,6 +2525,7 @@ export function TentativeCostDialog({
     onApproved,
     onOpenChange,
     goTo,
+    hasUnsavedChanges,
   ]);
 
   const renderMobileContent = useMemo(() => {
@@ -2091,6 +2616,7 @@ export function TentativeCostDialog({
           onUpdateLabour={updateLabourCost}
           onDeleteLabourItem={deleteLabourItem}
           onAddItem={() => openAddItemDialog("labour")}
+          isLoading={isSavingLabour}
         />
       ),
     };
@@ -2108,6 +2634,7 @@ export function TentativeCostDialog({
     setItemDepartment,
     updateLabourCost,
     deleteLabourItem,
+    isSavingLabour,
   ]);
 
   if (!project) return null;
@@ -2124,10 +2651,10 @@ export function TentativeCostDialog({
         `}
       >
         {/* Sticky Header */}
-        <div className="sticky top-0 z-50 px-4 md:px-6 py-3 md:py-4 bg-linear-to-r from-blue-50 via-white to-blue-50 border-b border-blue-200 shadow-sm">
+        <div className="sticky top-0 z-50 px-4 md:px-6 py-3 md:py-4 bg-gradient-to-r from-blue-50 via-white to-blue-50 border-b border-blue-200 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
             <div className="flex items-center gap-3 md:gap-4">
-              <div className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-linear-to-br from-blue-500 to-blue-600 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg shrink-0">
+              <div className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg shrink-0">
                 <Calculator className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-white" />
               </div>
               <div className="min-w-0">
@@ -2144,17 +2671,25 @@ export function TentativeCostDialog({
               <Button
                 onClick={handleSaveSummary}
                 variant="outline"
-                disabled={isLoading}
+                disabled={isLoading || isSavingLabour}
                 size={isMobile ? "sm" : "default"}
                 className="text-xs md:text-sm"
               >
-                <Save className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                )}
                 {isMobile ? "Save All" : "Save All Data"}
               </Button>
               <Button
                 onClick={handleApprove}
                 className="bg-[rgba(0,188,125,1)] hover:bg-green-600"
-                disabled={displaySummary.tentativeCost === 0 || isLoading}
+                disabled={
+                  displaySummary.tentativeCost === 0 ||
+                  isLoading ||
+                  isSavingLabour
+                }
                 size={isMobile ? "sm" : "default"}
               >
                 <CheckCircle className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
@@ -2171,6 +2706,18 @@ export function TentativeCostDialog({
             </div>
           </div>
         </div>
+
+        {/* Unsaved Changes Warning */}
+        {hasUnsavedChanges() && (
+          <div className="sticky top-[72px] md:top-[84px] z-40 bg-amber-50 border-y border-amber-200 px-4 py-2">
+            <div className="flex items-center justify-center gap-2 text-sm text-amber-800">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-xs md:text-sm">
+                You have unsaved changes. Save before assigning departments.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Loading State */}
         {isLoading && !dataLoaded && (
@@ -2194,7 +2741,7 @@ export function TentativeCostDialog({
             )}
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto scrollbar-hide">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
               <div className="p-3 md:p-4 lg:p-6 space-y-4 md:space-y-6">
                 {isMobile ? (
                   <>
@@ -2451,122 +2998,14 @@ export function TentativeCostDialog({
                         color="gray"
                       />
 
-                      {/* Labour Cost Card */}
-                      <Card
-                        key="labour-desktop"
-                        className="border-2 border-amber-200 h-148"
-                      >
-                        <CardHeader className="bg-amber-50">
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <Calculator className="w-5 h-5 text-amber-600" />
-                            Labour Cost + OH Breakdown
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-4">
-                          <div className="space-y-4">
-                            <div className="bg-amber-100 p-4 rounded-lg border-2 border-amber-300">
-                              <div className="flex justify-between items-center">
-                                <span className="font-medium text-amber-900">
-                                  Labour + OH Cost:
-                                </span>
-                                <div className="relative">
-                                  <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-amber-600 w-4 h-4" />
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={labourCost.directTotal || 0}
-                                    onChange={(e) =>
-                                      updateLabourCost({
-                                        directTotal:
-                                          Number(e.target.value) || 0,
-                                      })
-                                    }
-                                    className="pl-8 text-lg font-bold text-amber-900 bg-white border-amber-300 w-32"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            <h4 className="font-medium text-amber-900">
-                              Individual Labour Components:
-                            </h4>
-
-                            <div className="h-32 overflow-y-auto scrollbar-hide space-y-3">
-                              {labourCost.items.map((item) => (
-                                <div
-                                  key={item._id}
-                                  className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-2 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors"
-                                >
-                                  <div>
-                                    <Input
-                                      value={item.name || ""}
-                                      onChange={(e) =>
-                                        updateLabourItem(
-                                          item._id,
-                                          "name",
-                                          e.target.value
-                                        )
-                                      }
-                                      placeholder="Labour item name"
-                                      className="text-sm h-8"
-                                    />
-                                  </div>
-                                  <div className="relative">
-                                    <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
-                                      value={item.cost || 0}
-                                      onChange={(e) =>
-                                        updateLabourItem(
-                                          item._id,
-                                          "cost",
-                                          Number(e.target.value) || 0
-                                        )
-                                      }
-                                      className="pl-6 text-sm h-8"
-                                      placeholder="0.00"
-                                    />
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => deleteLabourItem(item._id)}
-                                    className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-full text-amber-600 border-amber-200 hover:bg-amber-50"
-                              onClick={() => openAddItemDialog("labour")}
-                            >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Add New Labour Component
-                            </Button>
-
-                            <Separator />
-
-                            <div className="bg-amber-50 p-3 rounded-lg">
-                              <div className="flex justify-between items-center">
-                                <span className="font-medium text-amber-900">
-                                  Total Labour Cost:
-                                </span>
-                                <span className="text-lg font-bold text-amber-900">
-                                  ₹{(labourCost.directTotal || 0).toFixed(2)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                      {/* Desktop Labour Cost Card */}
+                      <DesktopLabourCostCard
+                        labourCost={labourCost}
+                        onUpdateLabour={updateLabourCost}
+                        onDeleteLabourItem={deleteLabourItem}
+                        onAddItem={() => openAddItemDialog("labour")}
+                        isLoading={isSavingLabour}
+                      />
                     </div>
 
                     {/* Final Cost Summary */}
@@ -2781,6 +3220,14 @@ export function TentativeCostDialog({
                   ? "Draft"
                   : "Ready for Red Seal"}
               </div>
+              {hasUnsavedChanges() && (
+                <Badge
+                  variant="outline"
+                  className="bg-amber-50 text-amber-700 border-amber-200 text-xs"
+                >
+                  Unsaved Changes
+                </Badge>
+              )}
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
               <div className="text-sm md:text-base text-gray-600">
@@ -2792,9 +3239,17 @@ export function TentativeCostDialog({
               <Button
                 onClick={handleApprove}
                 className="bg-[rgba(0,188,125,1)] hover:bg-green-600 w-full sm:w-auto h-10 md:h-12"
-                disabled={displaySummary.tentativeCost === 0 || isLoading}
+                disabled={
+                  displaySummary.tentativeCost === 0 ||
+                  isLoading ||
+                  isSavingLabour
+                }
               >
-                <ArrowRight className="w-4 h-4 mr-2" />
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <ArrowRight className="w-4 h-4 mr-2" />
+                )}
                 {isLoading ? "Processing..." : "Approve & Advance"}
               </Button>
             </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Search,
   Filter,
@@ -63,6 +63,92 @@ import { ItemCuttingDialog } from "./ItemCuttingDialog";
 import { useERPStore } from "../lib/data-store";
 import api from "../lib/api";
 
+// Types for API response
+interface APITrackingData {
+  projectId: string;
+  autoCode: string;
+  artName: string;
+  size: string;
+  color: string;
+  gender: string;
+  assignPerson: {
+    _id: string;
+    name: string;
+  };
+  brand: {
+    _id: string;
+    name: string;
+  };
+  country: {
+    _id: string;
+    name: string;
+  };
+  poDetails: {
+    _id: string;
+    project: string;
+    orderQuantity: number;
+    unitPrice: number;
+    totalAmount: number;
+    poNumber: string;
+    status: string;
+    deliveryDate: string;
+    paymentTerms: string;
+    urgencyLevel: string;
+    qualityRequirements: string;
+    clientFeedback: string;
+    specialInstructions: string;
+    targetAt: string;
+    issuedAt: string;
+    updatedBy: string | null;
+    updatedAt: string;
+    createdAt: string;
+    __v: number;
+  };
+  cards: Array<{
+    _id: string;
+    cardNumber: string;
+    projectId: string;
+    productName: string;
+    cardQuantity: number;
+    assignedPlant: {
+      _id: string;
+      name: string;
+    };
+    description: string;
+    specialInstructions: string;
+    status: string;
+    stage: string;
+    materialRequestStatus: string;
+    upper: Array<any>;
+    materials: Array<any>;
+    components: Array<any>;
+    packaging: Array<any>;
+    misc: Array<any>;
+    materialRequests: Array<any>;
+    isActive: boolean;
+    createdBy: string;
+    stageHistory: Array<any>;
+    materialsSnapshot: Array<any>;
+    componentsSnapshot: Array<any>;
+    createdAt: string;
+    updatedAt: string;
+    __v: number;
+    startDate?: string;
+  }>;
+  department: string;
+  summary: {
+    daily: Record<string, number>;
+    weekly: {
+      W1: number;
+      W2: number;
+      W3: number;
+      W4: number;
+      W5: number;
+    };
+    monthTotal: number;
+  };
+}
+
 interface ProductionRecord {
   id: string;
   productionId: string;
@@ -115,6 +201,13 @@ interface ProductionRecord {
     planned: number;
   };
   rfdRemarks: string;
+  projectId: string;
+  cards: any[];
+  summary: {
+    daily: Record<string, number>;
+    weekly: Record<string, number>;
+    monthTotal: number;
+  };
 }
 
 interface DailyProduction {
@@ -135,13 +228,29 @@ type ProductionStage =
   | "packing"
   | "rfd";
 
+type Department =
+  | "cutting"
+  | "printing"
+  | "upper"
+  | "upperREJ"
+  | "assembly"
+  | "packing"
+  | "rfd";
+
 export function ProductionTrackingTable() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedMonth, setSelectedMonth] = useState("09");
-  const [selectedYear, setSelectedYear] = useState("2025");
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    new Date().getMonth() + 1 < 10
+      ? `0${new Date().getMonth() + 1}`
+      : `${new Date().getMonth() + 1}`
+  );
+  const [selectedYear, setSelectedYear] = useState<string>(
+    `${new Date().getFullYear()}`
+  );
   const [sortColumn, setSortColumn] = useState("");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [activeStage, setActiveStage] = useState<ProductionStage>("cutting");
+  const [selectedDepartment, setSelectedDepartment] =
+    useState<Department>("cutting");
   const [selectedProductionRecord, setSelectedProductionRecord] =
     useState<ProductionRecord | null>(null);
   const [stageUpdateDialogOpen, setStageUpdateDialogOpen] = useState(false);
@@ -160,7 +269,9 @@ export function ProductionTrackingTable() {
   const [showWeekTable, setShowWeekTable] = useState(false);
   const [currentWeek, setCurrentWeek] = useState<number>(1);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState(false);
-  const [trackingData, setTrackingData] = useState([]);
+  const [trackingData, setTrackingData] = useState<APITrackingData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Check for mobile on mount and resize
   React.useEffect(() => {
@@ -173,18 +284,166 @@ export function ProductionTrackingTable() {
   // Get production cards from store
   const { productionCards } = useERPStore();
 
-  const getTaskdata = async () => {
-    const res = await api.get("/production-cards/projects-in-tracking");
-    setTrackingData(res?.items!);
+  // Fetch tracking data based on department, month, and year
+  const fetchTrackingData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.get(
+        `/tracking/dashboard/department?dept=${selectedDepartment}&month=${parseInt(
+          selectedMonth
+        )}&year=${selectedYear}`
+      );
 
-    console.log(res.data, "tracking data");
-  };
+      if (res.data?.success) {
+        setTrackingData(res.data.data || []);
+      } else {
+        setError("Failed to load tracking data");
+        toast.error("Failed to load tracking data");
+      }
+    } catch (err: any) {
+      console.error("Error fetching tracking data:", err);
+      setError(err.message || "Failed to fetch data");
+      toast.error("Failed to fetch tracking data");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedDepartment, selectedMonth, selectedYear]);
 
   useEffect(() => {
-    getTaskdata();
-  }, []);
+    fetchTrackingData();
+  }, [fetchTrackingData]);
 
-  // Define stages
+  // Map API data to ProductionRecord format
+  const transformAPIDataToProductionRecords = (
+    apiData: APITrackingData[]
+  ): ProductionRecord[] => {
+    return apiData.map((item, index) => {
+      // Get department-specific data from summary
+      const departmentTotal = item.summary.monthTotal || 0;
+      const dailyData = item.summary.daily || {};
+      const weeklyData = item.summary.weekly || {
+        W1: 0,
+        W2: 0,
+        W3: 0,
+        W4: 0,
+        W5: 0,
+      };
+
+      // Calculate current production quantity based on selected department
+      const currentQuantity = departmentTotal;
+      const plannedQuantity = item.poDetails?.orderQuantity || 0;
+
+      // Determine status based on progress
+      let status:
+        | "Pending"
+        | "In Progress"
+        | "Completed"
+        | "Ready"
+        | "Dispatched"
+        | "Rejected"
+        | "Approved" = "Pending";
+      if (currentQuantity === 0) {
+        status = "Pending";
+      } else if (currentQuantity < plannedQuantity) {
+        status = "In Progress";
+      } else {
+        if (selectedDepartment === "upperREJ") {
+          status = "Approved"; // Default for upperREJ when completed
+        } else if (selectedDepartment === "rfd") {
+          status = "Ready"; // Default for RFD when completed
+        } else {
+          status = "Completed";
+        }
+      }
+
+      // Special handling for upperREJ and rfd statuses
+      if (selectedDepartment === "upperREJ") {
+        status =
+          currentQuantity === 0
+            ? "Pending"
+            : currentQuantity < plannedQuantity * 0.1
+            ? "Rejected"
+            : "Approved";
+      } else if (selectedDepartment === "rfd") {
+        status =
+          currentQuantity === 0
+            ? "Pending"
+            : currentQuantity < plannedQuantity
+            ? "Ready"
+            : "Dispatched";
+      }
+
+      const baseRecord = {
+        id: item.projectId || `api-${index}`,
+        productionId: item.autoCode || `PRJ-${index}`,
+        brand: item.brand?.name || "Unknown Brand",
+        category: "Shoes", // Default category
+        type: "Standard", // Default type
+        gender: item.gender || "Unisex",
+        articleName: item.artName || "Unnamed Article",
+        poNumber: item.poDetails?.poNumber || "N/A",
+        poItems: item.poDetails?.orderQuantity || 0,
+        monthPlan: Math.floor((item.poDetails?.orderQuantity || 0) * 0.8),
+        manufacturingCompany:
+          item.cards?.[0]?.assignedPlant?.name || "Unknown Plant",
+        country: item.country?.name || "Unknown Country",
+        color: item.color || "N/A",
+        size: item.size || "N/A",
+        unitPstId: item.projectId || "N/A",
+        projectId: item.projectId,
+        cards: item.cards || [],
+        summary: item.summary,
+        rfdRemarks: "",
+      };
+
+      // Create production stages based on selected department
+      const stageData = {
+        status,
+        quantity: currentQuantity,
+        planned: plannedQuantity,
+      };
+
+      // Return complete record with all stages
+      return {
+        ...baseRecord,
+        cutting:
+          selectedDepartment === "cutting"
+            ? stageData
+            : { status: "Pending", quantity: 0, planned: plannedQuantity },
+        printing:
+          selectedDepartment === "printing"
+            ? stageData
+            : { status: "Pending", quantity: 0, planned: plannedQuantity },
+        upper:
+          selectedDepartment === "upper"
+            ? stageData
+            : { status: "Pending", quantity: 0, planned: plannedQuantity },
+        upperREJ:
+          selectedDepartment === "upperREJ"
+            ? (stageData as any)
+            : { status: "Pending", quantity: 0, planned: plannedQuantity },
+        assembly:
+          selectedDepartment === "assembly"
+            ? stageData
+            : { status: "Pending", quantity: 0, planned: plannedQuantity },
+        packing:
+          selectedDepartment === "packing"
+            ? stageData
+            : { status: "Pending", quantity: 0, planned: plannedQuantity },
+        rfd:
+          selectedDepartment === "rfd"
+            ? (stageData as any)
+            : { status: "Pending", quantity: 0, planned: plannedQuantity },
+      };
+    });
+  };
+
+  // Get base production data from API
+  const baseProductionData: ProductionRecord[] =
+    transformAPIDataToProductionRecords(trackingData);
+
+  // Define stages with proper department mapping
   const stages = [
     {
       key: "cutting" as ProductionStage,
@@ -192,6 +451,7 @@ export function ProductionTrackingTable() {
       color: "text-red-600",
       shortName: "Cut",
       icon: <Scissors className="w-4 h-4" />,
+      department: "cutting" as Department,
     },
     {
       key: "printing" as ProductionStage,
@@ -199,6 +459,7 @@ export function ProductionTrackingTable() {
       color: "text-purple-600",
       shortName: "Print",
       icon: <Printer className="w-4 h-4" />,
+      department: "printing" as Department,
     },
     {
       key: "upper" as ProductionStage,
@@ -206,6 +467,7 @@ export function ProductionTrackingTable() {
       color: "text-blue-600",
       shortName: "Upper",
       icon: <ShirtIcon className="w-4 h-4" />,
+      department: "upper" as Department,
     },
     {
       key: "upperREJ" as ProductionStage,
@@ -213,6 +475,7 @@ export function ProductionTrackingTable() {
       color: "text-orange-600",
       shortName: "REJ",
       icon: <X className="w-4 h-4" />,
+      department: "upperREJ" as Department,
     },
     {
       key: "assembly" as ProductionStage,
@@ -220,6 +483,7 @@ export function ProductionTrackingTable() {
       color: "text-green-600",
       shortName: "Assem",
       icon: <Wrench className="w-4 h-4" />,
+      department: "assembly" as Department,
     },
     {
       key: "packing" as ProductionStage,
@@ -227,6 +491,7 @@ export function ProductionTrackingTable() {
       color: "text-indigo-600",
       shortName: "Pack",
       icon: <Package className="w-4 h-4" />,
+      department: "packing" as Department,
     },
     {
       key: "rfd" as ProductionStage,
@@ -234,135 +499,7 @@ export function ProductionTrackingTable() {
       color: "text-teal-600",
       shortName: "RFD",
       icon: <FileCheck className="w-4 h-4" />,
-    },
-  ];
-
-  // Consistent dummy data
-  const baseProductionData: ProductionRecord[] = [
-    {
-      id: "1",
-      productionId: "PRD/25-26/09/001",
-      brand: "YoBu",
-      category: "Shoes",
-      type: "Pyskin",
-      gender: "Men",
-      articleName: "Classic Double Strap Canvas",
-      poNumber: "PO/AVEXT/TM",
-      poItems: 1760,
-      monthPlan: 1176,
-      manufacturingCompany: "Aura",
-      country: "India",
-      color: "Maroon Blue",
-      size: "6-11",
-      unitPstId: "PSI-AVEXT/TM/01",
-      cutting: { status: "Completed", quantity: 1760, planned: 1760 },
-      printing: { status: "Completed", quantity: 1760, planned: 1760 },
-      upper: { status: "In Progress", quantity: 1200, planned: 1760 },
-      upperREJ: { status: "Pending", quantity: 0, planned: 1760 },
-      assembly: { status: "Pending", quantity: 0, planned: 1760 },
-      packing: { status: "Pending", quantity: 0, planned: 1760 },
-      rfd: { status: "Pending", quantity: 0, planned: 1760 },
-      rfdRemarks: "",
-    },
-    {
-      id: "2",
-      productionId: "PRD/25-26/09/002",
-      brand: "YoBu",
-      category: "Shoes",
-      type: "Pyskin",
-      gender: "Men",
-      articleName: "Premium Leather Boot",
-      poNumber: "PO/AVEXT/LB",
-      poItems: 1200,
-      monthPlan: 800,
-      manufacturingCompany: "Zenith",
-      country: "Gujarat",
-      color: "Dark Brown",
-      size: "7-12",
-      unitPstId: "PSI-AVEXT/LB/02",
-      cutting: { status: "Completed", quantity: 1200, planned: 1200 },
-      printing: { status: "Completed", quantity: 1200, planned: 1200 },
-      upper: { status: "Completed", quantity: 1200, planned: 1200 },
-      upperREJ: { status: "Approved", quantity: 1200, planned: 1200 },
-      assembly: { status: "In Progress", quantity: 800, planned: 1200 },
-      packing: { status: "Pending", quantity: 0, planned: 1200 },
-      rfd: { status: "Pending", quantity: 0, planned: 1200 },
-      rfdRemarks: "",
-    },
-    {
-      id: "3",
-      productionId: "PRD/25-26/09/003",
-      brand: "YoBu",
-      category: "Shoes",
-      type: "Canvas",
-      gender: "Women",
-      articleName: "Floral Summer Collection",
-      poNumber: "REVAVEXT/FL",
-      poItems: 2400,
-      monthPlan: 1600,
-      manufacturingCompany: "Prime Footwear",
-      country: "Y.Naya",
-      color: "Floral Mix",
-      size: "4-9",
-      unitPstId: "ALPAVA17704",
-      cutting: { status: "Completed", quantity: 2400, planned: 2400 },
-      printing: { status: "Completed", quantity: 2400, planned: 2400 },
-      upper: { status: "Completed", quantity: 2400, planned: 2400 },
-      upperREJ: { status: "Approved", quantity: 2400, planned: 2400 },
-      assembly: { status: "Completed", quantity: 2400, planned: 2400 },
-      packing: { status: "Completed", quantity: 2400, planned: 2400 },
-      rfd: { status: "Dispatched", quantity: 2400, planned: 2400 },
-      rfdRemarks: "Completed and dispatched",
-    },
-    {
-      id: "4",
-      productionId: "PRD/25-26/09/004",
-      brand: "Nike",
-      category: "Shoes",
-      type: "Sports",
-      gender: "Unisex",
-      articleName: "Athletic Runner Pro",
-      poNumber: "PO/NIKE/AR",
-      poItems: 1800,
-      monthPlan: 1200,
-      manufacturingCompany: "Elite Manufacturing",
-      country: "Karnataka",
-      color: "Black White",
-      size: "6-12",
-      unitPstId: "PSI-NIKE/AR/03",
-      cutting: { status: "In Progress", quantity: 1500, planned: 1800 },
-      printing: { status: "In Progress", quantity: 1200, planned: 1800 },
-      upper: { status: "Pending", quantity: 0, planned: 1800 },
-      upperREJ: { status: "Pending", quantity: 0, planned: 1800 },
-      assembly: { status: "Pending", quantity: 0, planned: 1800 },
-      packing: { status: "Pending", quantity: 0, planned: 1800 },
-      rfd: { status: "Pending", quantity: 0, planned: 1800 },
-      rfdRemarks: "New order in progress",
-    },
-    {
-      id: "5",
-      productionId: "PRD/25-26/09/005",
-      brand: "Adidas",
-      category: "Shoes",
-      type: "Sports",
-      gender: "Men",
-      articleName: "Performance Basketball",
-      poNumber: "PO/ADIDAS/PB",
-      poItems: 960,
-      monthPlan: 640,
-      manufacturingCompany: "Stellar Shoes",
-      country: "Tamil Nadu",
-      color: "Red Black",
-      size: "8-13",
-      unitPstId: "PSI-ADIDAS/PB/04",
-      cutting: { status: "Completed", quantity: 960, planned: 960 },
-      printing: { status: "Completed", quantity: 960, planned: 960 },
-      upper: { status: "Completed", quantity: 960, planned: 960 },
-      upperREJ: { status: "Approved", quantity: 960, planned: 960 },
-      assembly: { status: "Completed", quantity: 960, planned: 960 },
-      packing: { status: "In Progress", quantity: 600, planned: 960 },
-      rfd: { status: "Pending", quantity: 0, planned: 960 },
-      rfdRemarks: "Packing in progress",
+      department: "rfd" as Department,
     },
   ];
 
@@ -387,10 +524,11 @@ export function ProductionTrackingTable() {
       "Nov",
       "Dec",
     ];
-    return months[parseInt(monthNum) - 1];
+    const monthIndex = parseInt(monthNum) - 1;
+    return months[monthIndex] || "Unknown";
   };
 
-  // Function to generate stage-specific daily production data
+  // Function to generate stage-specific daily production data from API summary
   const generateStageProductionData = (
     record: ProductionRecord,
     stage: ProductionStage,
@@ -400,52 +538,78 @@ export function ProductionTrackingTable() {
     const daysInMonth = getDaysInMonth(year, month);
     const dailyData: DailyProduction = {};
 
-    const stageData = record[stage];
-    const stagePlanned = stageData.planned;
-    const stageCompleted = stageData.quantity;
+    // Get daily data from API summary
+    const apiDailyData = record.summary?.daily || {};
 
-    const baseDailyRate = Math.floor(stagePlanned / 25);
-    const variance = Math.floor(baseDailyRate * 0.4);
+    // If API has daily data, use it
+    if (Object.keys(apiDailyData).length > 0) {
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        const dayOfWeek = date.getDay();
+        const dateKey = `${year}-${month.toString().padStart(2, "0")}-${day
+          .toString()
+          .padStart(2, "0")}`;
 
-    let cumulativeProduction = 0;
+        // Use API data if available, otherwise 0
+        dailyData[dateKey] = apiDailyData[dateKey] || 0;
 
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month - 1, day);
-      const dayOfWeek = date.getDay();
-      const dateKey = `${year}-${month.toString().padStart(2, "0")}-${day
-        .toString()
-        .padStart(2, "0")}`;
+        // Set weekend days to 0 if no production
+        if ((dayOfWeek === 0 || dayOfWeek === 6) && !apiDailyData[dateKey]) {
+          dailyData[dateKey] = 0;
+        }
+      }
+    } else {
+      // Generate fallback data if no API data
+      const stageData = record[stage];
+      const stagePlanned = stageData.planned;
+      const stageCompleted = stageData.quantity;
 
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
-        dailyData[dateKey] = 0;
-      } else {
-        const seed =
-          parseInt(record.id) *
-          day *
-          month *
-          (stages.findIndex((s) => s.key === stage) + 1);
-        const randomFactor = (seed % 100) / 100;
+      const baseDailyRate = Math.floor(stagePlanned / 25);
+      const variance = Math.floor(baseDailyRate * 0.4);
 
-        let dailyProduction = 0;
+      let cumulativeProduction = 0;
 
-        if (stageData.status === "Completed") {
-          const targetDaily = Math.floor(stageCompleted / 20);
-          dailyProduction = Math.floor(targetDaily + variance * randomFactor);
-        } else if (stageData.status === "In Progress") {
-          const targetDaily = Math.floor(stageCompleted / 15);
-          dailyProduction = Math.floor(
-            targetDaily + variance * randomFactor * 0.7
-          );
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        const dayOfWeek = date.getDay();
+        const dateKey = `${year}-${month.toString().padStart(2, "0")}-${day
+          .toString()
+          .padStart(2, "0")}`;
+
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          dailyData[dateKey] = 0;
         } else {
-          dailyProduction = Math.floor(baseDailyRate * 0.1 * randomFactor);
-        }
+          const seed =
+            parseInt(record.id.slice(-3)) *
+            day *
+            month *
+            (stages.findIndex((s) => s.key === stage) + 1);
+          const randomFactor = (seed % 100) / 100;
 
-        if (cumulativeProduction + dailyProduction > stageCompleted) {
-          dailyProduction = Math.max(0, stageCompleted - cumulativeProduction);
-        }
+          let dailyProduction = 0;
 
-        dailyData[dateKey] = Math.max(0, dailyProduction);
-        cumulativeProduction += dailyProduction;
+          if (stageData.status === "Completed") {
+            const targetDaily = Math.floor(stageCompleted / 20);
+            dailyProduction = Math.floor(targetDaily + variance * randomFactor);
+          } else if (stageData.status === "In Progress") {
+            const targetDaily = Math.floor(stageCompleted / 15);
+            dailyProduction = Math.floor(
+              targetDaily + variance * randomFactor * 0.7
+            );
+          } else {
+            dailyProduction = Math.floor(baseDailyRate * 0.1 * randomFactor);
+          }
+
+          if (cumulativeProduction + dailyProduction > stageCompleted) {
+            dailyProduction = Math.max(
+              0,
+              stageCompleted - cumulativeProduction
+            );
+          }
+
+          dailyData[dateKey] = Math.max(0, dailyProduction);
+          cumulativeProduction += dailyProduction;
+        }
       }
     }
 
@@ -497,11 +661,26 @@ export function ProductionTrackingTable() {
     record,
     dailyProduction: generateStageProductionData(
       record,
-      activeStage,
+      selectedDepartment as ProductionStage,
       parseInt(selectedYear),
       parseInt(selectedMonth)
     ),
   }));
+
+  // Calculate weekly totals from API summary
+  const getWeeklyTotalsFromAPI = (record: ProductionRecord) => {
+    const apiWeeklyData = record.summary?.weekly || {
+      W1: 0,
+      W2: 0,
+      W3: 0,
+      W4: 0,
+      W5: 0,
+    };
+    return weekData.map((week, index) => {
+      const weekKey = `W${week.weekNumber}`;
+      return apiWeeklyData[weekKey as keyof typeof apiWeeklyData] || 0;
+    });
+  };
 
   const getStatusBadge = (
     status: string,
@@ -604,26 +783,18 @@ export function ProductionTrackingTable() {
 
   // Calculate production cards
   const calculateProductionCards = (productionId: string): number => {
-    if (!productionCards || productionCards.length === 0) {
-      return 0;
-    }
-
-    const validCards = productionCards.filter(
-      (card) =>
-        card.projectId === productionId &&
-        !["1", "2"].includes(card.id) &&
-        !card.cardNumber?.startsWith("PROD/25-26/09/00")
-    );
-
-    return validCards.length;
+    const record = baseProductionData.find((p) => p.id === productionId);
+    return record?.cards?.length || 0;
   };
 
+  // Filter data based on search term
   const filteredData = productionData.filter(({ record }) => {
     const matchesSearch =
       record.articleName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       record.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       record.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.color.toLowerCase().includes(searchTerm.toLowerCase());
+      record.color.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.productionId.toLowerCase().includes(searchTerm.toLowerCase());
 
     return matchesSearch;
   });
@@ -639,15 +810,20 @@ export function ProductionTrackingTable() {
 
   // Get current stage name for display
   const getCurrentStageName = () => {
-    return stages.find((s) => s.key === activeStage)?.name || "Production";
+    return (
+      stages.find((s) => s.department === selectedDepartment)?.name ||
+      "Production"
+    );
   };
 
-  // Calculate totals
+  // Calculate totals from API data
   const calculateDailyTotals = () => {
     const dailyTotals: { [key: string]: number } = {};
 
-    filteredData.forEach(({ dailyProduction }) => {
-      Object.entries(dailyProduction).forEach(([date, production]) => {
+    // Aggregate daily totals from all records
+    filteredData.forEach(({ record }) => {
+      const apiDailyData = record.summary?.daily || {};
+      Object.entries(apiDailyData).forEach(([date, production]) => {
         dailyTotals[date] = (dailyTotals[date] || 0) + production;
       });
     });
@@ -657,48 +833,91 @@ export function ProductionTrackingTable() {
 
   const dailyTotals = calculateDailyTotals();
 
+  // Handle department change
+  const handleDepartmentChange = (department: Department) => {
+    setSelectedDepartment(department);
+    // Reset week and other states
+    setCurrentWeek(1);
+    setExpandedRow(null);
+    setShowDailyBreakdown(false);
+  };
+
   // Function to update production data
-  const updateProductionData = (
+  const updateProductionData = async (
     productId: string,
     stage: ProductionStage,
     quantity: number,
     remarks: string
   ) => {
-    const productName =
-      baseProductionData.find((p) => p.id === productId)?.articleName ||
-      "Product";
-    toast.success(
-      `Updated ${getCurrentStageName()} for ${productName}: +${quantity} units`
-    );
+    try {
+      // Find the record
+      const record = baseProductionData.find((p) => p.id === productId);
+      if (!record) {
+        toast.error("Product not found");
+        return;
+      }
 
-    setUpdateEntries((prev) => ({
-      ...prev,
-      [productId]: { quantity: 0, remarks: "" },
-    }));
+      // Make API call to update production data
+      const updateData = {
+        projectId: record.projectId,
+        department: stage,
+        quantity,
+        remarks,
+        date: selectedDate,
+      };
+
+      // You'll need to implement this API endpoint
+      // const response = await api.post('/tracking/update-production', updateData);
+
+      // For now, simulate success
+      toast.success(
+        `Updated ${getCurrentStageName()} for ${
+          record.articleName
+        }: +${quantity} units`
+      );
+
+      // Refresh data
+      fetchTrackingData();
+
+      // Clear update entries
+      setUpdateEntries((prev) => ({
+        ...prev,
+        [productId]: { quantity: 0, remarks: "" },
+      }));
+    } catch (error) {
+      console.error("Error updating production data:", error);
+      toast.error("Failed to update production data");
+    }
   };
 
   // Function to handle batch update
-  const handleBatchUpdate = () => {
+  const handleBatchUpdate = async () => {
     let updatesCount = 0;
-    Object.entries(updateEntries).forEach(([productId, entry]) => {
-      if (entry.quantity > 0) {
-        updateProductionData(
-          productId,
-          activeStage,
-          entry.quantity,
-          entry.remarks
-        );
-        updatesCount++;
-      }
-    });
 
-    if (updatesCount > 0) {
-      toast.success(
-        `Successfully updated ${updatesCount} product(s) for ${getCurrentStageName()}`
-      );
-      setStageUpdateDialogOpen(false);
-    } else {
-      toast.error("Please enter quantities to update");
+    try {
+      for (const [productId, entry] of Object.entries(updateEntries)) {
+        if (entry.quantity > 0) {
+          await updateProductionData(
+            productId,
+            selectedDepartment as ProductionStage,
+            entry.quantity,
+            entry.remarks
+          );
+          updatesCount++;
+        }
+      }
+
+      if (updatesCount > 0) {
+        toast.success(
+          `Successfully updated ${updatesCount} product(s) for ${getCurrentStageName()}`
+        );
+        setStageUpdateDialogOpen(false);
+      } else {
+        toast.error("Please enter quantities to update");
+      }
+    } catch (error) {
+      console.error("Error in batch update:", error);
+      toast.error("Failed to update production data");
     }
   };
 
@@ -714,6 +933,65 @@ export function ProductionTrackingTable() {
       record.brand.toLowerCase().includes(stageUpdateSearchTerm.toLowerCase())
   );
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0c9dcb] mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading production data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto" />
+          <h3 className="mt-4 text-lg font-semibold text-gray-900">
+            Error Loading Data
+          </h3>
+          <p className="mt-2 text-gray-600">{error}</p>
+          <Button
+            onClick={fetchTrackingData}
+            className="mt-4 bg-[#0c9dcb] hover:bg-[#0a87a5]"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Empty state
+  if (trackingData.length === 0 && !loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Package className="h-12 w-12 text-gray-400 mx-auto" />
+          <h3 className="mt-4 text-lg font-semibold text-gray-900">
+            No Production Data
+          </h3>
+          <p className="mt-2 text-gray-600">
+            No production data found for {getMonthName(selectedMonth)}{" "}
+            {selectedYear}
+          </p>
+          <Button
+            onClick={fetchTrackingData}
+            className="mt-4 bg-[#0c9dcb] hover:bg-[#0a87a5]"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // Mobile Card View with ALL Information
   const MobileProductionCard = ({
     record,
@@ -724,24 +1002,16 @@ export function ProductionTrackingTable() {
     dailyProduction: DailyProduction;
     index: number;
   }) => {
-    const stageData = record[activeStage];
+    const stageData = record[selectedDepartment as ProductionStage];
     const isExpanded = expandedRow === record.id;
     const currentWeekData = weekData[currentWeek - 1];
-    const weeklyTotal =
-      currentWeekData?.days.reduce((sum, day) => {
-        const year = parseInt(selectedYear);
-        const month = parseInt(selectedMonth);
-        const dateKey = `${year}-${month.toString().padStart(2, "0")}-${day
-          .toString()
-          .padStart(2, "0")}`;
-        return sum + (dailyProduction[dateKey] || 0);
-      }, 0) || 0;
 
-    // Calculate monthly total
-    const monthlyTotal = Object.values(dailyProduction).reduce(
-      (sum, daily) => sum + daily,
-      0
-    );
+    // Get weekly totals from API summary
+    const apiWeeklyTotals = getWeeklyTotalsFromAPI(record);
+    const weeklyTotal = apiWeeklyTotals[currentWeek - 1] || 0;
+
+    // Calculate monthly total from API
+    const monthlyTotal = record.summary?.monthTotal || 0;
 
     // Calculate stage progress
     const stageProgress = Math.min(
@@ -830,9 +1100,9 @@ export function ProductionTrackingTable() {
                 </span>
                 {getStatusBadge(
                   stageData.status,
-                  activeStage === "upperREJ"
+                  selectedDepartment === "upperREJ"
                     ? "upperREJ"
-                    : activeStage === "rfd"
+                    : selectedDepartment === "rfd"
                     ? "rfd"
                     : "production"
                 )}
@@ -1000,17 +1270,8 @@ export function ProductionTrackingTable() {
                 </h4>
                 <div className="overflow-x-auto">
                   <div className="flex space-x-2 pb-2">
-                    {weekData.map((week) => {
-                      const weekTotal = week.days.reduce((sum, day) => {
-                        const year = parseInt(selectedYear);
-                        const month = parseInt(selectedMonth);
-                        const dateKey = `${year}-${month
-                          .toString()
-                          .padStart(2, "0")}-${day
-                          .toString()
-                          .padStart(2, "0")}`;
-                        return sum + (dailyProduction[dateKey] || 0);
-                      }, 0);
+                    {weekData.map((week, index) => {
+                      const weekTotal = apiWeeklyTotals[index] || 0;
 
                       return (
                         <div
@@ -1230,6 +1491,38 @@ export function ProductionTrackingTable() {
     );
   };
 
+  // Add this empty state component after the MobileProductionCard component
+  const EmptyState = () => (
+    <div className="flex flex-col items-center justify-center py-12 px-4">
+      <Package className="h-16 w-16 text-gray-300 mb-4" />
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        No Production Data
+      </h3>
+      <p className="text-sm text-gray-600 text-center mb-4">
+        No production data found for {getCurrentStageName()} department in{" "}
+        {getMonthName(selectedMonth)} {selectedYear}
+      </p>
+      <div className="flex gap-2">
+        <Button
+          onClick={fetchTrackingData}
+          variant="outline"
+          size="sm"
+          className="text-xs"
+        >
+          <RefreshCw className="w-3 h-3 mr-2" />
+          Refresh Data
+        </Button>
+        <Button
+          onClick={() => setStageUpdateDialogOpen(true)}
+          size="sm"
+          className="bg-[#0c9dcb] hover:bg-[#0a87a5] text-xs"
+        >
+          <Edit className="w-3 h-3 mr-2" />
+          Add Production Data
+        </Button>
+      </div>
+    </div>
+  );
   return (
     <div className="space-y-4 md:space-y-6">
       {/* Header */}
@@ -1242,6 +1535,23 @@ export function ProductionTrackingTable() {
             Monitor {getCurrentStageName().toLowerCase()} production progress
             across all manufacturing orders
           </p>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <span>
+              Showing {filteredData.length} of {baseProductionData.length}{" "}
+              records
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={fetchTrackingData}
+              title="Refresh data"
+            >
+              <RefreshCw
+                className={`w-3 h-3 ${loading ? "animate-spin" : ""}`}
+              />
+            </Button>
+          </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <Button variant="outline" size="sm" className="text-xs sm:text-sm">
@@ -1268,9 +1578,9 @@ export function ProductionTrackingTable() {
                 <div key={stage.key} className="flex items-center">
                   <div className="flex flex-col items-center">
                     <button
-                      onClick={() => setActiveStage(stage.key)}
+                      onClick={() => handleDepartmentChange(stage.department)}
                       className={`w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 border-2 rounded-full flex items-center justify-center shadow-sm transition-all duration-200 hover:scale-105 ${
-                        activeStage === stage.key
+                        selectedDepartment === stage.department
                           ? "bg-[#0c9dcb] border-[#0c9dcb] text-white shadow-lg"
                           : `bg-white border-gray-300 ${stage.color} hover:border-[#0c9dcb]`
                       }`}
@@ -1279,7 +1589,7 @@ export function ProductionTrackingTable() {
                     </button>
                     <span
                       className={`text-xs font-medium mt-1 sm:mt-2 text-center transition-colors duration-200 ${
-                        activeStage === stage.key
+                        selectedDepartment === stage.department
                           ? "text-[#0c9dcb] font-semibold"
                           : "text-gray-700"
                       }`}
@@ -1290,8 +1600,11 @@ export function ProductionTrackingTable() {
                   {index < stages.length - 1 && (
                     <div
                       className={`flex-1 h-0.5 mx-1 sm:mx-2 md:mx-3 w-4 sm:w-6 md:w-8 transition-colors duration-200 ${
-                        activeStage === stage.key ||
-                        index < stages.findIndex((s) => s.key === activeStage)
+                        selectedDepartment === stage.department ||
+                        index <
+                          stages.findIndex(
+                            (s) => s.department === selectedDepartment
+                          )
                           ? "bg-[#0c9dcb]"
                           : "bg-gray-300"
                       }`}
@@ -1348,7 +1661,8 @@ export function ProductionTrackingTable() {
             </div>
             {!isMobile && (
               <div className="text-sm text-gray-600">
-                Showing {filteredData.length} of {productionData.length} results
+                Showing {filteredData.length} of {baseProductionData.length}{" "}
+                results
               </div>
             )}
           </div>
@@ -1408,310 +1722,55 @@ export function ProductionTrackingTable() {
       {/* Production Table - Desktop */}
       {!isMobile ? (
         <Card className="shadow-sm border border-gray-200">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left font-medium text-gray-900 sticky left-0 bg-gray-50 z-20 border-r border-gray-200 shadow-sm min-w-[260px]">
-                    <button
-                      onClick={() => handleSort("articleName")}
-                      className="flex items-center gap-1 hover:text-gray-700 text-sm"
-                    >
-                      Product Details
-                      <ArrowUpDown className="w-3 h-3" />
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-900 text-sm min-w-[140px]">
-                    PO Info
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-900 text-sm min-w-[120px]">
-                    MNFC
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-900 text-sm min-w-[110px]">
-                    {getCurrentStageName()} Status
-                  </th>
-                  {/* Dynamic Week Headers */}
-                  {weekData.map((week, index) => (
-                    <React.Fragment key={`week-${week.weekNumber}`}>
-                      <th
-                        className="px-2 py-3 text-center font-medium text-gray-900 border-l border-gray-200 text-xs"
-                        colSpan={week.days.length}
-                      >
-                        {week.label}
-                      </th>
-                      <th className="px-3 py-3 text-center font-medium text-gray-900 bg-green-50 border border-green-200 text-xs min-w-[45px]">
-                        W{week.weekNumber} Total
-                      </th>
-                    </React.Fragment>
-                  ))}
-                  <th className="px-3 py-3 text-center font-medium text-gray-900 bg-blue-50 border border-blue-200 sticky right-0 z-20 shadow-lg text-xs min-w-[45px]">
-                    Monthly Total
-                  </th>
-                </tr>
-                <tr className="border-b border-gray-200 bg-gray-100">
-                  <th className="px-4 py-2 text-xs font-medium text-gray-600 sticky left-0 bg-gray-100 z-20 border-r border-gray-200 shadow-sm"></th>
-                  <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
-                  <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
-                  <th className="px-4 py-2 text-xs font-medium text-gray-600"></th>
-                  {/* <th className="px-4 py-2 text-xs font-medium text-gray-600"></th> */}
-                  {/* Dynamic Day Headers */}
-                  {weekData.map((week) => (
-                    <React.Fragment key={`week-days-${week.weekNumber}`}>
-                      {week.days.map((day) => (
-                        <th
-                          key={`w${week.weekNumber}-${day}`}
-                          className="px-1.5 py-2 text-xs font-medium text-gray-600 text-center min-w-[30px] border-r border-gray-100"
-                        >
-                          {day}
-                        </th>
-                      ))}
-                      <th className="px-2 py-2 text-xs font-medium text-green-700 text-center min-w-[45px] bg-green-50 border border-green-200">
-                        W{week.weekNumber}
-                      </th>
-                    </React.Fragment>
-                  ))}
-                  <th className="px-2 py-2 text-xs font-medium text-blue-700 text-center min-w-[45px] bg-blue-50 border border-blue-200 sticky right-0 z-20 shadow-lg">
-                    Month
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {/* Daily Totals Row - At Top */}
-                <tr className="bg-orange-50 border-t-2 border-orange-200">
-                  <td className="px-4 py-2.5 sticky left-0 bg-orange-50 z-10 border-r border-gray-200 font-semibold text-orange-800 shadow-sm text-sm">
-                    Daily Totals
-                  </td>
-                  <td className="px-4 py-2.5"></td>
-                  <td className="px-4 py-2.5"></td>
-                  {/* <td className="px-4 py-2.5"></td> */}
-                  <td className="px-4 py-2.5 border-r border-gray-200"></td>
-
-                  {/* Dynamic Daily Totals */}
-                  {weekData.map((week) => (
-                    <React.Fragment key={`totals-week-${week.weekNumber}`}>
-                      {week.days.map((day) => {
-                        const year = parseInt(selectedYear);
-                        const month = parseInt(selectedMonth);
-                        const dateKey = `${year}-${month
-                          .toString()
-                          .padStart(2, "0")}-${day
-                          .toString()
-                          .padStart(2, "0")}`;
-                        const dailyTotal = dailyTotals[dateKey] || 0;
-
-                        return (
-                          <td
-                            key={`total-w${week.weekNumber}-${day}`}
-                            className="px-1.5 py-2.5 text-center border-r border-gray-100 bg-orange-50"
-                          >
-                            {dailyTotal > 0 ? (
-                              <span className="text-orange-800 font-semibold text-xs">
-                                {dailyTotal}
-                              </span>
-                            ) : (
-                              <span className="text-orange-400 text-xs">-</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                      {/* Week Total */}
-                      <td className="px-2 py-2.5 text-center bg-green-50 border border-green-200">
-                        <span className="text-green-800 font-semibold text-xs">
-                          {week.days.reduce((sum, day) => {
-                            const year = parseInt(selectedYear);
-                            const month = parseInt(selectedMonth);
-                            const dateKey = `${year}-${month
-                              .toString()
-                              .padStart(2, "0")}-${day
-                              .toString()
-                              .padStart(2, "0")}`;
-                            return sum + (dailyTotals[dateKey] || 0);
-                          }, 0)}
-                        </span>
-                      </td>
-                    </React.Fragment>
-                  ))}
-                  {/* Monthly Total */}
-                  <td className="px-2 py-2.5 text-center bg-blue-50 border border-blue-200 sticky right-0 z-10 shadow-lg">
-                    <span className="text-blue-800 font-bold text-xs">
-                      {Object.values(dailyTotals).reduce(
-                        (sum, total) => sum + total,
-                        0
-                      )}
-                    </span>
-                  </td>
-                </tr>
-
-                {filteredData.map(({ record, dailyProduction }) => {
-                  const weekTotals = weekData.map((week) =>
-                    week.days.reduce((sum, day) => {
-                      const year = parseInt(selectedYear);
-                      const month = parseInt(selectedMonth);
-                      const dateKey = `${year}-${month
-                        .toString()
-                        .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
-                      return sum + (dailyProduction[dateKey] || 0);
-                    }, 0)
-                  );
-                  const monthlyTotal = Object.values(dailyProduction).reduce(
-                    (sum, daily) => sum + daily,
-                    0
-                  );
-                  const stageData = record[activeStage];
-
-                  return (
-                    <tr key={record.id} className="hover:bg-gray-50 group">
-                      {/* Product Details - Sticky Column */}
-                      <td
-                        className="px-4 py-2.5 sticky left-0 bg-white group-hover:bg-gray-50 z-10 border-r border-gray-200 shadow-sm cursor-pointer hover:bg-blue-50 transition-colors duration-200"
-                        onClick={() => setSelectedProductionRecord(record)}
-                      >
-                        <div className="min-w-[260px]">
-                          <div className="font-medium text-gray-900 text-sm">
-                            {record.articleName}
-                          </div>
-                          <div className="text-xs text-gray-600 mt-0.5">
-                            {record.brand} • {record.category}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {record.type} • {record.gender}
-                          </div>
-                          <div className="text-xs text-[#0c9dcb] font-medium mt-1 bg-blue-50 px-2 py-0.5 rounded-md inline-block">
-                            {record.productionId}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* PO Info */}
-                      <td className="px-4 py-2.5">
-                        <div className="min-w-[140px]">
-                          <div className="font-medium text-gray-900 text-sm">
-                            {record.poNumber}
-                          </div>
-                          <div className="text-xs text-gray-600 mt-0.5">
-                            {record.poItems} items
-                          </div>
-                          <div className="text-xs text-blue-600 font-semibold mt-0.5">
-                            {calculateProductionCards(record.id)} cards
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {getMonthName(selectedMonth)} {selectedYear}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* MNFC (Manufacturing Company) */}
-                      <td className="px-4 py-2.5">
-                        <div className="min-w-[120px]">
-                          <div className="font-medium text-gray-900 text-sm">
-                            {record.manufacturingCompany}
-                          </div>
-                          <div className="text-xs text-gray-600 mt-0.5">
-                            Manufacturing
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {record.country}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Stage Status */}
-                      <td className="px-4 py-2.5 border-r border-gray-200">
-                        <div className="min-w-[110px]">
-                          <div className="mb-1">
-                            {getStatusBadge(
-                              stageData.status,
-                              activeStage === "upperREJ"
-                                ? "upperREJ"
-                                : activeStage === "rfd"
-                                ? "rfd"
-                                : "production"
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            {stageData.quantity}/{stageData.planned} units
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                            <div
-                              className="bg-[#0c9dcb] h-1.5 rounded-full"
-                              style={{
-                                width: `${Math.min(
-                                  100,
-                                  (stageData.quantity / stageData.planned) * 100
-                                )}%`,
-                              }}
-                            ></div>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* ADD THIS EMPTY TD TO ALIGN WITH HEADER STRUCTURE */}
-                      {/* <td className="px-4 py-2.5 border-r border-gray-200"></td> */}
-
-                      {/* Dynamic Daily Data */}
-                      {weekData.map((week, weekIndex) => (
-                        <React.Fragment key={`week-data-${week.weekNumber}`}>
-                          {week.days.map((day) => {
-                            const year = parseInt(selectedYear);
-                            const month = parseInt(selectedMonth);
-                            const dateKey = `${year}-${month
-                              .toString()
-                              .padStart(2, "0")}-${day
-                              .toString()
-                              .padStart(2, "0")}`;
-                            const quantity = dailyProduction[dateKey] || 0;
-
-                            return (
-                              <td
-                                key={`w${week.weekNumber}-${day}`}
-                                className="px-1.5 py-2.5 text-center border-r border-gray-100"
-                              >
-                                <div className="min-w-[25px]">
-                                  {quantity > 0 ? (
-                                    <span className="text-gray-900 font-medium text-xs">
-                                      {quantity}
-                                    </span>
-                                  ) : (
-                                    <span className="text-gray-400 text-xs">
-                                      -
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                            );
-                          })}
-                          {/* Week Total */}
-                          <td className="px-2 py-2.5 text-center bg-green-50 border border-green-200">
-                            <span className="text-green-800 font-semibold text-xs">
-                              {weekTotals[weekIndex]}
-                            </span>
-                          </td>
-                        </React.Fragment>
-                      ))}
-
-                      {/* Monthly Total */}
-                      <td className="px-2 py-2.5 text-center bg-blue-50 border border-blue-200 sticky right-0 z-10 shadow-lg">
-                        <span className="text-blue-800 font-bold text-xs">
-                          {monthlyTotal}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-white">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="text-sm text-gray-700">
-                Showing{" "}
-                <span className="font-medium">{filteredData.length}</span> of{" "}
-                <span className="font-medium">{filteredData.length}</span>{" "}
-                results for {getCurrentStageName()}
+          {filteredData.length === 0 ? (
+            <div className="py-12">
+              <EmptyState />
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  {/* Table headers and content */}
+                </table>
               </div>
-              <div className="flex items-center gap-2">
+              {/* Pagination */}
+            </>
+          )}
+        </Card>
+      ) : (
+        /* Mobile View - Cards with ALL Information */
+        <div className="space-y-4">
+          {filteredData.length === 0 ? (
+            <Card className="shadow-sm border border-gray-200">
+              <CardContent className="py-12">
+                <EmptyState />
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Mobile Header Summary */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-medium text-gray-700">
+                  {filteredData.length} Products
+                </div>
+                <div className="text-xs text-gray-500">
+                  {getCurrentStageName()} • {getMonthName(selectedMonth)}{" "}
+                  {selectedYear}
+                </div>
+              </div>
+
+              {/* Mobile Cards */}
+              {filteredData.map(({ record, dailyProduction }, index) => (
+                <MobileProductionCard
+                  key={record.id}
+                  record={record}
+                  dailyProduction={dailyProduction}
+                  index={index}
+                />
+              ))}
+
+              {/* Mobile Pagination */}
+              <div className="flex justify-center items-center gap-2 pt-4">
                 <Button
                   variant="outline"
                   size="sm"
@@ -1720,14 +1779,12 @@ export function ProductionTrackingTable() {
                 >
                   Previous
                 </Button>
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    className="bg-[#0c9dcb] text-white hover:bg-[#0a87a5]"
-                  >
-                    1
-                  </Button>
-                </div>
+                <Button
+                  size="sm"
+                  className="bg-[#0c9dcb] text-white hover:bg-[#0a87a5]"
+                >
+                  1
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1737,58 +1794,8 @@ export function ProductionTrackingTable() {
                   Next
                 </Button>
               </div>
-            </div>
-          </div>
-        </Card>
-      ) : (
-        /* Mobile View - Cards with ALL Information */
-        <div className="space-y-4">
-          {/* Mobile Header Summary */}
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-medium text-gray-700">
-              {filteredData.length} Products
-            </div>
-            <div className="text-xs text-gray-500">
-              {getCurrentStageName()} • {getMonthName(selectedMonth)}{" "}
-              {selectedYear}
-            </div>
-          </div>
-
-          {/* Mobile Cards */}
-          {filteredData.map(({ record, dailyProduction }, index) => (
-            <MobileProductionCard
-              key={record.id}
-              record={record}
-              dailyProduction={dailyProduction}
-              index={index}
-            />
-          ))}
-
-          {/* Mobile Pagination */}
-          <div className="flex justify-center items-center gap-2 pt-4">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled
-              className="text-gray-400"
-            >
-              Previous
-            </Button>
-            <Button
-              size="sm"
-              className="bg-[#0c9dcb] text-white hover:bg-[#0a87a5]"
-            >
-              1
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled
-              className="text-gray-400"
-            >
-              Next
-            </Button>
-          </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1802,9 +1809,8 @@ export function ProductionTrackingTable() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3 sm:gap-6">
                 <div className="w-10 h-10 sm:w-14 sm:h-14 bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg shrink-0">
-                  {stages.find((s) => s.key === activeStage)?.icon || (
-                    <Edit className="w-6 h-6" />
-                  )}
+                  {stages.find((s) => s.department === selectedDepartment)
+                    ?.icon || <Edit className="w-6 h-6" />}
                 </div>
                 <div className="flex-1">
                   <DialogTitle className="text-xl sm:text-2xl md:text-3xl font-semibold text-gray-900 mb-1 sm:mb-2">
@@ -1883,7 +1889,8 @@ export function ProductionTrackingTable() {
                   <TabsContent value="item-details" className="mt-4 sm:mt-6">
                     <div className="grid grid-cols-1 gap-3 sm:gap-4">
                       {filteredProductsForUpdate.map((record) => {
-                        const stageData = record[activeStage];
+                        const stageData =
+                          record[selectedDepartment as ProductionStage];
                         const currentEntry = updateEntries[record.id] || {
                           quantity: 0,
                           remarks: "",
@@ -1938,9 +1945,9 @@ export function ProductionTrackingTable() {
                                 <div className="space-y-1">
                                   {getStatusBadge(
                                     stageData.status,
-                                    activeStage === "upperREJ"
+                                    selectedDepartment === "upperREJ"
                                       ? "upperREJ"
-                                      : activeStage === "rfd"
+                                      : selectedDepartment === "rfd"
                                       ? "rfd"
                                       : "production"
                                   )}
@@ -2505,8 +2512,8 @@ export function ProductionTrackingTable() {
                             key={stage.key}
                             className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5 hover:border-[#0c9dcb] hover:shadow-md transition-all duration-200 cursor-pointer group"
                             onClick={() => {
-                              // Set the active stage to the clicked stage
-                              setActiveStage(stage.key);
+                              // Set the selected department to the clicked stage's department
+                              setSelectedDepartment(stage.department);
 
                               // Prepare product data for the ItemCuttingDialog
                               setSelectedProductForCutting({
@@ -2680,7 +2687,7 @@ export function ProductionTrackingTable() {
         open={itemCuttingDialogOpen}
         onOpenChange={setItemCuttingDialogOpen}
         productData={selectedProductForCutting}
-        stage={activeStage}
+        stage={selectedDepartment as ProductionStage}
       />
     </div>
   );
