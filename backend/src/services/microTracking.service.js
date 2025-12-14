@@ -66,18 +66,79 @@ export async function getMicroTrackingByProject(projectId) {
 /* ----------------------------------------------------
    3) UPDATE full row
 ---------------------------------------------------- */
-export async function updateMicroTracking(id, payload) {
-  return await MicroTracking.findByIdAndUpdate(
+export async function updateMicroTracking(id, payload, updatedBy = "system") {
+  const row = await MicroTracking.findById(id);
+  if (!row) throw new Error("Row not found");
+
+  const updates = {};
+  const historyEntry = {
+    date: new Date(),
+    updatedBy,
+    changes: []
+  };
+
+  // --------------------------
+  // 1️⃣ Update progressDone
+  // --------------------------
+  if (payload.progressDone !== undefined) {
+    historyEntry.changes.push({
+      field: "progressDone",
+      from: row.progressDone,
+      to: Number(payload.progressDone)
+    });
+    updates.progressDone = Number(payload.progressDone);
+  }
+
+  // --------------------------
+  // 2️⃣ Update progressToday
+  // --------------------------
+  if (payload.progressToday !== undefined) {
+    historyEntry.changes.push({
+      field: "progressToday",
+      from: row.progressToday,
+      to: Number(payload.progressToday)
+    });
+    updates.progressToday = Number(payload.progressToday);
+  }
+
+  // --------------------------
+  // 3️⃣ Update Department
+  // --------------------------
+  const VALID_DEPTS = [
+    "cutting", "printing", "upper",
+    "upper_rej", "assembly", "packing",
+    "rfd", "unknown"
+  ];
+
+  if (payload.department && VALID_DEPTS.includes(payload.department)) {
+    historyEntry.changes.push({
+      field: "department",
+      from: row.department,
+      to: payload.department
+    });
+    updates.department = payload.department;
+  }
+
+  updates.updatedAt = new Date();
+
+  // --------------------------
+  // 4️⃣ Save update + push history
+//   --------------------------
+  const updated = await MicroTracking.findByIdAndUpdate(
     id,
     {
-      $set: {
-        progressDone: payload.progressDone ?? 0,
-        progressToday: payload.progressToday ?? 0,
-        updatedAt: new Date()
-      }
+      $set: updates,
+      $push: { history: historyEntry }
     },
     { new: true }
-  );
+  )
+    .populate({
+      path: "cardId",
+      select: "cardNumber productName cardQuantity stage assignedPlant"
+    })
+    .lean();
+
+  return updated;
 }
 
 /* ----------------------------------------------------

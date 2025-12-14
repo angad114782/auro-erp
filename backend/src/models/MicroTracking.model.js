@@ -23,14 +23,27 @@ const MicroTrackingSchema = new mongoose.Schema(
 
     // ⭐ NEW FIELD
     history: [
+  {
+    date: { type: Date, default: Date.now },
+
+    // For progressToday auto-add (old logic)
+    addedToday: Number,
+    previousDone: Number,
+    newDone: Number,
+
+    // For ANY update (dept / overwrite / multiple fields)
+    changes: [
       {
-        date: { type: Date, default: Date.now },
-        addedToday: Number,
-        previousDone: Number,
-        newDone: Number,
-        updatedBy: { type: String, default: "system" }
+        field: String,
+        from: mongoose.Schema.Types.Mixed,
+        to: mongoose.Schema.Types.Mixed
       }
-    ]
+    ],
+
+    updatedBy: { type: String, default: "system" }
+  }
+]
+
   },
   { timestamps: true }
 );
