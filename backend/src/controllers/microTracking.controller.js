@@ -101,3 +101,21 @@ export async function trackingDashboardController(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+
+export async function trackingDashboardDepartmentController(req, res) {
+  try {
+    const { dept, month, year } = req.query;
+
+    if (!dept) return res.status(400).json({ error: "dept is required" });
+    if (!month || !year)
+      return res.status(400).json({ error: "month & year required" });
+
+    const data = await service.getTrackingDashboardByDepartment(dept, month, year);
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error("trackingDashboardDepartment error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}

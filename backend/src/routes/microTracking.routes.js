@@ -20,6 +20,7 @@ router.put(
 );
 
 router.get("/tracking/dashboard", ctrl.trackingDashboardController);
+router.get("/tracking/dashboard/department", ctrl.trackingDashboardDepartmentController);
 
 
 

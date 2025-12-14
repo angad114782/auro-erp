@@ -352,3 +352,96 @@ export async function getTrackingDashboard(month, year) {
 
   return response;
 }
+
+export async function getTrackingDashboardByDepartment(dept, month, year) {
+
+  const m = Number(month);
+  const y = Number(year);
+
+  const start = new Date(y, m - 1, 1);
+  const end = new Date(y, m, 0, 23, 59, 59);
+
+  // STEP 1 → Find all projects that have microtracking rows in this DEPARTMENT
+  const activeProjectIds = await MicroTracking.distinct("projectId", { department: dept });
+
+  if (activeProjectIds.length === 0) return [];
+
+  // STEP 2 → Populate full project details
+  const projects = await Project.find({ _id: { $in: activeProjectIds } })
+    .populate("brand", "name")
+    .populate("country", "name")
+    .populate("assignPerson", "name email mobile")
+    .lean();
+
+  const response = [];
+
+  for (const p of projects) {
+    // STEP 3 → Get PO details
+    const po = await PoDetails.findOne({ project: p._id }).lean();
+
+    // STEP 4 → Get cards of project
+    const cards = await PCProductionCard.find({ projectId: p._id })
+      .populate("assignedPlant", "name")
+      .lean();
+
+    // STEP 5 → Get department specific microtracking rows
+    const microRows = await MicroTracking.find({
+      projectId: p._id,
+      department: dept
+    }).lean();
+
+    // Prepare result structure
+    const data = {
+      daily: {},
+      weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 },
+      monthTotal: 0
+    };
+
+    // STEP 6 → Loop through all histories
+    for (const row of microRows) {
+      for (const h of row.history || []) {
+        if (!h.addedToday) continue;
+
+        const d = new Date(h.date);
+        if (d < start || d > end) continue;
+
+        const day = d.getDate();
+        const added = Number(h.addedToday || 0);
+
+        const week =
+          day <= 7 ? "W1" :
+          day <= 14 ? "W2" :
+          day <= 21 ? "W3" :
+          day <= 28 ? "W4" : "W5";
+
+        // Daily
+        data.daily[day] = (data.daily[day] || 0) + added;
+        // Weekly
+        data.weekly[week] += added;
+        // Monthly
+        data.monthTotal += added;
+      }
+    }
+
+    response.push({
+      projectId: p._id,
+      autoCode: p.autoCode,
+      artName: p.artName,
+      size: p.size,
+      color: p.color,
+      gender: p.gender,
+      assignPerson: p.assignPerson,
+
+      brand: p.brand,
+      country: p.country,
+
+      poDetails: po || {},
+      cards,
+      department: dept,
+
+      summary: data
+    });
+  }
+
+  return response;
+}
