@@ -350,6 +350,9 @@ export default function ProjectListCard() {
       green_seal: "bg-green-100 text-green-800",
       po_pending: "bg-orange-100 text-orange-800",
       po_approved: "bg-blue-100 text-blue-800",
+      production_planning: "bg-blue-100 text-blue-800",
+      delivery_pending: "bg-blue-100 text-blue-800",
+      delivered: "bg-blue-100 text-blue-800",
     };
     return statusMap[status] || "bg-gray-100 text-gray-800";
   };

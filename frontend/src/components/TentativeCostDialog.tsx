@@ -65,6 +65,8 @@ export interface CostItem {
   createdAt?: string;
   updatedAt?: string;
   isNew?: boolean; // Flag for newly created dummy items
+  isModified?: boolean; // Track if item has been modified locally
+  pendingDepartment?: string; // Track department selected before saving
 }
 
 // Labour cost interface matching backend
@@ -75,7 +77,9 @@ export interface LabourCost {
     name: string;
     cost: number;
     isNew?: boolean;
+    isModified?: boolean; // Track if item has been modified locally
   }>;
+  isModified?: boolean; // Track if labour data has been modified
 }
 
 // Cost summary interface matching backend
@@ -170,6 +174,8 @@ const getEmptyDummyRows = (count: number, category: string): CostItem[] => {
     consumption: 0,
     cost: 0,
     isNew: true,
+    isModified: false,
+    pendingDepartment: "",
   }));
 };
 
@@ -179,6 +185,7 @@ const getEmptyLabourItems = (count: number) => {
     name: "",
     cost: 0,
     isNew: true,
+    isModified: false,
   }));
 };
 
@@ -414,19 +421,21 @@ const AddNewItemDialog = ({
   );
 };
 
-// Stage Selector Component
+// Stage Selector Component - UPDATED
 const StageSelector = ({
   itemId,
   category,
   onStageSelect,
   currentDepartment = "",
   isMobile = false,
+  isSavedItem = false,
 }: {
   itemId: string;
   category: string;
   onStageSelect: (itemId: string, department: string) => void;
   currentDepartment?: string;
   isMobile?: boolean;
+  isSavedItem?: boolean;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -441,7 +450,12 @@ const StageSelector = ({
   const handleStageSelect = (department: string, label: string) => {
     setIsOpen(false);
     onStageSelect(itemId, department);
-    toast.success(`Item will advance to ${label}`);
+
+    if (!isSavedItem) {
+      toast.success(`Department will be saved when item is saved`);
+    } else {
+      toast.success(`Item assigned to ${label} department`);
+    }
   };
 
   if (isMobile) {
@@ -575,7 +589,9 @@ const StageSelector = ({
                 Select Department
               </div>
               <div className="text-xs text-gray-500 mt-1">
-                Item will be tagged for this department
+                {isSavedItem
+                  ? "Item will be tagged for this department"
+                  : "Department will be saved when item is saved"}
               </div>
             </div>
 
@@ -614,7 +630,7 @@ const StageSelector = ({
   );
 };
 
-// Cost Category Card Component
+// Cost Category Card Component - UPDATED
 const CostCategoryCard = ({
   title,
   category,
@@ -627,6 +643,8 @@ const CostCategoryCard = ({
   onStageSelect,
   color = "orange",
   isMobile = false,
+  hasUnsavedChanges = false,
+  onSaveCategory,
 }: {
   title: string;
   category: string;
@@ -639,6 +657,8 @@ const CostCategoryCard = ({
   onStageSelect: (itemId: string, department: string) => void;
   color?: "orange" | "purple" | "teal" | "rose" | "gray" | "amber";
   isMobile?: boolean;
+  hasUnsavedChanges?: boolean;
+  onSaveCategory?: () => Promise<void>;
 }) => {
   const colorClasses = useMemo(
     () => ({
@@ -649,6 +669,7 @@ const CostCategoryCard = ({
         button: "text-orange-600 border-orange-200 hover:bg-orange-50",
         total: "bg-orange-50 text-orange-900",
         badge: "bg-orange-100 text-orange-700 border-orange-300",
+        saveButton: "bg-orange-600 hover:bg-orange-700",
       },
       purple: {
         border: "border-purple-200",
@@ -657,6 +678,7 @@ const CostCategoryCard = ({
         button: "text-purple-600 border-purple-200 hover:bg-purple-50",
         total: "bg-purple-50 text-purple-900",
         badge: "bg-purple-100 text-purple-700 border-purple-300",
+        saveButton: "bg-purple-600 hover:bg-purple-700",
       },
       teal: {
         border: "border-teal-200",
@@ -665,6 +687,7 @@ const CostCategoryCard = ({
         button: "text-teal-600 border-teal-200 hover:bg-teal-50",
         total: "bg-teal-50 text-teal-900",
         badge: "bg-teal-100 text-teal-700 border-teal-300",
+        saveButton: "bg-teal-600 hover:bg-teal-700",
       },
       rose: {
         border: "border-rose-200",
@@ -673,6 +696,7 @@ const CostCategoryCard = ({
         button: "text-rose-600 border-rose-200 hover:bg-rose-50",
         total: "bg-rose-50 text-rose-900",
         badge: "bg-rose-100 text-rose-700 border-rose-300",
+        saveButton: "bg-rose-600 hover:bg-rose-700",
       },
       gray: {
         border: "border-gray-200",
@@ -681,6 +705,7 @@ const CostCategoryCard = ({
         button: "text-gray-600 border-gray-200 hover:bg-gray-50",
         total: "bg-gray-50 text-gray-900",
         badge: "bg-gray-100 text-gray-700 border-gray-300",
+        saveButton: "bg-gray-600 hover:bg-gray-700",
       },
       amber: {
         border: "border-amber-200",
@@ -689,6 +714,7 @@ const CostCategoryCard = ({
         button: "text-amber-600 border-amber-200 hover:bg-amber-50",
         total: "bg-amber-50 text-amber-900",
         badge: "bg-amber-100 text-amber-700 border-amber-300",
+        saveButton: "bg-amber-600 hover:bg-amber-700",
       },
     }),
     []
@@ -708,10 +734,24 @@ const CostCategoryCard = ({
   const renderMobileView = () => (
     <Card className={`border-2 ${currentColor.border}`}>
       <CardHeader className={currentColor.header}>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Calculator className={`w-4 h-4 ${currentColor.icon}`} />
-          {title}
-        </CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Calculator className={`w-4 h-4 ${currentColor.icon}`} />
+            {title}
+          </CardTitle>
+          {hasUnsavedChanges &&
+            onSaveCategory &&
+            ["upper", "component"].includes(category) && (
+              <Button
+                size="sm"
+                onClick={onSaveCategory}
+                className={`${currentColor.saveButton} h-7 px-3 text-xs`}
+              >
+                <Save className="w-3 h-3 mr-1" />
+                Save
+              </Button>
+            )}
+        </div>
       </CardHeader>
       <CardContent className="p-3">
         <div className="space-y-4">
@@ -766,18 +806,26 @@ const CostCategoryCard = ({
                         itemId={item._id}
                         category={category}
                         onStageSelect={onStageSelect}
-                        currentDepartment={item.department || ""}
+                        currentDepartment={
+                          item.department || item.pendingDepartment || ""
+                        }
                         isMobile={isMobile}
+                        isSavedItem={!item.isNew}
                       />
                     </div>
-                    {item.department && (
+                    {(item.department || item.pendingDepartment) && (
                       <div className="mt-1 flex justify-center">
                         <Badge
                           variant="outline"
                           className={`text-[10px] px-1.5 py-0 h-4 ${currentColor.badge}`}
                         >
-                          {STAGES.find((s) => s.value === item.department)
-                            ?.label || item.department}
+                          {STAGES.find(
+                            (s) =>
+                              s.value ===
+                              (item.department || item.pendingDepartment)
+                          )?.label ||
+                            item.department ||
+                            item.pendingDepartment}
                         </Badge>
                       </div>
                     )}
@@ -851,10 +899,24 @@ const CostCategoryCard = ({
   const renderDesktopView = () => (
     <Card className={`border-2 ${currentColor.border} h-[500px] flex flex-col`}>
       <CardHeader className={currentColor.header}>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Calculator className={`w-5 h-5 ${currentColor.icon}`} />
-          {title}
-        </CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Calculator className={`w-5 h-5 ${currentColor.icon}`} />
+            {title}
+          </CardTitle>
+          {hasUnsavedChanges &&
+            onSaveCategory &&
+            ["upper", "component"].includes(category) && (
+              <Button
+                size="sm"
+                onClick={onSaveCategory}
+                className={`${currentColor.saveButton}`}
+              >
+                <Save className="w-4 h-4 mr-2" />
+                Save {title}
+              </Button>
+            )}
+        </div>
       </CardHeader>
       <CardContent className="p-4 flex-1 flex flex-col">
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -938,15 +1000,23 @@ const CostCategoryCard = ({
                       itemId={item._id}
                       category={category}
                       onStageSelect={onStageSelect}
-                      currentDepartment={item.department || ""}
+                      currentDepartment={
+                        item.department || item.pendingDepartment || ""
+                      }
+                      isSavedItem={!item.isNew}
                     />
-                    {item.department && (
+                    {(item.department || item.pendingDepartment) && (
                       <Badge
                         variant="outline"
                         className={`text-xs px-2 py-0 h-5 ${currentColor.badge}`}
                       >
-                        {STAGES.find((s) => s.value === item.department)
-                          ?.label || item.department}
+                        {STAGES.find(
+                          (s) =>
+                            s.value ===
+                            (item.department || item.pendingDepartment)
+                        )?.label ||
+                          item.department ||
+                          item.pendingDepartment}
                       </Badge>
                     )}
                   </div>
@@ -1002,44 +1072,76 @@ const MobileLabourCostCard = ({
   onDeleteLabourItem,
   onAddItem,
   isLoading = false,
+  onSaveLabour,
+  hasUnsavedChanges = false,
 }: {
   labourCost: LabourCost;
   onUpdateLabour: (updates: Partial<LabourCost>) => void;
   onDeleteLabourItem: (itemId: string) => void;
   onAddItem: () => void;
   isLoading?: boolean;
+  onSaveLabour: () => Promise<void>;
+  hasUnsavedChanges?: boolean;
 }) => {
-  const [localLabourCost, setLocalLabourCost] =
-    useState<LabourCost>(labourCost);
-
-  // Update local state when prop changes
-  useEffect(() => {
-    setLocalLabourCost(labourCost);
-  }, [labourCost]);
-
-  // Debounced update function
   const handleDirectTotalChange = useCallback(
     (value: number) => {
       const newValue = Number(value) || 0;
-      setLocalLabourCost((prev) => ({ ...prev, directTotal: newValue }));
-
-      // Debounce the API call
-      const timeoutId = setTimeout(() => {
-        onUpdateLabour({ directTotal: newValue });
-      }, 500);
-
-      return () => clearTimeout(timeoutId);
+      onUpdateLabour({ directTotal: newValue, isModified: true });
     },
     [onUpdateLabour]
+  );
+
+  const handleItemNameChange = useCallback(
+    (itemId: string, name: string) => {
+      onUpdateLabour({
+        items: labourCost.items.map((item) =>
+          item._id === itemId ? { ...item, name, isModified: true } : item
+        ),
+        isModified: true,
+      });
+    },
+    [onUpdateLabour, labourCost.items]
+  );
+
+  const handleItemCostChange = useCallback(
+    (itemId: string, cost: number) => {
+      const newCost = Number(cost) || 0;
+      onUpdateLabour({
+        items: labourCost.items.map((item) =>
+          item._id === itemId
+            ? { ...item, cost: newCost, isModified: true }
+            : item
+        ),
+        isModified: true,
+      });
+    },
+    [onUpdateLabour, labourCost.items]
   );
 
   return (
     <Card className="border-2 border-amber-200">
       <CardHeader className="bg-amber-50">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Calculator className="w-4 h-4 text-amber-600" />
-          Labour Cost + OH
-        </CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Calculator className="w-4 h-4 text-amber-600" />
+            Labour Cost + OH
+          </CardTitle>
+          {hasUnsavedChanges && (
+            <Button
+              size="sm"
+              onClick={onSaveLabour}
+              disabled={isLoading}
+              className="bg-amber-600 hover:bg-amber-700 h-7 px-3 text-xs"
+            >
+              {isLoading ? (
+                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+              ) : (
+                <Save className="w-3 h-3 mr-1" />
+              )}
+              Save
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="p-3">
         <div className="space-y-4">
@@ -1054,7 +1156,7 @@ const MobileLabourCostCard = ({
                   type="number"
                   step="0.01"
                   min="0"
-                  value={localLabourCost.directTotal || 0}
+                  value={labourCost.directTotal || 0}
                   onChange={(e) =>
                     handleDirectTotalChange(Number(e.target.value) || 0)
                   }
@@ -1069,7 +1171,7 @@ const MobileLabourCostCard = ({
           </div>
 
           <div className="space-y-3">
-            {localLabourCost.items.map((item) => (
+            {labourCost.items.map((item) => (
               <div
                 key={item._id}
                 className="flex items-center justify-between border-b border-amber-100 pb-2"
@@ -1077,22 +1179,9 @@ const MobileLabourCostCard = ({
                 <div className="flex-1">
                   <Input
                     value={item.name || ""}
-                    onChange={(e) => {
-                      const updatedItems = localLabourCost.items.map(
-                        (labourItem) =>
-                          labourItem._id === item._id
-                            ? {
-                                ...labourItem,
-                                name: e.target.value,
-                              }
-                            : labourItem
-                      );
-                      setLocalLabourCost((prev) => ({
-                        ...prev,
-                        items: updatedItems,
-                      }));
-                      onUpdateLabour({ items: updatedItems });
-                    }}
+                    onChange={(e) =>
+                      handleItemNameChange(item._id, e.target.value)
+                    }
                     disabled={isLoading}
                     placeholder="Labour item name"
                     className="text-sm h-8"
@@ -1106,22 +1195,12 @@ const MobileLabourCostCard = ({
                       step="0.01"
                       min="0"
                       value={item.cost || 0}
-                      onChange={(e) => {
-                        const updatedItems = localLabourCost.items.map(
-                          (labourItem) =>
-                            labourItem._id === item._id
-                              ? {
-                                  ...labourItem,
-                                  cost: Number(e.target.value) || 0,
-                                }
-                              : labourItem
-                        );
-                        setLocalLabourCost((prev) => ({
-                          ...prev,
-                          items: updatedItems,
-                        }));
-                        onUpdateLabour({ items: updatedItems });
-                      }}
+                      onChange={(e) =>
+                        handleItemCostChange(
+                          item._id,
+                          Number(e.target.value) || 0
+                        )
+                      }
                       disabled={isLoading}
                       className="pl-7 text-sm h-8 w-24"
                       placeholder="0.00"
@@ -1160,7 +1239,7 @@ const MobileLabourCostCard = ({
                 Total Labour Cost:
               </span>
               <span className="text-base font-bold text-amber-900">
-                ₹{(localLabourCost.directTotal || 0).toFixed(2)}
+                ₹{(labourCost.directTotal || 0).toFixed(2)}
               </span>
             </div>
           </div>
@@ -1177,57 +1256,81 @@ const DesktopLabourCostCard = ({
   onDeleteLabourItem,
   onAddItem,
   isLoading = false,
+  onSaveLabour,
+  hasUnsavedChanges = false,
 }: {
   labourCost: LabourCost;
   onUpdateLabour: (updates: Partial<LabourCost>) => void;
   onDeleteLabourItem: (itemId: string) => void;
   onAddItem: () => void;
   isLoading?: boolean;
+  onSaveLabour: () => Promise<void>;
+  hasUnsavedChanges?: boolean;
 }) => {
-  const [localLabourCost, setLocalLabourCost] =
-    useState<LabourCost>(labourCost);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Update local state when prop changes
-  useEffect(() => {
-    setLocalLabourCost(labourCost);
-  }, [labourCost]);
-
-  // Debounced update function for directTotal
   const handleDirectTotalChange = useCallback(
     (value: number) => {
       const newValue = Number(value) || 0;
-      setLocalLabourCost((prev) => ({ ...prev, directTotal: newValue }));
-
-      // Clear existing timeout
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-
-      // Set new timeout for API call
-      debounceTimeoutRef.current = setTimeout(() => {
-        onUpdateLabour({ directTotal: newValue });
-      }, 800);
+      onUpdateLabour({ directTotal: newValue, isModified: true });
     },
     [onUpdateLabour]
   );
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-    };
-  }, []);
+  const handleItemNameChange = useCallback(
+    (itemId: string, name: string) => {
+      onUpdateLabour({
+        items: labourCost.items.map((item) =>
+          item._id === itemId ? { ...item, name, isModified: true } : item
+        ),
+        isModified: true,
+      });
+    },
+    [onUpdateLabour, labourCost.items]
+  );
+
+  const handleItemCostChange = useCallback(
+    (itemId: string, cost: number) => {
+      const newCost = Number(cost) || 0;
+      onUpdateLabour({
+        items: labourCost.items.map((item) =>
+          item._id === itemId
+            ? { ...item, cost: newCost, isModified: true }
+            : item
+        ),
+        isModified: true,
+      });
+    },
+    [onUpdateLabour, labourCost.items]
+  );
 
   return (
     <Card className="border-2 border-amber-200 h-[500px] flex flex-col">
       <CardHeader className="bg-amber-50">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Calculator className="w-5 h-5 text-amber-600" />
-          Labour Cost + OH Breakdown
-        </CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Calculator className="w-5 h-5 text-amber-600" />
+            Labour Cost + OH Breakdown
+          </CardTitle>
+          {hasUnsavedChanges && (
+            <Button
+              size="sm"
+              onClick={onSaveLabour}
+              disabled={isLoading}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Labour
+                </>
+              )}
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="p-4 flex-1 flex flex-col">
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -1242,7 +1345,7 @@ const DesktopLabourCostCard = ({
                   type="number"
                   step="0.01"
                   min="0"
-                  value={localLabourCost.directTotal || 0}
+                  value={labourCost.directTotal || 0}
                   onChange={(e) =>
                     handleDirectTotalChange(Number(e.target.value) || 0)
                   }
@@ -1261,7 +1364,7 @@ const DesktopLabourCostCard = ({
           </h4>
 
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-amber-300 scrollbar-track-amber-100 space-y-3 pr-2">
-            {localLabourCost.items.map((item) => (
+            {labourCost.items.map((item) => (
               <div
                 key={item._id}
                 className="grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b border-amber-100 pb-3 group hover:bg-amber-50/50 px-2 -mx-2 rounded transition-colors"
@@ -1269,22 +1372,9 @@ const DesktopLabourCostCard = ({
                 <div>
                   <Input
                     value={item.name || ""}
-                    onChange={(e) => {
-                      const updatedItems = localLabourCost.items.map(
-                        (labourItem) =>
-                          labourItem._id === item._id
-                            ? {
-                                ...labourItem,
-                                name: e.target.value,
-                              }
-                            : labourItem
-                      );
-                      setLocalLabourCost((prev) => ({
-                        ...prev,
-                        items: updatedItems,
-                      }));
-                      onUpdateLabour({ items: updatedItems });
-                    }}
+                    onChange={(e) =>
+                      handleItemNameChange(item._id, e.target.value)
+                    }
                     disabled={isLoading}
                     placeholder="Labour item name"
                     className="text-sm h-9"
@@ -1297,22 +1387,12 @@ const DesktopLabourCostCard = ({
                     step="0.01"
                     min="0"
                     value={item.cost || 0}
-                    onChange={(e) => {
-                      const updatedItems = localLabourCost.items.map(
-                        (labourItem) =>
-                          labourItem._id === item._id
-                            ? {
-                                ...labourItem,
-                                cost: Number(e.target.value) || 0,
-                              }
-                            : labourItem
-                      );
-                      setLocalLabourCost((prev) => ({
-                        ...prev,
-                        items: updatedItems,
-                      }));
-                      onUpdateLabour({ items: updatedItems });
-                    }}
+                    onChange={(e) =>
+                      handleItemCostChange(
+                        item._id,
+                        Number(e.target.value) || 0
+                      )
+                    }
                     disabled={isLoading}
                     className="pl-8 text-sm h-9"
                     placeholder="0.00"
@@ -1351,7 +1431,7 @@ const DesktopLabourCostCard = ({
                   Total Labour Cost:
                 </span>
                 <span className="text-lg font-bold text-amber-900">
-                  ₹{(localLabourCost.directTotal || 0).toFixed(2)}
+                  ₹{(labourCost.directTotal || 0).toFixed(2)}
                 </span>
               </div>
             </div>
@@ -1375,6 +1455,15 @@ export function TentativeCostDialog({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [dataLoaded, setDataLoaded] = useState<boolean>(false);
   const [isSavingLabour, setIsSavingLabour] = useState<boolean>(false);
+  const [isSavingCategory, setIsSavingCategory] = useState<
+    Record<string, boolean>
+  >({
+    upper: false,
+    component: false,
+    material: false,
+    packaging: false,
+    miscellaneous: false,
+  });
 
   // State management
   const [costRows, setCostRows] = useState<Record<string, CostItem[]>>({
@@ -1388,6 +1477,7 @@ export function TentativeCostDialog({
   const [labourCost, setLabourCost] = useState<LabourCost>({
     directTotal: 0,
     items: [],
+    isModified: false,
   });
 
   const [costSummary, setCostSummary] = useState<CostSummary>({
@@ -1454,6 +1544,16 @@ export function TentativeCostDialog({
       setRealTimeSummary(null);
       setActiveMobileCategory("upper");
       setIsSavingLabour(false);
+      // Reset labour modified state
+      setLabourCost((prev) => ({ ...prev, isModified: false }));
+      // Reset saving states
+      setIsSavingCategory({
+        upper: false,
+        component: false,
+        material: false,
+        packaging: false,
+        miscellaneous: false,
+      });
     }
   }, [open]);
 
@@ -1586,6 +1686,8 @@ export function TentativeCostDialog({
           _id: item._id || `labour_${Date.now()}_${Math.random()}`,
           name: item.name || "",
           cost: Number(item.cost) || 0,
+          isNew: false,
+          isModified: false,
         }));
       }
 
@@ -1599,6 +1701,7 @@ export function TentativeCostDialog({
       setLabourCost({
         directTotal: Number(labourData?.directTotal) || 0,
         items: [...labourItems, ...labourDummyItems],
+        isModified: false,
       });
 
       setDataLoaded(true);
@@ -1619,6 +1722,7 @@ export function TentativeCostDialog({
       setLabourCost({
         directTotal: 0,
         items: getEmptyLabourItems(TOTAL_ROWS_PER_CATEGORY),
+        isModified: false,
       });
 
       setDataLoaded(true);
@@ -1662,6 +1766,8 @@ export function TentativeCostDialog({
     cost: Number(item.cost) || 0,
     department: item.department || "",
     isNew: false,
+    isModified: false,
+    pendingDepartment: "",
   });
 
   const formatCurrency = useCallback((amount: number) => {
@@ -1684,12 +1790,26 @@ export function TentativeCostDialog({
       setCostRows((prev) => ({
         ...prev,
         [category]: prev[category].map((item) =>
-          item._id === itemId ? { ...item, [field]: value } : item
+          item._id === itemId
+            ? { ...item, [field]: value, isModified: true }
+            : item
         ),
       }));
     },
     []
   );
+  const calculateCategoryTotal = (items: CostItem[] = []) => {
+    return items.reduce((sum, item) => {
+      if (
+        item.item?.trim() ||
+        Number(item.cost) > 0 ||
+        Number(item.consumption) > 0
+      ) {
+        return sum + (Number(item.cost) || 0);
+      }
+      return sum;
+    }, 0);
+  };
 
   const updateLocalConsumption = useCallback(
     (category: string, itemId: string, consumption: number) => {
@@ -1874,7 +1994,21 @@ export function TentativeCostDialog({
     },
     [costRows]
   );
+  const loadSummary = useCallback(async () => {
+    if (!project) return;
 
+    try {
+      const response = await api.get(`/projects/${project._id}/costs`);
+      const summaryData = response.data.summary || response.data;
+
+      if (summaryData) {
+        setCostSummary(processSummaryData(summaryData));
+        setRealTimeSummary(null);
+      }
+    } catch (error) {
+      console.error("Failed to load summary:", error);
+    }
+  }, [project]);
   const deleteItem = useCallback(
     async (itemId: string) => {
       if (!project) return;
@@ -1920,37 +2054,12 @@ export function TentativeCostDialog({
     [project, findItemSection, costRows, maintainFiveRowsPerCategory]
   );
 
+  // UPDATED: Set department for an item - works for both saved and unsaved items
   const setItemDepartment = useCallback(
     async (itemId: string, department: string) => {
-      if (!project) return;
-
-      // Find the item and check if it's saved
-      const section = findItemSection(itemId);
-      const item = costRows[section]?.find((item) => item._id === itemId);
-      const isDummyItem = item?.isNew;
-      const hasRequiredFields =
-        item?.item?.trim() && (item?.cost > 0 || item?.consumption > 0);
-
-      if (isDummyItem && !hasRequiredFields) {
-        // For unsaved (dummy) items that don't have required fields, show warning
-        toast.warning(
-          "Please fill in item details before assigning department",
-          {
-            description:
-              "Enter item name and cost/consumption, then save before assigning department.",
-            duration: 5000,
-          }
-        );
-
-        // Still update UI locally so user can see their selection
-        setCostRows((prev) => ({
-          ...prev,
-          [section]: prev[section].map((item) =>
-            item._id === itemId ? { ...item, department } : item
-          ),
-        }));
-        return;
-      }
+      const section = Object.keys(costRows).find((cat) =>
+        costRows[cat].some((item) => item._id === itemId)
+      );
 
       if (!section || !["upper", "component"].includes(section)) {
         toast.error(
@@ -1959,34 +2068,154 @@ export function TentativeCostDialog({
         return;
       }
 
-      try {
-        // If it's a dummy item with required fields, save it first
-        if (isDummyItem && hasRequiredFields) {
-          await handleAddItemFromExisting(itemId, section, item);
+      // Update locally - store as pendingDepartment for unsaved items
+      setCostRows((prev) => ({
+        ...prev,
+        [section]: prev[section].map((item) =>
+          item._id === itemId
+            ? item.isNew
+              ? { ...item, pendingDepartment: department, isModified: true }
+              : { ...item, department, isModified: true }
+            : item
+        ),
+      }));
+
+      // If it's a saved item, update immediately on backend
+      const item = costRows[section]?.find((item) => item._id === itemId);
+      if (item && !item.isNew) {
+        try {
+          await api.patch(
+            `/projects/${project._id}/costs/${section}/${itemId}/department`,
+            { department }
+          );
+
+          const stageLabel =
+            STAGES.find((s) => s.value === department)?.label || department;
+          toast.success(`Item assigned to ${stageLabel} department`);
+        } catch (error) {
+          console.error("Failed to update department:", error);
+          toast.error("Failed to update department");
         }
-
-        // Now update the department
-        await api.patch(
-          `/projects/${project._id}/costs/${section}/${itemId}/department`,
-          { department }
-        );
-
-        setCostRows((prev) => ({
-          ...prev,
-          [section]: prev[section].map((item) =>
-            item._id === itemId ? { ...item, department } : item
-          ),
-        }));
-
-        const stageLabel =
-          STAGES.find((s) => s.value === department)?.label || department;
-        toast.success(`Department updated to ${stageLabel}`);
-      } catch (error) {
-        console.error("Failed to update department:", error);
-        toast.error("Failed to update department");
       }
     },
-    [project, findItemSection, costRows]
+    [project, costRows]
+  );
+
+  // NEW: Save a specific category including all pending departments
+  const handleSaveCategory = useCallback(
+    async (category: string) => {
+      if (!project) return;
+
+      setIsSavingCategory((prev) => ({ ...prev, [category]: true }));
+
+      try {
+        const itemsToSave = costRows[category].filter(
+          (item) =>
+            item.isModified ||
+            (item.isNew &&
+              (item.item.trim() || item.cost > 0 || item.consumption > 0))
+        );
+
+        const savePromises: Promise<any>[] = [];
+
+        itemsToSave.forEach((item) => {
+          if (item.isNew) {
+            // Save new item with department if selected
+            const payload = {
+              item: item.item.trim() || "Unnamed Item",
+              description: item.description || "",
+              consumption: Number(item.consumption) || 0,
+              cost: Number(item.cost) || 0,
+              department: item.pendingDepartment || "",
+            };
+
+            savePromises.push(
+              api
+                .post(`/projects/${project._id}/costs/${category}`, payload)
+                .then((response) => {
+                  if (response.data.row) {
+                    const newId = response.data.row._id;
+
+                    // Update UI with saved item
+                    setCostRows((prev) => ({
+                      ...prev,
+                      [category]: prev[category].map((i) =>
+                        i._id === item._id
+                          ? {
+                              ...i,
+                              _id: newId,
+                              isNew: false,
+                              isModified: false,
+                              pendingDepartment: "",
+                              department: response.data.row.department || "",
+                            }
+                          : i
+                      ),
+                    }));
+                  }
+                })
+                .catch((error) => {
+                  console.error(`Failed to save ${category} item:`, error);
+                  toast.error(`Failed to save item: ${item.item}`);
+                })
+            );
+          } else if (item.isModified) {
+            // Update existing item
+            const payload: any = {};
+
+            if (item.item.trim()) payload.item = item.item.trim();
+            if (item.description !== undefined)
+              payload.description = item.description;
+            if (item.consumption !== undefined)
+              payload.consumption = Number(item.consumption) || 0;
+            if (item.cost !== undefined) payload.cost = Number(item.cost) || 0;
+
+            // Only include department if it's in upper/component
+            if (["upper", "component"].includes(category) && item.department) {
+              payload.department = item.department;
+            }
+
+            savePromises.push(
+              api
+                .patch(
+                  `/projects/${project._id}/costs/${category}/${item._id}`,
+                  payload
+                )
+                .then(() => {
+                  setCostRows((prev) => ({
+                    ...prev,
+                    [category]: prev[category].map((i) =>
+                      i._id === item._id ? { ...i, isModified: false } : i
+                    ),
+                  }));
+                })
+                .catch((error) => {
+                  console.error(`Failed to update ${category} item:`, error);
+                  toast.error(`Failed to update item: ${item.item}`);
+                })
+            );
+          }
+        });
+
+        if (savePromises.length > 0) {
+          await Promise.all(savePromises);
+          await loadSummary();
+          toast.success(
+            `${
+              category.charAt(0).toUpperCase() + category.slice(1)
+            } items saved successfully!`
+          );
+        } else {
+          toast.info("No changes to save");
+        }
+      } catch (error) {
+        console.error(`Failed to save ${category}:`, error);
+        toast.error(`Failed to save ${category}`);
+      } finally {
+        setIsSavingCategory((prev) => ({ ...prev, [category]: false }));
+      }
+    },
+    [project, costRows, loadSummary]
   );
 
   const handleAddItemFromExisting = async (
@@ -2002,6 +2231,7 @@ export function TentativeCostDialog({
         description: itemData.description || "",
         consumption: Number(itemData.consumption) || 0,
         cost: Number(itemData.cost) || 0,
+        department: itemData.pendingDepartment || "",
       };
 
       const response = await api.post(
@@ -2017,6 +2247,9 @@ export function TentativeCostDialog({
                   ...item,
                   _id: response.data.row._id,
                   isNew: false,
+                  isModified: false,
+                  pendingDepartment: "",
+                  department: response.data.row.department || "",
                 }
               : item
           );
@@ -2032,22 +2265,6 @@ export function TentativeCostDialog({
       throw error;
     }
   };
-
-  const loadSummary = useCallback(async () => {
-    if (!project) return;
-
-    try {
-      const response = await api.get(`/projects/${project._id}/costs`);
-      const summaryData = response.data.summary || response.data;
-
-      if (summaryData) {
-        setCostSummary(processSummaryData(summaryData));
-        setRealTimeSummary(null);
-      }
-    } catch (error) {
-      console.error("Failed to load summary:", error);
-    }
-  }, [project]);
 
   const openAddItemDialog = useCallback((category: string) => {
     setAddItemDialogs((prev) => ({ ...prev, [category]: true }));
@@ -2106,6 +2323,8 @@ export function TentativeCostDialog({
                 cost: Number(response.data.row.cost) || 0,
                 department: response.data.row.department || "",
                 isNew: false,
+                isModified: false,
+                pendingDepartment: "",
               },
             ];
 
@@ -2155,88 +2374,151 @@ export function TentativeCostDialog({
     return true;
   };
 
-  const updateLabourCost = useCallback(
-    async (updates: Partial<LabourCost>) => {
-      if (!project) return;
+  // Save labour function - only called when user clicks save
+  const handleSaveLabour = useCallback(async () => {
+    if (!project) return;
 
-      setIsSavingLabour(true);
-      try {
-        // Clean items before sending
-        const cleanItems = (updates.items || labourCost.items)
-          .filter((i) => i.name.trim() || i.cost > 0)
-          .map((i) => ({
-            _id: i.isNew ? undefined : i._id,
-            name: i.name.trim() || "Labour Component",
-            cost: Number(i.cost) || 0,
-          }));
+    setIsSavingLabour(true);
+    try {
+      // Clean items before sending
+      const cleanItems = labourCost.items
+        .filter((i) => i.name.trim() || i.cost > 0)
+        .map((i) => ({
+          _id: i.isNew ? undefined : i._id,
+          name: i.name.trim() || "Labour Component",
+          cost: Number(i.cost) || 0,
+        }));
 
-        const payload = {
-          directTotal:
-            updates.directTotal !== undefined
-              ? updates.directTotal
-              : labourCost.directTotal,
-          items: cleanItems,
-        };
+      const payload = {
+        directTotal: labourCost.directTotal || 0,
+        items: cleanItems,
+      };
 
-        const response = await api.patch(
-          `/projects/${project._id}/costs/labour`,
-          payload
+      const response = await api.patch(
+        `/projects/${project._id}/costs/labour`,
+        payload
+      );
+
+      if (response.data.labour) {
+        const updatedLabour = response.data.labour;
+        const updatedItems = updatedLabour.items.map((it: any) => ({
+          _id: it._id,
+          name: it.name,
+          cost: it.cost,
+          isNew: false,
+          isModified: false,
+        }));
+
+        // Add dummy items to maintain 5 rows
+        const neededDummyRows = Math.max(
+          0,
+          TOTAL_ROWS_PER_CATEGORY - updatedItems.length
         );
+        const dummyItems = getEmptyLabourItems(neededDummyRows);
 
-        if (response.data.labour) {
-          const updatedLabour = response.data.labour;
-          setLabourCost({
-            directTotal: updatedLabour.directTotal,
-            items: updatedLabour.items.map((it: any) => ({
-              _id: it._id,
-              name: it.name,
-              cost: it.cost,
-              isNew: false,
-            })),
-          });
+        setLabourCost({
+          directTotal: updatedLabour.directTotal,
+          items: [...updatedItems, ...dummyItems],
+          isModified: false,
+        });
 
-          // Ensure we have 5 items
-          setTimeout(() => maintainFiveLabourItems(), 100);
+        // Update summary with labour total
+        setCostSummary((prev) => ({
+          ...prev,
+          labourTotal: updatedLabour.directTotal || 0,
+        }));
 
-          // Update summary
-          await loadSummary();
-        }
-      } catch (error) {
-        console.error("Failed to update labour:", error);
-        toast.error("Failed to update labour cost");
-      } finally {
-        setIsSavingLabour(false);
+        await loadSummary();
+        toast.success("Labour costs saved successfully!");
       }
-    },
-    [project, labourCost, maintainFiveLabourItems, loadSummary]
-  );
+    } catch (error) {
+      console.error("Failed to save labour:", error);
+      toast.error("Failed to save labour cost");
+    } finally {
+      setIsSavingLabour(false);
+    }
+  }, [project, labourCost, loadSummary]);
 
-  const updateLabourItem = useCallback(
-    (itemId: string, field: string, value: string | number) => {
-      setLabourCost((prev) => ({
+  // Update labour locally without saving to backend
+  const updateLabourLocal = useCallback((updates: Partial<LabourCost>) => {
+    setLabourCost((prev) => {
+      const newState = { ...prev, ...updates, isModified: true };
+
+      // If items are being updated, mark them as modified
+      if (updates.items) {
+        newState.items = updates.items.map((item) => ({
+          ...item,
+          isModified: item.isNew || item.isModified || false,
+        }));
+      }
+
+      return newState;
+    });
+  }, []);
+
+  // Delete labour item locally
+  const deleteLabourItemLocal = useCallback((itemId: string) => {
+    setLabourCost((prev) => {
+      const filteredItems = prev.items.filter((item) => item._id !== itemId);
+
+      // If we have less than 5 items after deletion, add dummy items
+      const neededDummyRows = Math.max(
+        0,
+        TOTAL_ROWS_PER_CATEGORY - filteredItems.length
+      );
+      const dummyItems = getEmptyLabourItems(neededDummyRows);
+
+      return {
         ...prev,
-        items: prev.items.map((item) =>
-          item._id === itemId ? { ...item, [field]: value } : item
-        ),
-      }));
-    },
-    []
-  );
+        items: [...filteredItems, ...dummyItems],
+        isModified: true,
+      };
+    });
 
-  const deleteLabourItem = useCallback(
-    (itemId: string) => {
-      setLabourCost((prev) => ({
+    toast.success("Labour item removed");
+  }, []);
+
+  // Add new labour item locally
+  const addLabourItemLocal = useCallback(() => {
+    setLabourCost((prev) => {
+      const newItem = {
+        _id: `dummy_labour_${Date.now()}_${Math.random()}`,
+        name: "",
+        cost: 0,
+        isNew: true,
+        isModified: true,
+      };
+
+      // Find and replace a dummy item with the new one
+      const hasEmptyDummy = prev.items.some(
+        (item) => item.isNew && !item.name.trim() && item.cost === 0
+      );
+
+      if (hasEmptyDummy) {
+        // Replace first empty dummy item
+        const updatedItems = [...prev.items];
+        const dummyIndex = updatedItems.findIndex(
+          (item) => item.isNew && !item.name.trim() && item.cost === 0
+        );
+        if (dummyIndex !== -1) {
+          updatedItems[dummyIndex] = newItem;
+        }
+
+        return {
+          ...prev,
+          items: updatedItems,
+          isModified: true,
+        };
+      }
+
+      // If no empty dummy, add to end (this shouldn't happen with maintainFiveLabourItems)
+      return {
         ...prev,
-        items: prev.items.filter((item) => item._id !== itemId),
-      }));
-
-      // After deleting, ensure we still have 5 items
-      setTimeout(() => maintainFiveLabourItems(), 0);
-
-      toast.success("Labour item removed");
-    },
-    [maintainFiveLabourItems]
-  );
+        items: [...prev.items, newItem],
+        isModified: true,
+      };
+    });
+  }, []);
 
   const handleAdditionalCostsChange = useCallback(
     (value: number) => {
@@ -2330,22 +2612,24 @@ export function TentativeCostDialog({
   );
 
   const hasUnsavedChanges = useCallback(() => {
-    // Check for unsaved dummy rows
+    // Check for unsaved rows in all categories
     const hasUnsavedRows = Object.values(costRows).some((items) =>
-      items.some(
-        (item) =>
-          item.isNew &&
-          (item.item.trim() || item.cost > 0 || item.consumption > 0)
-      )
+      items.some((item) => item.isModified)
     );
 
     // Check for unsaved labour items
-    const hasUnsavedLabour = labourCost.items.some(
-      (item) => item.isNew && (item.name.trim() || item.cost > 0)
-    );
+    const hasUnsavedLabour = labourCost.isModified;
 
     return hasUnsavedRows || hasUnsavedLabour;
   }, [costRows, labourCost]);
+
+  // Check if a specific category has unsaved changes
+  const categoryHasUnsavedChanges = useCallback(
+    (category: string) => {
+      return costRows[category]?.some((item) => item.isModified) || false;
+    },
+    [costRows]
+  );
 
   const handleSaveSummary = useCallback(async () => {
     if (!project) return;
@@ -2353,9 +2637,22 @@ export function TentativeCostDialog({
     setIsLoading(true);
 
     try {
-      // Save all filled dummy rows
-      await saveAllFilledDummyRows();
+      // Save all categories with unsaved changes
+      const categoriesToSave = Object.keys(costRows).filter(
+        categoryHasUnsavedChanges
+      );
 
+      // Save each category
+      for (const category of categoriesToSave) {
+        await handleSaveCategory(category);
+      }
+
+      // Save labour if it has unsaved changes
+      if (labourCost.isModified) {
+        await handleSaveLabour();
+      }
+
+      // Save summary data
       const payload = {
         additionalCosts: Number(costSummary.additionalCosts) || 0,
         profitMargin: Number(costSummary.profitMargin) || 0,
@@ -2381,7 +2678,14 @@ export function TentativeCostDialog({
     } finally {
       setIsLoading(false);
     }
-  }, [project, costSummary]);
+  }, [
+    project,
+    costSummary,
+    labourCost,
+    handleSaveLabour,
+    handleSaveCategory,
+    categoryHasUnsavedChanges,
+  ]);
 
   const saveAllFilledDummyRows = useCallback(async () => {
     if (!project) return;
@@ -2392,89 +2696,81 @@ export function TentativeCostDialog({
      * 1️⃣ SAVE COST ROWS (upper, component, material, etc.)
      * --------------------------------------------------------- */
     Object.entries(costRows).forEach(([category, items]) => {
-      const dummyItemsToSave = items.filter(
-        (item) =>
-          item.isNew &&
-          (item.item.trim() || item.cost > 0 || item.consumption > 0)
-      );
+      const itemsToSave = items.filter((item) => item.isModified);
 
-      dummyItemsToSave.forEach((item) => {
-        savePromises.push(
-          api
-            .post(`/projects/${project._id}/costs/${category}`, {
-              item: item.item.trim() || "Unnamed Item",
-              description: item.description || "",
-              consumption: Number(item.consumption) || 0,
-              cost: Number(item.cost) || 0,
-            })
-            .then((response) => {
-              const newId = response.data.row?._id;
+      itemsToSave.forEach((item) => {
+        if (item.isNew) {
+          // Save new item with pending department
+          savePromises.push(
+            api
+              .post(`/projects/${project._id}/costs/${category}`, {
+                item: item.item.trim() || "Unnamed Item",
+                description: item.description || "",
+                consumption: Number(item.consumption) || 0,
+                cost: Number(item.cost) || 0,
+                department: item.pendingDepartment || "",
+              })
+              .then((response) => {
+                const newId = response.data.row?._id;
 
-              // Update UI state safely
-              setCostRows((prev) => ({
-                ...prev,
-                [category]: prev[category].map((i) =>
-                  i._id === item._id
-                    ? {
-                        ...i,
-                        _id: newId,
-                        isNew: false,
-                        item: item.item.trim(),
-                      }
-                    : i
-                ),
-              }));
-            })
-            .catch((error) => {
-              console.error(`Failed to save ${category} item:`, error);
-              toast.error(`Failed to save ${category} item: ${item.item}`);
-            })
-        );
+                // Update UI state safely
+                setCostRows((prev) => ({
+                  ...prev,
+                  [category]: prev[category].map((i) =>
+                    i._id === item._id
+                      ? {
+                          ...i,
+                          _id: newId,
+                          isNew: false,
+                          isModified: false,
+                          pendingDepartment: "",
+                          department: response.data.row.department || "",
+                        }
+                      : i
+                  ),
+                }));
+              })
+              .catch((error) => {
+                console.error(`Failed to save ${category} item:`, error);
+                toast.error(`Failed to save ${category} item: ${item.item}`);
+              })
+          );
+        } else {
+          // Update existing item
+          const payload: any = {};
+
+          if (item.item.trim()) payload.item = item.item.trim();
+          if (item.description !== undefined)
+            payload.description = item.description;
+          if (item.consumption !== undefined)
+            payload.consumption = Number(item.consumption) || 0;
+          if (item.cost !== undefined) payload.cost = Number(item.cost) || 0;
+          if (["upper", "component"].includes(category) && item.department) {
+            payload.department = item.department;
+          }
+
+          savePromises.push(
+            api
+              .patch(
+                `/projects/${project._id}/costs/${category}/${item._id}`,
+                payload
+              )
+              .then(() => {
+                setCostRows((prev) => ({
+                  ...prev,
+                  [category]: prev[category].map((i) =>
+                    i._id === item._id ? { ...i, isModified: false } : i
+                  ),
+                }));
+              })
+              .catch((error) => {
+                console.error(`Failed to update ${category} item:`, error);
+                toast.error(`Failed to update item: ${item.item}`);
+              })
+          );
+        }
       });
     });
-
-    /* ---------------------------------------------------------
-     * 2️⃣ SAVE LABOUR ITEMS
-     * --------------------------------------------------------- */
-    const labourItemsToSave = labourCost.items.filter(
-      (item) => item.isNew && (item.name.trim() || item.cost > 0)
-    );
-
-    if (labourItemsToSave.length > 0 || labourCost.directTotal !== 0) {
-      const cleanLabourItems = labourCost.items
-        .filter((i) => i.name.trim() || i.cost > 0)
-        .map((i) => ({
-          _id: i.isNew ? undefined : i._id,
-          name: i.name.trim() || "Labour Component",
-          cost: Number(i.cost) || 0,
-        }));
-
-      savePromises.push(
-        api
-          .patch(`/projects/${project._id}/costs/labour`, {
-            directTotal: labourCost.directTotal,
-            items: cleanLabourItems,
-          })
-          .then((res) => {
-            const updated = res.data.labour;
-
-            // Replace UI with fresh backend data
-            setLabourCost({
-              directTotal: updated.directTotal,
-              items: updated.items.map((it: any) => ({
-                _id: it._id,
-                name: it.name,
-                cost: it.cost,
-                isNew: false,
-              })),
-            });
-          })
-          .catch((error) => {
-            console.error("Failed to save labour:", error);
-            toast.error("Failed to save labour items");
-          })
-      );
-    }
 
     /* ---------------------------------------------------------
      * 3️⃣ EXECUTE ALL SAVES
@@ -2484,7 +2780,7 @@ export function TentativeCostDialog({
       await loadSummary();
       toast.success("All new items saved successfully!");
     }
-  }, [project, costRows, labourCost, loadSummary]);
+  }, [project, costRows, loadSummary]);
 
   const handleApprove = useCallback(async () => {
     if (!project) return;
@@ -2544,6 +2840,8 @@ export function TentativeCostDialog({
           onStageSelect={setItemDepartment}
           color="orange"
           isMobile={true}
+          hasUnsavedChanges={categoryHasUnsavedChanges("upper")}
+          onSaveCategory={() => handleSaveCategory("upper")}
         />
       ),
       component: (
@@ -2560,6 +2858,8 @@ export function TentativeCostDialog({
           onStageSelect={setItemDepartment}
           color="purple"
           isMobile={true}
+          hasUnsavedChanges={categoryHasUnsavedChanges("component")}
+          onSaveCategory={() => handleSaveCategory("component")}
         />
       ),
       material: (
@@ -2576,6 +2876,8 @@ export function TentativeCostDialog({
           onStageSelect={setItemDepartment}
           color="teal"
           isMobile={true}
+          hasUnsavedChanges={categoryHasUnsavedChanges("material")}
+          onSaveCategory={() => handleSaveCategory("material")}
         />
       ),
       packaging: (
@@ -2592,6 +2894,8 @@ export function TentativeCostDialog({
           onStageSelect={setItemDepartment}
           color="rose"
           isMobile={true}
+          hasUnsavedChanges={categoryHasUnsavedChanges("packaging")}
+          onSaveCategory={() => handleSaveCategory("packaging")}
         />
       ),
       misc: (
@@ -2608,15 +2912,19 @@ export function TentativeCostDialog({
           onStageSelect={setItemDepartment}
           color="gray"
           isMobile={true}
+          hasUnsavedChanges={categoryHasUnsavedChanges("miscellaneous")}
+          onSaveCategory={() => handleSaveCategory("miscellaneous")}
         />
       ),
       labour: (
         <MobileLabourCostCard
           labourCost={labourCost}
-          onUpdateLabour={updateLabourCost}
-          onDeleteLabourItem={deleteLabourItem}
-          onAddItem={() => openAddItemDialog("labour")}
+          onUpdateLabour={updateLabourLocal}
+          onDeleteLabourItem={deleteLabourItemLocal}
+          onAddItem={addLabourItemLocal}
           isLoading={isSavingLabour}
+          onSaveLabour={handleSaveLabour}
+          hasUnsavedChanges={labourCost.isModified || false}
         />
       ),
     };
@@ -2632,9 +2940,58 @@ export function TentativeCostDialog({
     deleteItem,
     openAddItemDialog,
     setItemDepartment,
-    updateLabourCost,
-    deleteLabourItem,
+    updateLabourLocal,
+    deleteLabourItemLocal,
+    addLabourItemLocal,
     isSavingLabour,
+    handleSaveLabour,
+    categoryHasUnsavedChanges,
+    handleSaveCategory,
+  ]);
+
+  useEffect(() => {
+    if (!dataLoaded) return;
+
+    const upperTotal = calculateCategoryTotal(costRows.upper);
+    const componentTotal = calculateCategoryTotal(costRows.component);
+    const materialTotal = calculateCategoryTotal(costRows.material);
+    const packagingTotal = calculateCategoryTotal(costRows.packaging);
+    const miscTotal = calculateCategoryTotal(costRows.miscellaneous);
+    const labourTotal = Number(labourCost.directTotal) || 0;
+
+    const totalAllCosts =
+      upperTotal +
+      componentTotal +
+      materialTotal +
+      packagingTotal +
+      miscTotal +
+      labourTotal;
+
+    const additionalCosts = Number(costSummary.additionalCosts) || 0;
+    const profitMargin = Number(costSummary.profitMargin) || 0;
+
+    const subtotal = totalAllCosts + additionalCosts;
+    const profitAmount = Math.round((subtotal * profitMargin) / 100);
+    const tentativeCost = subtotal + profitAmount;
+
+    setRealTimeSummary({
+      ...costSummary,
+      upperTotal,
+      componentTotal,
+      materialTotal,
+      packagingTotal,
+      miscTotal,
+      labourTotal,
+      totalAllCosts,
+      profitAmount,
+      tentativeCost,
+    });
+  }, [
+    costRows,
+    labourCost.directTotal,
+    costSummary.additionalCosts,
+    costSummary.profitMargin,
+    dataLoaded,
   ]);
 
   if (!project) return null;
@@ -2713,7 +3070,7 @@ export function TentativeCostDialog({
             <div className="flex items-center justify-center gap-2 text-sm text-amber-800">
               <AlertCircle className="w-4 h-4" />
               <span className="text-xs md:text-sm">
-                You have unsaved changes. Save before assigning departments.
+                You have unsaved changes. Save before approving.
               </span>
             </div>
           </div>
@@ -2940,6 +3297,8 @@ export function TentativeCostDialog({
                         onAddItem={() => openAddItemDialog("upper")}
                         onStageSelect={setItemDepartment}
                         color="orange"
+                        hasUnsavedChanges={categoryHasUnsavedChanges("upper")}
+                        onSaveCategory={() => handleSaveCategory("upper")}
                       />
 
                       <CostCategoryCard
@@ -2954,6 +3313,10 @@ export function TentativeCostDialog({
                         onAddItem={() => openAddItemDialog("component")}
                         onStageSelect={setItemDepartment}
                         color="purple"
+                        hasUnsavedChanges={categoryHasUnsavedChanges(
+                          "component"
+                        )}
+                        onSaveCategory={() => handleSaveCategory("component")}
                       />
 
                       <CostCategoryCard
@@ -2968,6 +3331,10 @@ export function TentativeCostDialog({
                         onAddItem={() => openAddItemDialog("material")}
                         onStageSelect={setItemDepartment}
                         color="teal"
+                        hasUnsavedChanges={categoryHasUnsavedChanges(
+                          "material"
+                        )}
+                        onSaveCategory={() => handleSaveCategory("material")}
                       />
 
                       <CostCategoryCard
@@ -2982,6 +3349,10 @@ export function TentativeCostDialog({
                         onAddItem={() => openAddItemDialog("packaging")}
                         onStageSelect={setItemDepartment}
                         color="rose"
+                        hasUnsavedChanges={categoryHasUnsavedChanges(
+                          "packaging"
+                        )}
+                        onSaveCategory={() => handleSaveCategory("packaging")}
                       />
 
                       <CostCategoryCard
@@ -2996,15 +3367,23 @@ export function TentativeCostDialog({
                         onAddItem={() => openAddItemDialog("miscellaneous")}
                         onStageSelect={setItemDepartment}
                         color="gray"
+                        hasUnsavedChanges={categoryHasUnsavedChanges(
+                          "miscellaneous"
+                        )}
+                        onSaveCategory={() =>
+                          handleSaveCategory("miscellaneous")
+                        }
                       />
 
                       {/* Desktop Labour Cost Card */}
                       <DesktopLabourCostCard
                         labourCost={labourCost}
-                        onUpdateLabour={updateLabourCost}
-                        onDeleteLabourItem={deleteLabourItem}
-                        onAddItem={() => openAddItemDialog("labour")}
+                        onUpdateLabour={updateLabourLocal}
+                        onDeleteLabourItem={deleteLabourItemLocal}
+                        onAddItem={addLabourItemLocal}
                         isLoading={isSavingLabour}
+                        onSaveLabour={handleSaveLabour}
+                        hasUnsavedChanges={labourCost.isModified || false}
                       />
                     </div>
 
