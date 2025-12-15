@@ -29,6 +29,7 @@ const LAYOUT = {
 ------------------------------------------------------ */
 const safe = (v: any) =>
   v === null || v === undefined || v === "" ? "—" : String(v);
+const money = (v: number) => (v > 0 ? `INR ${formatINR(v)}` : "—");
 
 /** Formats currency with two decimal places (e.g., 1,234.56) */
 const formatINR = (v: number | string) => {
@@ -353,7 +354,7 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
   drawInfoCell(
     doc,
     "Unit Price (INR)",
-    `₹ ${formatINR(po?.unitPrice || p.unitPrice || 0)}`,
+    money(po?.unitPrice || p.unitPrice || 0),
     startX + 60,
     y,
     60,
@@ -362,12 +363,13 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
   drawInfoCell(
     doc,
     "Total PO Value (INR)",
-    `₹ ${formatINR(po?.totalAmount || p.poValue || 0)}`,
+    money(po?.totalAmount || p.poValue || 0),
     startX + 120,
     y,
     62,
     rowH
   );
+
   y += rowH + 5;
 
   // Cost Summary with Client Final Cost
@@ -412,65 +414,63 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
 
   autoTable(doc, {
     startY: y,
-    head: [["Item", "Amount (INR)", "Notes"]],
+    head: [["Cost Head", "Amount (INR)"]],
     body: [
-      [
-        "Total Production Cost",
-        `₹ ${formatINR(totalCost)}`,
-        "All material + labour",
-      ],
-      ["Additional/Overhead Costs", `₹ ${formatINR(additionalCosts)}`, ""],
-      [
-        "Subtotal (Cost + Overhead)",
-        `₹ ${formatINR(totalCost + additionalCosts)}`,
-        "",
-      ],
-      ["Profit @ " + profitMargin + "%", `₹ ${formatINR(profitAmount)}`, ""],
-      [
-        "Tentative Cost",
-        `₹ ${formatINR(summary?.tentativeCost || 0)}`,
-        "Internal estimate",
-      ],
-      [
-        "PO Value (Sale Price)",
-        `₹ ${formatINR(poValue)}`,
-        "Customer billed amount",
-      ],
-      [
-        "Brand Final Cost",
-        `₹ ${formatINR(clientFinalCost)}`,
-        "Final approved cost",
-      ],
-      [
-        "Final Margin",
-        `₹ ${formatINR(clientFinalCost - totalCost)}`,
-        `${
-          clientFinalCost > 0
-            ? (((clientFinalCost - totalCost) / clientFinalCost) * 100).toFixed(
-                2
-              )
-            : 0
-        }%`,
-      ],
+      ["Total Production Cost", formatINR(totalCost)],
+      ["Additional / Overhead Costs", formatINR(additionalCosts)],
+      ["Subtotal (Cost + Overhead)", formatINR(totalCost + additionalCosts)],
+      [`Profit @ ${profitMargin}%`, formatINR(profitAmount)],
+      ["Tentative Cost", formatINR(summary?.tentativeCost || 0)],
+      ["PO Value (Sale Price)", formatINR(poValue)],
+      ["Brand Final Cost", formatINR(clientFinalCost)],
+      ["Final Margin", formatINR(clientFinalCost - totalCost)],
     ],
-    theme: "plain",
-    headStyles: {
-      fillColor: COLORS.primary,
-      textColor: 255,
-      fontSize: 10,
-      fontStyle: "bold",
+
+    theme: "grid",
+
+    styles: {
+      fontSize: 9, // 🔑 SAME AS INFO GRID
+      cellPadding: 3, // 🔑 MATCH MATERIAL TABLES
+      textColor: COLORS.textDark,
+      valign: "middle",
     },
-    styles: { fontSize: 10, textColor: COLORS.textDark, cellPadding: 3 },
+
+    headStyles: {
+      fillColor: COLORS.bgGray, // 🔑 SUBTLE, NOT LOUD
+      textColor: COLORS.textDark,
+      fontStyle: "bold",
+      halign: "center",
+    },
+
     columnStyles: {
-      0: { cellWidth: 80, fontStyle: "normal", fillColor: COLORS.bgGray },
-      1: { halign: "right", cellWidth: 50 },
-      2: {
-        halign: "left",
-        cellWidth: 52,
-        fontSize: 8,
-        textColor: COLORS.textLight,
+      0: {
+        cellWidth: 120,
+        fontStyle: "bold",
+      },
+      1: {
+        cellWidth: 62,
+        halign: "right",
+        fontStyle: "normal",
       },
     },
+
+    didParseCell(data) {
+      const label = data.row.raw?.[0];
+
+      // Emphasize totals WITHOUT font jump
+      if (
+        label === "Subtotal (Cost + Overhead)" ||
+        label === "Brand Final Cost" ||
+        label === "Final Margin"
+      ) {
+        data.cell.styles.fontStyle = "bold";
+      }
+
+      if (label === "Brand Final Cost") {
+        data.cell.styles.textColor = COLORS.secondary;
+      }
+    },
+
     margin: { left: LAYOUT.marginX, right: LAYOUT.marginX },
   });
 
@@ -614,12 +614,14 @@ const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
     autoTable(doc, {
       startY: y,
       body: summaryRows,
+
       theme: "grid",
 
       styles: {
-        fontSize: 10,
-        cellPadding: 4,
+        fontSize: 9, // 🔑 CONSISTENT
+        cellPadding: 3,
         textColor: COLORS.textDark,
+        valign: "middle",
       },
 
       columnStyles: {
@@ -631,19 +633,17 @@ const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
         1: {
           cellWidth: 62,
           halign: "right",
-          fontStyle: "bold",
         },
       },
 
       didParseCell(data) {
         const label = data.row.raw?.[0];
 
-        // Highlight important totals
         if (
           label === "TOTAL PRODUCTION COST" ||
           label === "Brand Final Cost (Approved)"
         ) {
-          data.cell.styles.fontSize = 11;
+          data.cell.styles.fontStyle = "bold";
           data.cell.styles.textColor = COLORS.primary;
         }
 

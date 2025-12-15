@@ -4,24 +4,17 @@ import { Project } from "../models/Project.model.js";
 import { PoDetails } from "../models/PoDetails.model.js";
 import { Delivery } from "../models/Delivery.model.js";
 
-
 async function addDeliveryHistory(deliveryId, changes, updatedBy = "system") {
-  await Delivery.findByIdAndUpdate(
-    deliveryId,
-    {
-      $push: {
-        history: {
-          date: new Date(),
-          changes,
-          updatedBy
-        }
-      }
-    }
-  );
+  await Delivery.findByIdAndUpdate(deliveryId, {
+    $push: {
+      history: {
+        date: new Date(),
+        changes,
+        updatedBy,
+      },
+    },
+  });
 }
-
-
-
 
 /* ----------------------------------------------------
    SEND PROJECT TO DELIVERY PENDING
@@ -42,11 +35,10 @@ export async function sendToDeliveryService(projectId, user = "system") {
     status: "delivery_pending",
   });
 
- const today = new Date();
-const poReceived = po?.issuedAt || today;
+  const today = new Date();
+  const poReceived = po?.issuedAt || today;
 
-const agingDays = Math.ceil((today - poReceived) / (1000 * 60 * 60 * 24));
-
+  const agingDays = Math.ceil((today - poReceived) / (1000 * 60 * 60 * 24));
 
   // Create Delivery Record
   const delivery = await Delivery.create({
@@ -70,47 +62,88 @@ const agingDays = Math.ceil((today - poReceived) / (1000 * 60 * 60 * 24));
   });
 
   // ⭐ ADD HISTORY ENTRY
-  await addDeliveryHistory(delivery._id, [
-    { field: "status", from: "planning/tracking", to: "pending" }
-  ], user);
+  await addDeliveryHistory(
+    delivery._id,
+    [{ field: "status", from: "planning/tracking", to: "pending" }],
+    user
+  );
 
   return delivery;
 }
 
+// export async function markParcelDelivered(deliveryId, user = "system") {
+//   const old = await Delivery.findById(deliveryId);
 
+//   await Delivery.findByIdAndUpdate(deliveryId, {
+//     status: "parcel_delivered",
+//     updatedAt: new Date()
+//   });
 
+//   await addDeliveryHistory(deliveryId, [
+//     { field: "status", from: old.status, to: "parcel_delivered" }
+//   ], user);
 
+//   return true;
+// }
 export async function markParcelDelivered(deliveryId, user = "system") {
-  const old = await Delivery.findById(deliveryId);
+  const delivery = await Delivery.findById(deliveryId);
+  if (!delivery) throw new Error("Delivery not found");
 
+  // 1️⃣ Update Delivery
   await Delivery.findByIdAndUpdate(deliveryId, {
     status: "parcel_delivered",
-    updatedAt: new Date()
+    updatedAt: new Date(),
   });
 
-  await addDeliveryHistory(deliveryId, [
-    { field: "status", from: old.status, to: "parcel_delivered" }
-  ], user);
+  // 2️⃣ Update Project
+  await Project.findByIdAndUpdate(delivery.project, {
+    status: "parcel_delivered",
+  });
 
-  return true;
+  // 3️⃣ History
+  await addDeliveryHistory(
+    deliveryId,
+    [{ field: "status", from: delivery.status, to: "parcel_delivered" }],
+    user
+  );
 }
 
+// export async function markDelivered(deliveryId, user = "system") {
+//   const old = await Delivery.findById(deliveryId);
+
+//   await Delivery.findByIdAndUpdate(deliveryId, {
+//     status: "delivered",
+//     updatedAt: new Date(),
+//   });
+
+//   await addDeliveryHistory(
+//     deliveryId,
+//     [{ field: "status", from: old.status, to: "delivered" }],
+//     user
+//   );
+
+//   return true;
+// }
 
 export async function markDelivered(deliveryId, user = "system") {
-  const old = await Delivery.findById(deliveryId);
+  const delivery = await Delivery.findById(deliveryId);
+  if (!delivery) throw new Error("Delivery not found");
 
   await Delivery.findByIdAndUpdate(deliveryId, {
     status: "delivered",
-    updatedAt: new Date()
+    updatedAt: new Date(),
   });
 
-  await addDeliveryHistory(deliveryId, [
-    { field: "status", from: old.status, to: "delivered" }
-  ], user);
+  await Project.findByIdAndUpdate(delivery.project, {
+    status: "delivered",
+  });
 
-  return true;
+  await addDeliveryHistory(
+    deliveryId,
+    [{ field: "status", from: delivery.status, to: "delivered" }],
+    user
+  );
 }
-
 
 export async function getPendingDeliveries() {
   return await Delivery.find({ status: "pending" })
