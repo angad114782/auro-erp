@@ -7,7 +7,8 @@ import React, {
 } from "react";
 import api from "./api";
 
-// TYPES
+/* ================= TYPES ================= */
+
 export interface User {
   id: string;
   name: string;
@@ -22,7 +23,7 @@ interface AuthState {
   loading: boolean;
   error: string | null;
 }
-// ACTION TYPES
+
 type AuthAction =
   | { type: "LOGIN_START" }
   | { type: "LOGIN_SUCCESS"; payload: User }
@@ -38,7 +39,8 @@ interface AuthContextType extends AuthState {
   getDefaultModule: () => string;
 }
 
-/* ROLE → MODULE PERMISSIONS */
+/* ================= ROLE PERMISSIONS ================= */
+
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   SuperAdmin: [
     "dashboard",
@@ -62,10 +64,8 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "inventory",
     "delivery",
     "users",
-    "notifications",
     "reports",
   ],
-
   Manager: [
     "dashboard",
     "rd-management",
@@ -75,14 +75,17 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "reports",
   ],
 
-  Supervisor: ["dashboard", "production", "inventory", "delivery"],
+  // 👇 Supervisor DOES NOT get production parent
+  Supervisor: ["production-tracking"],
 };
 
 const defaultModuleByRole = (role: string): string => {
+  if (role === "Supervisor") return "production-tracking";
   return ROLE_PERMISSIONS[role]?.[0] || "dashboard";
 };
 
-/* REDUCER */
+/* ================= REDUCER ================= */
+
 const reducer = (state: AuthState, action: AuthAction): AuthState => {
   switch (action.type) {
     case "LOGIN_START":
@@ -93,7 +96,6 @@ const reducer = (state: AuthState, action: AuthAction): AuthState => {
         ...state,
         loading: false,
         isAuthenticated: true,
-        error: null,
         user: action.payload,
       };
 
@@ -126,27 +128,25 @@ const initialState: AuthState = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/* ================= PROVIDER ================= */
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  /* RESTORE on page refresh */
   useEffect(() => {
     const token = localStorage.getItem("erp_token");
     const userJson = localStorage.getItem("erp_user");
 
     if (token && userJson) {
-      const user = JSON.parse(userJson);
-      dispatch({ type: "LOGIN_SUCCESS", payload: user });
+      dispatch({ type: "LOGIN_SUCCESS", payload: JSON.parse(userJson) });
     }
   }, []);
 
-  /* REAL LOGIN */
   const login = async (email: string, password: string): Promise<boolean> => {
     dispatch({ type: "LOGIN_START" });
 
     try {
       const res = await api.post("/auth/login", { email, password });
-
       const { user, token } = res.data.data;
 
       const formattedUser: User = {
@@ -157,12 +157,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         permissions: ROLE_PERMISSIONS[user.role] || [],
       };
 
-      // Save session
       localStorage.setItem("erp_token", token);
       localStorage.setItem("erp_user", JSON.stringify(formattedUser));
 
       dispatch({ type: "LOGIN_SUCCESS", payload: formattedUser });
-
       return true;
     } catch (err: any) {
       dispatch({
@@ -174,8 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem("erp_token");
-    localStorage.removeItem("erp_user");
+    localStorage.clear();
     dispatch({ type: "LOGOUT" });
   };
 

@@ -31,6 +31,7 @@ import ProjectDetailsDialog from "./ProjectDetailsDialog";
 import { useProjects } from "../hooks/useProjects";
 import { useDebounce } from "./NewHooks/useDebounce";
 import { MobileSkeleton, TableSkeleton } from "./Skeletons";
+import { ProjectFilters } from "./ProjectFilters";
 
 export function POTargetDate({ defaultTab = "po-pending" }) {
   const {
@@ -61,7 +62,25 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
   const [poApprovedDetailsOpen, setPOApprovedDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState(defaultTabFromRedirect);
+  // Instead of one shared filter state, use separate states:
+  const [pendingFilters, setPendingFilters] = useState({
+    country: "",
+    priority: "",
+    company: "",
+    brand: "",
+    category: "",
+    type: "",
+  });
 
+  const [approvedFilters, setApprovedFilters] = useState({
+    country: "",
+    priority: "",
+    company: "",
+    brand: "",
+    category: "",
+    type: "",
+  });
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
   const debouncedSearch = useDebounce(
@@ -108,7 +127,7 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
     return `${days} days`;
   };
 
-  // Queries for both tabs
+  // PO Pending Query - uses pendingFilters
   const {
     data: poPendingProjects,
     total: pendingTotal,
@@ -120,8 +139,15 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
     search: debouncedSearchTerm,
     page: currentPage,
     limit: itemsPerPage,
+    country: pendingFilters.country,
+    priority: pendingFilters.priority,
+    company: pendingFilters.company,
+    brand: pendingFilters.brand,
+    category: pendingFilters.category,
+    type: pendingFilters.type,
   });
 
+  // PO Approved Query - uses approvedFilters
   const {
     data: poApprovedProjects,
     total: approvedTotal,
@@ -133,7 +159,49 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
     search: debouncedSearchTerm,
     page: currentPage,
     limit: itemsPerPage,
+    country: approvedFilters.country,
+    priority: approvedFilters.priority,
+    company: approvedFilters.company,
+    brand: approvedFilters.brand,
+    category: approvedFilters.category,
+    type: approvedFilters.type,
   });
+
+  // Pending tab handlers
+  const handlePendingFiltersChange = useCallback((newFilters: any) => {
+    setPendingFilters(newFilters);
+    setCurrentPage(1);
+  }, []);
+
+  const handlePendingClearFilters = useCallback(() => {
+    setPendingFilters({
+      country: "",
+      priority: "",
+      company: "",
+      brand: "",
+      category: "",
+      type: "",
+    });
+    setCurrentPage(1);
+  }, []);
+
+  // Approved tab handlers
+  const handleApprovedFiltersChange = useCallback((newFilters: any) => {
+    setApprovedFilters(newFilters);
+    setCurrentPage(1);
+  }, []);
+
+  const handleApprovedClearFilters = useCallback(() => {
+    setApprovedFilters({
+      country: "",
+      priority: "",
+      company: "",
+      brand: "",
+      category: "",
+      type: "",
+    });
+    setCurrentPage(1);
+  }, []);
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = e.target.value;
@@ -834,7 +902,9 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
           <Tabs
             defaultValue={defaultTabFromRedirect}
             className="w-full"
+            value={activeTab}
             onValueChange={(tab) => {
+              setActiveTab(tab);
               (window as any).erpExtra = { tab };
               setCurrentPage(1);
             }}
@@ -879,10 +949,22 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
                     className="pl-10 w-full"
                   />
                 </div>
-                <Button variant="outline" className="w-full sm:w-auto">
+                {/* <Button variant="outline" className="w-full sm:w-auto">
                   <Filter className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">Filters</span>
-                </Button>
+                </Button> */}
+                <ProjectFilters
+                  countries={countries}
+                  companies={companies}
+                  brands={brands}
+                  categories={categories}
+                  types={types}
+                  filters={pendingFilters}
+                  onFiltersChange={handlePendingFiltersChange}
+                  onClearFilters={handlePendingClearFilters}
+                  availableFilters={["country", "priority", "company", "brand"]}
+                  isMobile={isMobile}
+                />
               </div>
 
               {/* 🔥 ADD SKELETON HERE */}
@@ -930,10 +1012,22 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
                     className="pl-10 w-full"
                   />
                 </div>
-                <Button variant="outline" className="w-full sm:w-auto">
+                {/* <Button variant="outline" className="w-full sm:w-auto">
                   <Filter className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">Filters</span>
-                </Button>
+                </Button> */}
+                <ProjectFilters
+                  countries={countries}
+                  companies={companies}
+                  brands={brands}
+                  categories={categories}
+                  types={types}
+                  filters={approvedFilters}
+                  onFiltersChange={handleApprovedFiltersChange}
+                  onClearFilters={handleApprovedClearFilters}
+                  availableFilters={["country", "priority", "company", "brand"]}
+                  isMobile={isMobile}
+                />
               </div>
 
               {/* 🔥 ADD SKELETON HERE */}

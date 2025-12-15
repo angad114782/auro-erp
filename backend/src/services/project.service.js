@@ -62,6 +62,7 @@ export const createProject = async (payload, { session } = {}) => {
 };
 
 /** ---------- LIST WITH PO INCLUDED ---------- **/
+// Backend API - Updated getProjects with all filters
 export const getProjects = async (query = {}) => {
   const {
     search,
@@ -81,15 +82,27 @@ export const getProjects = async (query = {}) => {
     ];
   }
 
+  // Master data filters
   if (query.company) filter.company = query.company;
   if (query.brand) filter.brand = query.brand;
   if (query.category) filter.category = query.category;
+  if (query.type) filter.type = query.type;
+  if (query.country) filter.country = query.country;
 
+  // Status filter
   if (query.status) filter.status = normalizeProjectStatus(query.status);
 
-  if (query.clientApproval)
-    filter.clientApproval = normalizeClientApproval(query.clientApproval);
+  // Priority filter (NEW)
+  if (query.priority) {
+    filter.priority = query.priority.toLowerCase();
+  }
 
+  // Client approval filter
+  if (query.clientApproval) {
+    filter.clientApproval = normalizeClientApproval(query.clientApproval);
+  }
+
+  // Cost range filter
   if (query.minCost || query.maxCost) {
     filter.clientFinalCost = {};
     if (query.minCost) filter.clientFinalCost.$gte = Number(query.minCost);

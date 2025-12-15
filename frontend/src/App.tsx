@@ -18,6 +18,7 @@ import { ERPProvider, useERP } from "./lib/stores/erpContext";
 import { Menu } from "lucide-react";
 import { Button } from "./components/ui/button";
 import ProjectListCard from "./components/AllProjects";
+import { ProductionTrackingTable } from "./components/ProductionTrackingTable";
 
 // Main App Content (protected routes)
 function AppContent(): React.JSX.Element {
@@ -29,6 +30,8 @@ function AppContent(): React.JSX.Element {
     setSidebarCollapsed,
   } = useERP();
   const { hasPermission } = useAuth();
+
+  const { user } = useAuth();
 
   // State for mobile sidebar
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -43,6 +46,11 @@ function AppContent(): React.JSX.Element {
 
   const renderContent = (): React.JSX.Element => {
     // Check if user has permission to access the module
+
+    // 👇 SUPERVISOR: FORCE TRACKING ONLY
+    if (user?.role === "Supervisor") {
+      return <ProductionTrackingTable />;
+    }
     if (!hasPermission(currentModule)) {
       return (
         <div className="flex items-center justify-center h-64">

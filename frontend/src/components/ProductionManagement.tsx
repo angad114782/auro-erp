@@ -24,6 +24,7 @@ import ProductionPlanning from "./ProductionPlanning";
 import { ProductionAnalytics } from "./ProductionAnalytics";
 import { ProductionTrackingTable } from "./ProductionTrackingTable";
 import { useERP } from "../lib/stores/erpContext";
+import { useAuth } from "../lib/AuthContext";
 
 export function ProductionManagement() {
   const { productionOrders, productionCards } = useERPStore();
@@ -57,7 +58,12 @@ export function ProductionManagement() {
     setSelectedProductionCard(card);
     setShowMaterialRequisitionDialog(true);
   };
+  const { user } = useAuth();
 
+  // 👇 HARD BLOCK
+  if (user?.role === "Supervisor") {
+    return null;
+  }
   // Route to specific components based on sub-module
   if (selectedSubModule === "production-dashboard") {
     return (

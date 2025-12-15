@@ -178,6 +178,7 @@ export default function ProjectListCard() {
       }
     }
   }, [selectedProject, openDetails]);
+
   // Add this useEffect to load cost data when color tab changes
   useEffect(() => {
     const loadCostDataForColor = async () => {
@@ -303,6 +304,7 @@ export default function ProjectListCard() {
       }
     }
   }, [openDetails, selectedProject]);
+
   // Memoized color variant tabs
   const colorVariantTabs = useMemo(() => {
     const keys = Array.from(localColorVariants.keys());
@@ -362,7 +364,6 @@ export default function ProjectListCard() {
     return new Date(dateString).toLocaleDateString("en-GB");
   };
 
-  // PDF Download Handler
   // PDF Download Handler
   const handleDownloadPDF = async () => {
     try {
@@ -446,7 +447,6 @@ export default function ProjectListCard() {
       };
 
       // Determine active tab for PDF
-
       await generateProjectPDF({
         project: pdfProject,
         costData: costData,
@@ -460,7 +460,6 @@ export default function ProjectListCard() {
       toast.error("Failed to generate PDF");
     }
   };
-  // In your component, add:
 
   // Update handleColorVariantsSave:
   const handleColorVariantsSave = useCallback(
@@ -505,6 +504,7 @@ export default function ProjectListCard() {
     },
     [selectedProject, loadProjects]
   );
+
   const renderColorVariantSection = () => (
     <div className="space-y-4 md:space-y-6">
       {/* Color Variant Tabs Header */}
@@ -737,13 +737,39 @@ export default function ProjectListCard() {
         </CardHeader>
 
         <CardContent>
+          {/* ================= FILTERS SECTION ================= */}
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            {/* Search Input */}
             <Input
-              placeholder="Search..."
+              placeholder="Search by code, name, company, brand..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1"
             />
 
+            {/* Status Filter */}
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="prototype">Prototype</SelectItem>
+                <SelectItem value="red_seal">Red Seal</SelectItem>
+                <SelectItem value="green_seal">Green Seal</SelectItem>
+                <SelectItem value="po_pending">PO Pending</SelectItem>
+                <SelectItem value="po_approved">PO Approved</SelectItem>
+                <SelectItem value="production_planning">
+                  Production Planning
+                </SelectItem>
+                <SelectItem value="delivery_pending">
+                  Delivery Pending
+                </SelectItem>
+                <SelectItem value="delivered">Delivered</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Priority Filter */}
             <Select
               value={selectedPriority}
               onValueChange={setSelectedPriority}
@@ -752,7 +778,7 @@ export default function ProjectListCard() {
                 <SelectValue placeholder="Priority" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="all">All Priority</SelectItem>
                 <SelectItem value="high">High</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
@@ -760,6 +786,7 @@ export default function ProjectListCard() {
             </Select>
           </div>
 
+          {/* Projects Table */}
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">

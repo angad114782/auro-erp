@@ -26,6 +26,7 @@ import Pagination from "./PrototypeProject/Pagination";
 import { useProjects } from "../hooks/useProjects";
 import { useDebounce } from "./NewHooks/useDebounce";
 import { TableSkeleton, MobileSkeleton } from "./Skeletons";
+import { ProjectFilters } from "./ProjectFilters";
 
 export function RedSeal() {
   const {
@@ -50,7 +51,14 @@ export function RedSeal() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-
+  const [filters, setFilters] = useState({
+    country: "",
+    priority: "",
+    company: "",
+    brand: "",
+    category: "",
+    type: "",
+  });
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
   const debouncedSearch = useDebounce(
@@ -73,7 +81,30 @@ export function RedSeal() {
     search: debouncedSearchTerm,
     page: currentPage,
     limit: itemsPerPage,
+    country: filters.country,
+    priority: filters.priority,
+    company: filters.company,
+    brand: filters.brand,
+    category: filters.category,
+    type: filters.type,
   });
+
+  const handleFiltersChange = useCallback((newFilters: any) => {
+    setFilters(newFilters);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setFilters({
+      country: "",
+      priority: "",
+      company: "",
+      brand: "",
+      category: "",
+      type: "",
+    });
+    setCurrentPage(1);
+  }, []);
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = e.target.value;
@@ -184,10 +215,22 @@ export function RedSeal() {
                 className="pl-10 w-full"
               />
             </div>
-            <Button variant="outline" className="w-full sm:w-auto">
+            {/* <Button variant="outline" className="w-full sm:w-auto">
               <Filter className="w-4 h-4 mr-2" />
               <span className="hidden sm:inline">Filters</span>
-            </Button>
+            </Button> */}
+            <ProjectFilters
+              countries={countries}
+              companies={companies}
+              brands={brands}
+              categories={categories}
+              types={types}
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              onClearFilters={handleClearFilters}
+              availableFilters={["country", "priority", "company", "brand"]}
+              isMobile={isMobile}
+            />
           </div>
 
           {/* Loading State */}

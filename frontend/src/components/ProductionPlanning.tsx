@@ -916,9 +916,12 @@ export function ProductionPlanning() {
         .toLowerCase()
         .includes(searchTerm.toLowerCase()) ||
       (plan.brand || "").toLowerCase().includes(searchTerm.toLowerCase());
+
+    // CHANGE FROM STATUS TO PRIORITY FILTERING
     const matchesFilter =
       selectedFilter === "all" ||
-      (plan.status || "").toLowerCase().replace(" ", "-") === selectedFilter;
+      (plan.priority || "").toLowerCase() === selectedFilter.toLowerCase();
+
     return matchesSearch && matchesFilter;
   });
 
@@ -1632,7 +1635,7 @@ export function ProductionPlanning() {
                   />
                 </div>
 
-                {/* Filter Dropdown - Hidden on mobile in favor of filter button */}
+                {/* Priority Filter Dropdown */}
                 {!isMobile ? (
                   <Select
                     value={selectedFilter}
@@ -1643,26 +1646,13 @@ export function ProductionPlanning() {
                   >
                     <SelectTrigger className="w-[220px]">
                       <Filter className="w-4 h-4 mr-2" />
-                      <SelectValue />
+                      <SelectValue placeholder="Filter by priority" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="planning">Planning</SelectItem>
-                      <SelectItem value="capacity-allocated">
-                        Capacity Allocated
-                      </SelectItem>
-                      <SelectItem value="manufacturing-assigned">
-                        Manufacturing Assigned
-                      </SelectItem>
-                      <SelectItem value="process-defined">
-                        Process Defined
-                      </SelectItem>
-                      <SelectItem value="ready-for-production">
-                        Ready for Production
-                      </SelectItem>
-                      <SelectItem value="in-production">
-                        In Production
-                      </SelectItem>
+                      <SelectItem value="all">All Priorities</SelectItem>
+                      <SelectItem value="High">High Priority</SelectItem>
+                      <SelectItem value="Medium">Medium Priority</SelectItem>
+                      <SelectItem value="Low">Low Priority</SelectItem>
                     </SelectContent>
                   </Select>
                 ) : (
@@ -1672,7 +1662,7 @@ export function ProductionPlanning() {
                     className="w-full"
                   >
                     <Filter className="w-4 h-4 mr-2" />
-                    Filters
+                    Filter by Priority
                   </Button>
                 )}
               </div>
@@ -1699,7 +1689,7 @@ export function ProductionPlanning() {
             </div>
           </div>
 
-          {/* Mobile Filters */}
+          {/* Mobile Priority Filters */}
           {isMobile && showMobileFilters && (
             <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
               <div className="grid grid-cols-2 gap-2">
@@ -1709,63 +1699,31 @@ export function ProductionPlanning() {
                   onClick={() => setSelectedFilter("all")}
                   className="text-xs"
                 >
-                  All Status
+                  All Priorities
                 </Button>
                 <Button
-                  variant={
-                    selectedFilter === "planning" ? "default" : "outline"
-                  }
+                  variant={selectedFilter === "High" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setSelectedFilter("planning")}
+                  onClick={() => setSelectedFilter("High")}
                   className="text-xs"
                 >
-                  Planning
+                  High
                 </Button>
                 <Button
-                  variant={
-                    selectedFilter === "capacity-allocated"
-                      ? "default"
-                      : "outline"
-                  }
+                  variant={selectedFilter === "Medium" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setSelectedFilter("capacity-allocated")}
+                  onClick={() => setSelectedFilter("Medium")}
                   className="text-xs"
                 >
-                  Capacity Allocated
+                  Medium
                 </Button>
                 <Button
-                  variant={
-                    selectedFilter === "manufacturing-assigned"
-                      ? "default"
-                      : "outline"
-                  }
+                  variant={selectedFilter === "Low" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setSelectedFilter("manufacturing-assigned")}
+                  onClick={() => setSelectedFilter("Low")}
                   className="text-xs"
                 >
-                  Manufacturing Assigned
-                </Button>
-                <Button
-                  variant={
-                    selectedFilter === "ready-for-production"
-                      ? "default"
-                      : "outline"
-                  }
-                  size="sm"
-                  onClick={() => setSelectedFilter("ready-for-production")}
-                  className="text-xs"
-                >
-                  Ready for Production
-                </Button>
-                <Button
-                  variant={
-                    selectedFilter === "in-production" ? "default" : "outline"
-                  }
-                  size="sm"
-                  onClick={() => setSelectedFilter("in-production")}
-                  className="text-xs"
-                >
-                  In Production
+                  Low
                 </Button>
               </div>
             </div>

@@ -65,6 +65,8 @@ export function FigmaSidebar({
   isMobileOpen = false,
   onMobileToggle,
 }: SidebarProps): React.JSX.Element {
+  const { hasPermission, user } = useAuth();
+
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedModules, setExpandedModules] = useState<string[]>([
     "rd-management",
@@ -72,7 +74,6 @@ export function FigmaSidebar({
     "inventory",
     "delivery",
   ]);
-  const { hasPermission } = useAuth();
   console.log("Can access all-projects?", hasPermission("all-projects"));
 
   const handleCollapseToggle = (collapsed: boolean): void => {
@@ -282,6 +283,93 @@ export function FigmaSidebar({
       ],
     },
   ];
+  if (user?.role === "Supervisor") {
+    const [isCollapsed, setIsCollapsed] = useState(false);
+
+    const handleCollapse = (collapsed: boolean) => {
+      setIsCollapsed(collapsed);
+      onCollapseChange?.(collapsed); // ✅ sync with layout
+    };
+
+    return (
+      <>
+        {/* Sidebar */}
+        <div
+          className={`fixed top-0 left-0 h-full bg-white border-r z-50 transition-all duration-300
+          ${isCollapsed ? "w-16" : "w-72 md:w-80"}
+          ${
+            isMobileOpen
+              ? "translate-x-0"
+              : "-translate-x-full md:translate-x-0"
+          }
+        `}
+        >
+          {/* Header */}
+          <div className="p-4 border-b flex items-center justify-between">
+            {!isCollapsed && (
+              <div>
+                <h2 className="font-bold text-base">ERP System</h2>
+                <p className="text-xs text-gray-500">Supervisor</p>
+              </div>
+            )}
+
+            {/* Desktop collapse button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleCollapse(!isCollapsed)}
+              className="hidden md:flex"
+            >
+              <Minimize2 className="w-4 h-4" />
+            </Button>
+
+            {/* Mobile close */}
+            {isMobileOpen && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onMobileToggle}
+                className="md:hidden"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+
+          {/* Navigation */}
+          <nav className="p-3">
+            <button
+              onClick={() => {
+                onModuleChange("production", "production-tracking");
+                onMobileToggle?.();
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+              ${
+                currentSubModule === "production-tracking"
+                  ? "bg-[#0c9dcb] text-white"
+                  : "text-gray-700 hover:bg-gray-100"
+              }
+              ${isCollapsed ? "justify-center" : ""}
+            `}
+            >
+              <ClipboardList className="w-5 h-5" />
+              {!isCollapsed && (
+                <span className="font-medium">Production Tracking</span>
+              )}
+            </button>
+          </nav>
+        </div>
+
+        {/* Mobile overlay */}
+        {isMobileOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={onMobileToggle}
+          />
+        )}
+      </>
+    );
+  }
 
   // Filter modules based on user permissions
   const filteredModules = modules.filter((module) => hasPermission(module.id));

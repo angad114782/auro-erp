@@ -22,6 +22,7 @@ import { useProjectQuery } from "./NewHooks/useProjectQuery";
 import { useDebounce } from "./NewHooks/useDebounce";
 import { useProjects } from "../hooks/useProjects";
 import ProjectDetailsDialog from "./ProjectDetailsDialog";
+import { ProjectFilters } from "./ProjectFilters";
 
 export default function ProjectDevelopment() {
   const {
@@ -47,7 +48,14 @@ export default function ProjectDevelopment() {
   const [isMobile, setIsMobile] = useState(false);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const { deleteProject } = useProjects();
-
+  const [filters, setFilters] = useState({
+    country: "",
+    priority: "",
+    company: "",
+    brand: "",
+    category: "",
+    type: "",
+  });
   const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "";
 
   const debouncedSearch = useDebounce(
@@ -57,7 +65,6 @@ export default function ProjectDevelopment() {
     },
     300 // 300ms delay
   );
-  // Use the new query hook with prototype status
   const {
     data: projects,
     total,
@@ -69,8 +76,31 @@ export default function ProjectDevelopment() {
     search: debouncedSearchTerm,
     page: currentPage,
     limit: itemsPerPage,
+    // NEW: Pass filters to the query
+    country: filters.country,
+    priority: filters.priority,
+    company: filters.company,
+    brand: filters.brand,
+    category: filters.category,
+    type: filters.type,
   });
 
+  const handleFiltersChange = useCallback((newFilters: any) => {
+    setFilters(newFilters);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setFilters({
+      country: "",
+      priority: "",
+      company: "",
+      brand: "",
+      category: "",
+      type: "",
+    });
+    setCurrentPage(1);
+  }, []);
   // Check screen size on mount and resize
   useEffect(() => {
     const checkMobile = () => {
@@ -337,10 +367,22 @@ export default function ProjectDevelopment() {
                 className="pl-10 w-full"
               />
             </div>
-            <Button variant="outline" className="w-full sm:w-auto">
+            <ProjectFilters
+              countries={countries}
+              companies={companies}
+              brands={brands}
+              categories={categories}
+              types={types}
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              onClearFilters={handleClearFilters}
+              availableFilters={["country", "priority", "company", "brand"]}
+              isMobile={isMobile}
+            />
+            {/* <Button variant="outline" className="w-full sm:w-auto">
               <Filter className="w-4 h-4 mr-2" />
               <span className="hidden sm:inline">Filters</span>
-            </Button>
+            </Button> */}
           </div>
 
           {/* Loading State */}

@@ -1,5 +1,5 @@
+// useProjectQuery.ts - Updated with filter support
 import { useEffect, useState } from "react";
-import axios from "axios";
 import api from "../../lib/api";
 
 type Query = {
@@ -7,6 +7,12 @@ type Query = {
   search?: string;
   page?: number;
   limit?: number;
+  country?: string;
+  priority?: string;
+  company?: string;
+  brand?: string;
+  category?: string;
+  type?: string;
 };
 
 export function useProjectQuery(params: Query) {
@@ -14,7 +20,6 @@ export function useProjectQuery(params: Query) {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
-
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
@@ -24,13 +29,23 @@ export function useProjectQuery(params: Query) {
     async function load() {
       setLoading(true);
       try {
+        // Build query params, only include non-empty values
+        const queryParams: any = {
+          page: params.page ?? 1,
+          limit: params.limit ?? 8,
+        };
+
+        if (params.status) queryParams.status = params.status;
+        if (params.search) queryParams.search = params.search;
+        if (params.country) queryParams.country = params.country;
+        if (params.priority) queryParams.priority = params.priority;
+        if (params.company) queryParams.company = params.company;
+        if (params.brand) queryParams.brand = params.brand;
+        if (params.category) queryParams.category = params.category;
+        if (params.type) queryParams.type = params.type;
+
         const res = await api.get("/projects", {
-          params: {
-            status: params.status,
-            search: params.search,
-            page: params.page ?? 1,
-            limit: params.limit ?? 8,
-          },
+          params: queryParams,
           signal: controller.signal,
         });
 
@@ -40,6 +55,7 @@ export function useProjectQuery(params: Query) {
         setPages(res.data.pages || 1);
       } catch (e) {
         if (!mounted) return;
+        console.error("Failed to load projects:", e);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -51,14 +67,25 @@ export function useProjectQuery(params: Query) {
       mounted = false;
       controller.abort();
     };
-  }, [params.status, params.search, params.page, params.limit, reloadToken]);
-  //                👆 added reloadToken dependency!
+  }, [
+    params.status,
+    params.search,
+    params.page,
+    params.limit,
+    params.country,
+    params.priority,
+    params.company,
+    params.brand,
+    params.category,
+    params.type,
+    reloadToken,
+  ]);
 
   return {
     data,
     total,
     pages,
     loading,
-    reload: () => setReloadToken((x) => x + 1), // REAL reload
+    reload: () => setReloadToken((x) => x + 1),
   };
 }
