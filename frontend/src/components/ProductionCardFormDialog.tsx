@@ -47,6 +47,7 @@ import { toast } from "sonner";
 import { useERPStore, RDProject } from "../lib/data-store";
 import api from "../lib/api";
 import { Card, CardContent } from "./ui/card";
+import { generateProductionCardPDF } from "./CardPdfGenerator";
 
 // Media query hook
 const useMediaQuery = (query: string) => {
@@ -961,7 +962,78 @@ export function ProductionCardFormDialog({
       );
     }
   };
+  const handleDownloadPDF = async (card: ProductionCardData) => {
+    try {
+      // Get full card data including material information
+      const fullCard = apiCards.find((c: any) => (c._id || c.id) === card.id);
 
+      if (!fullCard) {
+        toast.error("Could not find card data for PDF generation");
+        return;
+      }
+
+      // Prepare material sections
+      const materialSections = {
+        upper: fullCard.upper || [],
+        materials: fullCard.materials || [],
+        components: fullCard.components || [],
+        packaging: fullCard.packaging || [],
+        misc: fullCard.misc || [],
+      };
+
+      // Get allocation summary for this specific card
+      const projectCards = displayProductionCards.filter(
+        (c) => c.projectId === card.projectId
+      );
+
+      const otherCardsAllocation = projectCards
+        .filter((c) => c.id !== card.id)
+        .reduce((sum, c) => sum + (parseFloat(c.cardQuantity) || 0), 0);
+
+      const totalOrder = totalOrderQty;
+      const available = Math.max(
+        0,
+        totalOrder -
+          (otherCardsAllocation + (parseFloat(card.cardQuantity) || 0))
+      );
+
+      const pdfData = {
+        cardNumber: card.cardName || fullCard.cardNumber || "N/A",
+        productName: getProductName(),
+        projectId: card.projectId || "N/A",
+        cardQuantity: parseFloat(card.cardQuantity) || 0,
+        startDate:
+          card.startDate || fullCard.startDate || new Date().toISOString(),
+        assignedPlant:
+          card.assignPlant?.name ||
+          fullCard.assignedPlant?.name ||
+          "Not Assigned",
+        description: card.description || fullCard.description || "",
+        specialInstructions:
+          card.specialInstructions || fullCard.specialInstructions || "",
+        status: card.status || fullCard.status || "Active",
+        createdBy: card.supervisor || fullCard.createdBy || "System",
+        createdAt:
+          card.createdAt || fullCard.createdAt || new Date().toISOString(),
+        materialSections,
+        allocationSummary: {
+          totalOrder,
+          alreadyAllocated: otherCardsAllocation,
+          thisCardAllocated: parseFloat(card.cardQuantity) || 0,
+          available,
+        },
+      };
+
+      toast.promise(generateProductionCardPDF(pdfData), {
+        loading: "Generating PDF...",
+        success: "PDF downloaded successfully!",
+        error: "Failed to generate PDF",
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast.error("Failed to generate PDF");
+    }
+  };
   const getDialogStyle = () => {
     if (isMobile) {
       return {

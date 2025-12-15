@@ -19,6 +19,7 @@ import {
   FileText,
   Play,
   Pause,
+  Download,
 } from "lucide-react";
 import {
   Dialog,
@@ -45,6 +46,7 @@ import { useERPStore } from "../lib/data-store";
 import { ProductionCardFormDialog } from "./ProductionCardFormDialog";
 import { useProjects } from "../hooks/useProjects";
 import api from "../lib/api";
+import { generateProductionCardPDF } from "./CardPdfGenerator";
 
 // Media query hook
 const useMediaQuery = (query: string) => {
@@ -432,96 +434,106 @@ export function CreateProductionCardDialog({
     setShowProductionCardForm(true);
   };
 
-  // Update getCardActionButtons to disable when stage is "Tracking"
   const getCardActionButtons = (card: ProductionCardData) => {
     const isTracking = card.stage === "Tracking";
     const isStarting = startingProduction === card.id;
     const isLoading = loadingCardId === card.id;
 
-    // Disable buttons when stage is "Tracking"
-    if (isTracking) {
-      return (
-        <div className="flex gap-2 w-full">
-          <Button
-            disabled={true}
-            variant="outline"
-            size="sm"
-            className="flex-1 text-xs opacity-50 cursor-not-allowed"
-          >
-            <Play className="w-3 h-3" />
-            Tracking Started
-          </Button>
-          <Button
-            disabled={true}
-            variant="outline"
-            size="sm"
-            className="flex-1 text-xs opacity-50 cursor-not-allowed"
-          >
-            <Target className="w-3 h-3" />
-            Edit Disabled
-          </Button>
-          <Button
-            onClick={() => handleStopProduction(card)}
-            disabled={isLoading}
-            variant="destructive"
-            size="sm"
-            className="flex-1 text-xs"
-          >
-            {isLoading ? (
-              <>
-                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Reverting...
-              </>
-            ) : (
-              <>
-                <AlertCircle className="w-3 h-3" />
-                Revert to Planning
-              </>
-            )}
-          </Button>
-        </div>
-      );
-    }
-
-    // Normal buttons when not in Tracking stage
     return (
-      <div className="flex gap-2 w-full">
-        <Button
-          onClick={() => handleStartProduction(card)}
-          disabled={isStarting}
-          size="sm"
-          className="flex-1 bg-green-500 hover:bg-green-600 text-xs"
-        >
-          {isStarting ? (
-            <>
-              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Starting...
-            </>
-          ) : (
-            <>
+      <div className="flex flex-col gap-3 w-full">
+        {/* Main Action Buttons */}
+        <div className="flex gap-2">
+          {isTracking ? (
+            <Button
+              disabled={true}
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs opacity-50 cursor-not-allowed"
+            >
               <Play className="w-3 h-3" />
-              Start Tracking
-            </>
+              Tracking Started
+            </Button>
+          ) : (
+            <Button
+              onClick={() => handleStartProduction(card)}
+              disabled={isStarting}
+              size="sm"
+              className="flex-1 bg-green-500 hover:bg-green-600 text-xs"
+            >
+              {isStarting ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <Play className="w-3 h-3" />
+                  Start Tracking
+                </>
+              )}
+            </Button>
           )}
-        </Button>
-        <Button
-          onClick={() => handleEditCard(card)}
-          variant="secondary"
-          size="sm"
-          className="flex-1 text-xs"
-        >
-          <Target className="w-3 h-3" />
-          Edit
-        </Button>
-        <Button
-          onClick={() => handleDeleteCard(card)}
-          variant="destructive"
-          size="sm"
-          className="flex-1 text-xs"
-        >
-          <Trash2 className="w-3 h-3" />
-          Delete
-        </Button>
+
+          {/* PDF Download Button */}
+          <div className="relative group">
+            <Button
+              onClick={() => handleDownloadPDF(card)}
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs bg-white hover:bg-gray-50 border-blue-200 hover:border-blue-300"
+            >
+              <Download className="w-3 h-3" />
+              {/* Download PDF */}
+            </Button>
+          </div>
+        </div>
+
+        {/* Secondary Action Buttons */}
+        <div className="flex gap-2">
+          {!isTracking && (
+            <Button
+              onClick={() => handleEditCard(card)}
+              variant="secondary"
+              size="sm"
+              className="flex-1 text-xs"
+            >
+              <Target className="w-3 h-3" />
+              Edit
+            </Button>
+          )}
+
+          {isTracking ? (
+            <Button
+              onClick={() => handleStopProduction(card)}
+              disabled={isLoading}
+              variant="destructive"
+              size="sm"
+              className="flex-1 text-xs"
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Reverting...
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="w-3 h-3" />
+                  Revert to Planning
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => handleDeleteCard(card)}
+              variant="destructive"
+              size="sm"
+              className="flex-1 text-xs"
+            >
+              <Trash2 className="w-3 h-3" />
+              Delete
+            </Button>
+          )}
+        </div>
       </div>
     );
   };
@@ -596,6 +608,82 @@ export function CreateProductionCardDialog({
         maxWidth: "1400px",
         maxHeight: "95vh",
       };
+    }
+  };
+
+  const handleDownloadPDF = async (card: ProductionCardData) => {
+    try {
+      // Get full card data including material information
+      const fullCard = apiCards.find((c: any) => (c._id || c.id) === card.id);
+
+      if (!fullCard) {
+        toast.error("Could not find card data for PDF generation");
+        return;
+      }
+
+      // Prepare material sections
+      const materialSections = {
+        upper: fullCard.upper || [],
+        materials: fullCard.materials || [],
+        components: fullCard.components || [],
+        packaging: fullCard.packaging || [],
+        misc: fullCard.misc || [],
+      };
+
+      // Get allocation summary for this specific card
+      const projectCards = displayProductionCards.filter(
+        (c) => c.projectId === card.projectId
+      );
+
+      const otherCardsAllocation = projectCards
+        .filter((c) => c.id !== card.id)
+        .reduce((sum, c) => sum + (parseFloat(c.cardQuantity) || 0), 0);
+
+      const totalOrder = totalOrderQty;
+      const thisCardAllocated = parseFloat(card.cardQuantity) || 0;
+      const available = Math.max(
+        0,
+        totalOrder - (otherCardsAllocation + thisCardAllocated)
+      );
+
+      const pdfData = {
+        cardNumber: card.cardName || fullCard.cardNumber || "N/A",
+        productName: card.cardName,
+        projectId: card.projectId || "N/A",
+        cardQuantity: thisCardAllocated,
+        startDate:
+          card.startDate || fullCard.startDate || new Date().toISOString(),
+        assignedPlant:
+          card.assignPlant?.name ||
+          fullCard.assignedPlant?.name ||
+          "Not Assigned",
+        description: card.description || fullCard.description || "",
+        specialInstructions:
+          card.specialInstructions || fullCard.specialInstructions || "",
+        status: card.status || fullCard.status || "Active",
+        createdBy: card.supervisor || fullCard.createdBy || "System",
+        createdAt:
+          card.createdAt || fullCard.createdAt || new Date().toISOString(),
+        workShift: card.workShift || fullCard.workShift || "Not specified",
+        supervisor: card.supervisor || fullCard.supervisor || "Not assigned",
+        priority: card.priority || fullCard.priority || "Medium",
+        materialSections,
+        allocationSummary: {
+          totalOrder,
+          alreadyAllocated: otherCardsAllocation,
+          thisCardAllocated,
+          available,
+        },
+      };
+
+      toast.promise(generateProductionCardPDF(pdfData), {
+        loading: "Generating professional PDF report...",
+        success: "PDF report downloaded successfully!",
+        error: "Failed to generate PDF report",
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast.error("Failed to generate PDF report");
     }
   };
 

@@ -647,7 +647,7 @@ export function RedSealProjectDetailsDialog(props: any) {
     try {
       if (!project) return;
 
-      // load cost data
+      // Load all cost data including summary
       const [
         summaryRes,
         upperRes,
@@ -666,16 +666,43 @@ export function RedSealProjectDetailsDialog(props: any) {
         api.get(`/projects/${project._id}/costs/labour`),
       ]);
 
+      // Get the cost summary from your hook state (or API response)
+      const summaryData =
+        costSummary || summaryRes.data.summary || summaryRes.data;
+
       const costData = {
         upper: upperRes.data.rows || [],
         component: componentRes.data.rows || [],
         material: materialRes.data.rows || [],
         packaging: packagingRes.data.rows || [],
         miscellaneous: miscRes.data.rows || [],
-        labour: labourRes.data.labour || { directTotal: 0, items: [] },
-        summary: summaryRes.data.summary || summaryRes.data,
+        labour: {
+          items: labourRes.data.labour?.items || [],
+          directTotal: labourRes.data.labour?.directTotal || 0,
+        },
+        summary: {
+          // Include all cost breakdown totals
+          upperTotal: summaryData.upperTotal || calculateTotal("upper"),
+          componentTotal:
+            summaryData.componentTotal || calculateTotal("component"),
+          materialTotal:
+            summaryData.materialTotal || calculateTotal("material"),
+          packagingTotal:
+            summaryData.packagingTotal || calculateTotal("packaging"),
+          miscTotal: summaryData.miscTotal || calculateTotal("miscellaneous"),
+          labourTotal: summaryData.labourTotal || labourCost.directTotal,
+          additionalCosts: editAdditionalCosts, // Use your local state
+          profitMargin: editProfitMargin, // Use your local state
+          profitAmount: localProfitAmount, // Use your local computed state
+          totalAllCosts: summaryData.totalAllCosts || 0,
+          tentativeCost: realtime.tentative, // Use your computed tentative cost
+        },
       };
+      console.log(project, "fdfdsfdfds");
       const pdfProject = {
+        ...project, // Spread all project properties
+        // Ensure these fields are included
+
         autoCode: project.autoCode,
         company: { name: project.company?.name || "-" },
         brand: { name: project.brand?.name || "-" },
@@ -689,29 +716,47 @@ export function RedSealProjectDetailsDialog(props: any) {
         assignPerson: { name: project.assignPerson?.name || "-" },
         productDesc: project.productDesc || "-",
         clientApproval: project.clientApproval || "-",
-        status: project?.status,
+        status: project.status,
+        clientFinalCost:
+          editedProject?.clientFinalCost || project.clientFinalCost || "0", // ADD THIS
         nextUpdate: {
           date: project.nextUpdate?.date || "",
           note: project.nextUpdate?.note || "",
         },
-
         coverImage: project.coverImage
           ? getFullImageUrl(project.coverImage)
           : null,
-
         sampleImages: (project.sampleImages || []).map(getFullImageUrl),
-
-        costData,
+        // PO details if available
+        po: project.po || {
+          poNumber: project.poNumber,
+          orderQuantity: project.orderQuantity,
+          unitPrice: project.unitPrice,
+          totalAmount: project.poValue,
+          deliveryDate: project.redSealTargetDate,
+        },
+        poNumber: project.poNumber,
+        orderQuantity: project.orderQuantity,
+        unitPrice: project.unitPrice,
+        poValue: project.poValue,
+        costData, // Include the enhanced cost data
       };
 
       // ALWAYS use actual project stage as PDF template selector
-      const activeTab = project.status; // "red_seal", "prototype", etc.
-
+      const activeTab = project.status;
       await generateProjectPDF({
         project: pdfProject,
         costData,
         activeTab,
+        companyName: "AURA INTERNATIONAL",
+        // logoUrl: "/logo/aura-logo.png", // OR full CDN URL
       });
+
+      // await generateProjectPDF({
+      //   project: pdfProject,
+      //   costData,
+      //   activeTab,
+      // });
 
       toast.success("PDF downloaded successfully!");
     } catch (err) {
@@ -1741,7 +1786,8 @@ export function RedSealProjectDetailsDialog(props: any) {
                         onClick={() =>
                           setEditedProject({
                             ...editedProject,
-                            updateNotes: "Client approved the update.",
+                            updateNotes: "Client approved the project.",
+                            clientApproval: "ok", // ✅ THIS WAS MISSING
                           })
                         }
                         className="text-xs"

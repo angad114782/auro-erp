@@ -2,13 +2,46 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+/* ===================== DESIGN SYSTEM ===================== */
+const COLORS = {
+  primary: "#1e3a8a", // Dark Blue (for Headers and Titles)
+  secondary: "#10b981", // Green (for approved/profit)
+  headerText: "#ffffff",
+  textDark: "#111827",
+  textLight: "#6b7280", // Gray for labels
+  border: "#d1d5db", // Light gray border
+  bgGray: "#f3f4f6", // Very light gray for label backgrounds/muted columns
+  statusPOPending: "#f59e0b", // Amber/Orange
+  statusRedSeal: "#ef4444", // Red
+  statusGreenSeal: "#059669", // Dark Green
+  statusAllProjects: "#a855f7", // Purple
+};
+
+const LAYOUT = {
+  marginX: 14,
+  width: 182, // A4 width (210) - margins (28)
+  rowH: 11, // Tighter height for info rows
+  pageBreakThreshold: 255, // Y position to trigger a new page
+};
+
 /* ------------------------------------------------------
-   Utility helpers
+   Utility helpers
 ------------------------------------------------------ */
 const safe = (v: any) =>
   v === null || v === undefined || v === "" ? "—" : String(v);
 
+/** Formats currency with two decimal places (e.g., 1,234.56) */
 const formatINR = (v: number | string) => {
+  const num = Number(v || 0);
+
+  return num.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+/** Formats quantity/numbers with two decimal places (e.g., 1,234.56) */
+const formatQuantity = (v: number | string) => {
   const num = Number(v || 0);
 
   return num.toLocaleString("en-IN", {
@@ -21,6 +54,7 @@ const formatDate = (d?: string) => {
   if (!d) return "N/A";
   const dt = new Date(d);
   if (isNaN(dt.getTime())) return d;
+  // Using a simplified format without requiring date-fns import
   return dt.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
@@ -29,7 +63,78 @@ const formatDate = (d?: string) => {
 };
 
 /* ------------------------------------------------------
-   Convert image → base64 (required for jsPDF)
+   PDF Helpers (The core UI components)
+------------------------------------------------------ */
+
+/** Helper to draw a structured grid cell */
+function drawInfoCell(
+  doc: jsPDF,
+  label: string,
+  value: string | number,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+) {
+  const cleanValue = safe(value);
+
+  // Draw Box
+  doc.setDrawColor(COLORS.border);
+  doc.setLineWidth(0.1);
+  doc.rect(x, y, w, h);
+
+  // Draw Label (Small, top left)
+  doc.setFontSize(6);
+  doc.setTextColor(COLORS.textLight);
+  doc.setFont("helvetica", "bold");
+  doc.text(label.toUpperCase(), x + 2, y + 4);
+
+  // Draw Value (Larger, bottom left)
+  doc.setFontSize(9);
+  doc.setTextColor(COLORS.textDark);
+  doc.setFont("helvetica", "normal");
+
+  // Use splitTextToSize to handle potential overflow
+  const splitValue = doc.splitTextToSize(cleanValue, w - 4);
+  doc.text(splitValue.length > 0 ? splitValue[0] : "", x + 2, y + 9);
+}
+
+/** Helper to draw a section title with thicker underline and generous spacing (Clutter Fix) */
+function drawSectionHeader(
+  doc: jsPDF,
+  title: string,
+  y: number,
+  color: string = COLORS.primary
+) {
+  // Add generous vertical spacing *before* the header (UI/UX fix)
+  y += 8;
+
+  doc.setFontSize(12);
+  // Need to convert HEX to RGB for setTextColor
+  const [r, g, b] = (doc as any).hexToRgb(color);
+  doc.setTextColor(r, g, b);
+  doc.setFont("helvetica", "bold");
+  doc.text(title.toUpperCase(), LAYOUT.marginX, y);
+
+  // Thicker Underline
+  doc.setDrawColor(COLORS.border);
+  doc.setLineWidth(0.4);
+  doc.line(LAYOUT.marginX, y + 1.5, LAYOUT.marginX + LAYOUT.width, y + 1.5);
+
+  return y + 5; // Extra space after underline before content starts
+}
+
+/** Helper to check and force a page break */
+function checkPageBreak(doc: jsPDF, y: number, requiredSpace: number = 30) {
+  if (y + requiredSpace > LAYOUT.pageBreakThreshold) {
+    doc.addPage();
+    return 20;
+  }
+  return y;
+}
+
+/* ------------------------------------------------------
+   Convert image → base64 (required for jsPDF)
 ------------------------------------------------------ */
 const toBase64 = (url: string): Promise<string> =>
   new Promise((resolve) => {
@@ -44,7 +149,6 @@ const toBase64 = (url: string): Promise<string> =>
       let w = img.width;
       let h = img.height;
 
-      // Scale down if too large
       const max = 1000;
       if (w > max || h > max) {
         const r = Math.min(max / w, max / h);
@@ -62,44 +166,95 @@ const toBase64 = (url: string): Promise<string> =>
   });
 
 /* ------------------------------------------------------
-   Section: Product Details
+   Section: Product Details
 ------------------------------------------------------ */
 const renderProductDetails = (doc: jsPDF, p: any, y: number) => {
-  autoTable(doc, {
-    startY: y,
-    head: [["Field", "Value"]],
-    body: [
-      ["Project Code", safe(p.autoCode)],
-      ["Company", safe(p.company?.name)],
-      ["Brand", safe(p.brand?.name)],
-      ["Category", safe(p.category?.name)],
-      ["Type", safe(p.type?.name)],
-      ["Gender", safe(p.gender)],
-      ["Art Name", safe(p.artName)],
-      ["Color", safe(p.color)],
-      ["Priority", safe(p.priority)],
-      ["Target Date", formatDate(p.redSealTargetDate)],
-      ["Assigned Person", safe(p.assignPerson?.name)],
-      ["Status", safe(p.status || "PO PENDING")],
-      ["Client Approval", safe(p.clientApproval)],
-    ],
-    theme: "grid",
-    headStyles: { fillColor: [40, 90, 160], textColor: 255 },
-    styles: { fontSize: 10 },
-    showFoot: "never",
-  });
+  y = drawSectionHeader(doc, "Project Details", y, COLORS.primary);
 
-  return (doc as any).lastAutoTable.finalY + 10;
+  const startX = LAYOUT.marginX;
+  const rowH = LAYOUT.rowH;
+
+  // Row 1
+  drawInfoCell(doc, "Project Code", p.autoCode, startX, y, 45, rowH);
+  drawInfoCell(doc, "Company", safe(p.company?.name), startX + 45, y, 45, rowH);
+  drawInfoCell(doc, "Brand", safe(p.brand?.name), startX + 90, y, 45, rowH);
+  drawInfoCell(
+    doc,
+    "Category",
+    safe(p.category?.name),
+    startX + 135,
+    y,
+    47,
+    rowH
+  );
+  y += rowH;
+
+  // Row 2
+  drawInfoCell(
+    doc,
+    "Type / Gender",
+    `${safe(p.type?.name)} / ${safe(p.gender)}`,
+    startX,
+    y,
+    90,
+    rowH
+  );
+  drawInfoCell(doc, "Art Name", safe(p.artName), startX + 90, y, 45, rowH);
+  drawInfoCell(doc, "Color", safe(p.color), startX + 135, y, 47, rowH);
+  y += rowH;
+
+  // Row 3
+  drawInfoCell(doc, "Priority", safe(p.priority), startX, y, 45, rowH);
+  drawInfoCell(
+    doc,
+    "Target Date (Red Seal)",
+    formatDate(p.redSealTargetDate),
+    startX + 45,
+    y,
+    45,
+    rowH
+  );
+  drawInfoCell(
+    doc,
+    "Assigned Person",
+    safe(p.assignPerson?.name),
+    startX + 90,
+    y,
+    92,
+    rowH
+  );
+  y += rowH;
+
+  // Row 4
+  drawInfoCell(
+    doc,
+    "Status",
+    safe(p.status || "PO PENDING"),
+    startX,
+    y,
+    90,
+    rowH
+  );
+  drawInfoCell(
+    doc,
+    "Client Approval",
+    safe(p.clientApproval),
+    startX + 90,
+    y,
+    92,
+    rowH
+  );
+  y += rowH;
+
+  return y + 10; // Generous space after the grid (Clutter Fix)
 };
 
 /* ------------------------------------------------------
-   Section: Images
+   Section: Images
 ------------------------------------------------------ */
 const renderImages = async (doc: jsPDF, p: any, y: number) => {
-  doc.setFontSize(13);
-  doc.setTextColor(40, 90, 160);
-  doc.text("PRODUCT IMAGES", 14, y);
-  y += 8;
+  y = checkPageBreak(doc, y, 70);
+  y = drawSectionHeader(doc, "Product Visuals", y, COLORS.primary);
 
   const allImgs = [
     ...(p.coverImage ? [p.coverImage] : []),
@@ -108,309 +263,396 @@ const renderImages = async (doc: jsPDF, p: any, y: number) => {
 
   if (allImgs.length === 0) {
     doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text("No images available", 14, y);
+    doc.setTextColor(COLORS.textLight);
+    doc.text("No images available", LAYOUT.marginX, y);
     return y + 15;
   }
 
-  let x = 14;
-  for (const img of allImgs) {
+  let x = LAYOUT.marginX;
+  const imgSize = 40;
+  const padding = 5;
+
+  for (const img of allImgs.slice(0, 8)) {
     const b64 = await toBase64(img);
     if (!b64) continue;
 
-    doc.addImage(b64, "JPEG", x, y, 40, 40);
-    x += 45;
+    doc.addImage(b64, "JPEG", x, y, imgSize, imgSize);
 
-    if (x + 40 > doc.internal.pageSize.width - 14) {
-      x = 14;
-      y += 45;
+    // Add subtle border
+    doc.setDrawColor(COLORS.border);
+    doc.rect(x, y, imgSize, imgSize);
+
+    x += imgSize + padding;
+
+    if (x + imgSize > LAYOUT.marginX + LAYOUT.width) {
+      x = LAYOUT.marginX;
+      y += imgSize + padding;
+      y = checkPageBreak(doc, y, imgSize + 5);
     }
   }
 
-  return y + 50;
+  return y + imgSize + 10; // Generous space after image block (Clutter Fix)
 };
 
 /* ------------------------------------------------------
    Section: PO Details
 ------------------------------------------------------ */
 const renderPODetails = (doc: jsPDF, p: any, y: number) => {
-  doc.setFontSize(16);
-  doc.setTextColor(255, 140, 0); // Orange for PO
-  doc.text("PURCHASE ORDER DETAILS", 14, y);
-  y += 12;
+  y = checkPageBreak(doc, y);
+  y = drawSectionHeader(
+    doc,
+    "Purchase Order & Finance",
+    y,
+    COLORS.statusPOPending
+  );
 
-  // Main PO Information
+  const startX = LAYOUT.marginX;
+  const rowH = LAYOUT.rowH;
+  const po = p.po;
+
+  // Row 1: PO Number | Status | Target Delivery
+  drawInfoCell(
+    doc,
+    "PO Number",
+    safe(po?.poNumber || p.poNumber || "N/A"),
+    startX,
+    y,
+    60,
+    rowH
+  );
+  drawInfoCell(
+    doc,
+    "PO Status",
+    p.status === "po_pending" ? "PENDING" : "APPROVED",
+    startX + 60,
+    y,
+    60,
+    rowH
+  );
+  drawInfoCell(
+    doc,
+    "Target Delivery Date",
+    formatDate(po?.deliveryDate || p.redSealTargetDate),
+    startX + 120,
+    y,
+    62,
+    rowH
+  );
+  y += rowH;
+
+  // Row 2: Quantity | Unit Price | Total Value
+  drawInfoCell(
+    doc,
+    "Order Quantity",
+    formatQuantity(po?.orderQuantity || p.orderQuantity || 0),
+    startX,
+    y,
+    60,
+    rowH
+  );
+  drawInfoCell(
+    doc,
+    "Unit Price (INR)",
+    `₹ ${formatINR(po?.unitPrice || p.unitPrice || 0)}`,
+    startX + 60,
+    y,
+    60,
+    rowH
+  );
+  drawInfoCell(
+    doc,
+    "Total PO Value (INR)",
+    `₹ ${formatINR(po?.totalAmount || p.poValue || 0)}`,
+    startX + 120,
+    y,
+    62,
+    rowH
+  );
+  y += rowH + 5;
+
+  // Cost Summary with Client Final Cost
+  const costData = p.costData;
+  const summary = costData?.summary;
+
+  const materialTotal = summary?.materialTotal || 0;
+  const componentTotal = summary?.componentTotal || 0;
+  const upperTotal = summary?.upperTotal || 0;
+  const packagingTotal = summary?.packagingTotal || 0;
+  const miscTotal = summary?.miscTotal || 0;
+  const labourTotal = summary?.labourTotal || 0;
+
+  const additionalCosts = summary?.additionalCosts || 0;
+  const profitMargin = summary?.profitMargin || 0;
+  const profitAmount = summary?.profitAmount || 0;
+
+  const totalCost =
+    summary?.totalAllCosts ||
+    materialTotal +
+      componentTotal +
+      upperTotal +
+      packagingTotal +
+      miscTotal +
+      labourTotal;
+
+  const poValue = po?.totalAmount || p.poValue || 0;
+  const clientFinalCost = Number(
+    p.clientFinalCost ?? p.po?.clientFinalCost ?? 0
+  );
+
+  console.log(clientFinalCost, "sdsssssssssssssssss");
+
+  // Enhanced cost analysis table
+  y = checkPageBreak(doc, y, 50);
+
+  doc.setFontSize(10);
+  doc.setTextColor(COLORS.primary);
+  doc.setFont("helvetica", "bold");
+  doc.text("Detailed Cost & Profit Analysis", startX, y);
+  y += 2;
+
   autoTable(doc, {
     startY: y,
-    head: [["PO FIELD", "VALUE"]],
+    head: [["Item", "Amount (INR)", "Notes"]],
     body: [
-      ["PO Status", p.status === "po_pending" ? "PENDING" : "APPROVED"],
-      ["PO Number", safe(p.po?.poNumber || p.poNumber || "Not Assigned")],
-      ["Order Quantity", safe(p.po?.orderQuantity || p.orderQuantity || 0)],
-      ["Unit Price", formatINR(p.po?.unitPrice || p.unitPrice || 0)],
-      ["Total PO Value", formatINR(p.po?.totalAmount || p.poValue || 0)],
-      ["Target Delivery Date", formatDate(p.redSealTargetDate)],
-      ["Client Approval", safe(p.clientApproval)],
+      [
+        "Total Production Cost",
+        `₹ ${formatINR(totalCost)}`,
+        "All material + labour",
+      ],
+      ["Additional/Overhead Costs", `₹ ${formatINR(additionalCosts)}`, ""],
+      [
+        "Subtotal (Cost + Overhead)",
+        `₹ ${formatINR(totalCost + additionalCosts)}`,
+        "",
+      ],
+      ["Profit @ " + profitMargin + "%", `₹ ${formatINR(profitAmount)}`, ""],
+      [
+        "Tentative Cost",
+        `₹ ${formatINR(summary?.tentativeCost || 0)}`,
+        "Internal estimate",
+      ],
+      [
+        "PO Value (Sale Price)",
+        `₹ ${formatINR(poValue)}`,
+        "Customer billed amount",
+      ],
+      [
+        "Brand Final Cost",
+        `₹ ${formatINR(clientFinalCost)}`,
+        "Final approved cost",
+      ],
+      [
+        "Final Margin",
+        `₹ ${formatINR(clientFinalCost - totalCost)}`,
+        `${
+          clientFinalCost > 0
+            ? (((clientFinalCost - totalCost) / clientFinalCost) * 100).toFixed(
+                2
+              )
+            : 0
+        }%`,
+      ],
     ],
-    theme: "grid",
-    headStyles: { fillColor: [255, 140, 0] },
-    styles: { fontSize: 10 },
-    showFoot: "never",
+    theme: "plain",
+    headStyles: {
+      fillColor: COLORS.primary,
+      textColor: 255,
+      fontSize: 10,
+      fontStyle: "bold",
+    },
+    styles: { fontSize: 10, textColor: COLORS.textDark, cellPadding: 3 },
+    columnStyles: {
+      0: { cellWidth: 80, fontStyle: "normal", fillColor: COLORS.bgGray },
+      1: { halign: "right", cellWidth: 50 },
+      2: {
+        halign: "left",
+        cellWidth: 52,
+        fontSize: 8,
+        textColor: COLORS.textLight,
+      },
+    },
+    margin: { left: LAYOUT.marginX, right: LAYOUT.marginX },
   });
 
   y = (doc as any).lastAutoTable.finalY + 10;
 
-  // Cost Summary if available
-  if (
-    p.costData?.summary ||
-    (p.materials?.length > 0 && p.components?.length > 0)
-  ) {
-    doc.setFontSize(14);
-    doc.setTextColor(0, 0, 139);
-    doc.text("COST ANALYSIS SUMMARY", 14, y);
-    y += 8;
-
-    const materialTotal =
-      p.costData?.summary?.materialTotal ||
-      (p.costData?.material || []).reduce(
-        (sum: number, m: any) => sum + (m.cost || 0),
-        0
-      ) ||
-      0;
-
-    const componentTotal =
-      p.costData?.summary?.componentTotal ||
-      (p.costData?.component || []).reduce(
-        (sum: number, c: any) => sum + (c.cost || 0),
-        0
-      ) ||
-      0;
-
-    const totalCost = materialTotal + componentTotal;
-    const poValue = p.po?.totalAmount || p.poValue || 0;
-    const profit = poValue > 0 ? poValue - totalCost : 0;
-    const profitMargin = totalCost > 0 ? (profit / totalCost) * 100 : 0;
-
-    autoTable(doc, {
-      startY: y,
-      head: [["Item", "Amount"]],
-      body: [
-        ["Materials Cost", formatINR(materialTotal)],
-        ["Components Cost", formatINR(componentTotal)],
-        ["Total Production Cost", formatINR(totalCost)],
-        ["PO Value", formatINR(poValue)],
-        ["Estimated Profit", formatINR(profit)],
-        ["Profit Margin", `${profitMargin.toFixed(2)}%`],
-      ],
-      theme: "grid",
-      headStyles: { fillColor: [0, 0, 139] },
-      styles: { fontSize: 10 },
-      showFoot: "never",
-    });
-
-    y = (doc as any).lastAutoTable.finalY + 15;
-  }
-
   return y;
 };
 
 /* ------------------------------------------------------
-   Section: Materials & Components
+   Section: Materials & Components
 ------------------------------------------------------ */
 const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
-  // Materials Section - check multiple possible locations
-  const materials = p.costData?.material || p.materials || [];
-  const components = p.costData?.component || p.components || [];
-  const upper = p.costData?.upper || [];
-  const packaging = p.costData?.packaging || [];
-  const miscellaneous = p.costData?.miscellaneous || [];
-  const labour = p.costData?.labour?.items || [];
+  y = checkPageBreak(doc, y);
+  y = drawSectionHeader(doc, "Detailed Cost Breakdown", y, COLORS.primary);
 
-  // Create a comprehensive cost summary
-  if (materials.length > 0 || components.length > 0 || upper.length > 0) {
-    doc.setFontSize(13);
-    doc.setTextColor(0, 100, 0);
-    doc.text("COST BREAKDOWN", 14, y);
-    y += 8;
+  const costData = p.costData;
 
-    // Materials Table
-    if (materials.length > 0) {
-      autoTable(doc, {
-        startY: y,
-        head: [["Material", "Description", "Consumption", "Cost"]],
-        body: materials.map((m: any) => [
-          safe(m.item || m.name),
-          safe(m.description || m.desc),
-          safe(m.consumption || m.quantity),
-          formatINR(m.cost || 0),
-        ]),
-        theme: "grid",
-        headStyles: { fillColor: [0, 100, 0] },
-        styles: { fontSize: 9 },
-      });
-      y = (doc as any).lastAutoTable.finalY + 10;
-    }
+  const dataSections = [
+    { title: "Upper Materials", data: costData?.upper || [], color: "#8B4513" }, // Saddle Brown
+    {
+      title: "Raw Materials",
+      data: costData?.material || p.materials || [],
+      color: "#006400",
+    }, // Dark Green
+    {
+      title: "Components",
+      data: costData?.component || p.components || [],
+      color: "#4B0082",
+    }, // Indigo
+    { title: "Packaging", data: costData?.packaging || [], color: "#1F4E79" }, // Dark Steel Blue
+    {
+      title: "Miscellaneous",
+      data: costData?.miscellaneous || [],
+      color: "#800080",
+    }, // Purple
+    {
+      title: "Labour Costs",
+      data: costData?.labour?.items || [],
+      color: "#A52A2A",
+    }, // Brown
+  ];
 
-    // Components Table
-    if (components.length > 0) {
-      autoTable(doc, {
-        startY: y,
-        head: [["Component", "Description", "Consumption", "Cost"]],
-        body: components.map((c: any) => [
-          safe(c.item || c.name),
-          safe(c.description || c.desc),
-          safe(c.consumption || c.quantity),
-          formatINR(c.cost || 0),
-        ]),
-        theme: "grid",
-        headStyles: { fillColor: [75, 0, 130] },
-        styles: { fontSize: 9 },
-      });
-      y = (doc as any).lastAutoTable.finalY + 10;
-    }
+  for (const section of dataSections) {
+    if (section.data.length === 0) continue;
 
-    // Upper Table
-    if (upper.length > 0) {
-      autoTable(doc, {
-        startY: y,
-        head: [["Upper", "Description", "Consumption", "Cost"]],
-        body: upper.map((u: any) => [
-          safe(u.item),
-          safe(u.description),
-          safe(u.consumption),
-          formatINR(u.cost || 0),
-        ]),
-        theme: "grid",
-        headStyles: { fillColor: [139, 0, 0] }, // Dark red
-        styles: { fontSize: 9 },
-      });
-      y = (doc as any).lastAutoTable.finalY + 10;
-    }
+    y = checkPageBreak(doc, y, 30);
 
-    // Packaging Table
-    if (packaging.length > 0) {
-      autoTable(doc, {
-        startY: y,
-        head: [["Packaging", "Description", "Consumption", "Cost"]],
-        body: packaging.map((pkg: any) => [
-          safe(pkg.item),
-          safe(pkg.description),
-          safe(pkg.consumption),
-          formatINR(pkg.cost || 0),
-        ]),
-        theme: "grid",
-        headStyles: { fillColor: [0, 0, 139] }, // Dark blue
-        styles: { fontSize: 9 },
-      });
-      y = (doc as any).lastAutoTable.finalY + 10;
-    }
+    // Section Title
+    const [r, g, b] = (doc as any).hexToRgb(section.color);
+    doc.setFontSize(10);
+    doc.setTextColor(r, g, b);
+    doc.setFont("helvetica", "bold");
+    doc.text(section.title.toUpperCase(), LAYOUT.marginX, y);
+    y += 3;
 
-    // Miscellaneous Table
-    if (miscellaneous.length > 0) {
-      autoTable(doc, {
-        startY: y,
-        head: [["Miscellaneous", "Description", "Consumption", "Cost"]],
-        body: miscellaneous.map((misc: any) => [
-          safe(misc.item),
-          safe(misc.description),
-          safe(misc.consumption),
-          formatINR(misc.cost || 0),
-        ]),
-        theme: "grid",
-        headStyles: { fillColor: [128, 0, 128] }, // Purple
-        styles: { fontSize: 9 },
-      });
-      y = (doc as any).lastAutoTable.finalY + 10;
-    }
+    const isLabour = section.title.includes("Labour");
 
-    // Labour Table
-    if (labour.length > 0) {
-      autoTable(doc, {
-        startY: y,
-        head: [["Labour", "Description", "Rate", "Hours", "Cost"]],
-        body: labour.map((l: any) => [
+    const head = isLabour
+      ? [["Activity", "Description", "Rate (INR)", "Hours", "Cost (INR)"]]
+      : [["Item/Material", "Description", "Consumption", "Cost (INR)"]];
+
+    const body = isLabour
+      ? section.data.map((l: any) => [
           safe(l.name),
-          safe(l.description),
+          safe(l.description || ""),
           formatINR(l.rate || 0),
           safe(l.hours || 0),
           formatINR(l.cost || 0),
-        ]),
-        theme: "grid",
-        headStyles: { fillColor: [165, 42, 42] }, // Brown
-        styles: { fontSize: 9 },
-      });
-      y = (doc as any).lastAutoTable.finalY + 10;
-    }
+        ])
+      : section.data.map((m: any) => [
+          safe(m.item || m.name),
+          safe(m.description || m.desc),
+          formatQuantity(m.consumption || m.quantity || 0),
+          formatINR(m.cost || 0),
+        ]);
 
-    // Add Summary Section
-    const summary = p.costData?.summary;
-    if (summary) {
-      doc.setFontSize(13);
-      doc.setTextColor(40, 90, 160);
-      doc.text("COST SUMMARY", 14, y);
-      y += 8;
-
-      const summaryRows = [
-        ["Upper Total", formatINR(summary.upperTotal || 0)],
-        ["Component Total", formatINR(summary.componentTotal || 0)],
-        ["Material Total", formatINR(summary.materialTotal || 0)],
-        ["Packaging Total", formatINR(summary.packagingTotal || 0)],
-        ["Miscellaneous Total", formatINR(summary.miscTotal || 0)],
-        ["Labour Total", formatINR(summary.labourTotal || 0)],
-        ["", ""],
-        ["Total All Costs", formatINR(summary.totalAllCosts || 0)],
-        ["Additional Costs", formatINR(summary.additionalCosts || 0)],
-        ["Tentative Cost", formatINR(summary.tentativeCost || 0)],
-        ["Profit Amount", formatINR(summary.profitAmount || 0)],
-        ["Profit Margin", `${safe(summary.profitMargin || 0)}%`],
-      ];
-
-      autoTable(doc, {
-        startY: y,
-        head: [["Item", "Amount"]],
-        body: summaryRows,
-        theme: "grid",
-        headStyles: { fillColor: [40, 90, 160] },
-        styles: { fontSize: 10 },
-        showFoot: "never",
-      });
-
-      y = (doc as any).lastAutoTable.finalY + 15;
-    }
-  }
-
-  return y;
-};
-
-/* ------------------------------------------------------
-   Section: Client Feedback
------------------------------------------------------- */
-const renderClientFeedback = (doc: jsPDF, p: any, y: number) => {
-  if (!p.productDesc && !p.nextUpdate?.note && !p.clientApproval) return y;
-
-  doc.setFontSize(13);
-  doc.setTextColor(255, 140, 0);
-  doc.text("CLIENT FEEDBACK & UPDATES", 14, y);
-  y += 8;
-
-  const feedbackRows = [];
-  if (p.productDesc) feedbackRows.push(["Remarks", safe(p.productDesc)]);
-  if (p.nextUpdate?.date)
-    feedbackRows.push(["Next Update Date", formatDate(p.nextUpdate.date)]);
-  if (p.nextUpdate?.note)
-    feedbackRows.push(["Update Notes", safe(p.nextUpdate.note)]);
-  if (p.clientApproval)
-    feedbackRows.push(["Approval Status", safe(p.clientApproval)]);
-
-  if (feedbackRows.length > 0) {
     autoTable(doc, {
       startY: y,
-      head: [["Field", "Details"]],
-      body: feedbackRows,
+      head: head,
+      body: body,
       theme: "grid",
-      headStyles: { fillColor: [255, 140, 0] },
-      styles: { fontSize: 10 },
-      showFoot: "never",
+      headStyles: {
+        fillColor: [r, g, b],
+        textColor: 255,
+        fontSize: 8,
+        cellPadding: 2,
+      },
+      styles: { fontSize: 8, cellPadding: 2, textColor: COLORS.textDark }, // Consistent 8pt font
+      columnStyles: {
+        0: { cellWidth: 40, fontStyle: "bold" },
+        1: { cellWidth: 55, fontStyle: "normal" },
+        [head[0].length - 2]: { halign: "right" }, // Align consumption/hours right
+        [head[0].length - 1]: { halign: "right", fontStyle: "bold" }, // Align Cost right
+      },
+      margin: { left: LAYOUT.marginX, right: LAYOUT.marginX },
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 6; // Space between sub-tables
+  }
+
+  // Add Overall Cost Summary Table
+  const summary = costData?.summary;
+  if (summary) {
+    y = checkPageBreak(doc, y);
+
+    y = drawSectionHeader(doc, "Overall Cost Summary", y, COLORS.primary);
+
+    const clientFinalCost = Number(
+      p.clientFinalCost ?? p.po?.clientFinalCost ?? 0
+    );
+
+    const summaryRows = [
+      // ===== MATERIAL BREAKDOWN =====
+      ["Upper Cost", formatINR(summary.upperTotal || 0)],
+      ["Materials Cost", formatINR(summary.materialTotal || 0)],
+      ["Components Cost", formatINR(summary.componentTotal || 0)],
+
+      // ===== PACKAGING / MISC =====
+      ["Packaging Cost", formatINR(summary.packagingTotal || 0)],
+      ["Miscellaneous Cost", formatINR(summary.miscTotal || 0)],
+
+      // ===== LABOUR =====
+      ["Labour Cost", formatINR(summary.labourTotal || 0)],
+
+      // ===== OVERHEAD =====
+      ["Additional / Overhead Costs", formatINR(summary.additionalCosts || 0)],
+
+      ["Profit", formatINR(summary.profitAmount || 0)],
+      // ===== GRAND TOTAL =====
+      ["TOTAL PRODUCTION COST", formatINR(summary.totalAllCosts || 0)],
+
+      // ===== CLIENT / BRAND =====
+      ["Brand Final Cost (Approved)", formatINR(clientFinalCost)],
+
+      [
+        "Final Margin",
+        formatINR(clientFinalCost - (summary.totalAllCosts || 0)),
+      ],
+    ];
+
+    autoTable(doc, {
+      startY: y,
+      body: summaryRows,
+      theme: "grid",
+
+      styles: {
+        fontSize: 10,
+        cellPadding: 4,
+        textColor: COLORS.textDark,
+      },
+
+      columnStyles: {
+        0: {
+          cellWidth: 120,
+          fontStyle: "bold",
+          fillColor: COLORS.bgGray,
+        },
+        1: {
+          cellWidth: 62,
+          halign: "right",
+          fontStyle: "bold",
+        },
+      },
+
+      didParseCell(data) {
+        const label = data.row.raw?.[0];
+
+        // Highlight important totals
+        if (
+          label === "TOTAL PRODUCTION COST" ||
+          label === "Brand Final Cost (Approved)"
+        ) {
+          data.cell.styles.fontSize = 11;
+          data.cell.styles.textColor = COLORS.primary;
+        }
+
+        if (label === "Brand Final Cost (Approved)") {
+          data.cell.styles.textColor = COLORS.secondary;
+        }
+      },
+
+      margin: { left: LAYOUT.marginX, right: LAYOUT.marginX },
     });
 
     y = (doc as any).lastAutoTable.finalY + 12;
@@ -418,13 +660,90 @@ const renderClientFeedback = (doc: jsPDF, p: any, y: number) => {
 
   return y;
 };
-// src/utils/pdfGenerator.ts - Add new function
 
 /* ------------------------------------------------------
-   Section: Color Variants
+   Section: Client Feedback
 ------------------------------------------------------ */
+const renderClientFeedback = (doc: jsPDF, p: any, y: number) => {
+  if (!p.productDesc && !p.nextUpdate?.note && !p.clientApproval) return y;
+
+  y = checkPageBreak(doc, y);
+  y = drawSectionHeader(
+    doc,
+    "Client Feedback & Notes",
+    y,
+    COLORS.statusPOPending
+  );
+
+  const startX = LAYOUT.marginX;
+  const drawTextBox = (title: string, text: string) => {
+    if (!text) return;
+
+    y = checkPageBreak(doc, y, 20);
+
+    doc.setFontSize(9);
+    doc.setTextColor(COLORS.primary);
+    doc.setFont("helvetica", "bold");
+    doc.text(title, startX, y);
+    y += 2;
+
+    const splitText = doc.splitTextToSize(text || "N/A", LAYOUT.width - 4);
+    const boxHeight = splitText.length * 4 + 6;
+
+    doc.setDrawColor(COLORS.border);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(startX, y, LAYOUT.width, boxHeight, "FD");
+
+    doc.setFontSize(8);
+    doc.setTextColor(COLORS.textDark);
+    doc.setFont("helvetica", "normal");
+    doc.text(splitText, startX + 2, y + 4);
+
+    y += boxHeight + 10; // Generous space after text box (Clutter Fix)
+  };
+
+  drawTextBox("Product Remarks / Description", p.productDesc);
+
+  // Approval Status & Next Update Date in a tight grid
+  const rowH = LAYOUT.rowH;
+
+  if (p.clientApproval || p.nextUpdate?.date) {
+    y = checkPageBreak(doc, y, rowH + 5);
+
+    if (p.clientApproval) {
+      drawInfoCell(
+        doc,
+        "Approval Status",
+        safe(p.clientApproval),
+        startX,
+        y,
+        90,
+        rowH
+      );
+    }
+    if (p.nextUpdate?.date) {
+      drawInfoCell(
+        doc,
+        "Next Update Date",
+        formatDate(p.nextUpdate.date),
+        startX + 90,
+        y,
+        92,
+        rowH
+      );
+    }
+    y += rowH + 5;
+  }
+
+  if (p.nextUpdate?.note) {
+    drawTextBox("Next Update Notes", p.nextUpdate.note);
+  }
+
+  return y;
+};
+
 /* ------------------------------------------------------
-   Section: Color Variants
+   Section: Color Variants
 ------------------------------------------------------ */
 const renderColorVariants = (doc: jsPDF, p: any, y: number) => {
   const colorVariants = p.colorVariants || {};
@@ -432,138 +751,128 @@ const renderColorVariants = (doc: jsPDF, p: any, y: number) => {
 
   if (colorKeys.length === 0) return y;
 
-  doc.setFontSize(16);
-  doc.setTextColor(128, 0, 128); // Purple for color variants
-  doc.text("COLOR VARIANTS ANALYSIS", 14, y);
-  y += 12;
+  y = checkPageBreak(doc, y);
+  y = drawSectionHeader(
+    doc,
+    "Color Variants Costing Analysis",
+    y,
+    COLORS.statusAllProjects
+  );
 
-  // Render each color variant
+  const dataSectionsConfig = [
+    { title: "Upper Materials", key: "upper", color: "#8B4513" },
+    { title: "Raw Materials", key: "material", color: "#006400" },
+    { title: "Components", key: "component", color: "#4B0082" },
+    { title: "Labour Costs", key: "labour", color: "#A52A2A" },
+  ];
+
   colorKeys.forEach((colorName, index) => {
     const variant = colorVariants[colorName];
 
-    // Color variant header
-    doc.setFontSize(14);
-    doc.setTextColor(40, 90, 160);
-    doc.text(`Color: ${colorName}`, 14, y);
-    y += 8;
+    y = checkPageBreak(doc, y, 40);
 
-    // Render costing tables for this variant
+    // Variant Sub-Header (Boxed - UX Improvement)
+    doc.setDrawColor(COLORS.border);
+    doc.setFillColor(COLORS.bgGray);
+    doc.rect(LAYOUT.marginX, y, LAYOUT.width, 7, "FD");
+    doc.setFontSize(10);
+    doc.setTextColor(COLORS.primary);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Variant: ${colorName}`, LAYOUT.marginX + 2, y + 5);
+    y += 10;
+
+    // --- Variant Cost Breakdown ---
     if (variant.costing) {
       const costing = variant.costing;
 
-      // Upper costs
-      if (costing.upper && costing.upper.length > 0) {
+      dataSectionsConfig.forEach((sectionConfig) => {
+        const data =
+          (sectionConfig.key === "labour"
+            ? costing.labour?.items
+            : costing[sectionConfig.key]) || [];
+        if (data.length === 0) return;
+
+        y = checkPageBreak(doc, y, 30);
+
+        // Section Title
+        const [r, g, b] = (doc as any).hexToRgb(sectionConfig.color);
+        doc.setFontSize(9);
+        doc.setTextColor(r, g, b);
+        doc.setFont("helvetica", "bold");
+        doc.text(sectionConfig.title.toUpperCase(), LAYOUT.marginX, y);
+        y += 3;
+
+        const isLabour = sectionConfig.key === "labour";
+
+        const head = isLabour
+          ? [["Activity", "Description", "Rate (INR)", "Cost (INR)"]]
+          : [["Item/Material", "Description", "Consumption", "Cost (INR)"]];
+
+        const body = isLabour
+          ? data.map((l: any) => [
+              safe(l.name),
+              safe(l.description || ""),
+              formatINR(l.rate || 0),
+              formatINR(l.cost || 0),
+            ])
+          : data.map((m: any) => [
+              safe(m.item || m.name),
+              safe(m.description || m.desc),
+              formatQuantity(m.consumption || m.quantity || 0),
+              formatINR(m.cost || 0),
+            ]);
+
         autoTable(doc, {
           startY: y,
-          head: [["Upper Item", "Description", "Consumption", "Cost"]],
-          body: costing.upper.map((u: any) => [
-            safe(u.item),
-            safe(u.description),
-            safe(u.consumption),
-            formatINR(u.cost || 0),
-          ]),
+          head: head,
+          body: body,
           theme: "grid",
-          headStyles: { fillColor: [139, 0, 0] },
-          styles: { fontSize: 9 },
+          headStyles: {
+            fillColor: [r, g, b],
+            textColor: 255,
+            fontSize: 7,
+            cellPadding: 2,
+          },
+          styles: { fontSize: 7, cellPadding: 2, textColor: COLORS.textDark }, // Consistent 7pt font
+          columnStyles: {
+            0: { cellWidth: 40, fontStyle: "bold" },
+            1: { cellWidth: 60, fontStyle: "normal" },
+            [head[0].length - 1]: { halign: "right", fontStyle: "bold" },
+          },
+          margin: { left: LAYOUT.marginX, right: LAYOUT.marginX },
         });
-        y = (doc as any).lastAutoTable.finalY + 10;
-      }
-
-      // Material costs
-      if (costing.material && costing.material.length > 0) {
-        autoTable(doc, {
-          startY: y,
-          head: [["Material", "Description", "Consumption", "Cost"]],
-          body: costing.material.map((m: any) => [
-            safe(m.item),
-            safe(m.description),
-            safe(m.consumption),
-            formatINR(m.cost || 0),
-          ]),
-          theme: "grid",
-          headStyles: { fillColor: [0, 100, 0] },
-          styles: { fontSize: 9 },
-        });
-        y = (doc as any).lastAutoTable.finalY + 10;
-      }
-
-      // Component costs
-      if (costing.component && costing.component.length > 0) {
-        autoTable(doc, {
-          startY: y,
-          head: [["Component", "Description", "Consumption", "Cost"]],
-          body: costing.component.map((c: any) => [
-            safe(c.item),
-            safe(c.description),
-            safe(c.consumption),
-            formatINR(c.cost || 0),
-          ]),
-          theme: "grid",
-          headStyles: { fillColor: [75, 0, 130] },
-          styles: { fontSize: 9 },
-        });
-        y = (doc as any).lastAutoTable.finalY + 10;
-      }
-
-      // Labour Table - FIXED HERE
-      if (
-        costing.labour &&
-        costing.labour.items &&
-        costing.labour.items.length > 0
-      ) {
-        autoTable(doc, {
-          startY: y,
-          head: [["Labour", "Description", "Rate", "Hours", "Cost"]],
-          body: costing.labour.items.map((l: any) => [
-            safe(l.name),
-            safe(l.description || ""),
-            formatINR(l.rate || 0),
-            safe(l.hours || 0),
-            formatINR(l.cost || 0),
-          ]),
-          theme: "grid",
-          headStyles: { fillColor: [165, 42, 42] }, // Brown
-          styles: { fontSize: 9 },
-        });
-        y = (doc as any).lastAutoTable.finalY + 10;
-      }
-
-      // Add page break if needed
-      if (y > doc.internal.pageSize.height - 50) {
-        doc.addPage();
-        y = 20;
-      }
+        y = (doc as any).lastAutoTable.finalY + 5;
+      });
     }
 
-    // Add spacing between variants
+    // Separator between variants (Clutter Fix)
     if (index < colorKeys.length - 1) {
-      y += 10;
-      doc.setDrawColor(200, 200, 200);
-      doc.line(14, y, doc.internal.pageSize.width - 14, y);
-      y += 10;
+      y += 8;
+      doc.setDrawColor(COLORS.border);
+      doc.line(LAYOUT.marginX, y, LAYOUT.marginX + LAYOUT.width, y);
+      y += 8;
     }
   });
 
   return y;
 };
+
 /* ------------------------------------------------------
-   TAB CONFIGURATION
+   TAB CONFIGURATION
 ------------------------------------------------------ */
-const TAB_LAYOUT = {
+const TAB_LAYOUT: Record<string, string[]> = {
   prototype: [
     "product_details",
     "images",
     "client_feedback",
     "materials_components",
   ],
-
   red_seal: [
     "product_details",
     "images",
     "client_feedback",
     "materials_components",
   ],
-
   green_seal: [
     "product_details",
     "images",
@@ -571,7 +880,6 @@ const TAB_LAYOUT = {
     "materials_components",
     "color_variants",
   ],
-
   po_pending: [
     "product_details",
     "images",
@@ -580,7 +888,6 @@ const TAB_LAYOUT = {
     "color_variants",
     "client_feedback",
   ],
-
   po_approved: [
     "product_details",
     "images",
@@ -599,10 +906,8 @@ const TAB_LAYOUT = {
 };
 
 /* ------------------------------------------------------
-   SECTION MAP
+   SECTION MAP
 ------------------------------------------------------ */
-// src/utils/pdfGenerator.ts - Update SECTION_MAP
-
 const SECTION_MAP: Record<
   string,
   (doc: jsPDF, p: any, y: number) => Promise<number> | number
@@ -612,26 +917,41 @@ const SECTION_MAP: Record<
   client_feedback: renderClientFeedback,
   materials_components: renderMaterialsComponents,
   po_details: renderPODetails,
-  color_variants: renderColorVariants, // Add this
+  color_variants: renderColorVariants,
 };
+
+const loadLogoAsBase64 = async (url?: string) => {
+  if (!url) return null;
+  try {
+    return await toBase64(url);
+  } catch {
+    return null;
+  }
+};
+
 /* ------------------------------------------------------
-   MAIN FUNCTION
+   MAIN FUNCTION
 ------------------------------------------------------ */
 export const generateProjectPDF = async ({
   project,
   costData,
   activeTab,
+  companyName = "AURA INTERNATIONAL",
+  logoUrl,
   colorVariants = {},
 }: {
   project: any;
   costData?: any;
   activeTab: string;
+  companyName?: string;
+  logoUrl?: string;
   colorVariants?: any;
 }) => {
   const colorVariantsObj =
     colorVariants instanceof Map
       ? Object.fromEntries(colorVariants)
       : colorVariants;
+
   const p = {
     ...project,
     costData: costData || {
@@ -651,7 +971,21 @@ export const generateProjectPDF = async ({
 
   const doc = new jsPDF("p", "mm", "a4");
 
-  // Set document properties
+  /* ---------------- HEX → RGB HELPER ---------------- */
+  (doc as any).hexToRgb = (hex: string): [number, number, number] => {
+    const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+    hex = hex.replace(shorthandRegex, (_, r, g, b) => r + r + g + g + b + b);
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result
+      ? [
+          parseInt(result[1], 16),
+          parseInt(result[2], 16),
+          parseInt(result[3], 16),
+        ]
+      : [0, 0, 0];
+  };
+
+  /* ---------------- DOC META ---------------- */
   doc.setProperties({
     title: `Project Report - ${p.autoCode} (${activeTab.toUpperCase()})`,
     subject: "Project Details",
@@ -659,80 +993,118 @@ export const generateProjectPDF = async ({
     author: "System",
   });
 
-  // HEADER with status-specific color
-  let headerColor = [40, 90, 160]; // Default blue
+  /* ---------------- HEADER COLOR ---------------- */
+  const statusColorMap: Record<string, string> = {
+    po_approved: COLORS.secondary,
+    po_pending: COLORS.statusPOPending,
+    green_seal: COLORS.statusGreenSeal,
+    red_seal: COLORS.statusRedSeal,
+    prototype: COLORS.primary,
+    all_projects: COLORS.statusAllProjects,
+  };
 
-  if (activeTab === "po_pending") {
-    headerColor = [255, 140, 0]; // Orange
-  } else if (activeTab === "po_approved") {
-    headerColor = [0, 150, 0]; // Green
-  } else if (activeTab === "green_seal") {
-    headerColor = [0, 128, 0]; // Green
-  } else if (activeTab === "red_seal") {
-    headerColor = [200, 50, 50]; // Red
-  } else if (activeTab === "all_projects") {
-    headerColor = [191, 84, 196];
+  const headerColorHex = statusColorMap[activeTab] || COLORS.primary;
+  const headerColorRgb = (doc as any).hexToRgb(headerColorHex);
+
+  /* ================= HEADER ================= */
+  doc.setFillColor(...headerColorRgb);
+  doc.rect(0, 0, doc.internal.pageSize.width, 34, "F");
+
+  /* -------- LOGO (OPTIONAL) -------- */
+  let logoBase64: string | null = null;
+  if (logoUrl) {
+    try {
+      logoBase64 = await loadLogoAsBase64(logoUrl);
+    } catch {
+      logoBase64 = null;
+    }
   }
 
-  doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
-  doc.rect(0, 0, doc.internal.pageSize.width, 20, "F");
-  doc.setFontSize(14);
-  doc.setTextColor(255, 255, 255);
+  if (logoBase64) {
+    doc.addImage(logoBase64, "PNG", LAYOUT.marginX, 6, 18, 18);
+  }
+
+  const headerTextX = logoBase64 ? LAYOUT.marginX + 24 : LAYOUT.marginX;
+
+  /* -------- REPORT TITLE -------- */
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(COLORS.headerText);
   doc.text(
-    `${activeTab.toUpperCase().replace("_", " ")} REPORT`,
-    doc.internal.pageSize.width / 2,
-    12,
-    {
-      align: "center",
-    }
+    `${activeTab.toUpperCase().replace(/_/g, " ")} REPORT`,
+    headerTextX,
+    14
   );
 
-  let y = 28;
+  /* -------- COMPANY NAME -------- */
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.text(companyName.toUpperCase(), headerTextX, 20);
+
+  /* -------- PROJECT META -------- */
+  doc.setFontSize(10);
+  doc.text(
+    `Project Code: ${safe(p.autoCode).toUpperCase()} | Status: ${safe(
+      p.status || "N/A"
+    ).toUpperCase()}`,
+    headerTextX,
+    26
+  );
+
+  /* ================= CONTENT START ================= */
+  let y = 40;
 
   const sections = TAB_LAYOUT[activeTab] || TAB_LAYOUT["po_pending"];
 
   for (const key of sections) {
     const fn = SECTION_MAP[key];
-    if (fn) {
-      if (key === "images") {
-        y = await fn(doc, p, y);
-      } else {
-        y = fn(doc, p, y);
-      }
+    if (!fn) continue;
+
+    y = checkPageBreak(doc, y, 10);
+
+    if (key === "images") {
+      y = await renderImages(doc, p, y);
+    } else {
+      y = fn(doc, p, y) as number;
     }
 
-    // Add page break if near bottom
-    if (y > doc.internal.pageSize.height - 50) {
-      doc.addPage();
-      y = 20;
-    }
+    y = checkPageBreak(doc, y);
   }
 
-  // Footer with page numbers
+  /* ================= FOOTER ================= */
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
+    const [r, g, b] = (doc as any).hexToRgb(COLORS.textLight);
+    doc.setTextColor(r, g, b);
+
+    doc.text(
+      `Confidential | ${companyName}`,
+      LAYOUT.marginX,
+      doc.internal.pageSize.height - 10
+    );
+
     doc.text(
       `Page ${i} of ${pageCount}`,
-      doc.internal.pageSize.width / 2,
+      doc.internal.pageSize.width - LAYOUT.marginX,
       doc.internal.pageSize.height - 10,
-      { align: "center" }
+      { align: "right" }
     );
   }
 
-  // Save PDF with appropriate filename
+  /* ================= SAVE ================= */
   const statusMap: Record<string, string> = {
     po_pending: "PO_Pending",
     po_approved: "PO_Approved",
     green_seal: "Green_Seal",
     red_seal: "Red_Seal",
     prototype: "Prototype",
-    all_projects: "All Projects",
+    all_projects: "All_Projects",
   };
 
   const statusLabel = statusMap[activeTab] || "Report";
+
   const filename = `${statusLabel}_${p.autoCode}_${
     new Date().toISOString().split("T")[0]
   }.pdf`;

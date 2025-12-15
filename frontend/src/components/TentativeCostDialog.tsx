@@ -433,7 +433,7 @@ const AddNewItemDialog = ({
   );
 };
 
-// UPDATED Stage Selector Component - Fixed dropdown positioning
+// Stage Selector Component
 const StageSelector = ({
   itemId,
   category,
@@ -576,7 +576,7 @@ const StageSelector = ({
     );
   }
 
-  // Desktop version - FIXED positioning
+  // Desktop version
   return (
     <div className="relative" ref={dropdownRef}>
       <Button
@@ -656,7 +656,7 @@ const StageSelector = ({
   );
 };
 
-// Cost Category Card Component - UPDATED with decimal fix
+// Cost Category Card Component - REMOVED save button
 const CostCategoryCard = ({
   title,
   category,
@@ -670,7 +670,6 @@ const CostCategoryCard = ({
   color = "orange",
   isMobile = false,
   hasUnsavedChanges = false,
-  onSaveCategory,
 }: {
   title: string;
   category: string;
@@ -688,7 +687,6 @@ const CostCategoryCard = ({
   color?: "orange" | "purple" | "teal" | "rose" | "gray" | "amber";
   isMobile?: boolean;
   hasUnsavedChanges?: boolean;
-  onSaveCategory?: () => Promise<void>;
 }) => {
   const colorClasses = useMemo(
     () => ({
@@ -699,7 +697,6 @@ const CostCategoryCard = ({
         button: "text-orange-600 border-orange-200 hover:bg-orange-50",
         total: "bg-orange-50 text-orange-900",
         badge: "bg-orange-100 text-orange-700 border-orange-300",
-        saveButton: "bg-orange-600 hover:bg-orange-700",
       },
       purple: {
         border: "border-purple-200",
@@ -708,7 +705,6 @@ const CostCategoryCard = ({
         button: "text-purple-600 border-purple-200 hover:bg-purple-50",
         total: "bg-purple-50 text-purple-900",
         badge: "bg-purple-100 text-purple-700 border-purple-300",
-        saveButton: "bg-purple-600 hover:bg-purple-700",
       },
       teal: {
         border: "border-teal-200",
@@ -717,7 +713,6 @@ const CostCategoryCard = ({
         button: "text-teal-600 border-teal-200 hover:bg-teal-50",
         total: "bg-teal-50 text-teal-900",
         badge: "bg-teal-100 text-teal-700 border-teal-300",
-        saveButton: "bg-teal-600 hover:bg-teal-700",
       },
       rose: {
         border: "border-rose-200",
@@ -726,7 +721,6 @@ const CostCategoryCard = ({
         button: "text-rose-600 border-rose-200 hover:bg-rose-50",
         total: "bg-rose-50 text-rose-900",
         badge: "bg-rose-100 text-rose-700 border-rose-300",
-        saveButton: "bg-rose-600 hover:bg-rose-700",
       },
       gray: {
         border: "border-gray-200",
@@ -735,7 +729,6 @@ const CostCategoryCard = ({
         button: "text-gray-600 border-gray-200 hover:bg-gray-50",
         total: "bg-gray-50 text-gray-900",
         badge: "bg-gray-100 text-gray-700 border-gray-300",
-        saveButton: "bg-gray-600 hover:bg-gray-700",
       },
       amber: {
         border: "border-amber-200",
@@ -744,7 +737,6 @@ const CostCategoryCard = ({
         button: "text-amber-600 border-amber-200 hover:bg-amber-50",
         total: "bg-amber-50 text-amber-900",
         badge: "bg-amber-100 text-amber-700 border-amber-300",
-        saveButton: "bg-amber-600 hover:bg-amber-700",
       },
     }),
     []
@@ -768,24 +760,10 @@ const CostCategoryCard = ({
   const renderMobileView = () => (
     <Card className={`border-2 ${currentColor.border}`}>
       <CardHeader className={currentColor.header}>
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Calculator className={`w-4 h-4 ${currentColor.icon}`} />
-            {title}
-          </CardTitle>
-          {hasUnsavedChanges &&
-            onSaveCategory &&
-            ["upper", "component"].includes(category) && (
-              <Button
-                size="sm"
-                onClick={onSaveCategory}
-                className={`${currentColor.saveButton} h-7 px-3 text-xs`}
-              >
-                <Save className="w-3 h-3 mr-1" />
-                Save
-              </Button>
-            )}
-        </div>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Calculator className={`w-4 h-4 ${currentColor.icon}`} />
+          {title}
+        </CardTitle>
       </CardHeader>
       <CardContent className="p-3">
         <div className="space-y-4">
@@ -935,24 +913,10 @@ const CostCategoryCard = ({
   const renderDesktopView = () => (
     <Card className={`border-2 ${currentColor.border} h-[500px] flex flex-col`}>
       <CardHeader className={currentColor.header}>
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Calculator className={`w-5 h-5 ${currentColor.icon}`} />
-            {title}
-          </CardTitle>
-          {hasUnsavedChanges &&
-            onSaveCategory &&
-            ["upper", "component"].includes(category) && (
-              <Button
-                size="sm"
-                onClick={onSaveCategory}
-                className={`${currentColor.saveButton}`}
-              >
-                <Save className="w-4 h-4 mr-2" />
-                Save {title}
-              </Button>
-            )}
-        </div>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Calculator className={`w-5 h-5 ${currentColor.icon}`} />
+          {title}
+        </CardTitle>
       </CardHeader>
       <CardContent className="p-4 flex-1 flex flex-col">
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -1102,23 +1066,19 @@ const CostCategoryCard = ({
   return isMobile ? renderMobileView() : renderDesktopView();
 };
 
-// Mobile Labour Cost Card - UPDATED with decimal fix
+// Mobile Labour Cost Card - REMOVED save button
 const MobileLabourCostCard = ({
   labourCost,
   onUpdateLabour,
   onDeleteLabourItem,
   onAddItem,
   isLoading = false,
-  onSaveLabour,
-  hasUnsavedChanges = false,
 }: {
   labourCost: LabourCost;
   onUpdateLabour: (updates: Partial<LabourCost>) => void;
   onDeleteLabourItem: (itemId: string) => void;
   onAddItem: () => void;
   isLoading?: boolean;
-  onSaveLabour: () => Promise<void>;
-  hasUnsavedChanges?: boolean;
 }) => {
   const handleDirectTotalChange = useCallback(
     (value: number | "") => {
@@ -1154,27 +1114,10 @@ const MobileLabourCostCard = ({
   return (
     <Card className="border-2 border-amber-200">
       <CardHeader className="bg-amber-50">
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Calculator className="w-4 h-4 text-amber-600" />
-            Labour Cost + OH
-          </CardTitle>
-          {hasUnsavedChanges && (
-            <Button
-              size="sm"
-              onClick={onSaveLabour}
-              disabled={isLoading}
-              className="bg-amber-600 hover:bg-amber-700 h-7 px-3 text-xs"
-            >
-              {isLoading ? (
-                <Loader2 className="w-3 h-3 animate-spin mr-1" />
-              ) : (
-                <Save className="w-3 h-3 mr-1" />
-              )}
-              Save
-            </Button>
-          )}
-        </div>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Calculator className="w-4 h-4 text-amber-600" />
+          Labour Cost + OH
+        </CardTitle>
       </CardHeader>
       <CardContent className="p-3">
         <div className="space-y-4">
@@ -1284,23 +1227,19 @@ const MobileLabourCostCard = ({
   );
 };
 
-// Desktop Labour Cost Card - UPDATED with decimal fix
+// Desktop Labour Cost Card - REMOVED save button
 const DesktopLabourCostCard = ({
   labourCost,
   onUpdateLabour,
   onDeleteLabourItem,
   onAddItem,
   isLoading = false,
-  onSaveLabour,
-  hasUnsavedChanges = false,
 }: {
   labourCost: LabourCost;
   onUpdateLabour: (updates: Partial<LabourCost>) => void;
   onDeleteLabourItem: (itemId: string) => void;
   onAddItem: () => void;
   isLoading?: boolean;
-  onSaveLabour: () => Promise<void>;
-  hasUnsavedChanges?: boolean;
 }) => {
   const handleDirectTotalChange = useCallback(
     (value: number | "") => {
@@ -1336,32 +1275,10 @@ const DesktopLabourCostCard = ({
   return (
     <Card className="border-2 border-amber-200 h-[500px] flex flex-col">
       <CardHeader className="bg-amber-50">
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Calculator className="w-5 h-5 text-amber-600" />
-            Labour Cost + OH Breakdown
-          </CardTitle>
-          {hasUnsavedChanges && (
-            <Button
-              size="sm"
-              onClick={onSaveLabour}
-              disabled={isLoading}
-              className="bg-amber-600 hover:bg-amber-700"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Labour
-                </>
-              )}
-            </Button>
-          )}
-        </div>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Calculator className="w-5 h-5 text-amber-600" />
+          Labour Cost + OH Breakdown
+        </CardTitle>
       </CardHeader>
       <CardContent className="p-4 flex-1 flex flex-col">
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -2669,7 +2586,6 @@ export function TentativeCostDialog({
     categoryHasUnsavedChanges,
   ]);
 
-  // ADD THE HANDLEAPPROVE FUNCTION HERE
   const handleApprove = useCallback(async () => {
     if (!project) return;
 
@@ -2712,7 +2628,6 @@ export function TentativeCostDialog({
     hasUnsavedChanges,
   ]);
 
-  // ADD THE RENDERMOBILECONTENT FUNCTION HERE
   const renderMobileContent = useMemo(() => {
     const categoryComponents: Record<string, JSX.Element> = {
       upper: (
@@ -2730,7 +2645,6 @@ export function TentativeCostDialog({
           color="orange"
           isMobile={true}
           hasUnsavedChanges={categoryHasUnsavedChanges("upper")}
-          onSaveCategory={() => handleSaveCategory("upper")}
         />
       ),
       component: (
@@ -2748,7 +2662,6 @@ export function TentativeCostDialog({
           color="purple"
           isMobile={true}
           hasUnsavedChanges={categoryHasUnsavedChanges("component")}
-          onSaveCategory={() => handleSaveCategory("component")}
         />
       ),
       material: (
@@ -2766,7 +2679,6 @@ export function TentativeCostDialog({
           color="teal"
           isMobile={true}
           hasUnsavedChanges={categoryHasUnsavedChanges("material")}
-          onSaveCategory={() => handleSaveCategory("material")}
         />
       ),
       packaging: (
@@ -2784,7 +2696,6 @@ export function TentativeCostDialog({
           color="rose"
           isMobile={true}
           hasUnsavedChanges={categoryHasUnsavedChanges("packaging")}
-          onSaveCategory={() => handleSaveCategory("packaging")}
         />
       ),
       misc: (
@@ -2802,7 +2713,6 @@ export function TentativeCostDialog({
           color="gray"
           isMobile={true}
           hasUnsavedChanges={categoryHasUnsavedChanges("miscellaneous")}
-          onSaveCategory={() => handleSaveCategory("miscellaneous")}
         />
       ),
       labour: (
@@ -2812,8 +2722,6 @@ export function TentativeCostDialog({
           onDeleteLabourItem={deleteLabourItemLocal}
           onAddItem={addLabourItemLocal}
           isLoading={isSavingLabour}
-          onSaveLabour={handleSaveLabour}
-          hasUnsavedChanges={labourCost.isModified || false}
         />
       ),
     };
@@ -2833,9 +2741,7 @@ export function TentativeCostDialog({
     deleteLabourItemLocal,
     addLabourItemLocal,
     isSavingLabour,
-    handleSaveLabour,
     categoryHasUnsavedChanges,
-    handleSaveCategory,
   ]);
 
   useEffect(() => {
@@ -3193,7 +3099,6 @@ export function TentativeCostDialog({
                         onStageSelect={setItemDepartment}
                         color="orange"
                         hasUnsavedChanges={categoryHasUnsavedChanges("upper")}
-                        onSaveCategory={() => handleSaveCategory("upper")}
                       />
 
                       <CostCategoryCard
@@ -3211,7 +3116,6 @@ export function TentativeCostDialog({
                         hasUnsavedChanges={categoryHasUnsavedChanges(
                           "component"
                         )}
-                        onSaveCategory={() => handleSaveCategory("component")}
                       />
 
                       <CostCategoryCard
@@ -3229,7 +3133,6 @@ export function TentativeCostDialog({
                         hasUnsavedChanges={categoryHasUnsavedChanges(
                           "material"
                         )}
-                        onSaveCategory={() => handleSaveCategory("material")}
                       />
 
                       <CostCategoryCard
@@ -3247,7 +3150,6 @@ export function TentativeCostDialog({
                         hasUnsavedChanges={categoryHasUnsavedChanges(
                           "packaging"
                         )}
-                        onSaveCategory={() => handleSaveCategory("packaging")}
                       />
 
                       <CostCategoryCard
@@ -3265,9 +3167,6 @@ export function TentativeCostDialog({
                         hasUnsavedChanges={categoryHasUnsavedChanges(
                           "miscellaneous"
                         )}
-                        onSaveCategory={() =>
-                          handleSaveCategory("miscellaneous")
-                        }
                       />
 
                       {/* Desktop Labour Cost Card */}
@@ -3277,8 +3176,6 @@ export function TentativeCostDialog({
                         onDeleteLabourItem={deleteLabourItemLocal}
                         onAddItem={addLabourItemLocal}
                         isLoading={isSavingLabour}
-                        onSaveLabour={handleSaveLabour}
-                        hasUnsavedChanges={labourCost.isModified || false}
                       />
                     </div>
 

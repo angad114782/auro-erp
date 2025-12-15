@@ -524,7 +524,7 @@ export default function ProjectDetailsDialog(props: any) {
                 </>
               )}
 
-              {nextStageLocal && !isMobile && (
+              {nextStageLocal && !isMobile && !isEditing && (
                 <Button
                   onClick={handleAdvanceStage}
                   className="bg-emerald-500 hover:bg-emerald-600 text-xs md:text-sm"
