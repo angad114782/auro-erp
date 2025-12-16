@@ -423,7 +423,7 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
       ["Tentative Cost", formatINR(summary?.tentativeCost || 0)],
       ["PO Value (Sale Price)", formatINR(poValue)],
       ["Brand Final Cost", formatINR(clientFinalCost)],
-      ["Final Margin", formatINR(clientFinalCost - totalCost)],
+      // ["Final Margin", formatINR(clientFinalCost - totalCost)],
     ],
 
     theme: "grid",
@@ -605,10 +605,10 @@ const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
       // ===== CLIENT / BRAND =====
       ["Brand Final Cost (Approved)", formatINR(clientFinalCost)],
 
-      [
-        "Final Margin",
-        formatINR(clientFinalCost - (summary.totalAllCosts || 0)),
-      ],
+      // [
+      //   "Final Margin",
+      //   formatINR(clientFinalCost - (summary.totalAllCosts || 0)),
+      // ],
     ];
 
     autoTable(doc, {

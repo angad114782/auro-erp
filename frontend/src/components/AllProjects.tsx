@@ -17,6 +17,8 @@ import {
   Trash2,
   Upload,
   Save,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useProjects } from "../hooks/useProjects";
 import {
@@ -34,6 +36,8 @@ import CostTable from "./CostTable";
 import LabourTable from "./LabourTable";
 import { ColorMaterialsDialog } from "./ColorMaterialsDialog";
 import { generateProjectPDF } from "../utils/pdfDownload";
+import { useProjectQuery } from "./NewHooks/useProjectQuery";
+import { useDebounce } from "./NewHooks/useDebounce";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "";
 
@@ -114,12 +118,23 @@ function convertColorVariants(projectData: any): Map<string, any> {
 }
 
 export default function ProjectListCard() {
-  const { projects, loading, loadProjects } = useProjects();
-
+  // State for search, pagination, and filters
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedPriority, setSelectedPriority] = useState<string>("all");
   const [isMobile, setIsMobile] = useState(false);
+
+  // Extended filters state
+  const [filters, setFilters] = useState({
+    country: "",
+    priority: "",
+    company: "",
+    brand: "",
+    category: "",
+    type: "",
+  });
 
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [openDetails, setOpenDetails] = useState(false);
@@ -145,6 +160,29 @@ export default function ProjectListCard() {
     summary: {} as any,
   });
 
+  // Use debounced search
+  const debouncedSearchTerm = useDebounce(searchTerm, 600);
+
+  // Fetch projects with search, pagination, and filters
+  const {
+    data: projects,
+    total,
+    pages,
+    loading,
+    reload,
+  } = useProjectQuery({
+    search: debouncedSearchTerm,
+    page: currentPage,
+    limit: itemsPerPage,
+    country: filters.country,
+    priority: selectedPriority !== "all" ? selectedPriority : "",
+    company: filters.company,
+    brand: filters.brand,
+    category: filters.category,
+    type: filters.type,
+    status: selectedStatus !== "all" ? selectedStatus : "",
+  });
+
   const Info = ({ label, value }: { label: string; value?: any }) => (
     <div className="flex justify-between gap-2 border-b pb-1 text-sm">
       <span className="text-gray-500">{label}</span>
@@ -157,10 +195,6 @@ export default function ProjectListCard() {
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
-  }, []);
-
-  useEffect(() => {
-    loadProjects();
   }, []);
 
   // Load color variants when project is selected
@@ -315,35 +349,85 @@ export default function ProjectListCard() {
     return keys.length > 0 ? keys : [];
   }, [localColorVariants, selectedProject?.color]);
 
-  const filteredProjects = useMemo(() => {
-    let result = [...projects];
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1); // Reset to first page when searching
+  };
 
-    if (selectedStatus !== "all") {
-      result = result.filter(
-        (project: any) => project.status === selectedStatus
-      );
+  // Handle filter changes
+  const handleStatusChange = (value: string) => {
+    setSelectedStatus(value);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
+
+  const handlePriorityChange = (value: string) => {
+    setSelectedPriority(value);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
+
+  // Handle items per page change
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(Number(value));
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= pages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  // Generate page numbers for pagination
+  const getPageNumbers = () => {
+    const pageNumbers = [];
+    const maxVisiblePages = 5;
+
+    if (pages <= maxVisiblePages) {
+      // Show all pages if total pages is less than max visible
+      for (let i = 1; i <= pages; i++) {
+        pageNumbers.push(i);
+      }
+    } else {
+      // Always show first page
+      pageNumbers.push(1);
+
+      // Calculate start and end of visible pages
+      let start = Math.max(2, currentPage - 1);
+      let end = Math.min(pages - 1, currentPage + 1);
+
+      // Adjust if we're at the beginning
+      if (currentPage <= 3) {
+        end = 4;
+      }
+
+      // Adjust if we're at the end
+      if (currentPage >= pages - 2) {
+        start = pages - 3;
+      }
+
+      // Add ellipsis after first page if needed
+      if (start > 2) {
+        pageNumbers.push("...");
+      }
+
+      // Add middle pages
+      for (let i = start; i <= end; i++) {
+        pageNumbers.push(i);
+      }
+
+      // Add ellipsis before last page if needed
+      if (end < pages - 1) {
+        pageNumbers.push("...");
+      }
+
+      // Always show last page
+      pageNumbers.push(pages);
     }
 
-    if (selectedPriority !== "all") {
-      result = result.filter(
-        (project: any) => project.priority === selectedPriority
-      );
-    }
-
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      result = result.filter((project: any) => {
-        return (
-          project.autoCode?.toLowerCase().includes(q) ||
-          project.artName?.toLowerCase().includes(q) ||
-          project?.company?.name?.toLowerCase().includes(q) ||
-          project?.brand?.name?.toLowerCase().includes(q)
-        );
-      });
-    }
-
-    return result;
-  }, [projects, selectedStatus, selectedPriority, searchTerm]);
+    return pageNumbers;
+  };
 
   const getStatusColor = (status: string) => {
     const statusMap: Record<string, string> = {
@@ -502,7 +586,7 @@ export default function ProjectListCard() {
         console.log("saved ");
       }
     },
-    [selectedProject, loadProjects]
+    [selectedProject]
   );
 
   const renderColorVariantSection = () => (
@@ -737,18 +821,21 @@ export default function ProjectListCard() {
         </CardHeader>
 
         <CardContent>
-          {/* ================= FILTERS SECTION ================= */}
+          {/* ================= SEARCH AND FILTERS SECTION ================= */}
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             {/* Search Input */}
-            <Input
-              placeholder="Search by code, name, company, brand..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1"
-            />
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                placeholder="Search by code, name, company, brand..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                className="pl-10"
+              />
+            </div>
 
             {/* Status Filter */}
-            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+            <Select value={selectedStatus} onValueChange={handleStatusChange}>
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -772,7 +859,7 @@ export default function ProjectListCard() {
             {/* Priority Filter */}
             <Select
               value={selectedPriority}
-              onValueChange={setSelectedPriority}
+              onValueChange={handlePriorityChange}
             >
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="Priority" />
@@ -786,62 +873,164 @@ export default function ProjectListCard() {
             </Select>
           </div>
 
+          {/* Loading State */}
+          {loading && (
+            <div className="flex justify-center items-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-3 text-gray-600">Loading projects...</span>
+            </div>
+          )}
+
           {/* Projects Table */}
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="p-2">Project</th>
-                <th className="p-2 hidden sm:table-cell">Company</th>
-                <th className="p-2">Status</th>
-                <th className="p-2 hidden md:table-cell">Timeline</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProjects.map((project: any) => (
-                <tr
-                  key={project._id}
-                  onClick={() => {
-                    setSelectedProject(project);
-                    setOpenDetails(true);
-                  }}
-                  className="border-b hover:bg-gray-50 cursor-pointer"
-                >
-                  <td className="p-2 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded bg-gray-100 border overflow-hidden flex items-center justify-center">
-                      {project.coverImage ? (
-                        <img
-                          src={getFullImageUrl(project.coverImage)}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <ImageIcon className="w-5 h-5 text-gray-400" />
-                      )}
+          {!loading && (
+            <>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="p-2">Project</th>
+                    <th className="p-2 hidden sm:table-cell">Company</th>
+                    <th className="p-2">Status</th>
+                    <th className="p-2 hidden md:table-cell">Timeline</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.length > 0 ? (
+                    projects.map((project: any) => (
+                      <tr
+                        key={project._id}
+                        onClick={() => {
+                          setSelectedProject(project);
+                          setOpenDetails(true);
+                        }}
+                        className="border-b hover:bg-gray-50 cursor-pointer"
+                      >
+                        <td className="p-2 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded bg-gray-100 border overflow-hidden flex items-center justify-center">
+                            {project.coverImage ? (
+                              <img
+                                src={getFullImageUrl(project.coverImage)}
+                                className="w-full h-full object-cover"
+                                alt={project.artName}
+                              />
+                            ) : (
+                              <ImageIcon className="w-5 h-5 text-gray-400" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium">
+                              {project.autoCode}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {project.artName}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-2 hidden sm:table-cell">
+                          {project.company?.name}
+                        </td>
+
+                        <td className="p-2">
+                          <Badge className={getStatusColor(project.status)}>
+                            {project.status}
+                          </Badge>
+                        </td>
+
+                        <td className="p-2 hidden md:table-cell">
+                          {formatDate(project.createdAt)}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-gray-500">
+                        No projects found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+
+              {/* ================= PAGINATION SECTION ================= */}
+              {projects.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-4 border-t">
+                  {/* Items per page selector */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Show</span>
+                    <Select
+                      value={itemsPerPage.toString()}
+                      onValueChange={handleItemsPerPageChange}
+                    >
+                      <SelectTrigger className="w-[70px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="8">8</SelectItem>
+                        <SelectItem value="16">16</SelectItem>
+                        <SelectItem value="32">32</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-sm text-gray-600">entries</span>
+                  </div>
+
+                  {/* Page info */}
+                  <div className="text-sm text-gray-600">
+                    Showing {projects.length} of {total} projects
+                  </div>
+
+                  {/* Pagination controls */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="flex items-center gap-1"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Previous
+                    </Button>
+
+                    {/* Page numbers */}
+                    <div className="flex items-center gap-1">
+                      {getPageNumbers().map((pageNum, index) => (
+                        <React.Fragment key={index}>
+                          {pageNum === "..." ? (
+                            <span className="px-2">...</span>
+                          ) : (
+                            <Button
+                              variant={
+                                currentPage === pageNum ? "default" : "outline"
+                              }
+                              size="sm"
+                              onClick={() =>
+                                handlePageChange(pageNum as number)
+                              }
+                              className="min-w-[40px]"
+                            >
+                              {pageNum}
+                            </Button>
+                          )}
+                        </React.Fragment>
+                      ))}
                     </div>
-                    <div>
-                      <div className="font-medium">{project.autoCode}</div>
-                      <div className="text-xs text-gray-500">
-                        {project.artName}
-                      </div>
-                    </div>
-                  </td>
 
-                  <td className="p-2 hidden sm:table-cell">
-                    {project.company?.name}
-                  </td>
-
-                  <td className="p-2">
-                    <Badge className={getStatusColor(project.status)}>
-                      {project.status}
-                    </Badge>
-                  </td>
-
-                  <td className="p-2 hidden md:table-cell">
-                    {formatDate(project.createdAt)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === pages}
+                      className="flex items-center gap-1"
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -899,6 +1088,7 @@ export default function ProjectListCard() {
                         <img
                           src={getFullImageUrl(selectedProject.coverImage)}
                           className="max-h-[320px] w-auto object-contain rounded-lg"
+                          alt="Cover"
                         />
                       ) : (
                         <p className="text-sm text-gray-400">No cover image</p>
@@ -920,6 +1110,7 @@ export default function ProjectListCard() {
                               <img
                                 src={getFullImageUrl(img)}
                                 className="max-h-[140px] w-auto object-contain"
+                                alt={`Sample ${i + 1}`}
                               />
                             </div>
                           )

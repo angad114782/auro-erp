@@ -1498,18 +1498,37 @@ export function ProductionTrackingTable() {
           </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* <PDFExportButton
+            data={baseProductionData}
+            selectedDepartment={selectedDepartment}
+            selectedMonth={selectedMonth}
+            selectedYear={selectedYear}
+            departmentName={getCurrentStageName()}
+            monthName={getMonthName(selectedMonth)}
+          />
+
+          <AdvancedPDFExport
+            data={baseProductionData}
+            selectedDepartment={selectedDepartment}
+            selectedMonth={selectedMonth}
+            selectedYear={selectedYear}
+            departmentName={getCurrentStageName()}
+            monthName={getMonthName(selectedMonth)}
+            dailyTotals={dailyTotals}
+            weekData={weekData}
+          /> */}
           <Button variant="outline" size="sm" className="text-xs sm:text-sm">
             <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-            {isMobile ? "Export" : "Export Excel"}
+            {isMobile ? "Export" : "Export PDF"}
           </Button>
-          <Button
+          {/* <Button
             size="sm"
             className="text-xs sm:text-sm bg-[#0c9dcb] hover:bg-[#0a87a5]"
             onClick={() => setStageUpdateDialogOpen(true)}
           >
             <Edit className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
             {isMobile ? "Update" : `Update ${getCurrentStageName()}`}
-          </Button>
+          </Button> */}
         </div>
       </div>
 
