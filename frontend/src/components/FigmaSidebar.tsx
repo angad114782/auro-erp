@@ -111,12 +111,12 @@ export function FigmaSidebar({
   };
 
   const modules: Module[] = [
-    {
-      id: "dashboard",
-      name: "Dashboard",
-      icon: <LayoutDashboard className="w-5 h-5" />,
-      description: "Overview and analytics",
-    },
+    // {
+    //   id: "dashboard",
+    //   name: "Dashboard",
+    //   icon: <LayoutDashboard className="w-5 h-5" />,
+    //   description: "Overview and analytics",
+    // },
     // {
     //   id: "master-data",
     //   name: "Master Data Management",
@@ -248,40 +248,40 @@ export function FigmaSidebar({
       icon: <Users className="w-5 h-5" />,
       description: "Team and permissions",
     },
-    {
-      id: "notifications",
-      name: "Notifications & Alerts",
-      icon: <BarChart3 className="w-5 h-5" />,
-      description: "System alerts and reminders",
-    },
-    {
-      id: "reports",
-      name: "Reporting & Analytics",
-      icon: <BarChart3 className="w-5 h-5" />,
-      description: "Business intelligence",
-      subModules: [
-        {
-          id: "prototype-reports",
-          name: "Prototype Reports",
-          icon: <LayoutDashboard className="w-4 h-4" />,
-        },
-        {
-          id: "designer-productivity",
-          name: "Designer Productivity",
-          icon: <Users className="w-4 h-4" />,
-        },
-        {
-          id: "brand-costing",
-          name: "Brand Costing",
-          icon: <Database className="w-4 h-4" />,
-        },
-        {
-          id: "plant-utilization",
-          name: "Plant Utilization",
-          icon: <PieChart className="w-4 h-4" />,
-        },
-      ],
-    },
+    // {
+    //   id: "notifications",
+    //   name: "Notifications & Alerts",
+    //   icon: <BarChart3 className="w-5 h-5" />,
+    //   description: "System alerts and reminders",
+    // },
+    // {
+    //   id: "reports",
+    //   name: "Reporting & Analytics",
+    //   icon: <BarChart3 className="w-5 h-5" />,
+    //   description: "Business intelligence",
+    //   subModules: [
+    //     {
+    //       id: "prototype-reports",
+    //       name: "Prototype Reports",
+    //       icon: <LayoutDashboard className="w-4 h-4" />,
+    //     },
+    //     {
+    //       id: "designer-productivity",
+    //       name: "Designer Productivity",
+    //       icon: <Users className="w-4 h-4" />,
+    //     },
+    //     {
+    //       id: "brand-costing",
+    //       name: "Brand Costing",
+    //       icon: <Database className="w-4 h-4" />,
+    //     },
+    //     {
+    //       id: "plant-utilization",
+    //       name: "Plant Utilization",
+    //       icon: <PieChart className="w-4 h-4" />,
+    //     },
+    //   ],
+    // },
   ];
   if (user?.role === "Supervisor") {
     const [isCollapsed, setIsCollapsed] = useState(false);

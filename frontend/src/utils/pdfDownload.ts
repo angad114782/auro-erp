@@ -29,33 +29,43 @@ const LAYOUT = {
 ------------------------------------------------------ */
 const safe = (v: any) =>
   v === null || v === undefined || v === "" ? "—" : String(v);
+
+/** Formats currency preserving exact decimal places (3 decimal places) */
+const formatINR = (v: number | string): string => {
+  if (v === null || v === undefined || v === "") return "—";
+
+  const str = String(v);
+  const num = Number(v);
+
+  if (isNaN(num)) return str;
+
+  // Check if it has decimal part
+  if (!str.includes(".")) {
+    return num.toLocaleString("en-IN") + ".000";
+  }
+
+  // Split integer and decimal parts from the original string
+  const [integerPart, decimalPart] = str.split(".");
+  const integerNum = Number(integerPart);
+  const formattedInteger = integerNum.toLocaleString("en-IN");
+
+  // Ensure exactly 3 decimal places, pad with zeros if needed
+  const paddedDecimal = decimalPart.padEnd(3, "0").substring(0, 3);
+
+  return `${formattedInteger}.${paddedDecimal}`;
+};
+
+/** Formats quantity preserving exact decimal places */
+const formatQuantity = (v: number | string): string => {
+  return formatINR(v); // Reuse same logic
+};
+
 const money = (v: number) => (v > 0 ? `INR ${formatINR(v)}` : "—");
-
-/** Formats currency with two decimal places (e.g., 1,234.56) */
-const formatINR = (v: number | string) => {
-  const num = Number(v || 0);
-
-  return num.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-};
-
-/** Formats quantity/numbers with two decimal places (e.g., 1,234.56) */
-const formatQuantity = (v: number | string) => {
-  const num = Number(v || 0);
-
-  return num.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-};
 
 const formatDate = (d?: string) => {
   if (!d) return "N/A";
   const dt = new Date(d);
   if (isNaN(dt.getTime())) return d;
-  // Using a simplified format without requiring date-fns import
   return dt.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
@@ -296,7 +306,7 @@ const renderImages = async (doc: jsPDF, p: any, y: number) => {
 };
 
 /* ------------------------------------------------------
-   Section: PO Details
+   Section: PO Details
 ------------------------------------------------------ */
 const renderPODetails = (doc: jsPDF, p: any, y: number) => {
   y = checkPageBreak(doc, y);
@@ -354,7 +364,7 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
   drawInfoCell(
     doc,
     "Unit Price (INR)",
-    money(po?.unitPrice || p.unitPrice || 0),
+    formatINR(po?.unitPrice || p.unitPrice || 0),
     startX + 60,
     y,
     60,
@@ -363,7 +373,7 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
   drawInfoCell(
     doc,
     "Total PO Value (INR)",
-    money(po?.totalAmount || p.poValue || 0),
+    formatINR(po?.totalAmount || p.poValue || 0),
     startX + 120,
     y,
     62,
@@ -376,32 +386,23 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
   const costData = p.costData;
   const summary = costData?.summary;
 
+  // Get EXACT values from summary (not recalculated)
   const materialTotal = summary?.materialTotal || 0;
   const componentTotal = summary?.componentTotal || 0;
   const upperTotal = summary?.upperTotal || 0;
   const packagingTotal = summary?.packagingTotal || 0;
   const miscTotal = summary?.miscTotal || 0;
   const labourTotal = summary?.labourTotal || 0;
-
   const additionalCosts = summary?.additionalCosts || 0;
   const profitMargin = summary?.profitMargin || 0;
   const profitAmount = summary?.profitAmount || 0;
-
-  const totalCost =
-    summary?.totalAllCosts ||
-    materialTotal +
-      componentTotal +
-      upperTotal +
-      packagingTotal +
-      miscTotal +
-      labourTotal;
+  const totalCost = summary?.totalAllCosts || 0;
+  const tentativeCost = summary?.tentativeCost || 0;
 
   const poValue = po?.totalAmount || p.poValue || 0;
   const clientFinalCost = Number(
     p.clientFinalCost ?? p.po?.clientFinalCost ?? 0
   );
-
-  console.log(clientFinalCost, "sdsssssssssssssssss");
 
   // Enhanced cost analysis table
   y = checkPageBreak(doc, y, 50);
@@ -419,29 +420,26 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
       ["Total Production Cost", formatINR(totalCost)],
       ["Additional / Overhead Costs", formatINR(additionalCosts)],
       ["Subtotal (Cost + Overhead)", formatINR(totalCost + additionalCosts)],
-      [`Profit @ ${profitMargin}%`, formatINR(profitAmount)],
-      ["Tentative Cost", formatINR(summary?.tentativeCost || 0)],
+      [`Profit @ ${formatINR(profitMargin)}%`, formatINR(profitAmount)],
+      ["Tentative Cost", formatINR(tentativeCost)],
       ["PO Value (Sale Price)", formatINR(poValue)],
       ["Brand Final Cost", formatINR(clientFinalCost)],
-      // ["Final Margin", formatINR(clientFinalCost - totalCost)],
     ],
 
     theme: "grid",
-
     styles: {
-      fontSize: 9, // 🔑 SAME AS INFO GRID
-      cellPadding: 3, // 🔑 MATCH MATERIAL TABLES
+      fontSize: 9,
+      cellPadding: 3,
       textColor: COLORS.textDark,
       valign: "middle",
+      font: "helvetica",
     },
-
     headStyles: {
-      fillColor: COLORS.bgGray, // 🔑 SUBTLE, NOT LOUD
+      fillColor: COLORS.bgGray,
       textColor: COLORS.textDark,
       fontStyle: "bold",
       halign: "center",
     },
-
     columnStyles: {
       0: {
         cellWidth: 120,
@@ -453,11 +451,9 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
         fontStyle: "normal",
       },
     },
-
     didParseCell(data) {
       const label = data.row.raw?.[0];
 
-      // Emphasize totals WITHOUT font jump
       if (
         label === "Subtotal (Cost + Overhead)" ||
         label === "Brand Final Cost" ||
@@ -470,7 +466,6 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
         data.cell.styles.textColor = COLORS.secondary;
       }
     },
-
     margin: { left: LAYOUT.marginX, right: LAYOUT.marginX },
   });
 
@@ -558,12 +553,24 @@ const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
         fontSize: 8,
         cellPadding: 2,
       },
-      styles: { fontSize: 8, cellPadding: 2, textColor: COLORS.textDark }, // Consistent 8pt font
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+        textColor: COLORS.textDark,
+        font: "helvetica",
+      },
       columnStyles: {
         0: { cellWidth: 40, fontStyle: "bold" },
         1: { cellWidth: 55, fontStyle: "normal" },
-        [head[0].length - 2]: { halign: "right" }, // Align consumption/hours right
-        [head[0].length - 1]: { halign: "right", fontStyle: "bold" }, // Align Cost right
+        [head[0].length - 2]: {
+          halign: "right",
+          cellWidth: 30,
+        },
+        [head[0].length - 1]: {
+          halign: "right",
+          fontStyle: "bold",
+          cellWidth: 32,
+        },
       },
       margin: { left: LAYOUT.marginX, right: LAYOUT.marginX },
     });
@@ -582,48 +589,34 @@ const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
       p.clientFinalCost ?? p.po?.clientFinalCost ?? 0
     );
 
+    // Use EXACT values from summary
     const summaryRows = [
       // ===== MATERIAL BREAKDOWN =====
       ["Upper Cost", formatINR(summary.upperTotal || 0)],
       ["Materials Cost", formatINR(summary.materialTotal || 0)],
       ["Components Cost", formatINR(summary.componentTotal || 0)],
-
-      // ===== PACKAGING / MISC =====
       ["Packaging Cost", formatINR(summary.packagingTotal || 0)],
       ["Miscellaneous Cost", formatINR(summary.miscTotal || 0)],
-
-      // ===== LABOUR =====
       ["Labour Cost", formatINR(summary.labourTotal || 0)],
-
-      // ===== OVERHEAD =====
       ["Additional / Overhead Costs", formatINR(summary.additionalCosts || 0)],
-
       ["Profit", formatINR(summary.profitAmount || 0)],
       // ===== GRAND TOTAL =====
       ["TOTAL PRODUCTION COST", formatINR(summary.totalAllCosts || 0)],
-
       // ===== CLIENT / BRAND =====
       ["Brand Final Cost (Approved)", formatINR(clientFinalCost)],
-
-      // [
-      //   "Final Margin",
-      //   formatINR(clientFinalCost - (summary.totalAllCosts || 0)),
-      // ],
     ];
 
     autoTable(doc, {
       startY: y,
       body: summaryRows,
-
       theme: "grid",
-
       styles: {
-        fontSize: 9, // 🔑 CONSISTENT
+        fontSize: 9,
         cellPadding: 3,
         textColor: COLORS.textDark,
         valign: "middle",
+        font: "helvetica",
       },
-
       columnStyles: {
         0: {
           cellWidth: 120,
@@ -635,7 +628,6 @@ const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
           halign: "right",
         },
       },
-
       didParseCell(data) {
         const label = data.row.raw?.[0];
 
@@ -651,7 +643,6 @@ const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
           data.cell.styles.textColor = COLORS.secondary;
         }
       },
-
       margin: { left: LAYOUT.marginX, right: LAYOUT.marginX },
     });
 
@@ -833,11 +824,20 @@ const renderColorVariants = (doc: jsPDF, p: any, y: number) => {
             fontSize: 7,
             cellPadding: 2,
           },
-          styles: { fontSize: 7, cellPadding: 2, textColor: COLORS.textDark }, // Consistent 7pt font
+          styles: {
+            fontSize: 7,
+            cellPadding: 2,
+            textColor: COLORS.textDark,
+            font: "helvetica",
+          },
           columnStyles: {
             0: { cellWidth: 40, fontStyle: "bold" },
             1: { cellWidth: 60, fontStyle: "normal" },
-            [head[0].length - 1]: { halign: "right", fontStyle: "bold" },
+            [head[0].length - 1]: {
+              halign: "right",
+              fontStyle: "bold",
+              cellWidth: 30,
+            },
           },
           margin: { left: LAYOUT.marginX, right: LAYOUT.marginX },
         });
@@ -1117,6 +1117,46 @@ export const generatePOPendingPDF = async (project: any) => {
   await generateProjectPDF({
     project,
     activeTab: "po_pending",
+    colorVariants: {},
+  });
+};
+
+// Helper export for Tentative Cost PDF generation
+export const generateTentativeCostPDF = async ({
+  project,
+  costData,
+  companyName = "AURA INTERNATIONAL",
+  logoUrl,
+}: {
+  project: any;
+  costData: {
+    upper: any[];
+    component: any[];
+    material: any[];
+    packaging: any[];
+    miscellaneous: any[];
+    labour: any;
+    summary: any;
+  };
+  companyName?: string;
+  logoUrl?: string;
+}) => {
+  await generateProjectPDF({
+    project: {
+      ...project,
+      costData,
+      po: {
+        poNumber: project.poNumber,
+        orderQuantity: project.orderQuantity,
+        unitPrice: project.unitPrice,
+        totalAmount: project.poValue,
+        deliveryDate: project.redSealTargetDate,
+      },
+    },
+    costData,
+    activeTab: "po_pending",
+    companyName,
+    logoUrl,
     colorVariants: {},
   });
 };

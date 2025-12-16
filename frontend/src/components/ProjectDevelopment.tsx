@@ -23,6 +23,7 @@ import { useDebounce } from "./NewHooks/useDebounce";
 import { useProjects } from "../hooks/useProjects";
 import ProjectDetailsDialog from "./ProjectDetailsDialog";
 import { ProjectFilters } from "./ProjectFilters";
+import Pagination from "./Pagination";
 
 export default function ProjectDevelopment() {
   const {
@@ -41,7 +42,7 @@ export default function ProjectDevelopment() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(8);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
@@ -803,113 +804,18 @@ export default function ProjectDevelopment() {
           )}
 
           {/* Pagination */}
-          {!projectsLoading && projects.length > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between mt-6 space-y-4 sm:space-y-0">
-              <div className="text-sm text-gray-600">
-                Showing {projects.length} of {total} results
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                >
-                  Previous
-                </Button>
 
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, pages) }, (_, i) => {
-                    const pageNumber = i + 1;
-                    if (pages > 5) {
-                      if (currentPage > 3 && pageNumber === 1) {
-                        return (
-                          <>
-                            <Button
-                              key={1}
-                              size="sm"
-                              className={
-                                1 === currentPage
-                                  ? "bg-blue-500 hover:bg-blue-600 text-white"
-                                  : ""
-                              }
-                              onClick={() => setCurrentPage(1)}
-                            >
-                              1
-                            </Button>
-                            <span className="px-2">...</span>
-                          </>
-                        );
-                      }
-                      if (
-                        pageNumber >= currentPage - 1 &&
-                        pageNumber <= currentPage + 1
-                      ) {
-                        return (
-                          <Button
-                            key={pageNumber}
-                            size="sm"
-                            className={
-                              pageNumber === currentPage
-                                ? "bg-blue-500 hover:bg-blue-600 text-white"
-                                : ""
-                            }
-                            onClick={() => setCurrentPage(pageNumber)}
-                          >
-                            {pageNumber}
-                          </Button>
-                        );
-                      }
-                      if (pageNumber === pages && currentPage < pages - 2) {
-                        return (
-                          <>
-                            <span className="px-2">...</span>
-                            <Button
-                              key={pages}
-                              size="sm"
-                              className={
-                                pages === currentPage
-                                  ? "bg-blue-500 hover:bg-blue-600 text-white"
-                                  : ""
-                              }
-                              onClick={() => setCurrentPage(pages)}
-                            >
-                              {pages}
-                            </Button>
-                          </>
-                        );
-                      }
-                      return null;
-                    } else {
-                      return (
-                        <Button
-                          key={pageNumber}
-                          size="sm"
-                          className={
-                            pageNumber === currentPage
-                              ? "bg-blue-500 hover:bg-blue-600 text-white"
-                              : ""
-                          }
-                          onClick={() => setCurrentPage(pageNumber)}
-                        >
-                          {pageNumber}
-                        </Button>
-                      );
-                    }
-                  }).filter(Boolean)}
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={currentPage >= pages}
-                  onClick={() => setCurrentPage((p) => Math.min(pages, p + 1))}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={pages}
+            totalItems={total}
+            pageSize={itemsPerPage}
+            onPageChange={(page) => setCurrentPage(page)}
+            onPageSizeChange={(size) => {
+              setItemsPerPage(size);
+              setCurrentPage(1);
+            }}
+          />
         </CardContent>
       </Card>
 

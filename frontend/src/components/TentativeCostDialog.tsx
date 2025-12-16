@@ -1550,27 +1550,36 @@ export function TentativeCostDialog({
     "miscellaneous",
   ];
 
-  const processSummaryData = (data: any): CostSummary => ({
-    additionalCosts:
-      data.additionalCosts !== undefined && data.additionalCosts !== null
-        ? data.additionalCosts
-        : "",
-    profitMargin:
-      data.profitMargin === undefined || data.profitMargin === null
-        ? ""
-        : data.profitMargin,
-    remarks: data.remarks || "",
-    upperTotal: Number(data.upperTotal) || 0,
-    componentTotal: Number(data.componentTotal) || 0,
-    materialTotal: Number(data.materialTotal) || 0,
-    packagingTotal: Number(data.packagingTotal) || 0,
-    miscTotal: Number(data.miscTotal) || 0,
-    labourTotal: Number(data.labourTotal) || 0,
-    totalAllCosts: Number(data.totalAllCosts) || 0,
-    profitAmount: Number(data.profitAmount) || 0,
-    tentativeCost: Number(data.tentativeCost) || 0,
-    status: data.status || "draft",
-  });
+  const processSummaryData = (data: any): CostSummary => {
+    // Helper to convert string to number, preserving decimal places
+    const toNumber = (val: any): number => {
+      if (val === null || val === undefined || val === "") return 0;
+      return Number(val);
+    };
+
+    // Helper to preserve original string or number
+    const preserveValue = (val: any): number | "" => {
+      if (val === null || val === undefined) return "";
+      if (val === "") return "";
+      return Number(val);
+    };
+
+    return {
+      additionalCosts: preserveValue(data.additionalCosts),
+      profitMargin: preserveValue(data.profitMargin),
+      remarks: data.remarks || "",
+      upperTotal: toNumber(data.upperTotal),
+      componentTotal: toNumber(data.componentTotal),
+      materialTotal: toNumber(data.materialTotal),
+      packagingTotal: toNumber(data.packagingTotal),
+      miscTotal: toNumber(data.miscTotal),
+      labourTotal: toNumber(data.labourTotal),
+      totalAllCosts: toNumber(data.totalAllCosts),
+      profitAmount: toNumber(data.profitAmount),
+      tentativeCost: toNumber(data.tentativeCost),
+      status: data.status || "draft",
+    };
+  };
 
   const processCostItem = (item: any): CostItem => ({
     _id: item._id || `item_${Date.now()}_${Math.random()}`,
@@ -1578,9 +1587,12 @@ export function TentativeCostDialog({
     description: item.description || "",
     consumption:
       item.consumption !== undefined && item.consumption !== null
-        ? item.consumption
+        ? String(item.consumption) // Keep as string
         : "",
-    cost: item.cost !== undefined && item.cost !== null ? item.cost : "",
+    cost:
+      item.cost !== undefined && item.cost !== null
+        ? String(item.cost) // Keep as string
+        : "",
     department: item.department || "",
     isNew: false,
     isModified: false,
@@ -1855,10 +1867,9 @@ export function TentativeCostDialog({
 
       const subtotalBeforeProfit =
         totalAllCosts + parseNumber(newSummary.additionalCosts);
-      const profitAmount = Math.round(
+      const profitAmount =
         (subtotalBeforeProfit * parseNumber(newSummary.profitMargin || 25)) /
-          100
-      );
+        100;
       const tentativeCost = subtotalBeforeProfit + profitAmount;
 
       return {
@@ -2094,11 +2105,13 @@ export function TentativeCostDialog({
 
         itemsToSave.forEach((item) => {
           if (item.isNew) {
+            // Preserve exact values as strings
             const payload = {
               item: item.item.trim() || "Unnamed Item",
               description: item.description || "",
-              consumption: parseNumber(item.consumption),
-              cost: parseNumber(item.cost),
+              consumption:
+                item.consumption === "" ? 0 : String(item.consumption), // Store as string
+              cost: item.cost === "" ? 0 : String(item.cost), // Store as string
               department: item.pendingDepartment || "",
             };
 
@@ -2138,8 +2151,10 @@ export function TentativeCostDialog({
             if (item.description !== undefined)
               payload.description = item.description;
             if (item.consumption !== undefined)
-              payload.consumption = parseNumber(item.consumption);
-            if (item.cost !== undefined) payload.cost = parseNumber(item.cost);
+              payload.consumption =
+                item.consumption === "" ? 0 : String(item.consumption); // Store as string
+            if (item.cost !== undefined)
+              payload.cost = item.cost === "" ? 0 : String(item.cost); // Store as string
 
             if (["upper", "component"].includes(category) && item.department) {
               payload.department = item.department;
@@ -2247,8 +2262,11 @@ export function TentativeCostDialog({
         const payload = {
           item: currentForm.item.trim(),
           description: currentForm.description || "",
-          consumption: parseNumber(currentForm.consumption),
-          cost: parseNumber(currentForm.cost),
+          consumption:
+            currentForm.consumption === ""
+              ? "0"
+              : String(currentForm.consumption), // Store as string
+          cost: currentForm.cost === "" ? "0" : String(currentForm.cost), // Store as string
         };
 
         const response = await api.post(
@@ -2267,12 +2285,12 @@ export function TentativeCostDialog({
                 consumption:
                   response.data.row.consumption !== undefined &&
                   response.data.row.consumption !== null
-                    ? response.data.row.consumption
+                    ? String(response.data.row.consumption)
                     : "",
                 cost:
                   response.data.row.cost !== undefined &&
                   response.data.row.cost !== null
-                    ? response.data.row.cost
+                    ? String(response.data.row.cost)
                     : "",
                 department: response.data.row.department || "",
                 isNew: false,
@@ -2317,7 +2335,6 @@ export function TentativeCostDialog({
     return true;
   };
 
-  // Save labour function
   const handleSaveLabour = useCallback(async () => {
     if (!project) return;
 
@@ -2328,11 +2345,15 @@ export function TentativeCostDialog({
         .map((i) => ({
           _id: i.isNew ? undefined : i._id,
           name: i.name.trim() || "Labour Component",
-          cost: parseNumber(i.cost),
+          cost: i.cost === "" ? 0 : String(i.cost), // Store as string
         }));
 
+      // Store directTotal as string to preserve precision
+      const directTotalStr =
+        labourCost.directTotal === "" ? "0" : String(labourCost.directTotal);
+
       const payload = {
-        directTotal: parseNumber(labourCost.directTotal),
+        directTotal: directTotalStr,
         items: cleanItems,
       };
 
@@ -2346,7 +2367,8 @@ export function TentativeCostDialog({
         const updatedItems = updatedLabour.items.map((it: any) => ({
           _id: it._id,
           name: it.name,
-          cost: it.cost !== undefined && it.cost !== null ? it.cost : "",
+          cost:
+            it.cost !== undefined && it.cost !== null ? String(it.cost) : "",
           isNew: false,
           isModified: false,
         }));
@@ -2361,15 +2383,16 @@ export function TentativeCostDialog({
           directTotal:
             updatedLabour.directTotal !== undefined &&
             updatedLabour.directTotal !== null
-              ? updatedLabour.directTotal
+              ? String(updatedLabour.directTotal)
               : "",
           items: updatedItems,
           isModified: false,
         });
 
+        // Update summary with parsed number for calculations
         setCostSummary((prev) => ({
           ...prev,
-          labourTotal: parseNumber(updatedLabour.directTotal),
+          labourTotal: parseNumber(updatedLabour.directTotal || 0),
         }));
 
         await loadSummary();
@@ -2382,7 +2405,6 @@ export function TentativeCostDialog({
       setIsSavingLabour(false);
     }
   }, [project, labourCost, loadSummary]);
-
   // Update labour locally without saving to backend
   const updateLabourLocal = useCallback((updates: Partial<LabourCost>) => {
     setLabourCost((prev) => {
@@ -2495,9 +2517,8 @@ export function TentativeCostDialog({
         costSummary.labourTotal;
 
       const subtotal = totalAllCosts + parseNumber(newAdditionalCosts);
-      const profitAmount = Math.round(
-        (subtotal * parseNumber(newProfitMargin || 25)) / 100
-      );
+      const profitAmount =
+        (subtotal * parseNumber(newProfitMargin || 25)) / 100;
       const tentativeCost = subtotal + profitAmount;
 
       setRealTimeSummary({
@@ -2569,9 +2590,19 @@ export function TentativeCostDialog({
         await handleSaveLabour();
       }
 
+      // Store additionalCosts and profitMargin as strings to preserve precision
+      const additionalCostsStr =
+        costSummary.additionalCosts === ""
+          ? "0"
+          : String(costSummary.additionalCosts);
+      const profitMarginStr =
+        costSummary.profitMargin === ""
+          ? "25"
+          : String(costSummary.profitMargin);
+
       const payload = {
-        additionalCosts: parseNumber(costSummary.additionalCosts),
-        profitMargin: parseNumber(costSummary.profitMargin),
+        additionalCosts: additionalCostsStr,
+        profitMargin: profitMarginStr,
         remarks: costSummary.remarks || "",
       };
 
@@ -2581,7 +2612,9 @@ export function TentativeCostDialog({
       );
 
       if (response.data?.summary) {
-        setCostSummary(processSummaryData(response.data.summary));
+        // Process the summary data ensuring exact values
+        const processedSummary = processSummaryData(response.data.summary);
+        setCostSummary(processedSummary);
         setRealTimeSummary(null);
       }
 
@@ -2783,7 +2816,7 @@ export function TentativeCostDialog({
     const profitMargin = parseNumber(costSummary.profitMargin);
 
     const subtotal = totalAllCosts + additionalCosts;
-    const profitAmount = Math.round((subtotal * profitMargin) / 100);
+    const profitAmount = parseNumber((subtotal * profitMargin) / 100);
     const tentativeCost = subtotal + profitAmount;
 
     setRealTimeSummary({

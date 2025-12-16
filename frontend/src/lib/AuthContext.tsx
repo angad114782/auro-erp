@@ -43,7 +43,7 @@ interface AuthContextType extends AuthState {
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   SuperAdmin: [
-    "dashboard",
+    // "dashboard",
     "all-projects",
     "master-data",
     "rd-management",
@@ -56,7 +56,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "wireframe",
   ],
   Admin: [
-    "dashboard",
+    // "dashboard",
     "all-projects",
     "master-data",
     "rd-management",
@@ -67,7 +67,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "reports",
   ],
   Manager: [
-    "dashboard",
+    // "dashboard",
     "rd-management",
     "production",
     "inventory",
@@ -81,7 +81,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 
 const defaultModuleByRole = (role: string): string => {
   if (role === "Supervisor") return "production-tracking";
-  return ROLE_PERMISSIONS[role]?.[0] || "dashboard";
+  return ROLE_PERMISSIONS[role]?.[0] || "all-projects";
 };
 
 /* ================= REDUCER ================= */

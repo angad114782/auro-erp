@@ -22,11 +22,11 @@ import { Badge } from "./ui/badge";
 import { RedSealProjectDetailsDialog } from "./RedSealProjectDetailsDialog";
 import { useMasters } from "../hooks/useMaster";
 import { useProjectQuery } from "./NewHooks/useProjectQuery";
-import Pagination from "./PrototypeProject/Pagination";
 import { useProjects } from "../hooks/useProjects";
 import { useDebounce } from "./NewHooks/useDebounce";
 import { TableSkeleton, MobileSkeleton } from "./Skeletons";
 import { ProjectFilters } from "./ProjectFilters";
+import Pagination from "./Pagination";
 
 export function RedSeal() {
   const {
@@ -46,11 +46,10 @@ export function RedSeal() {
   // UI state
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(8);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [filters, setFilters] = useState({
     country: "",
     priority: "",
@@ -61,13 +60,7 @@ export function RedSeal() {
   });
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-  const debouncedSearch = useDebounce(
-    (value: string) => {
-      setDebouncedSearchTerm(value);
-      setCurrentPage(1); // Reset to first page when search changes
-    },
-    300 // 300ms delay
-  );
+  const debouncedSearchTerm = useDebounce(searchTerm, 600);
 
   // Use the new query hook
   const {
@@ -105,26 +98,14 @@ export function RedSeal() {
     });
     setCurrentPage(1);
   }, []);
-  const handleSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setSearchTerm(value);
-      debouncedSearch(value);
-    },
-    [debouncedSearch]
-  );
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
+
   // Check screen size
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
-      // Adjust items per page based on screen size
-      if (window.innerWidth < 640) {
-        setItemsPerPage(4);
-      } else if (window.innerWidth < 1024) {
-        setItemsPerPage(6);
-      } else {
-        setItemsPerPage(8);
-      }
     };
 
     checkMobile();
@@ -634,18 +615,18 @@ export function RedSeal() {
           )}
 
           {/* Pagination - Only show when not loading and there are projects */}
-          {!projectsLoading && redSealProjects.length > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between mt-6 space-y-4 sm:space-y-0">
-              <div className="text-sm text-gray-600">
-                Showing {redSealProjects.length} of {total} results
-              </div>
-
-              <Pagination
-                page={currentPage}
-                pages={pages}
-                onChange={(p) => setCurrentPage(p)}
-              />
-            </div>
+          {!projectsLoading && total > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={pages}
+              totalItems={total}
+              pageSize={itemsPerPage}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setItemsPerPage(size);
+                setCurrentPage(1);
+              }}
+            />
           )}
         </CardContent>
       </Card>

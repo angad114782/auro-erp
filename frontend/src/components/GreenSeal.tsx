@@ -21,12 +21,12 @@ import { Badge } from "./ui/badge";
 import { GreenSealProjectDetailsDialog } from "./GreenSealProjectDetailsDialog";
 import { useMasters } from "../hooks/useMaster";
 import { useProjectQuery } from "./NewHooks/useProjectQuery";
-import Pagination from "./PrototypeProject/Pagination";
 import { useProjects } from "../hooks/useProjects";
 import { useDebounce } from "./NewHooks/useDebounce";
 
 import { TableSkeleton, MobileSkeleton } from "./Skeletons";
 import { ProjectFilters } from "./ProjectFilters";
+import Pagination from "./Pagination";
 
 export function GreenSeal() {
   const {
@@ -45,10 +45,9 @@ export function GreenSeal() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(8);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [filters, setFilters] = useState({
     country: "",
     priority: "",
@@ -59,11 +58,7 @@ export function GreenSeal() {
   });
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-  const debouncedSearch = useDebounce((value: string) => {
-    setDebouncedSearchTerm(value);
-    setCurrentPage(1);
-  }, 300);
-
+  const debouncedSearchTerm = useDebounce(searchTerm, 600);
   const {
     data: greenSealProjects,
     total,
@@ -102,23 +97,16 @@ export function GreenSeal() {
 
   const { deleteProject } = useProjects();
 
-  const handleSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setSearchTerm(value);
-      debouncedSearch(value);
-    },
-    [debouncedSearch]
-  );
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
 
-  // device detection & pagination page size
+  // Check screen size
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
-      if (window.innerWidth < 640) setItemsPerPage(4);
-      else if (window.innerWidth < 1024) setItemsPerPage(6);
-      else setItemsPerPage(8);
     };
+
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
@@ -552,18 +540,18 @@ export function GreenSeal() {
           )}
 
           {/* Pagination */}
-          {!loading && greenSealProjects.length > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between mt-6">
-              <div className="text-sm text-gray-600">
-                Showing {greenSealProjects.length} of {total} results
-              </div>
-
-              <Pagination
-                page={currentPage}
-                pages={pages}
-                onChange={(p: number) => setCurrentPage(p)}
-              />
-            </div>
+          {!loading && total > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={pages}
+              totalItems={total}
+              pageSize={itemsPerPage}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setItemsPerPage(size);
+                setCurrentPage(1);
+              }}
+            />
           )}
         </CardContent>
       </Card>

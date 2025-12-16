@@ -55,17 +55,29 @@ export async function patchSummary(req, res) {
     const { projectId } = req.params;
 
     const update = {};
-    if (req.body.additionalCosts !== undefined)
-      update.additionalCosts = Math.max(Number(req.body.additionalCosts), 0);
 
-    if (req.body.profitMargin !== undefined)
-      update.profitMargin = Math.min(
-        Math.max(Number(req.body.profitMargin), 0),
-        100
-      );
+    // Store as strings to preserve exact decimal values
+    if (req.body.additionalCosts !== undefined) {
+      // Parse and validate, but store as string
+      const additionalCosts = parseFloat(req.body.additionalCosts);
+      if (isNaN(additionalCosts) || additionalCosts < 0) {
+        return fail(res, "Invalid additionalCosts value");
+      }
+      update.additionalCosts = req.body.additionalCosts.toString();
+    }
 
-    if (req.body.remarks !== undefined)
+    if (req.body.profitMargin !== undefined) {
+      // Parse and validate, but store as string
+      const profitMargin = parseFloat(req.body.profitMargin);
+      if (isNaN(profitMargin) || profitMargin < 0 || profitMargin > 100) {
+        return fail(res, "Profit margin must be between 0 and 100");
+      }
+      update.profitMargin = req.body.profitMargin.toString();
+    }
+
+    if (req.body.remarks !== undefined) {
       update.remarks = String(req.body.remarks);
+    }
 
     // atomic update, ensures doc exists
     await CostSummary.findOneAndUpdate(

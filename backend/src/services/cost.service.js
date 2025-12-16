@@ -39,16 +39,33 @@ export async function ensureLabour(projectId) {
  * NEVER uses create() or save() → no race conditions.
  */
 export async function recomputeSummary(projectId) {
+  // Helper function to parse string to number with decimal preservation
+  const parseDecimal = (value) => {
+    if (!value) return 0;
+    if (typeof value === "string") {
+      return parseFloat(value) || 0;
+    }
+    return Number(value) || 0;
+  };
+
+  // Sum functions need to handle string values
+  const sumByProjectWithStrings = async (Model, projectId) => {
+    const items = await Model.find({ projectId });
+    return items.reduce((sum, item) => {
+      return sum + parseDecimal(item.cost);
+    }, 0);
+  };
+
   const [upper, component, material, packaging, misc] = await Promise.all([
-    sumByProject(UpperCostRow, projectId),
-    sumByProject(ComponentCostRow, projectId),
-    sumByProject(MaterialCostRow, projectId),
-    sumByProject(PackagingCostRow, projectId),
-    sumByProject(MiscCostRow, projectId),
+    sumByProjectWithStrings(UpperCostRow, projectId),
+    sumByProjectWithStrings(ComponentCostRow, projectId),
+    sumByProjectWithStrings(MaterialCostRow, projectId),
+    sumByProjectWithStrings(PackagingCostRow, projectId),
+    sumByProjectWithStrings(MiscCostRow, projectId),
   ]);
 
   const labour = await ensureLabour(projectId);
-  const labourTotal = Number(labour.directTotal) || 0;
+  const labourTotal = parseDecimal(labour.directTotal);
 
   const hasNoCost =
     upper === 0 &&
@@ -68,30 +85,30 @@ export async function recomputeSummary(projectId) {
   // Make sure summary exists
   const summary = await ensureSummary(projectId);
 
-  const additionalCosts = Number(summary.additionalCosts) || 0;
-  const profitMargin = Number(summary.profitMargin) || 0;
+  const additionalCosts = parseDecimal(summary.additionalCosts);
+  const profitMargin = parseDecimal(summary.profitMargin);
 
   const totalAllCosts =
     upper + component + material + packaging + misc + labourTotal;
 
   const subtotal = totalAllCosts + additionalCosts;
-  const profitAmount = Math.round((subtotal * profitMargin) / 100);
+  const profitAmount = (subtotal * profitMargin) / 100;
   const tentativeCost = subtotal + profitAmount;
 
-  // Atomic update for computed fields
+  // Atomic update for computed fields - use toFixed(3) to preserve 3 decimal places
   return CostSummary.findOneAndUpdate(
     { projectId },
     {
       $set: {
-        upperTotal: upper,
-        componentTotal: component,
-        materialTotal: material,
-        packagingTotal: packaging,
-        miscTotal: misc,
-        labourTotal,
-        totalAllCosts,
-        profitAmount,
-        tentativeCost,
+        upperTotal: parseFloat(upper.toFixed(3)),
+        componentTotal: parseFloat(component.toFixed(3)),
+        materialTotal: parseFloat(material.toFixed(3)),
+        packagingTotal: parseFloat(packaging.toFixed(3)),
+        miscTotal: parseFloat(misc.toFixed(3)),
+        labourTotal: parseFloat(labourTotal.toFixed(3)),
+        totalAllCosts: parseFloat(totalAllCosts.toFixed(3)),
+        profitAmount: parseFloat(profitAmount.toFixed(3)),
+        tentativeCost: parseFloat(tentativeCost.toFixed(3)),
       },
     },
     { new: true }

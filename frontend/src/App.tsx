@@ -82,8 +82,8 @@ function AppContent(): React.JSX.Element {
     }
 
     switch (currentModule) {
-      case "dashboard":
-        return <Dashboard onNavigate={handleModuleChange} />;
+      // case "dashboard":
+      //   return <Dashboard onNavigate={handleModuleChange} />;
       case "all-projects":
         return <ProjectListCard />;
 

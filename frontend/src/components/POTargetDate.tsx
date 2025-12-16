@@ -32,8 +32,9 @@ import { useProjects } from "../hooks/useProjects";
 import { useDebounce } from "./NewHooks/useDebounce";
 import { MobileSkeleton, TableSkeleton } from "./Skeletons";
 import { ProjectFilters } from "./ProjectFilters";
+import Pagination from "./Pagination";
 
-export function POTargetDate({ defaultTab = "po-pending" }) {
+export function POTargetDate() {
   const {
     companies,
     brands,
@@ -50,10 +51,9 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
   const defaultTabFromRedirect = extra?.tab ?? "po-pending";
 
   // Local UI state
-  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(8);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [isMobile, setIsMobile] = useState(false);
   const { deleteProject } = useProjects();
   // Dialogs & selection
@@ -61,7 +61,6 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
   const [poPendingDetailsOpen, setPOPendingDetailsOpen] = useState(false);
   const [poApprovedDetailsOpen, setPOApprovedDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState(defaultTabFromRedirect);
   // Instead of one shared filter state, use separate states:
   const [pendingFilters, setPendingFilters] = useState({
@@ -83,33 +82,22 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
   });
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-  const debouncedSearch = useDebounce(
-    (value: string) => {
-      setDebouncedSearchTerm(value);
-      setCurrentPage(1); // Reset to first page when search changes
-    },
-    300 // 300ms delay
-  );
+  const debouncedSearchTerm = useDebounce(searchTerm, 600);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
 
   // Check screen size
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
-      // Adjust items per page based on screen size
-      if (window.innerWidth < 640) {
-        setItemsPerPage(4);
-      } else if (window.innerWidth < 1024) {
-        setItemsPerPage(6);
-      } else {
-        setItemsPerPage(8);
-      }
     };
 
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
-
   // Load masters on mount
   useEffect(() => {
     loadAllMasters();
@@ -202,32 +190,6 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
     });
     setCurrentPage(1);
   }, []);
-  const handleSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setSearchTerm(value);
-      debouncedSearch(value);
-    },
-    [debouncedSearch]
-  );
-  // Get current tab data
-  const getCurrentProjects = () => {
-    const extra = (window as any).erpExtra;
-    const currentTab = extra?.tab || defaultTabFromRedirect;
-    return currentTab === "po-pending" ? poPendingProjects : poApprovedProjects;
-  };
-
-  const getCurrentTotal = () => {
-    const extra = (window as any).erpExtra;
-    const currentTab = extra?.tab || defaultTabFromRedirect;
-    return currentTab === "po-pending" ? pendingTotal : approvedTotal;
-  };
-
-  const getCurrentPages = () => {
-    const extra = (window as any).erpExtra;
-    const currentTab = extra?.tab || defaultTabFromRedirect;
-    return currentTab === "po-pending" ? pendingPages : approvedPages;
-  };
 
   // Handlers
   const handleProjectClick = (project: any) => {
@@ -745,127 +707,6 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
     );
   };
 
-  // Custom pagination component to maintain original style
-  const CustomPagination = ({
-    pages,
-    isPending,
-  }: {
-    pages: number;
-    isPending: boolean;
-  }) => {
-    if (pages <= 1) return null;
-
-    return (
-      <div className="flex flex-col sm:flex-row items-center justify-between mt-6 space-y-4 sm:space-y-0">
-        <div className="text-sm text-gray-600">
-          Showing {getCurrentProjects().length} of {getCurrentTotal()} results
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentPage <= 1}
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Previous
-          </Button>
-
-          <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(5, pages) }, (_, i) => {
-              const pageNumber = i + 1;
-              if (pages > 5) {
-                if (currentPage > 3 && pageNumber === 1) {
-                  return (
-                    <>
-                      <Button
-                        key={1}
-                        size="sm"
-                        className={
-                          1 === currentPage
-                            ? "bg-blue-500 hover:bg-blue-600 text-white"
-                            : ""
-                        }
-                        onClick={() => setCurrentPage(1)}
-                      >
-                        1
-                      </Button>
-                      <span className="px-2">...</span>
-                    </>
-                  );
-                }
-                if (
-                  pageNumber >= currentPage - 1 &&
-                  pageNumber <= currentPage + 1
-                ) {
-                  return (
-                    <Button
-                      key={pageNumber}
-                      size="sm"
-                      className={
-                        pageNumber === currentPage
-                          ? "bg-blue-500 hover:bg-blue-600 text-white"
-                          : ""
-                      }
-                      onClick={() => setCurrentPage(pageNumber)}
-                    >
-                      {pageNumber}
-                    </Button>
-                  );
-                }
-                if (pageNumber === pages && currentPage < pages - 2) {
-                  return (
-                    <>
-                      <span className="px-2">...</span>
-                      <Button
-                        key={pages}
-                        size="sm"
-                        className={
-                          pages === currentPage
-                            ? "bg-blue-500 hover:bg-blue-600 text-white"
-                            : ""
-                        }
-                        onClick={() => setCurrentPage(pages)}
-                      >
-                        {pages}
-                      </Button>
-                    </>
-                  );
-                }
-                return null;
-              } else {
-                return (
-                  <Button
-                    key={pageNumber}
-                    size="sm"
-                    className={
-                      pageNumber === currentPage
-                        ? "bg-blue-500 hover:bg-blue-600 text-white"
-                        : ""
-                    }
-                    onClick={() => setCurrentPage(pageNumber)}
-                  >
-                    {pageNumber}
-                  </Button>
-                );
-              }
-            }).filter(Boolean)}
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentPage >= pages}
-            onClick={() => setCurrentPage((p) => Math.min(pages, p + 1))}
-          >
-            Next
-            <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="space-y-4 md:space-y-6">
       <Card className="shadow-lg border-0">
@@ -998,7 +839,19 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
                 <EmptyState isPending={true} />
               )}
 
-              <CustomPagination pages={pendingPages} isPending={true} />
+              {!pendingLoading && pendingTotal > 0 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={pendingPages}
+                  totalItems={pendingTotal}
+                  pageSize={itemsPerPage}
+                  onPageChange={setCurrentPage}
+                  onPageSizeChange={(size) => {
+                    setItemsPerPage(size);
+                    setCurrentPage(1);
+                  }}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="po-approved">
@@ -1061,7 +914,19 @@ export function POTargetDate({ defaultTab = "po-pending" }) {
                 <EmptyState isPending={false} />
               )}
 
-              <CustomPagination pages={approvedPages} isPending={false} />
+              {!approvedLoading && approvedTotal > 0 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={approvedPages}
+                  totalItems={approvedTotal}
+                  pageSize={itemsPerPage}
+                  onPageChange={setCurrentPage}
+                  onPageSizeChange={(size) => {
+                    setItemsPerPage(size);
+                    setCurrentPage(1);
+                  }}
+                />
+              )}
             </TabsContent>
           </Tabs>
         </CardContent>

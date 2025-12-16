@@ -103,8 +103,8 @@ const Info = ({
 
 interface IssueRowProps {
   item: MaterialItem | ComponentItem;
-  issuedQuantities: Record<string, number>;
-  onIssueChange: (id: string, qty: number) => void;
+  issuedQuantities: Record<string, number | string>;
+  onIssueChange: (id: string, qty: number | string) => void;
 }
 
 const IssueRow = ({ item, issuedQuantities, onIssueChange }: IssueRowProps) => {
@@ -112,9 +112,62 @@ const IssueRow = ({ item, issuedQuantities, onIssueChange }: IssueRowProps) => {
   const req = Number(item.requirement || 0);
   const avail = Number(item.available || 0);
   const alreadyIssued = Number(item.issued || 0);
-  const newIssuedAmount = Number(issuedQuantities[itemId] || 0);
+  const issuedValue = issuedQuantities[itemId] || 0;
+  const newIssuedAmount =
+    typeof issuedValue === "string"
+      ? parseFloat(issuedValue) || 0
+      : issuedValue || 0;
   const maxIssuable = Math.max(0, req - avail);
   const balanceAfter = Math.max(0, req - (avail + newIssuedAmount));
+
+  const handleInputChange = (value: string) => {
+    // Allow empty string, numbers, and decimals
+    if (value === "" || /^\d*\.?\d*$/.test(value)) {
+      if (value === "") {
+        onIssueChange(itemId, 0);
+        return;
+      }
+
+      // If the value ends with a dot, keep it for user typing
+      if (value.endsWith(".")) {
+        onIssueChange(itemId, value);
+        return;
+      }
+
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) {
+        onIssueChange(itemId, 0);
+        return;
+      }
+
+      // Allow decimals and don't round values
+      if (numValue < 0) {
+        onIssueChange(itemId, 0);
+      } else if (numValue > maxIssuable) {
+        onIssueChange(itemId, maxIssuable);
+      } else {
+        onIssueChange(itemId, numValue);
+      }
+    }
+  };
+
+  // Format the display value to show decimals properly
+  const getDisplayValue = () => {
+    const value = issuedQuantities[itemId];
+    if (value === undefined || value === null) return "";
+
+    // If it's a string (like "0."), return it as is
+    if (typeof value === "string" && (value.endsWith(".") || value === "")) {
+      return value;
+    }
+
+    // If it's 0, return empty string
+    if (Number(value) === 0) return "";
+
+    // Return the number as string
+    const numValue = Number(value);
+    return numValue.toString();
+  };
 
   return (
     <tr className="border-b hover:bg-gray-50">
@@ -130,18 +183,23 @@ const IssueRow = ({ item, issuedQuantities, onIssueChange }: IssueRowProps) => {
       <td className="px-6 py-3 border-r text-center">
         <div className="flex flex-col items-center gap-1">
           <Input
-            type="number"
-            min={0}
-            max={maxIssuable}
-            value={newIssuedAmount || ""}
-            onChange={(e) =>
-              onIssueChange(
-                itemId,
-                Math.max(0, Math.min(maxIssuable, Number(e.target.value) || 0))
-              )
-            }
+            type="text"
+            inputMode="decimal"
+            value={getDisplayValue()}
+            onChange={(e) => handleInputChange(e.target.value)}
             className="w-28 text-center text-base"
             placeholder="0"
+            onBlur={(e) => {
+              // When user leaves the field, clean up trailing dots
+              if (e.target.value.endsWith(".")) {
+                const numValue = parseFloat(e.target.value);
+                if (!isNaN(numValue)) {
+                  handleInputChange(numValue.toString());
+                } else {
+                  handleInputChange("0");
+                }
+              }
+            }}
           />
           <div className="text-xs text-gray-500">Max: {maxIssuable}</div>
         </div>
@@ -171,9 +229,62 @@ const MobileIssueItem = ({
   const req = Number(item.requirement || 0);
   const avail = Number(item.available || 0);
   const alreadyIssued = Number(item.issued || 0);
-  const newIssuedAmount = Number(issuedQuantities[itemId] || 0);
+  const issuedValue = issuedQuantities[itemId] || 0;
+  const newIssuedAmount =
+    typeof issuedValue === "string"
+      ? parseFloat(issuedValue) || 0
+      : issuedValue || 0;
   const maxIssuable = Math.max(0, req - avail);
   const balanceAfter = Math.max(0, req - (avail + newIssuedAmount));
+
+  const handleInputChange = (value: string) => {
+    // Allow empty string, numbers, and decimals
+    if (value === "" || /^\d*\.?\d*$/.test(value)) {
+      if (value === "") {
+        onIssueChange(itemId, 0);
+        return;
+      }
+
+      // If the value ends with a dot, keep it for user typing
+      if (value.endsWith(".")) {
+        onIssueChange(itemId, value);
+        return;
+      }
+
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) {
+        onIssueChange(itemId, 0);
+        return;
+      }
+
+      // Allow decimals and don't round values
+      if (numValue < 0) {
+        onIssueChange(itemId, 0);
+      } else if (numValue > maxIssuable) {
+        onIssueChange(itemId, maxIssuable);
+      } else {
+        onIssueChange(itemId, numValue);
+      }
+    }
+  };
+
+  // Format the display value to show decimals properly
+  const getDisplayValue = () => {
+    const value = issuedQuantities[itemId];
+    if (value === undefined || value === null) return "";
+
+    // If it's a string (like "0."), return it as is
+    if (typeof value === "string" && (value.endsWith(".") || value === "")) {
+      return value;
+    }
+
+    // If it's 0, return empty string
+    if (Number(value) === 0) return "";
+
+    // Return the number as string
+    const numValue = Number(value);
+    return numValue.toString();
+  };
 
   return (
     <div className="p-4 space-y-3">
@@ -211,18 +322,23 @@ const MobileIssueItem = ({
         <p className="text-xs text-gray-500 mb-2">Set New Issued Quantity</p>
         <div className="flex items-center gap-3">
           <Input
-            type="number"
-            min={0}
-            max={maxIssuable}
-            value={newIssuedAmount || ""}
-            onChange={(e) =>
-              onIssueChange(
-                itemId,
-                Math.max(0, Math.min(maxIssuable, Number(e.target.value) || 0))
-              )
-            }
+            type="text"
+            inputMode="decimal"
+            value={getDisplayValue()}
+            onChange={(e) => handleInputChange(e.target.value)}
             className="flex-1 text-center"
             placeholder="0"
+            onBlur={(e) => {
+              // When user leaves the field, clean up trailing dots
+              if (e.target.value.endsWith(".")) {
+                const numValue = parseFloat(e.target.value);
+                if (!isNaN(numValue)) {
+                  handleInputChange(numValue.toString());
+                } else {
+                  handleInputChange("0");
+                }
+              }
+            }}
           />
           <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">
             Max: {maxIssuable}
@@ -263,8 +379,8 @@ interface MaterialSectionsProps {
     color: string;
     items: Array<MaterialItem | ComponentItem>;
   }>;
-  issuedQuantities: Record<string, number>;
-  onIssueChange: (id: string, qty: number) => void;
+  issuedQuantities: Record<string, number | string>;
+  onIssueChange: (id: string, qty: number | string) => void;
 }
 
 const MaterialSections = ({
@@ -393,12 +509,12 @@ const MaterialIssueDialog = ({
   onSuccess,
 }: MaterialIssueDialogProps) => {
   const [issuedQuantities, setIssuedQuantities] = useState<
-    Record<string, number>
+    Record<string, number | string>
   >({});
 
   useEffect(() => {
     if (requisition) {
-      const initialQuantities: Record<string, number> = {};
+      const initialQuantities: Record<string, number | string> = {};
 
       // Process all 5 categories
       [
@@ -416,12 +532,15 @@ const MaterialIssueDialog = ({
     }
   }, [requisition]);
 
-  const handleIssueQuantityChange = useCallback((id: string, qty: number) => {
-    setIssuedQuantities((prev) => ({
-      ...prev,
-      [id]: qty,
-    }));
-  }, []);
+  const handleIssueQuantityChange = useCallback(
+    (id: string, qty: number | string) => {
+      setIssuedQuantities((prev) => ({
+        ...prev,
+        [id]: qty,
+      }));
+    },
+    []
+  );
 
   const getCategorizedSections = useCallback(() => {
     if (!requisition) {
@@ -450,7 +569,11 @@ const MaterialIssueDialog = ({
       const updateItems = (items: MaterialItem[]) => {
         return items.map((item) => {
           const itemId = item.itemId || item._id;
-          const newIssuedAmount = Number(issuedQuantities[String(itemId)] || 0);
+          const issuedValue = issuedQuantities[String(itemId)];
+          const newIssuedAmount =
+            typeof issuedValue === "string"
+              ? parseFloat(issuedValue) || 0
+              : issuedValue || 0;
           const available = Number(item.available || 0);
           const requirement = Number(item.requirement || 0);
 
@@ -462,7 +585,7 @@ const MaterialIssueDialog = ({
           return {
             ...item,
             issued: newIssuedAmount,
-            balance,
+            balance: parseFloat(balance.toFixed(4)),
           };
         });
       };
