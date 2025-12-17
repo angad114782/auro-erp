@@ -11,7 +11,7 @@ export function usePagination({
   currentPage,
   maxVisiblePages = 5,
 }: UsePaginationProps) {
-  const pageNumbers = useMemo(() => {
+  return useMemo(() => {
     const pages: (number | "...")[] = [];
 
     if (totalPages <= maxVisiblePages) {
@@ -19,13 +19,22 @@ export function usePagination({
       return pages;
     }
 
+    const half = Math.floor(maxVisiblePages / 2);
+
+    let start = Math.max(2, currentPage - half);
+    let end = Math.min(totalPages - 1, currentPage + half);
+
+    if (currentPage <= half + 1) {
+      start = 2;
+      end = maxVisiblePages;
+    }
+
+    if (currentPage >= totalPages - half) {
+      start = totalPages - maxVisiblePages + 1;
+      end = totalPages - 1;
+    }
+
     pages.push(1);
-
-    let start = Math.max(2, currentPage - 1);
-    let end = Math.min(totalPages - 1, currentPage + 1);
-
-    if (currentPage <= 3) end = 4;
-    if (currentPage >= totalPages - 2) start = totalPages - 3;
 
     if (start > 2) pages.push("...");
 
@@ -39,6 +48,4 @@ export function usePagination({
 
     return pages;
   }, [totalPages, currentPage, maxVisiblePages]);
-
-  return pageNumbers;
 }

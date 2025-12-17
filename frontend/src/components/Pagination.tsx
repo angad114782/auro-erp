@@ -79,16 +79,16 @@ export default function Pagination({
         <div className="flex items-center gap-1">
           {pages.map((p, idx) =>
             p === "..." ? (
-              <span key={idx} className="px-2">
+              <span key={`dots-${idx}`} className="px-2">
                 ...
               </span>
             ) : (
               <Button
-                key={p}
+                key={`page-${p}-${idx}`}
                 size="sm"
                 variant={currentPage === p ? "default" : "outline"}
                 onClick={() => onPageChange(p)}
-                className="min-w-[40px]"
+                className="min-w-10"
               >
                 {p}
               </Button>
