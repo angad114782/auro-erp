@@ -6,9 +6,9 @@ import {
   update,
   remove,
 } from "../controllers/country.controller.js";
-
+import { countryDashboardController } from "../controllers/country.dashboard.controller.js";
 const router = Router({ mergeParams: true });
-
+router.get("/dashboard", countryDashboardController);
 router.post("/", create);
 router.get("/", list);
 router.get("/:id", get);
