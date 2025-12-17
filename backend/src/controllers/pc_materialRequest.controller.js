@@ -43,10 +43,10 @@ export async function createMR(req, res) {
 ------------------------------------------------------- */
 export async function listMRs(req, res) {
   try {
-    const { status, projectId, page = 1, limit = 50 } = req.query;
+    const { status, projectId, search, page = 1, limit = 50 } = req.query;
 
     const { items, total } = await service.listMaterialRequests(
-      { status, projectId },
+      { status, projectId, search },
       { page: Number(page), limit: Number(limit) }
     );
 
@@ -63,8 +63,7 @@ export async function listMRs(req, res) {
 export async function updateMR(req, res) {
   try {
     const mrId = req.params.mrId;
-    if (!mrId)
-      return res.status(400).json({ error: "mrId required in URL" });
+    if (!mrId) return res.status(400).json({ error: "mrId required in URL" });
 
     const updates = req.body || {};
 
@@ -79,9 +78,13 @@ export async function updateMR(req, res) {
       notes: updates.notes,
     };
 
-    const { mr, card } = await service.updateMaterialRequest(mrId, formattedUpdates, {
-      syncCard: true,
-    });
+    const { mr, card } = await service.updateMaterialRequest(
+      mrId,
+      formattedUpdates,
+      {
+        syncCard: true,
+      }
+    );
 
     return res.json({ success: true, mr, card });
   } catch (err) {
@@ -96,13 +99,11 @@ export async function updateMR(req, res) {
 export async function softDeleteMR(req, res) {
   try {
     const mrId = req.params.mrId;
-    if (!mrId)
-      return res.status(400).json({ error: "mrId required in URL" });
+    if (!mrId) return res.status(400).json({ error: "mrId required in URL" });
 
-    const { mr, card } = await service.softDeleteMaterialRequest(
-      mrId,
-      { removeFromCard: true }
-    );
+    const { mr, card } = await service.softDeleteMaterialRequest(mrId, {
+      removeFromCard: true,
+    });
 
     return res.json({ success: true, mr, card });
   } catch (err) {
@@ -117,8 +118,7 @@ export async function softDeleteMR(req, res) {
 export async function getMR(req, res) {
   try {
     const mrId = req.params.mrId;
-    if (!mrId)
-      return res.status(400).json({ error: "mrId required" });
+    if (!mrId) return res.status(400).json({ error: "mrId required" });
 
     const mr = await service.getMaterialRequestById(mrId);
 

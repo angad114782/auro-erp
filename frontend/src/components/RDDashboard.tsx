@@ -1,74 +1,48 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
-import {
-  Search,
-  Bell,
-  User,
-  Plus,
-  Lightbulb,
-  Beaker,
-  Target,
-  TrendingUp,
-  Clock,
-  AlertTriangle,
-  CheckCircle,
-  Edit,
-  Trash2,
-  MoreVertical,
-  IndianRupee,
-  Upload,
-  Download,
-  Calendar,
-  MapPin,
-  Users,
-  Activity,
-  Pause,
-  ShoppingCart,
-  CircleCheckBig,
-  CircleX,
-  Package,
-  ArrowRight,
-  FileText,
-  BarChart3,
-  Zap,
-  TrendingDown,
-  Eye,
-  ChevronRight,
-  LayoutDashboard,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "./ui/dropdown-menu";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  CheckCircle,
+  ChevronRight,
+  Clock,
+  Download,
+  FileText,
+  LayoutDashboard,
+  Lightbulb,
+  MapPin,
+  Package,
+  Plus,
+  ShoppingCart,
+  Target,
+  Users,
+  Zap,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import html2canvas from "html2canvas";
 
 // import html2canvas from "html2canvas";
 import {
-  BarChart,
   Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
 } from "recharts";
-import { useERPStore } from "../lib/data-store";
 import { toast } from "sonner@2.0.3";
-import { dashboardService } from "../services/dashboard.service";
-import { Progress } from "./ui/progress";
 import { useRedirect } from "../hooks/useRedirect";
 import api from "../lib/api";
+import { dashboardService } from "../services/dashboard.service";
 
 interface RDDashboardProps {
   onNavigate?: (subModule: string) => void;
@@ -418,80 +392,231 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
     }
   };
 
-  const handleExportPDF = () => {
-    const doc = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-    });
+  // const handleExportPDF = () => {
+  //   const doc = new jsPDF({
+  //     orientation: "portrait",
+  //     unit: "mm",
+  //     format: "a4",
+  //   });
 
-    // TITLE
-    doc.setFontSize(18);
-    doc.text("R&D Dashboard Report", 14, 15);
+  //   // TITLE
+  //   doc.setFontSize(18);
+  //   doc.text("R&D Dashboard Report", 14, 15);
 
-    doc.setFontSize(11);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 22);
+  //   doc.setFontSize(11);
+  //   doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 22);
 
-    // SUMMARY BLOCK
-    doc.setFontSize(14);
-    doc.text("Summary", 14, 32);
+  //   // SUMMARY BLOCK
+  //   doc.setFontSize(14);
+  //   doc.text("Summary", 14, 32);
 
-    autoTable(doc, {
-      startY: 36,
-      theme: "grid",
-      head: [["Metric", "Value"]],
-      body: [
-        ["Total Projects", analytics.total],
-        ["Live Projects", analytics.live],
-        ["Closed Projects", analytics.closed],
-        [
-          "Red Seal (OK / Pending)",
-          `${analytics.redSealOK} / ${analytics.redSealPending}`,
+  //   autoTable(doc, {
+  //     startY: 36,
+  //     theme: "grid",
+  //     head: [["Metric", "Value"]],
+  //     body: [
+  //       ["Total Projects", analytics.total],
+  //       ["Live Projects", analytics.live],
+  //       ["Closed Projects", analytics.closed],
+  //       [
+  //         "Red Seal (OK / Pending)",
+  //         `${analytics.redSealOK} / ${analytics.redSealPending}`,
+  //       ],
+  //       [
+  //         "Green Seal (OK / Pending)",
+  //         `${analytics.greenSealOK} / ${analytics.greenSealPending}`,
+  //       ],
+  //       [
+  //         "PO (Approved / Pending)",
+  //         `${analytics.poApproved} / ${analytics.poPending}`,
+  //       ],
+  //     ],
+  //   });
+
+  //   // STAGE DISTRIBUTION
+  //   doc.setFontSize(14);
+  //   doc.text("Stage Distribution", 14, doc.lastAutoTable.finalY + 10);
+
+  //   autoTable(doc, {
+  //     startY: doc.lastAutoTable.finalY + 14,
+  //     theme: "grid",
+  //     head: [["Stage", "Count"]],
+  //     body: analytics.stages.map((s) => [s.stage, s.count]),
+  //   });
+
+  //   // RECENT PROJECTS
+  //   doc.setFontSize(14);
+  //   doc.text("Recent Projects", 14, doc.lastAutoTable.finalY + 12);
+
+  //   autoTable(doc, {
+  //     startY: doc.lastAutoTable.finalY + 16,
+  //     theme: "grid",
+  //     head: [["Code", "Brand", "Category", "Status"]],
+  //     body: analytics.recentProjects.map((p) => [
+  //       p.autoCode,
+  //       getBrandName(p.brandId),
+  //       getCategoryName(p.categoryId),
+  //       mapStatusToUI(p.status),
+  //     ]),
+  //   });
+
+  //   // SAVE PDF
+  //   doc.save("RD_Dashboard_Report.pdf");
+
+  //   toast.success("PDF exported successfully!");
+  // };
+
+  const handleExportPDF = async () => {
+    try {
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      // TITLE
+      doc.setFontSize(18);
+      doc.text("R&D Dashboard Report", 14, 15);
+      doc.setFontSize(11);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 22);
+      doc.text(`Total Projects: ${analytics.total}`, 14, 28);
+
+      // SUMMARY BLOCK
+      doc.setFontSize(14);
+      doc.text("Summary", 14, 38);
+
+      autoTable(doc, {
+        startY: 42,
+        theme: "grid",
+        head: [["Metric", "Value"]],
+        body: [
+          ["Total Projects", analytics.total],
+          ["Live Projects", analytics.live],
+          ["Closed Projects", analytics.closed],
+          [
+            "Red Seal (OK / Pending)",
+            `${analytics.redSealOK} / ${analytics.redSealPending}`,
+          ],
+          [
+            "Green Seal (OK / Pending)",
+            `${analytics.greenSealOK} / ${analytics.greenSealPending}`,
+          ],
+          [
+            "PO (Approved / Pending)",
+            `${analytics.poApproved} / ${analytics.poPending}`,
+          ],
+          ["Success Rate", `${analytics.successRate}%`],
+          ["Avg Duration", `${analytics.avgDuration} days`],
         ],
-        [
-          "Green Seal (OK / Pending)",
-          `${analytics.greenSealOK} / ${analytics.greenSealPending}`,
-        ],
-        [
-          "PO (Approved / Pending)",
-          `${analytics.poApproved} / ${analytics.poPending}`,
-        ],
-      ],
-    });
+      });
 
-    // STAGE DISTRIBUTION
-    doc.setFontSize(14);
-    doc.text("Stage Distribution", 14, doc.lastAutoTable.finalY + 10);
+      // STAGE DISTRIBUTION
+      doc.setFontSize(14);
+      doc.text("Stage Distribution", 14, doc.lastAutoTable.finalY + 10);
 
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 14,
-      theme: "grid",
-      head: [["Stage", "Count"]],
-      body: analytics.stages.map((s) => [s.stage, s.count]),
-    });
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 14,
+        theme: "grid",
+        head: [["Stage", "Count"]],
+        body: analytics.stages.map((s) => [s.stage, s.count]),
+      });
 
-    // RECENT PROJECTS
-    doc.setFontSize(14);
-    doc.text("Recent Projects", 14, doc.lastAutoTable.finalY + 12);
+      // PRIORITY BREAKDOWN
+      doc.setFontSize(14);
+      doc.text("Priority Breakdown", 14, doc.lastAutoTable.finalY + 10);
 
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 16,
-      theme: "grid",
-      head: [["Code", "Brand", "Category", "Status"]],
-      body: analytics.recentProjects.map((p) => [
-        p.autoCode,
-        getBrandName(p.brandId),
-        getCategoryName(p.categoryId),
-        mapStatusToUI(p.status),
-      ]),
-    });
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 14,
+        theme: "grid",
+        head: [["Priority", "Count"]],
+        body: analytics.priorities.map((p) => [p.name, p.value]),
+      });
 
-    // SAVE PDF
-    doc.save("RD_Dashboard_Report.pdf");
+      // ASSIGNED PERSON DATA
+      doc.setFontSize(14);
+      doc.text(
+        "Assigned Person - PO Status",
+        14,
+        doc.lastAutoTable.finalY + 10
+      );
 
-    toast.success("PDF exported successfully!");
+      const assignPersonTableData = assignPersonChartData.map((p) => [
+        p.name,
+        p.approved,
+        p.pending,
+        p.total,
+        `${Math.round((p.approved / p.total) * 100)}%`,
+      ]);
+
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 14,
+        theme: "grid",
+        head: [["Name", "PO Approved", "PO Pending", "Total", "Approval Rate"]],
+        body: assignPersonTableData,
+      });
+
+      // COUNTRY DATA
+      doc.setFontSize(14);
+      doc.text("Country-wise Projects", 14, doc.lastAutoTable.finalY + 10);
+
+      const countryTableData = countryPieData.map((c) => [
+        c.name,
+        c.value,
+        `${c.percent}%`,
+      ]);
+
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 14,
+        theme: "grid",
+        head: [["Country", "Projects", "Share"]],
+        body: countryTableData,
+      });
+
+      // RECENT PROJECTS
+      doc.setFontSize(14);
+      doc.text("Recent Projects", 14, doc.lastAutoTable.finalY + 10);
+
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 14,
+        theme: "grid",
+        head: [["Code", "Brand", "Category", "Status"]],
+        body: analytics.recentProjects.map((p) => [
+          p.autoCode,
+          getBrandName(p.brandId),
+          getCategoryName(p.categoryId),
+          mapStatusToUI(p.status),
+        ]),
+      });
+
+      // PENDING ACTIONS
+      doc.setFontSize(14);
+      doc.text("Pending Actions", 14, doc.lastAutoTable.finalY + 10);
+
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 14,
+        theme: "grid",
+        head: [["Action Type", "Count"]],
+        body: analytics.pendingActions.map((a) => [a.type, a.count]),
+      });
+
+      // FOOTER
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(
+        "Report generated from R&D Dashboard",
+        14,
+        doc.internal.pageSize.height - 10
+      );
+
+      // SAVE PDF
+      doc.save("RD_Dashboard_Report.pdf");
+
+      toast.success("PDF exported successfully!");
+    } catch (error) {
+      console.error("PDF export error:", error);
+      toast.error("Failed to export PDF");
+    }
   };
-
   const dashboardRef = useRef(null);
 
   // Redirect helper

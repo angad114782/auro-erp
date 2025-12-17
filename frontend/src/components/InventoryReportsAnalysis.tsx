@@ -43,6 +43,7 @@ import {
 } from "./ui/select";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
+import { exportInventoryReportToPDF } from "../hooks/pdf-export-ra";
 
 interface DateRange {
   from: Date;
@@ -335,6 +336,20 @@ export function InventoryReportsAnalysis() {
       ? dummyTransactions
       : [];
 
+  const handleExport = () => {
+    console.log("Exporting with data...");
+    exportInventoryReportToPDF(
+      filteredTransactions.length > 0
+        ? filteredTransactions
+        : displayTransactions,
+      statistics,
+      dateRange,
+      reportType,
+      searchTerm,
+      getItemDetails, // Pass the helper functions
+      getVendor
+    );
+  };
   return (
     <div className="w-full space-y-4 md:space-y-8 p-4 md:p-6">
       {/* Header Section */}
@@ -355,32 +370,17 @@ export function InventoryReportsAnalysis() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 md:gap-3">
-            <Button variant="outline" size="sm" className="hidden md:flex">
-              <FileText className="w-4 h-4 mr-2" />
-              Generate Report
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Download className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Export Data</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handleExportData("excel")}>
-                  <FileSpreadsheet className="w-4 h-4 mr-2" />
-                  Export to Excel
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportData("pdf")}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Export to PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportData("csv")}>
-                  <FileDown className="w-4 h-4 mr-2" />
-                  Export to CSV
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex flex-wrap items-center gap-2 md:gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="hidden md:flex"
+                onClick={handleExport}
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Export PDF
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -427,7 +427,26 @@ export function InventoryReportsAnalysis() {
                   <SelectItem value="yearly">Yearly Report</SelectItem>
                 </SelectContent>
               </Select>
-
+              {/* Mobile Floating Export Button */}
+              <div className="md:hidden fixed bottom-6 right-6 z-10">
+                <Button
+                  size="lg"
+                  className="rounded-full shadow-lg h-14 w-14"
+                  onClick={() =>
+                    exportInventoryReportToPDF(
+                      filteredTransactions.length > 0
+                        ? filteredTransactions
+                        : displayTransactions,
+                      statistics,
+                      dateRange,
+                      reportType,
+                      searchTerm
+                    )
+                  }
+                >
+                  <Download className="w-6 h-6" />
+                </Button>
+              </div>
               <Popover
                 open={isDatePickerOpen}
                 onOpenChange={handleDatePickerOpen}

@@ -1521,14 +1521,6 @@ export function ProductionTrackingTable() {
             <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
             {isMobile ? "Export" : "Export PDF"}
           </Button>
-          {/* <Button
-            size="sm"
-            className="text-xs sm:text-sm bg-[#0c9dcb] hover:bg-[#0a87a5]"
-            onClick={() => setStageUpdateDialogOpen(true)}
-          >
-            <Edit className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-            {isMobile ? "Update" : `Update ${getCurrentStageName()}`}
-          </Button> */}
         </div>
       </div>
 

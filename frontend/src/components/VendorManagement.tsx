@@ -29,6 +29,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
+import {
+  exportVendorsToPDF,
+  exportVendorsToPDFCompact,
+  exportVendorsToPDFPortrait,
+} from "../hooks/pdf-export-vendor";
 
 interface VendorManagementProps {
   searchTerm: string;
@@ -96,6 +101,15 @@ export function VendorManagement({
     setShowEditDialog(true);
   };
 
+  const [isExporting, setIsExporting] = useState(false);
+  // Simple export handler
+  const handleExportPDF = () => {
+    setIsExporting(true);
+    // This will now use the Portrait version with stacked details
+    exportVendorsToPDF(filteredVendors, localSearchTerm);
+    setIsExporting(false);
+  };
+
   return (
     <div className="w-full">
       {/* Vendor Navigation Bar */}
@@ -142,9 +156,13 @@ export function VendorManagement({
                 variant="outline"
                 size="sm"
                 className="h-9 flex-1 sm:flex-none"
+                onClick={handleExportPDF}
+                disabled={isExporting || vendors.length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Export</span>
+                <span className="hidden sm:inline">
+                  {isExporting ? "Exporting..." : "Export PDF"}
+                </span>
               </Button>
 
               <Button

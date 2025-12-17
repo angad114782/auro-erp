@@ -47,7 +47,6 @@ interface CuttingItem {
   status: "pending" | "in-progress" | "completed";
 }
 
-// In your ItemCuttingDialog component, update the props interface:
 interface ItemCuttingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -64,7 +63,6 @@ interface ItemCuttingDialogProps {
     poNumber?: string;
     manufacturingCompany?: string;
     country?: string;
-    // New fields for stage info
     stage?: string;
     stageName?: string;
     stageStatus?: string;
@@ -73,7 +71,6 @@ interface ItemCuttingDialogProps {
   stage: any;
 }
 
-// MobileItemCard component defined OUTSIDE the main component
 const MobileItemCard = React.memo(
   ({
     item,
@@ -84,6 +81,7 @@ const MobileItemCard = React.memo(
     updateCuttingQuantity,
     toggleItemExpanded,
     expandedItems,
+    stage,
   }: {
     item: CuttingItem;
     isMobile: boolean;
@@ -93,6 +91,7 @@ const MobileItemCard = React.memo(
     updateCuttingQuantity: (itemId: string, value: string) => void;
     toggleItemExpanded: (itemId: string) => void;
     expandedItems: Set<string>;
+    stage: string;
   }) => {
     const totalAfter = item.alreadyCut + item.cuttingToday;
     const remaining = Math.max(item.requiredQuantity - totalAfter, 0);
@@ -105,10 +104,8 @@ const MobileItemCard = React.memo(
       minimumAvailable < productData.targetQuantity;
     const isExpanded = expandedItems.has(item.id);
 
-    // Local state for input value
     const [inputValue, setInputValue] = useState(item.cuttingToday.toString());
 
-    // Update local state when item changes
     useEffect(() => {
       setInputValue(item.cuttingToday.toString());
     }, [item.cuttingToday]);
@@ -116,13 +113,11 @@ const MobileItemCard = React.memo(
     const handleInputChange = (value: string) => {
       setInputValue(value);
 
-      // Allow empty string for typing
       if (value === "") {
         updateCuttingQuantity(item.id, "0");
         return;
       }
 
-      // Only allow numbers
       if (/^\d+$/.test(value)) {
         const parsed = parseInt(value, 10);
         if (!isNaN(parsed) && parsed >= 0) {
@@ -132,7 +127,6 @@ const MobileItemCard = React.memo(
     };
 
     const handleInputBlur = () => {
-      // Validate on blur
       if (inputValue === "") {
         setInputValue("0");
         updateCuttingQuantity(item.id, "0");
@@ -170,6 +164,10 @@ const MobileItemCard = React.memo(
       }
     };
 
+    const handleDeliverItem = () => {
+      toast.success(`Delivered ${item.itemName} to customer successfully!`);
+    };
+
     return (
       <div
         className={`bg-white border-2 rounded-xl p-4 transition-all ${
@@ -183,7 +181,7 @@ const MobileItemCard = React.memo(
         {/* Item Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-start gap-3 flex-1">
-            <div className="w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center shrink-0 border-2 border-gray-300">
+            <div className="w-10 h-10 bg-linear-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center shrink-0 border-2 border-gray-300">
               <Scissors className="w-4 h-4 text-gray-600" />
             </div>
             <div className="flex-1 min-w-0">
@@ -259,7 +257,7 @@ const MobileItemCard = React.memo(
         {/* Expanded Content */}
         {isExpanded && (
           <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
-            {/* Cutting Today Input - Fixed */}
+            {/* Cutting Today Input */}
             <div>
               <Label className="text-xs font-medium text-gray-600 mb-1 block">
                 {stageDetails.title} Today
@@ -288,65 +286,71 @@ const MobileItemCard = React.memo(
                 {totalAfter} {item.unit}
               </span>
             </div>
-            <div>
-              <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
-                Advance To
-              </Label>
-              <Select
-              // value={currentEntry.advanceTo || ""}
-              // onValueChange={(value) =>
-              //   setUpdateEntries((prev) => ({
-              //     ...prev,
-              //     [record.id]: {
-              //       ...currentEntry,
-              //       advanceTo: value,
-              //     },
-              //   }))
-              // }
-              >
-                <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-gradient-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
-                  <SelectValue placeholder="Next stage..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cutting">
-                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                      <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
-                      <span>Cutting</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="printing">
-                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                      <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
-                      <span>Printing</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="stitching">
-                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                      <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
-                      <span>Stitching</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="lasting">
-                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                      <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
-                      <span>Lasting</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="packing">
-                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                      <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
-                      <span>Packing</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="quality">
-                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                      <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-                      <span>Quality Check</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+
+            {/* Deliver Button for RFD or Advance To dropdown for other stages */}
+            {stage === "rfd" ? (
+              <div>
+                <Label className="text-xs font-medium text-gray-600 mb-2 block">
+                  Ready for Delivery
+                </Label>
+                <Button
+                  className="w-full h-9 text-xs bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
+                  onClick={handleDeliverItem}
+                >
+                  <CheckCircle className="w-3 h-3 mr-2" />
+                  Advanced to Deliver
+                </Button>
+              </div>
+            ) : (
+              <div>
+                <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
+                  Advance To
+                </Label>
+                <Select>
+                  <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-linear-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
+                    <SelectValue placeholder="Next stage..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cutting">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm">
+                        <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
+                        <span>Cutting</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="printing">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm">
+                        <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
+                        <span>Printing</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="stitching">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm">
+                        <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
+                        <span>Stitching</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="lasting">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm">
+                        <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
+                        <span>Lasting</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="packing">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm">
+                        <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                        <span>Packing</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="quality">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm">
+                        <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
+                        <span>Quality Check</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Today's Update Indicator */}
             {item.cuttingToday > 0 && (
@@ -377,7 +381,6 @@ export function ItemCuttingDialog({
   const [isMobile, setIsMobile] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
-  // Check for mobile on mount
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
     checkMobile();
@@ -385,7 +388,6 @@ export function ItemCuttingDialog({
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Get stage-specific details
   const getStageDetails = () => {
     switch (stage) {
       case "cutting":
@@ -481,7 +483,6 @@ export function ItemCuttingDialog({
 
   const stageDetails = getStageDetails();
 
-  // Demo data
   const [cuttingItems, setCuttingItems] = useState<CuttingItem[]>([
     {
       id: "1",
@@ -521,11 +522,9 @@ export function ItemCuttingDialog({
     },
   ]);
 
-  // Early return MUST be before any conditional logic with hooks
   if (!productData) return null;
 
   const updateCuttingQuantity = (itemId: string, value: string) => {
-    // Handle empty string immediately
     if (value === "") {
       setCuttingItems((prev) =>
         prev.map((item) =>
@@ -535,10 +534,7 @@ export function ItemCuttingDialog({
       return;
     }
 
-    // Parse the value
     const parsedValue = parseInt(value, 10);
-
-    // Validate and update if valid
     if (!isNaN(parsedValue) && parsedValue >= 0) {
       setCuttingItems((prev) =>
         prev.map((item) =>
@@ -624,6 +620,83 @@ export function ItemCuttingDialog({
       newExpanded.add(itemId);
     }
     setExpandedItems(newExpanded);
+  };
+
+  const handleDeliverItem = (itemId: string) => {
+    const item = cuttingItems.find((i) => i.id === itemId);
+    if (item) {
+      toast.success(`Delivered ${item.itemName} to customer successfully!`);
+    }
+  };
+
+  const renderAdvanceToSection = (item: CuttingItem) => {
+    if (stage === "rfd") {
+      return (
+        <div className="col-span-12 sm:col-span-4">
+          <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
+            Ready for Delivery
+          </Label>
+          <Button
+            className="w-full h-9 sm:h-10 text-xs sm:text-sm bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
+            onClick={() => handleDeliverItem(item.id)}
+          >
+            <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+            {isMobile ? "Deliver" : "Advanced to Deliver"}
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="col-span-12 sm:col-span-4">
+        <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
+          Advance To Next Stage
+        </Label>
+        <Select>
+          <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-linear-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
+            <SelectValue placeholder="Select next stage..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="cutting">
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
+                <span>Cutting</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="printing">
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
+                <span>Printing</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="stitching">
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
+                <span>Stitching</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="lasting">
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
+                <span>Lasting</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="packing">
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                <span>Packing</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="quality">
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
+                <span>Quality Check</span>
+              </div>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    );
   };
 
   const minimumAvailable = calculateMinimumAvailable();
@@ -901,59 +974,11 @@ export function ItemCuttingDialog({
                             </div>
                           </div>
 
-                          {/* Second Row with Advance To Dropdown and Progress Bar */}
+                          {/* Second Row with Deliver Button/Advance To Dropdown and Progress Bar */}
                           <div className="grid grid-cols-12 gap-4 sm:gap-6 items-center mt-4">
-                            {/* Advance To Dropdown - Takes 4 columns */}
-                            <div className="col-span-12 sm:col-span-4">
-                              <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
-                                Advance To Next Stage
-                              </Label>
-                              <Select>
-                                <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-gradient-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
-                                  <SelectValue placeholder="Select next stage..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="cutting">
-                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                      <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
-                                      <span>Cutting</span>
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="printing">
-                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                      <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
-                                      <span>Printing</span>
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="stitching">
-                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                      <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
-                                      <span>Stitching</span>
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="lasting">
-                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                      <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
-                                      <span>Lasting</span>
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="packing">
-                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                      <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
-                                      <span>Packing</span>
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="quality">
-                                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                      <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-                                      <span>Quality Check</span>
-                                    </div>
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
+                            {renderAdvanceToSection(item)}
 
-                            {/* Progress Bar - Takes 8 columns */}
+                            {/* Progress Bar - Takes remaining columns */}
                             <div className="col-span-12 sm:col-span-8">
                               <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs text-gray-600">
@@ -1002,6 +1027,7 @@ export function ItemCuttingDialog({
                         updateCuttingQuantity={updateCuttingQuantity}
                         toggleItemExpanded={toggleItemExpanded}
                         expandedItems={expandedItems}
+                        stage={stage}
                       />
                     ))}
               </div>
@@ -1034,7 +1060,7 @@ export function ItemCuttingDialog({
                 </div>
                 <div className="text-center">
                   <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-orange-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
-                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" />
+                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg-h-6 text-white" />
                   </div>
                   <div className="text-xs sm:text-sm text-gray-600 mb-1">
                     {stageDetails.title} Today
