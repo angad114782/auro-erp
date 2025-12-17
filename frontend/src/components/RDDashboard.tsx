@@ -68,6 +68,7 @@ import { toast } from "sonner@2.0.3";
 import { dashboardService } from "../services/dashboard.service";
 import { Progress } from "./ui/progress";
 import { useRedirect } from "../hooks/useRedirect";
+import api from "../lib/api";
 
 interface RDDashboardProps {
   onNavigate?: (subModule: string) => void;
@@ -81,6 +82,8 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
   const [categories, setCategories] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [assignPersonData, setAssignPersonData] = useState<any[]>([]);
+  const [countryData, setCountryData] = useState<any[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -107,6 +110,50 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
       mounted = false;
     };
   }, []);
+
+  const fetchAssignperson = async () => {
+    try {
+      const res = await api.get("/assign-persons/dashboard");
+
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        setAssignPersonData(res.data.data);
+      } else {
+        setAssignPersonData([]);
+      }
+    } catch (error) {
+      console.error("Assign person dashboard error", error);
+      toast.error("Failed to load assignment analytics");
+    }
+  };
+  const fetchCountryDashboard = async () => {
+    try {
+      const res = await api.get("/countries/dashboard");
+
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        setCountryData(res.data.data);
+      } else {
+        setCountryData([]);
+      }
+    } catch (error) {
+      console.error("Country dashboard error", error);
+      toast.error("Failed to load country dashboard data");
+    }
+  };
+
+  useEffect(() => {
+    fetchAssignperson();
+    fetchCountryDashboard();
+  }, []);
+
+  const assignPersonChartData = useMemo(() => {
+    return assignPersonData.map((p) => ({
+      name: p.name,
+      approved: p.poApprovedProjects,
+      pending: p.totalProjects - p.poApprovedProjects,
+      total: p.totalProjects,
+    }));
+  }, [assignPersonData]);
+
   // Convert backend snake_case → Title Case for UI
   const mapStatusToUI = (status) => {
     if (!status) return "Unknown";
@@ -128,6 +175,38 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
       status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     );
   };
+  const countryPieData = useMemo(() => {
+    const total = countryData.reduce((sum, c) => sum + c.totalProjects, 0);
+
+    return countryData.map((c) => ({
+      name: c.countryName,
+      value: c.totalProjects,
+      percent: total > 0 ? Math.round((c.totalProjects / total) * 100) : 0,
+    }));
+  }, [countryData]);
+
+  const CountryPieTooltip = ({ active, payload }: any) => {
+    if (!active || !payload || !payload.length) return null;
+
+    const { name, value, percent } = payload[0].payload;
+
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
+        <p className="font-semibold text-gray-900 mb-2">{name}</p>
+
+        <div className="flex justify-between gap-6">
+          <span className="text-gray-600">Projects</span>
+          <span className="font-semibold">{value}</span>
+        </div>
+
+        <div className="flex justify-between gap-6">
+          <span className="text-blue-600">Share</span>
+          <span className="font-semibold">{percent}%</span>
+        </div>
+      </div>
+    );
+  };
+  const COUNTRY_COLORS = ["#0c9dcb", "#22c55e", "#f97316", "#a855f7"];
 
   // Convert backend status to stage groups
   const isStatus = (p, status) => p.status === status;
@@ -449,6 +528,45 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
     return map[status] || { module: "rd-management", subModule: "project" };
   };
 
+  const AssignPersonTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload || !payload.length) return null;
+
+    const approved = payload.find((p) => p.dataKey === "approved")?.value || 0;
+    const pending = payload.find((p) => p.dataKey === "pending")?.value || 0;
+    const total = approved + pending;
+    const percent = total > 0 ? Math.round((approved / total) * 100) : 0;
+
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
+        <p className="font-semibold text-gray-900 mb-2">{label}</p>
+
+        <div className="space-y-1">
+          <div className="flex justify-between gap-6">
+            <span className="text-green-600">PO Approved</span>
+            <span className="font-semibold">{approved}</span>
+          </div>
+
+          <div className="flex justify-between gap-6">
+            <span className="text-orange-600">PO Pending</span>
+            <span className="font-semibold">{pending}</span>
+          </div>
+
+          <div className="border-t my-1" />
+
+          <div className="flex justify-between gap-6">
+            <span className="text-gray-600">Total</span>
+            <span className="font-semibold">{total}</span>
+          </div>
+
+          <div className="flex justify-between gap-6">
+            <span className="text-blue-600">Approval %</span>
+            <span className="font-semibold">{percent}%</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div ref={dashboardRef}>
       <div className="space-y-6">
@@ -700,181 +818,154 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
                 </CardContent>
               </Card>
             </div>
-
-            {/* Monthly Timeline */}
-            <Card className="shadow-xl border-0 bg-white hover:shadow-2xl transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-gray-900 text-lg">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="shadow-lg border-0">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-gray-900">
                     <div className="p-2 bg-[#0c9dcb]/10 rounded-lg">
-                      <TrendingUp className="w-5 h-5 text-[#0c9dcb]" />
+                      <Users className="w-5 h-5 text-[#0c9dcb]" />
                     </div>
-                    Assembly Plan VS Actual
+                    Assigned Person → PO Approval Status
                   </CardTitle>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-3 mr-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-1 rounded-full bg-[#0c9dcb]" />
-                        <span className="text-sm text-gray-700">Plan</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-1 rounded-full bg-[#ed7d31]" />
-                        <span className="text-sm text-gray-700">Actual</span>
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-gray-600 hover:bg-gray-100"
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            toast.success("Exporting Assembly Plan data...", {
-                              description:
-                                "Chart data will be downloaded as Excel file",
-                            })
-                          }
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Export Data
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            if (onNavigate) onNavigate("tracking");
-                            toast.info(
-                              "Viewing production tracking details..."
-                            );
-                          }}
-                        >
-                          <Eye className="w-4 h-4 mr-2" />
-                          View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() =>
-                            toast.success("Generating assembly report...")
-                          }
-                        >
-                          <BarChart3 className="w-4 h-4 mr-2" />
-                          Generate Report
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={340}>
-                  <LineChart
-                    data={[
-                      { day: "1st", plan: 2069, actual: 770 },
-                      { day: "2nd", plan: 4138, actual: 1296 },
-                      { day: "3rd", plan: 6207, actual: 2256 },
-                      { day: "4th", plan: 8276, actual: 3616 },
-                      { day: "5th", plan: 10345, actual: 3967 },
-                      { day: "6th", plan: 12414, actual: 5348 },
-                      { day: "8th", plan: 14483, actual: 6928 },
-                      { day: "9th", plan: 16552, actual: 7678 },
-                      { day: "10th", plan: 18621, actual: 7758 },
-                      { day: "11th", plan: 20650, actual: 8720 },
-                      { day: "12th", plan: 22759, actual: 8720 },
-                      { day: "13th", plan: 24828, actual: 9296 },
-                      { day: "14th", plan: 26897, actual: 10368 },
-                      { day: "15th", plan: 28966, actual: 11627 },
-                      { day: "16th", plan: 31035, actual: 10921 },
-                      { day: "17th", plan: 33104, actual: 11747 },
-                      { day: "18th", plan: 35173, actual: 13617 },
-                      { day: "19th", plan: 37242, actual: 13617 },
-                      { day: "20th", plan: 39311, actual: 14387 },
-                      { day: "22nd", plan: 41380, actual: 15357 },
-                      { day: "23rd", plan: 43449, actual: 16127 },
-                      { day: "24th", plan: 45518, actual: 16431 },
-                      { day: "25th", plan: 47587, actual: 16431 },
-                      { day: "26th", plan: 49656, actual: 16431 },
-                      { day: "27th", plan: 51725, actual: 17091 },
-                      { day: "28th", plan: 53794, actual: 19313 },
-                      { day: "29th", plan: 53794, actual: 19313 },
-                      { day: "30th", plan: 53794, actual: 19313 },
-                    ]}
-                    margin={{ top: 30, right: 20, left: 20, bottom: 10 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="#e9ecef"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="day"
-                      tick={{ fontSize: 11, fill: "#6c757d" }}
-                      axisLine={{ stroke: "#e9ecef" }}
-                      tickLine={false}
-                      interval={1}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: "#6c757d" }}
-                      axisLine={{ stroke: "#e9ecef" }}
-                      tickLine={false}
-                      tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
-                    />
-                    <Tooltip
-                      formatter={(value: number, name: string) => [
-                        value.toLocaleString("en-IN"),
-                        name,
-                      ]}
-                      contentStyle={{
-                        backgroundColor: "white",
-                        border: "1px solid #e9ecef",
-                        borderRadius: "12px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                        fontSize: "12px",
-                        padding: "10px 14px",
-                      }}
-                      labelStyle={{ color: "#495057", marginBottom: "4px" }}
-                      cursor={{
-                        stroke: "#0c9dcb",
-                        strokeWidth: 1,
-                        strokeDasharray: "5 5",
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="plan"
-                      stroke="#0c9dcb"
-                      strokeWidth={3}
-                      dot={{
-                        r: 4,
-                        fill: "#0c9dcb",
-                        strokeWidth: 2,
-                        stroke: "#fff",
-                      }}
-                      activeDot={{ r: 6, strokeWidth: 2 }}
-                      name="Plan"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="actual"
-                      stroke="#ed7d31"
-                      strokeWidth={3}
-                      dot={{
-                        r: 4,
-                        fill: "#ed7d31",
-                        strokeWidth: 2,
-                        stroke: "#fff",
-                      }}
-                      activeDot={{ r: 6, strokeWidth: 2 }}
-                      name="Actual"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+                </CardHeader>
 
+                <CardContent>
+                  {assignPersonChartData.length === 0 ? (
+                    <div className="h-[280px] flex items-center justify-center text-gray-500">
+                      No assignment data available
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={340}>
+                      <BarChart
+                        data={assignPersonChartData}
+                        margin={{ top: 30, right: 30, left: 10, bottom: 80 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+
+                        <XAxis
+                          dataKey="name"
+                          interval={0}
+                          angle={-20}
+                          textAnchor="end"
+                          height={80}
+                          tick={{ fontSize: 12 }}
+                        />
+
+                        <YAxis allowDecimals={false} />
+
+                        <Tooltip
+                          content={<AssignPersonTooltip />}
+                          cursor={{ fill: "rgba(0,0,0,0.05)" }}
+                          wrapperStyle={{ pointerEvents: "auto" }}
+                        />
+
+                        {/* Approved */}
+                        <Bar
+                          dataKey="approved"
+                          stackId="a"
+                          fill="#22c55e"
+                          radius={[6, 6, 0, 0]}
+                          isAnimationActive={false}
+                        />
+
+                        {/* Pending */}
+                        <Bar
+                          dataKey="pending"
+                          stackId="a"
+                          fill="#f97316"
+                          radius={[6, 6, 0, 0]}
+                          isAnimationActive={false}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+
+                  {/* Legend */}
+                  <div className="flex justify-center gap-6 mt-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded bg-[#22c55e]" />
+                      PO Approved
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded bg-[#f97316]" />
+                      PO Pending
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-lg border-0">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-gray-900">
+                    <div className="p-2 bg-[#0c9dcb]/10 rounded-lg">
+                      <MapPin className="w-5 h-5 text-[#0c9dcb]" />
+                    </div>
+                    Country-wise Projects
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent>
+                  {countryPieData.length === 0 ? (
+                    <div className="h-[280px] flex items-center justify-center text-gray-500">
+                      No country data available
+                    </div>
+                  ) : (
+                    <>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <PieChart>
+                          <Pie
+                            data={countryPieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={95}
+                            paddingAngle={4}
+                            dataKey="value"
+                            isAnimationActive={false}
+                          >
+                            {countryPieData.map((entry, index) => (
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={
+                                  COUNTRY_COLORS[index % COUNTRY_COLORS.length]
+                                }
+                              />
+                            ))}
+                          </Pie>
+
+                          <Tooltip
+                            content={<CountryPieTooltip />}
+                            wrapperStyle={{ pointerEvents: "auto" }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+
+                      {/* Legend */}
+                      <div className="flex flex-wrap justify-center gap-4 mt-4 text-sm">
+                        {countryPieData.map((item, index) => (
+                          <div
+                            key={item.name}
+                            className="flex items-center gap-2"
+                          >
+                            <span
+                              className="w-3 h-3 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  COUNTRY_COLORS[index % COUNTRY_COLORS.length],
+                              }}
+                            />
+                            <span className="text-gray-900">{item.name}</span>
+                            <span className="text-gray-500">
+                              ({item.value})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
             {/* Recent Projects */}
             <Card className="shadow-lg border-0">
               <CardHeader className="pb-3">
