@@ -32,7 +32,7 @@ export function useProjectQuery(params: Query) {
         // Build query params, only include non-empty values
         const queryParams: any = {
           page: params.page ?? 1,
-          limit: params.limit ?? 8,
+          limit: params.limit ?? 10,
         };
 
         if (params.status) queryParams.status = params.status;

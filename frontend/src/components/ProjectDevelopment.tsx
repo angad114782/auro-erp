@@ -47,7 +47,6 @@ export default function ProjectDevelopment() {
   const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const { deleteProject } = useProjects();
   const [filters, setFilters] = useState({
     country: "",
@@ -59,13 +58,7 @@ export default function ProjectDevelopment() {
   });
   const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "";
 
-  const debouncedSearch = useDebounce(
-    (value: string) => {
-      setDebouncedSearchTerm(value);
-      setCurrentPage(1); // Reset to first page when search changes
-    },
-    300 // 300ms delay
-  );
+  const debouncedSearchTerm = useDebounce(searchTerm, 600);
   const {
     data: projects,
     total,
@@ -103,17 +96,14 @@ export default function ProjectDevelopment() {
     setCurrentPage(1);
   }, []);
   // Check screen size on mount and resize
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
+
+  // Check screen size
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
-      // Adjust items per page based on screen size
-      if (window.innerWidth < 640) {
-        setItemsPerPage(4);
-      } else if (window.innerWidth < 1024) {
-        setItemsPerPage(6);
-      } else {
-        setItemsPerPage(8);
-      }
     };
 
     checkMobile();
@@ -163,14 +153,6 @@ export default function ProjectDevelopment() {
       colors[(priority || "").toLowerCase()] || "bg-gray-100 text-gray-800"
     );
   };
-  const handleSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setSearchTerm(value);
-      debouncedSearch(value);
-    },
-    [debouncedSearch]
-  );
 
   // actions
   const handleProjectClick = (project: any) => {
