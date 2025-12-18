@@ -580,6 +580,8 @@ const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
 
   // Add Overall Cost Summary Table
   const summary = costData?.summary;
+
+  console.log(summary, "ssssssssssssssssss");
   if (summary) {
     y = checkPageBreak(doc, y);
 
@@ -601,7 +603,7 @@ const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
       ["Additional / Overhead Costs", formatINR(summary.additionalCosts || 0)],
       ["Profit", formatINR(summary.profitAmount || 0)],
       // ===== GRAND TOTAL =====
-      ["TOTAL PRODUCTION COST", formatINR(summary.totalAllCosts || 0)],
+      ["TOTAL PRODUCTION COST", formatINR(summary.tentativeCost || 0)],
       // ===== CLIENT / BRAND =====
       ["Brand Final Cost (Approved)", formatINR(clientFinalCost)],
     ];

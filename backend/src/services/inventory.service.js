@@ -14,12 +14,12 @@ export const updateItem = async (id, data) => {
   return await InventoryItem.findByIdAndUpdate(id, data, { new: true });
 };
 
-export const getItems = async () => {
-  // return only non-deleted items by default
-  return await InventoryItem.find({ isDeleted: { $ne: true } }).populate(
-    "vendorId"
-  );
-};
+// export const getItems = async () => {
+//   // return only non-deleted items by default
+//   return await InventoryItem.find({ isDeleted: { $ne: true } }).populate(
+//     "vendorId"
+//   );
+// };
 
 export const getItemById = async (id) => {
   return await InventoryItem.findById(id).populate("vendorId");

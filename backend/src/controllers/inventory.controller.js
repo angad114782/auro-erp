@@ -56,9 +56,105 @@ export const createItem = async (req, res) => {
   }
 };
 
+// inventoryController.js
+// inventoryController.js - Updated listItems function
 export const listItems = async (req, res) => {
-  const items = await inventoryService.getItems();
-  res.json(items);
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      category = "",
+      isDraft = false,
+      sortBy = "updatedAt",
+      sortOrder = "desc",
+    } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build filter
+    const filter = { isDeleted: { $ne: true } };
+
+    // Handle isDraft filter
+    if (isDraft === "true" || isDraft === true) {
+      filter.isDraft = true;
+    } else if (isDraft === "false" || isDraft === false) {
+      filter.isDraft = false;
+    }
+    // If isDraft is not specified, don't filter by it (show all)
+
+    if (category && category !== "All") {
+      filter.category = category;
+    }
+
+    // Build search query
+    if (search) {
+      filter.$or = [
+        { itemName: { $regex: search, $options: "i" } },
+        { code: { $regex: search, $options: "i" } },
+        { category: { $regex: search, $options: "i" } },
+        { subCategory: { $regex: search, $options: "i" } },
+        { brand: { $regex: search, $options: "i" } },
+        { color: { $regex: search, $options: "i" } },
+        { "vendorId.vendorName": { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Get total count
+    const total = await InventoryItem.countDocuments(filter);
+
+    // Get items with pagination
+    const items = await InventoryItem.find(filter)
+      .populate("vendorId")
+      .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    // Get category counts for current filters (excluding category filter)
+    const categoryFilter = { ...filter };
+    delete categoryFilter.category; // Remove category filter to get all categories
+
+    const categoryCounts = await InventoryItem.aggregate([
+      { $match: categoryFilter },
+      { $group: { _id: "$category", count: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Convert to object format
+    const categories = categoryCounts.reduce((acc, curr) => {
+      acc[curr._id || "Uncategorized"] = curr.count;
+      return acc;
+    }, {});
+
+    // Calculate pagination info
+    const totalPages = Math.ceil(total / limitNum);
+    const hasNextPage = pageNum < totalPages;
+    const hasPrevPage = pageNum > 1;
+
+    res.json({
+      items,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalItems: total,
+        itemsPerPage: limitNum,
+        hasNextPage,
+        hasPrevPage,
+      },
+      filters: {
+        categoryCounts: categories,
+        totalAll: await InventoryItem.countDocuments({
+          ...filter,
+          category: { $exists: true },
+        }),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching items:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 // UPDATE ITEM

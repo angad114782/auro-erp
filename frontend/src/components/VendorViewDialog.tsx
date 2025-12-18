@@ -137,15 +137,6 @@ export function VendorViewDialog({
               </div>
               <div className="flex items-center gap-2 md:gap-4">
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 md:h-10 px-3 md:px-4 border-cyan-200 text-cyan-600 hover:bg-cyan-50"
-                  onClick={() => console.log("Exporting vendor data")}
-                >
-                  <Download className="w-4 h-4 mr-1 md:mr-2" />
-                  <span className="hidden md:inline">Export</span>
-                </Button>
-                <Button
                   onClick={() => onOpenChange(false)}
                   variant="ghost"
                   size="sm"

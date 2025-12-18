@@ -10,9 +10,9 @@ const VendorSchema = new mongoose.Schema(
     phone: { type: String },
     email: { type: String },
 
-    itemName: { type: String },
-    itemCode: { type: String },
-    brand: { type: String },
+    // itemName: { type: String },
+    // itemCode: { type: String },
+    // brand: { type: String },
 
     countryId: { type: String },
     isActive: { type: Boolean, default: true },

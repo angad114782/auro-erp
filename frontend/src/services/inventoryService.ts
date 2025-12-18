@@ -1,54 +1,50 @@
 import api from "../lib/api";
 
-export interface InventoryItem {
-  _id: string;
-  code: string;
-  itemName: string;
-
-  category: string;
-  subCategory: string;
-  brand: string;
-  color: string;
-
-  vendorId?: string;
-  vendor?: any; // populated vendor
-
-  expiryDate?: string;
-
-  quantity: number;
-  quantityUnit: string;
-  description?: string;
-
-  billNumber?: string;
-  billDate?: string;
-  billAttachmentUrl?: string;
-
-  isDraft: boolean;
-
-  lastUpdate?: string;
-  lastUpdateTime?: string;
-}
-
-export interface InventoryTransaction {
-  _id: string;
-  itemId: string;
-  transactionType: "Stock In" | "Stock Out";
-  quantity: number;
-  previousStock: number;
-  newStock: number;
-  vendorId?: string;
-  billNumber?: string;
-  reason?: string;
-  remarks?: string;
-  transactionDate: string;
-}
-
+// src/services/inventoryService.ts
 export const inventoryService = {
-  async getItems() {
-    const res = await api.get("/inventory");
+  // async getItems(params: {
+  //   page?: number;
+  //   limit?: number;
+  //   search?: string;
+  //   category?: string;
+  //   isDraft?: boolean | string;
+  //   sortBy?: string;
+  //   sortOrder?: string;
+  // } = {}) {
+  //   const queryParams = new URLSearchParams();
+
+  //   Object.entries(params).forEach(([key, value]) => {
+  //     if (value !== undefined && value !== null && value !== '') {
+  //       queryParams.append(key, String(value));
+  //     }
+  //   });
+
+  //   const res = await api.get(`/inventory?${queryParams.toString()}`);
+  //   return res.data;
+  // },
+  async getItems(
+    params: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      category?: string;
+      isDraft?: boolean | string;
+      sortBy?: string;
+      sortOrder?: string;
+    } = {}
+  ) {
+    const queryParams = new URLSearchParams();
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        queryParams.append(key, String(value));
+      }
+    });
+
+    const res = await api.get(`/inventory?${queryParams.toString()}`);
     return res.data;
   },
-
+  // Keep other methods as they were
   async createItem(formData: FormData) {
     const res = await api.post("/inventory", formData, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -64,7 +60,6 @@ export const inventoryService = {
   },
 
   async updateStock(itemId: string, payload: any) {
-    // payload: { type: 'add'|'reduce', quantity, vendorId?, billNumber?, billDate?, notes? }
     const res = await api.post(`/inventory/stock/${itemId}`, payload);
     return res.data;
   },
@@ -77,6 +72,7 @@ export const inventoryService = {
   getAllHistory: async () => {
     return await api.get("/inventory/history-all");
   },
+
   async softDeleteItem(itemId: string) {
     const res = await api.patch(`/inventory/${itemId}/soft-delete`);
     return res.data;

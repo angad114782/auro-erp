@@ -85,7 +85,8 @@ export interface LabourCost {
 // Cost summary interface matching backend
 export interface CostSummary {
   additionalCosts: number | "";
-  profitMargin: number | "";
+  profitMargin: string | "";
+
   remarks: string;
   upperTotal: number;
   componentTotal: number;
@@ -197,7 +198,8 @@ const parseNumber = (value: number | ""): number => {
 
 // Helper function to format display value
 const formatDisplayValue = (value: number | ""): string => {
-  if (value === "" || value === null || value === undefined) return "";
+  if (value === "" || value === 0 || value === null || value === undefined)
+    return "";
   return value.toString();
 };
 
@@ -656,7 +658,6 @@ const StageSelector = ({
   );
 };
 
-// Desktop Cost Category Card Component - FIXED for unlimited rows
 const CostCategoryCard = ({
   title,
   category,
@@ -688,64 +689,63 @@ const CostCategoryCard = ({
   isMobile?: boolean;
   hasUnsavedChanges?: boolean;
 }) => {
-  const colorClasses = useMemo(
-    () => ({
-      orange: {
-        border: "border-orange-200",
-        header: "bg-orange-50",
-        icon: "text-orange-600",
-        button: "text-orange-600 border-orange-200 hover:bg-orange-50",
-        total: "bg-orange-50 text-orange-900",
-        badge: "bg-orange-100 text-orange-700 border-orange-300",
-      },
-      purple: {
-        border: "border-purple-200",
-        header: "bg-purple-50",
-        icon: "text-purple-600",
-        button: "text-purple-600 border-purple-200 hover:bg-purple-50",
-        total: "bg-purple-50 text-purple-900",
-        badge: "bg-purple-100 text-purple-700 border-purple-300",
-      },
-      teal: {
-        border: "border-teal-200",
-        header: "bg-teal-50",
-        icon: "text-teal-600",
-        button: "text-teal-600 border-teal-200 hover:bg-teal-50",
-        total: "bg-teal-50 text-teal-900",
-        badge: "bg-teal-100 text-teal-700 border-teal-300",
-      },
-      rose: {
-        border: "border-rose-200",
-        header: "bg-rose-50",
-        icon: "text-rose-600",
-        button: "text-rose-600 border-rose-200 hover:bg-rose-50",
-        total: "bg-rose-50 text-rose-900",
-        badge: "bg-rose-100 text-rose-700 border-rose-300",
-      },
-      gray: {
-        border: "border-gray-200",
-        header: "bg-gray-50",
-        icon: "text-gray-600",
-        button: "text-gray-600 border-gray-200 hover:bg-gray-50",
-        total: "bg-gray-50 text-gray-900",
-        badge: "bg-gray-100 text-gray-700 border-gray-300",
-      },
-      amber: {
-        border: "border-amber-200",
-        header: "bg-amber-50",
-        icon: "text-amber-600",
-        button: "text-amber-600 border-amber-200 hover:bg-amber-50",
-        total: "bg-amber-50 text-amber-900",
-        badge: "bg-amber-100 text-amber-700 border-amber-300",
-      },
-    }),
-    []
-  );
+  /** ✅ Department column only for upper & component */
+  const showDepartment = ["upper", "component"].includes(category);
+
+  const colorClasses = {
+    orange: {
+      border: "border-orange-200",
+      header: "bg-orange-50",
+      icon: "text-orange-600",
+      button: "text-orange-600 border-orange-200 hover:bg-orange-50",
+      total: "bg-orange-50 text-orange-900",
+      badge: "bg-orange-100 text-orange-700 border-orange-300",
+    },
+    purple: {
+      border: "border-purple-200",
+      header: "bg-purple-50",
+      icon: "text-purple-600",
+      button: "text-purple-600 border-purple-200 hover:bg-purple-50",
+      total: "bg-purple-50 text-purple-900",
+      badge: "bg-purple-100 text-purple-700 border-purple-300",
+    },
+    teal: {
+      border: "border-teal-200",
+      header: "bg-teal-50",
+      icon: "text-teal-600",
+      button: "text-teal-600 border-teal-200 hover:bg-teal-50",
+      total: "bg-teal-50 text-teal-900",
+      badge: "bg-teal-100 text-teal-700 border-teal-300",
+    },
+    rose: {
+      border: "border-rose-200",
+      header: "bg-rose-50",
+      icon: "text-rose-600",
+      button: "text-rose-600 border-rose-200 hover:bg-rose-50",
+      total: "bg-rose-50 text-rose-900",
+      badge: "bg-rose-100 text-rose-700 border-rose-300",
+    },
+    gray: {
+      border: "border-gray-200",
+      header: "bg-gray-50",
+      icon: "text-gray-600",
+      button: "text-gray-600 border-gray-200 hover:bg-gray-50",
+      total: "bg-gray-50 text-gray-900",
+      badge: "bg-gray-100 text-gray-700 border-gray-300",
+    },
+    amber: {
+      border: "border-amber-200",
+      header: "bg-amber-50",
+      icon: "text-amber-600",
+      button: "text-amber-600 border-amber-200 hover:bg-amber-50",
+      total: "bg-amber-50 text-amber-900",
+      badge: "bg-amber-100 text-amber-700 border-amber-300",
+    },
+  };
 
   const currentColor = colorClasses[color];
   const safeItems = Array.isArray(items) ? items : [];
 
-  // Calculate total cost from non-empty items
   const totalCost = safeItems.reduce((sum, item) => {
     if (
       item.item.trim() ||
@@ -757,162 +757,11 @@ const CostCategoryCard = ({
     return sum;
   }, 0);
 
-  const renderMobileView = () => (
-    <Card className={`border-2 ${currentColor.border}`}>
-      <CardHeader className={currentColor.header}>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Calculator className={`w-4 h-4 ${currentColor.icon}`} />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-3">
-        <div className="space-y-4">
-          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-            {safeItems.map((item) => (
-              <div
-                key={item._id}
-                className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1">
-                    <div className="font-medium text-sm mb-1">
-                      <Input
-                        value={item.item || ""}
-                        onChange={(e) =>
-                          onUpdateItem(item._id, "item", e.target.value)
-                        }
-                        placeholder="Enter item name"
-                        className="text-sm h-7"
-                      />
-                    </div>
-                    <div className="text-xs text-gray-600 mb-1">
-                      <Input
-                        value={item.description || ""}
-                        onChange={(e) =>
-                          onUpdateItem(item._id, "description", e.target.value)
-                        }
-                        placeholder="Description (optional)"
-                        className="text-xs h-6"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onDeleteItem(item._id)}
-                      className="h-7 w-7 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
+  if (isMobile) {
+    return null; // mobile handled elsewhere in your code
+  }
 
-                {["upper", "component"].includes(category) && (
-                  <div className="mb-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500 mb-1">
-                        Department:
-                      </span>
-                      <StageSelector
-                        itemId={item._id}
-                        category={category}
-                        onStageSelect={onStageSelect}
-                        currentDepartment={
-                          item.department || item.pendingDepartment || ""
-                        }
-                        isMobile={isMobile}
-                        isSavedItem={!item.isNew}
-                      />
-                    </div>
-                    {(item.department || item.pendingDepartment) && (
-                      <div className="mt-1 flex justify-center">
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] px-1.5 py-0 h-4 ${currentColor.badge}`}
-                        >
-                          {STAGES.find(
-                            (s) =>
-                              s.value ===
-                              (item.department || item.pendingDepartment)
-                          )?.label ||
-                            item.department ||
-                            item.pendingDepartment}
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="space-y-1">
-                    <div className="text-gray-500">Consumption *</div>
-                    <Input
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      value={formatDisplayValue(item.consumption)}
-                      onChange={(e) => {
-                        const value =
-                          e.target.value === "" ? "" : e.target.value;
-                        onUpdateConsumption(item._id, value);
-                      }}
-                      className="h-7 text-xs px-2"
-                      placeholder="0.000"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-gray-500">Cost *</div>
-                    <div className="relative">
-                      <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-2 h-2" />
-                      <Input
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        className="h-7 text-xs pl-5"
-                        value={formatDisplayValue(item.cost)}
-                        onChange={(e) => {
-                          const value =
-                            e.target.value === "" ? "" : e.target.value;
-                          onUpdateCost(item._id, value);
-                        }}
-                        placeholder="0.000"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            className={`w-full ${currentColor.button} h-9`}
-            onClick={onAddItem}
-          >
-            <Plus className="w-3 h-3 mr-2" />
-            Add New Item
-          </Button>
-
-          <Separator />
-
-          <div
-            className={`p-3 rounded-lg ${currentColor.total} sticky bottom-0 bg-white`}
-          >
-            <div className="flex justify-between items-center">
-              <span className="font-medium text-sm">Total {title}:</span>
-              <span className="text-base font-bold">
-                ₹{totalCost.toFixed(3)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
-  const renderDesktopView = () => (
+  return (
     <Card className={`border-2 ${currentColor.border} h-[650px] flex flex-col`}>
       <CardHeader className={`${currentColor.header} pb-3 flex-shrink-0`}>
         <CardTitle className="text-lg flex items-center justify-between">
@@ -921,165 +770,151 @@ const CostCategoryCard = ({
             {title}
           </div>
           {hasUnsavedChanges && (
-            <Badge
-              variant="outline"
-              className="bg-amber-50 text-amber-700 border-amber-200 text-xs"
-            >
+            <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
               Unsaved
             </Badge>
           )}
         </CardTitle>
       </CardHeader>
+
       <CardContent className="p-4 flex-1 flex flex-col min-h-0">
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {/* Fixed Header Row */}
-          <div className="grid grid-cols-13 gap-2 bg-gray-100 p-2 rounded text-sm font-medium mb-2 flex-shrink-0">
-            <div className="col-span-3 text-center">
-              {category === "component"
-                ? "COMPONENT"
-                : category === "material"
-                ? "MATERIAL"
-                : category === "packaging"
-                ? "PACKING"
-                : "ITEM"}
-            </div>
-            <div className="col-span-3 text-center">DESCRIPTION</div>
-            <div className="col-span-2 text-center">CONSUMPTION *</div>
-            <div className="col-span-2 text-center">COST *</div>
+        {/* HEADER */}
+        <div
+          className={`grid gap-2 bg-gray-100 p-2 rounded text-sm font-medium mb-2 ${
+            showDepartment ? "grid-cols-13" : "grid-cols-11"
+          }`}
+        >
+          <div className="col-span-3 text-center">ITEM</div>
+          <div className="col-span-3 text-center">DESCRIPTION</div>
+          <div className="col-span-2 text-center">CONSUMPTION *</div>
+          <div className="col-span-2 text-center">COST *</div>
+          {showDepartment && (
             <div className="col-span-2 text-center">DEPARTMENT</div>
-            <div className="col-span-1 text-center">ACTIONS</div>
-          </div>
+          )}
+          <div className="col-span-1 text-center">ACTIONS</div>
+        </div>
 
-          {/* Scrollable Table Body */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-            <div className="space-y-2">
-              {safeItems.map((item) => (
-                <div
-                  key={item._id}
-                  className="grid grid-cols-13 gap-2 items-center border-b pb-2 hover:bg-gray-50 transition-colors px-2"
-                >
-                  <div className="col-span-3">
-                    <Input
-                      value={item.item || ""}
-                      onChange={(e) =>
-                        onUpdateItem(item._id, "item", e.target.value)
-                      }
-                      className="text-sm h-8"
-                      placeholder="Enter item name"
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <Input
-                      value={item.description || ""}
-                      onChange={(e) =>
-                        onUpdateItem(item._id, "description", e.target.value)
-                      }
-                      className="text-sm h-8"
-                      placeholder="Description (optional)"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Input
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      value={formatDisplayValue(item.consumption)}
-                      onChange={(e) => {
-                        const value =
-                          e.target.value === "" ? "" : e.target.value;
-                        onUpdateConsumption(item._id, value);
-                      }}
-                      className="text-sm h-8"
-                      placeholder="0.000"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <div className="relative">
-                      <IndianRupee className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
-                      <Input
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        value={formatDisplayValue(item.cost)}
-                        onChange={(e) => {
-                          const value =
-                            e.target.value === "" ? "" : e.target.value;
-                          onUpdateCost(item._id, value);
-                        }}
-                        className="pl-6 text-sm h-8"
-                        placeholder="0.000"
-                      />
-                    </div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="flex flex-col items-center gap-1">
-                      <StageSelector
-                        itemId={item._id}
-                        category={category}
-                        onStageSelect={onStageSelect}
-                        currentDepartment={
-                          item.department || item.pendingDepartment || ""
-                        }
-                        isSavedItem={!item.isNew}
-                      />
-                      {(item.department || item.pendingDepartment) && (
-                        <Badge
-                          variant="outline"
-                          className={`text-xs px-2 py-0 h-5 ${currentColor.badge}`}
-                        >
-                          {STAGES.find(
-                            (s) =>
-                              s.value ===
-                              (item.department || item.pendingDepartment)
-                          )?.label ||
-                            item.department ||
-                            item.pendingDepartment}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <div className="col-span-1 flex justify-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onDeleteItem(item._id)}
-                      className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Fixed Footer with Add Button and Total */}
-          <div className="flex-shrink-0 pt-4 space-y-4">
-            <Button
-              variant="outline"
-              size="sm"
-              className={`w-full ${currentColor.button}`}
-              onClick={onAddItem}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add New Item
-            </Button>
-
-            <Separator />
-
+        {/* BODY */}
+        <div className="flex-1 overflow-y-auto">
+          {safeItems.map((item) => (
             <div
-              className={`p-3 rounded-lg ${currentColor.total} flex justify-between items-center`}
+              key={item._id}
+              className={`grid gap-2 items-center border-b pb-2 px-2 hover:bg-gray-50 ${
+                showDepartment ? "grid-cols-13" : "grid-cols-11"
+              }`}
             >
-              <span className="font-medium">Total {title}:</span>
-              <span className="text-lg font-bold">₹{totalCost.toFixed(3)}</span>
+              {/* ITEM */}
+              <div className="col-span-3">
+                <Input
+                  value={item.item || ""}
+                  placeholder="Enter item name"
+                  onChange={(e) =>
+                    onUpdateItem(item._id, "item", e.target.value)
+                  }
+                  className="h-8 text-sm"
+                />
+              </div>
+
+              {/* DESCRIPTION */}
+              <div className="col-span-3">
+                <Input
+                  value={item.description || ""}
+                  placeholder="Description (optional)"
+                  onChange={(e) =>
+                    onUpdateItem(item._id, "description", e.target.value)
+                  }
+                  className="h-8 text-sm"
+                />
+              </div>
+
+              {/* CONSUMPTION */}
+              <div className="col-span-2">
+                <Input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={formatDisplayValue(item.consumption)}
+                  placeholder="0.000"
+                  onChange={(e) =>
+                    onUpdateConsumption(
+                      item._id,
+                      e.target.value === "" ? "" : e.target.value
+                    )
+                  }
+                  className="h-8 text-sm"
+                />
+              </div>
+
+              {/* COST */}
+              <div className="col-span-2">
+                <Input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={formatDisplayValue(item.cost)}
+                  placeholder="0.000"
+                  onChange={(e) =>
+                    onUpdateCost(
+                      item._id,
+                      e.target.value === "" ? "" : e.target.value
+                    )
+                  }
+                  className="h-8 text-sm"
+                />
+              </div>
+
+              {/* DEPARTMENT (ONLY upper & component) */}
+              {showDepartment && (
+                <div className="col-span-2 flex flex-col items-center gap-1">
+                  <StageSelector
+                    itemId={item._id}
+                    category={category}
+                    onStageSelect={onStageSelect}
+                    currentDepartment={
+                      item.department || item.pendingDepartment || ""
+                    }
+                    isSavedItem={!item.isNew}
+                  />
+                </div>
+              )}
+
+              {/* ACTIONS */}
+              <div className="col-span-1 flex justify-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDeleteItem(item._id)}
+                >
+                  <Trash2 className="w-4 h-4 text-red-500" />
+                </Button>
+              </div>
             </div>
+          ))}
+        </div>
+
+        {/* FOOTER */}
+        <div className="pt-4 space-y-3">
+          <Button
+            variant="outline"
+            className={`w-full ${currentColor.button}`}
+            onClick={onAddItem}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add New Item
+          </Button>
+
+          <Separator />
+
+          <div
+            className={`p-3 rounded-lg ${currentColor.total} flex justify-between`}
+          >
+            <span className="font-medium">Total {title}:</span>
+            <span className="font-bold">₹{totalCost.toFixed(3)}</span>
           </div>
         </div>
       </CardContent>
     </Card>
   );
-
-  return isMobile ? renderMobileView() : renderDesktopView();
 };
 
 // Mobile Labour Cost Card
@@ -1308,7 +1143,7 @@ const DesktopLabourCostCard = ({
       </CardHeader>
       <CardContent className="p-4 flex-1 flex flex-col min-h-0">
         <div className="flex-1 overflow-hidden flex flex-col">
-          <div className="bg-amber-100 p-4 rounded-lg border-2 border-amber-300 mb-4 flex-shrink-0">
+          <div className="bg-amber-100 p-4 rounded-lg border-2 border-amber-300 mb-4 shrink-0">
             <div className="flex justify-between items-center">
               <span className="font-medium text-amber-900">
                 Labour + OH Total Cost:
@@ -2499,14 +2334,21 @@ export function TentativeCostDialog({
 
   const handleProfitMarginChange = useCallback(
     (raw: string) => {
-      let value = raw === "" ? "" : Number(raw);
-
-      if (value !== "" && !isNaN(value as number)) {
-        value = Math.max(0, Math.min(value as number, 100));
+      // Allow empty
+      if (raw === "") {
+        setCostSummary((prev) => ({ ...prev, profitMargin: "" }));
+        return;
       }
 
-      const newProfitMargin = value;
-      const newAdditionalCosts = costSummary.additionalCosts || "";
+      // Allow only valid decimals
+      if (!/^\d*\.?\d*$/.test(raw)) return;
+
+      setCostSummary((prev) => ({
+        ...prev,
+        profitMargin: raw,
+      }));
+
+      const profit = Number(raw || 0);
 
       const totalAllCosts =
         costSummary.upperTotal +
@@ -2516,23 +2358,16 @@ export function TentativeCostDialog({
         costSummary.miscTotal +
         costSummary.labourTotal;
 
-      const subtotal = totalAllCosts + parseNumber(newAdditionalCosts);
-      const profitAmount =
-        (subtotal * parseNumber(newProfitMargin || 25)) / 100;
-      const tentativeCost = subtotal + profitAmount;
+      const subtotal = totalAllCosts + parseNumber(costSummary.additionalCosts);
+      const profitAmount = (subtotal * profit) / 100;
 
       setRealTimeSummary({
         ...costSummary,
-        profitMargin: newProfitMargin,
+        profitMargin: raw,
         totalAllCosts,
         profitAmount,
-        tentativeCost,
+        tentativeCost: subtotal + profitAmount,
       });
-
-      setCostSummary((prev) => ({
-        ...prev,
-        profitMargin: newProfitMargin,
-      }));
     },
     [costSummary]
   );
@@ -2990,18 +2825,14 @@ export function TentativeCostDialog({
                             <div className="relative mt-1">
                               <Percent className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
                               <Input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="100"
-                                value={formatDisplayValue(
-                                  displaySummary.profitMargin
-                                )}
+                                type="text" // 👈 IMPORTANT
+                                inputMode="decimal"
+                                value={costSummary.profitMargin}
                                 onChange={(e) =>
                                   handleProfitMarginChange(e.target.value)
                                 }
-                                className="pl-8 h-9 text-sm"
-                                placeholder="Profit margin %"
+                                placeholder="e.g. 0.0005"
+                                className="pl-10 h-10 md:h-12"
                               />
                             </div>
                           </div>

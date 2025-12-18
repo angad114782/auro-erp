@@ -50,9 +50,9 @@ export function VendorEditDialog({
     email: "",
     countryId: "",
     status: "Active",
-    itemName: "",
-    itemCode: "",
-    brand: "",
+    // itemName: "",
+    // itemCode: "",
+    // brand: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -68,9 +68,9 @@ export function VendorEditDialog({
         email: vendor.email || "",
         countryId: vendor.countryId || "1",
         status: vendor.status || "Active",
-        itemName: vendor.itemName || "",
-        itemCode: vendor.itemCode || "",
-        brand: vendor.brand || "",
+        // itemName: vendor.itemName || "",
+        // itemCode: vendor.itemCode || "",
+        // brand: vendor.brand || "",
       });
       setErrors({});
     }
@@ -106,17 +106,17 @@ export function VendorEditDialog({
       newErrors.email = "Please enter a valid email address";
     }
 
-    if (!formData.itemName.trim()) {
-      newErrors.itemName = "Item name is required";
-    }
+    // if (!formData.itemName.trim()) {
+    //   newErrors.itemName = "Item name is required";
+    // }
 
-    if (!formData.itemCode.trim()) {
-      newErrors.itemCode = "Item code is required";
-    }
+    // if (!formData.itemCode.trim()) {
+    //   newErrors.itemCode = "Item code is required";
+    // }
 
-    if (!formData.brand.trim()) {
-      newErrors.brand = "Brand is required";
-    }
+    // if (!formData.brand.trim()) {
+    //   newErrors.brand = "Brand is required";
+    // }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -152,9 +152,9 @@ export function VendorEditDialog({
         email: vendor.email || "",
         countryId: vendor.countryId || "1",
         status: vendor.status || "Active",
-        itemName: vendor.itemName || "",
-        itemCode: vendor.itemCode || "",
-        brand: vendor.brand || "",
+        // itemName: vendor.itemName || "",
+        // itemCode: vendor.itemCode || "",
+        // brand: vendor.brand || "",
       });
     }
     setErrors({});
@@ -375,85 +375,11 @@ export function VendorEditDialog({
                 </div>
               </div>
             </div>
-
-            {/* Item Information */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Package className="w-4 h-4 text-white" />
-                </div>
-                <h3 className="text-base md:text-lg font-semibold text-gray-900">
-                  Item Information
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="itemName" className="text-sm font-medium">
-                    Item Name <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="itemName"
-                    value={formData.itemName}
-                    onChange={(e) =>
-                      handleInputChange("itemName", e.target.value)
-                    }
-                    className={`h-10 ${
-                      errors.itemName ? "border-red-500" : ""
-                    }`}
-                  />
-                  {errors.itemName && (
-                    <p className="text-sm text-red-600">{errors.itemName}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="itemCode" className="text-sm font-medium">
-                    Item Code <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="itemCode"
-                    value={formData.itemCode}
-                    onChange={(e) =>
-                      handleInputChange("itemCode", e.target.value)
-                    }
-                    className={`h-10 ${
-                      errors.itemCode ? "border-red-500" : ""
-                    }`}
-                  />
-                  {errors.itemCode && (
-                    <p className="text-sm text-red-600">{errors.itemCode}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="brand" className="text-sm font-medium">
-                    Brand <span className="text-red-500">*</span>
-                  </Label>
-                  <div className="relative">
-                    <Award className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <Input
-                      id="brand"
-                      value={formData.brand}
-                      onChange={(e) =>
-                        handleInputChange("brand", e.target.value)
-                      }
-                      className={`h-10 pl-10 ${
-                        errors.brand ? "border-red-500" : ""
-                      }`}
-                    />
-                  </div>
-                  {errors.brand && (
-                    <p className="text-sm text-red-600">{errors.brand}</p>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="sticky bottom-0 px-4 md:px-8 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
+        <div className="sticky bottom-0 px-4 md:px-8 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="text-sm text-gray-600">
             <span className="text-red-500">*</span> Required fields
           </div>

@@ -238,7 +238,8 @@ export function RedSealProjectDetailsDialog(props: any) {
     const additional = Number(editAdditionalCosts || 0);
     const margin = Number(editProfitMargin || 0);
 
-    const profitAmount = Math.round(((totalAll + additional) * margin) / 100);
+    const profitAmount = ((totalAll + additional) * margin) / 100;
+
     const tentative = totalAll + additional + profitAmount;
 
     setLocalProfitAmount(profitAmount);

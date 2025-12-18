@@ -269,7 +269,7 @@ export function ItemHistoryDialog({
                       Vendor
                     </Label>
                     <div className="mt-1 text-sm md:text-base text-gray-900">
-                      {currentVendorName}
+                      {item?.vendorId?.vendorName || " - "}
                     </div>
                   </div>
 
@@ -484,7 +484,6 @@ export function ItemHistoryDialog({
                                   </div>
                                 </div>
                               </td>
-
                               <td className="px-6 py-4 whitespace-nowrap align-top">
                                 <div
                                   className={`flex items-center gap-1 w-fit ${getStockBadgeColor(
@@ -497,7 +496,6 @@ export function ItemHistoryDialog({
                                   </span>
                                 </div>
                               </td>
-
                               <td className="px-6 py-4 whitespace-nowrap align-top">
                                 <div
                                   className={`text-sm font-bold ${
@@ -518,13 +516,11 @@ export function ItemHistoryDialog({
                                   {item.quantityUnit}
                                 </div>
                               </td>
-
                               <td className="px-6 py-4 whitespace-nowrap align-top">
                                 <div className="text-sm font-semibold text-gray-900">
                                   {transaction.newStock} {item.quantityUnit}
                                 </div>
                               </td>
-
                               <td className="px-6 py-4 whitespace-nowrap align-top">
                                 {transaction.billNumber ? (
                                   <div className="text-sm font-mono text-gray-900">
@@ -536,32 +532,51 @@ export function ItemHistoryDialog({
                                   </span>
                                 )}
                               </td>
-
                               <td className="px-6 py-4 whitespace-nowrap align-top">
                                 <div className="text-sm text-gray-900">
-                                  {getVendorName(transaction.vendorId)}
+                                  {transaction?.vendorId?.vendorName || " - "}
+                                  {/* {getVendorName(transaction.vendorId)} */}
                                 </div>
                               </td>
 
                               <td className="px-6 py-4 whitespace-nowrap align-top">
-                                {transaction.billNumber &&
-                                (transaction.billAttachmentUrl ||
-                                  transaction.attachment) ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8 text-xs border-blue-200 text-blue-600 hover:bg-blue-50"
-                                    onClick={() => {
-                                      setSelectedAttachment(
-                                        transaction.billAttachmentUrl ||
-                                          transaction.attachment
-                                      );
-                                      setAttachmentDialogOpen(true);
-                                    }}
-                                  >
-                                    <FileText className="w-3.5 h-3.5 mr-1.5" />
-                                    View
-                                  </Button>
+                                {transaction.billAttachmentUrl ||
+                                transaction.attachment ? (
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 text-xs border-blue-200 text-blue-600 hover:bg-blue-50"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedAttachment(
+                                          transaction.billAttachmentUrl ||
+                                            transaction.attachment
+                                        );
+                                        setAttachmentDialogOpen(true);
+                                      }}
+                                    >
+                                      <FileText className="w-3.5 h-3.5 mr-1.5" />
+                                      View
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 text-xs border-green-200 text-green-600 hover:bg-green-50"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        // Download the file
+                                        const url = resolveAttachmentSrc(
+                                          transaction.billAttachmentUrl ||
+                                            transaction.attachment
+                                        );
+                                        window.open(url, "_blank");
+                                      }}
+                                    >
+                                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                                      Download
+                                    </Button>
+                                  </div>
                                 ) : (
                                   <span className="text-sm text-gray-400">
                                     -

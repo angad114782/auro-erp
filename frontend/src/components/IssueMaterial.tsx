@@ -68,8 +68,10 @@ import {
 import { Skeleton } from "./ui/skeleton";
 
 import api from "../lib/api";
+import { toast } from "sonner";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
-// Types (same as before)
+// Types
 interface MaterialItem {
   _id: string;
   itemId: string;
@@ -578,11 +580,6 @@ const MaterialSections = ({
 }) => {
   return (
     <div className="space-y-4">
-      {/* Mobile View */}
-      <div className="md:hidden">
-        {/* Content is now handled in the Dialog component */}
-      </div>
-
       {/* Desktop View */}
       <div className="hidden md:block bg-white rounded-xl border overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
@@ -1100,12 +1097,14 @@ const MobileRequisitionCard = ({
   onToggle,
   onIssue,
   onDelete,
+  isDeleting = false,
 }: {
   requisition: MaterialRequisition;
   isExpanded: boolean;
   onToggle: () => void;
   onIssue: () => void;
   onDelete: () => void;
+  isDeleting?: boolean;
 }) => {
   const totalItems = [
     ...(requisition.upper || []),
@@ -1127,22 +1126,72 @@ const MobileRequisitionCard = ({
   return (
     <Card
       key={requisition._id}
-      className="overflow-hidden hover:shadow-md transition-shadow"
+      className={`
+        overflow-hidden hover:shadow-md transition-all duration-300 relative
+        ${isDeleting ? "opacity-50 pointer-events-none" : ""}
+      `}
     >
+      {/* Delete Button - Positioned absolutely */}
+      <div className="absolute top-3 right-3 z-10">
+        {isDeleting ? (
+          <div className="flex items-center justify-center h-8 w-8">
+            <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+          </div>
+        ) : (
+          <ConfirmActionDialog
+            trigger={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 hover:bg-red-50 hover:text-red-600"
+                disabled={isDeleting}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            }
+            title="Delete Requisition"
+            description={`Are you sure you want to delete ${requisition.cardNumber}? This action cannot be undone.`}
+            onConfirm={onDelete}
+            disabled={isDeleting}
+          />
+        )}
+      </div>
+
       <CardHeader
-        className="pb-3 cursor-pointer hover:bg-gray-50 transition-colors"
-        onClick={onToggle}
+        onClick={isDeleting ? undefined : onIssue}
+        className={`
+          pb-3 cursor-pointer hover:bg-gray-50 transition-colors
+          ${isDeleting ? "cursor-not-allowed" : ""}
+          pr-16
+        `}
       >
         <div className="flex flex-col sm:flex-row sm:items-start gap-3">
           {/* Icon and Main Content */}
           <div className="flex items-start gap-3 flex-1 min-w-0">
-            <div className="h-10 w-10 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center flex-shrink-0">
-              <FileText className="text-blue-600 w-5 h-5" />
+            <div
+              className={`
+              h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0
+              ${
+                isDeleting
+                  ? "bg-gray-200"
+                  : "bg-gradient-to-br from-blue-100 to-blue-200"
+              }
+            `}
+            >
+              <FileText
+                className={`w-5 h-5 ${
+                  isDeleting ? "text-gray-400" : "text-blue-600"
+                }`}
+              />
             </div>
             <div className="flex-1 min-w-0">
               {/* Top Row: Card Number and Status */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                <CardTitle className="text-base font-semibold truncate">
+                <CardTitle
+                  className={`text-base font-semibold truncate ${
+                    isDeleting ? "text-gray-400" : ""
+                  }`}
+                >
                   {requisition.cardNumber || "N/A"}
                 </CardTitle>
                 <div className="sm:ml-2">
@@ -1151,7 +1200,11 @@ const MobileRequisitionCard = ({
               </div>
 
               {/* Product Name */}
-              <p className="text-sm text-gray-600 truncate mb-3">
+              <p
+                className={`text-sm text-gray-600 truncate mb-3 ${
+                  isDeleting ? "text-gray-400" : ""
+                }`}
+              >
                 {requisition.projectId?.artName ||
                   requisition.projectId?.productName ||
                   "-"}
@@ -1171,7 +1224,11 @@ const MobileRequisitionCard = ({
                     style={{ width: `${Math.min(progress, 100)}%` }}
                   />
                 </div>
-                <span className="text-xs text-gray-500 shrink-0">
+                <span
+                  className={`text-xs ${
+                    isDeleting ? "text-gray-400" : "text-gray-500"
+                  } shrink-0`}
+                >
                   {totalIssued}/{totalRequired}
                 </span>
               </div>
@@ -1179,17 +1236,50 @@ const MobileRequisitionCard = ({
           </div>
 
           {/* Chevron Icon */}
-          <div className="self-start sm:self-center">
+          <div
+            className={`
+            self-start sm:self-center rounded-full p-2 transition-colors
+            ${
+              isDeleting
+                ? "bg-gray-100 cursor-not-allowed"
+                : "bg-gray-100 hover:bg-gray-200"
+            }
+          `}
+          >
             {isExpanded ? (
-              <ChevronUp className="w-5 h-5 text-gray-400" />
+              <ChevronUp
+                className={`w-5 h-5 ${
+                  isDeleting ? "text-gray-300" : "text-gray-400"
+                }`}
+                onClick={
+                  isDeleting
+                    ? undefined
+                    : (e) => {
+                        e.stopPropagation();
+                        onToggle();
+                      }
+                }
+              />
             ) : (
-              <ChevronDown className="w-5 h-5 text-gray-400" />
+              <ChevronDown
+                className={`w-5 h-5 ${
+                  isDeleting ? "text-gray-300" : "text-gray-400"
+                }`}
+                onClick={
+                  isDeleting
+                    ? undefined
+                    : (e) => {
+                        e.stopPropagation();
+                        onToggle();
+                      }
+                }
+              />
             )}
           </div>
         </div>
       </CardHeader>
 
-      {isExpanded && (
+      {isExpanded && !isDeleting && (
         <CardContent className="pt-0">
           <div className="space-y-4">
             {/* Requester and Date */}
@@ -1252,43 +1342,6 @@ const MobileRequisitionCard = ({
             </div>
 
             <Separator />
-
-            {/* Actions */}
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
-                onClick={onIssue}
-              >
-                <Send className="w-4 h-4 mr-2" />
-                {requisition.status === "Issued" ? "View/Update" : "Issue"}
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline" className="px-3">
-                    <MoreVertical className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={onIssue}>
-                    <Eye className="w-4 h-4 mr-2" />
-                    View Details
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Download className="w-4 h-4 mr-2" />
-                    Export PDF
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-red-600 focus:text-red-700"
-                    onClick={onDelete}
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
           </div>
         </CardContent>
       )}
@@ -1364,6 +1417,7 @@ export function IssueMaterial({
     useState<MaterialRequisition | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
     totalPages: 1,
@@ -1479,22 +1533,40 @@ export function IssueMaterial({
     });
   }, []);
 
-  const handleDelete = useCallback(
-    async (id: string) => {
-      if (
-        window.confirm("Are you sure you want to delete this material request?")
-      ) {
-        try {
-          await api.delete(`/material-requests/${id}`);
-          fetchMaterialList();
-        } catch (err) {
-          console.error("Delete failed", err);
-          alert("Failed to delete material request");
-        }
-      }
-    },
-    [fetchMaterialList]
-  );
+  const handleRemoveInventory = async (id: string) => {
+    setDeletingId(id);
+
+    // Store the current list for potential rollback
+    const previousList = [...materialRequisitions];
+    const previousPagination = { ...pagination };
+
+    // Optimistically remove from UI
+    setMaterialRequisitions((prev) => prev.filter((req) => req._id !== id));
+    setPagination((prev) => ({
+      ...prev,
+      totalItems: Math.max(0, prev.totalItems - 1),
+      totalPages:
+        Math.ceil(Math.max(0, prev.totalItems - 1) / prev.pageSize) || 1,
+    }));
+
+    try {
+      await api.delete(`/material-requests/${id}`);
+      toast.success("Requisition deleted successfully");
+
+      // Refresh the list to ensure data consistency
+      // await fetchMaterialList();
+    } catch (err: any) {
+      // Rollback on error
+      setMaterialRequisitions(previousList);
+      setPagination(previousPagination);
+      console.error("Delete failed", err);
+      toast.error(
+        err?.response?.data?.message || "Failed to delete requisition"
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const Pagination = ({
     pagination,
@@ -1651,7 +1723,7 @@ export function IssueMaterial({
     }
 
     return (
-      <div className="bg-white rounded-lg shadow border overflow-hidden">
+      <div className="bg-white rounded-lg shadow border overflow-hidden transition-opacity duration-200">
         {requisitions.length === 0 ? (
           <EmptyState />
         ) : (
@@ -1685,6 +1757,7 @@ export function IssueMaterial({
 
               <tbody className="divide-y divide-gray-200">
                 {requisitions.map((req) => {
+                  const isItemDeleting = deletingId === req._id;
                   const totalItems = [
                     ...(req.upper || []),
                     ...(req.materials || []),
@@ -1706,30 +1779,79 @@ export function IssueMaterial({
                   return (
                     <tr
                       key={req._id}
-                      className="hover:bg-gray-50 transition-colors"
+                      className={`
+                        hover:bg-gray-50 transition-all duration-300 relative
+                        ${
+                          isItemDeleting ? "opacity-50 pointer-events-none" : ""
+                        }
+                      `}
                     >
-                      <td className="px-4 py-4">
+                      {/* Clickable cells */}
+                      <td
+                        className="px-4 py-4 cursor-pointer"
+                        onClick={
+                          isItemDeleting ? undefined : () => onIssue(req)
+                        }
+                      >
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center shrink-0">
-                            <FileText className="text-blue-600 w-5 h-5" />
+                          <div
+                            className={`
+                            h-10 w-10 rounded-lg flex items-center justify-center shrink-0
+                            ${
+                              isItemDeleting
+                                ? "bg-gray-200"
+                                : "bg-gradient-to-br from-blue-100 to-blue-200"
+                            }
+                          `}
+                          >
+                            <FileText
+                              className={`w-5 h-5 ${
+                                isItemDeleting
+                                  ? "text-gray-400"
+                                  : "text-blue-600"
+                              }`}
+                            />
                           </div>
                           <div>
-                            <div className="font-semibold text-gray-900">
+                            <div
+                              className={`font-semibold ${
+                                isItemDeleting
+                                  ? "text-gray-400"
+                                  : "text-gray-900"
+                              }`}
+                            >
                               {req.cardNumber}
                             </div>
-                            <div className="text-sm text-gray-500">
+                            <div
+                              className={`text-sm ${
+                                isItemDeleting
+                                  ? "text-gray-400"
+                                  : "text-gray-500"
+                              }`}
+                            >
                               {new Date(req.createdAt).toLocaleDateString()}
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      <td className="px-4 py-4">
+                      <td
+                        className="px-4 py-4 cursor-pointer"
+                        onClick={
+                          isItemDeleting ? undefined : () => onIssue(req)
+                        }
+                      >
                         <div className="max-w-xs">
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <p className="font-medium text-gray-900 truncate">
+                                <p
+                                  className={`font-medium truncate ${
+                                    isItemDeleting
+                                      ? "text-gray-400"
+                                      : "text-gray-900"
+                                  }`}
+                                >
                                   {req.projectId?.artName ||
                                     req.projectId?.productName ||
                                     "-"}
@@ -1745,97 +1867,172 @@ export function IssueMaterial({
                         </div>
                       </td>
 
-                      <td className="px-4 py-4">
+                      <td
+                        className="px-4 py-4 cursor-pointer"
+                        onClick={
+                          isItemDeleting ? undefined : () => onIssue(req)
+                        }
+                      >
                         <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-gray-400" />
-                          <p className="font-medium text-gray-900">
+                          <User
+                            className={`w-4 h-4 ${
+                              isItemDeleting ? "text-gray-300" : "text-gray-400"
+                            }`}
+                          />
+                          <p
+                            className={`font-medium ${
+                              isItemDeleting ? "text-gray-400" : "text-gray-900"
+                            }`}
+                          >
                             {req.requestedBy}
                           </p>
                         </div>
                       </td>
 
-                      <td className="px-4 py-4">
+                      <td
+                        className="px-4 py-4 cursor-pointer"
+                        onClick={
+                          isItemDeleting ? undefined : () => onIssue(req)
+                        }
+                      >
                         <div className="flex flex-wrap gap-2">
                           {req.upper?.length > 0 && (
-                            <Badge variant="outline" className="bg-blue-50">
+                            <Badge
+                              variant="outline"
+                              className={`${
+                                isItemDeleting
+                                  ? "bg-gray-100 text-gray-400"
+                                  : "bg-blue-50"
+                              }`}
+                            >
                               U: {req.upper.length}
                             </Badge>
                           )}
                           {req.materials?.length > 0 && (
-                            <Badge variant="outline" className="bg-indigo-50">
+                            <Badge
+                              variant="outline"
+                              className={`${
+                                isItemDeleting
+                                  ? "bg-gray-100 text-gray-400"
+                                  : "bg-indigo-50"
+                              }`}
+                            >
                               M: {req.materials.length}
                             </Badge>
                           )}
                           {req.components?.length > 0 && (
-                            <Badge variant="outline" className="bg-purple-50">
+                            <Badge
+                              variant="outline"
+                              className={`${
+                                isItemDeleting
+                                  ? "bg-gray-100 text-gray-400"
+                                  : "bg-purple-50"
+                              }`}
+                            >
                               C: {req.components.length}
                             </Badge>
                           )}
                           {req.packaging?.length > 0 && (
-                            <Badge variant="outline" className="bg-yellow-50">
+                            <Badge
+                              variant="outline"
+                              className={`${
+                                isItemDeleting
+                                  ? "bg-gray-100 text-gray-400"
+                                  : "bg-yellow-50"
+                              }`}
+                            >
                               P: {req.packaging.length}
                             </Badge>
                           )}
                           {req.misc?.length > 0 && (
-                            <Badge variant="outline" className="bg-rose-50">
+                            <Badge
+                              variant="outline"
+                              className={`${
+                                isItemDeleting
+                                  ? "bg-gray-100 text-gray-400"
+                                  : "bg-rose-50"
+                              }`}
+                            >
                               Misc: {req.misc.length}
                             </Badge>
                           )}
                         </div>
                       </td>
 
-                      <td className="px-4 py-4">
+                      <td
+                        className="px-4 py-4 cursor-pointer"
+                        onClick={
+                          isItemDeleting ? undefined : () => onIssue(req)
+                        }
+                      >
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-500">
+                            <span
+                              className={`text-sm ${
+                                isItemDeleting
+                                  ? "text-gray-400"
+                                  : "text-gray-500"
+                              }`}
+                            >
                               Progress
                             </span>
-                            <span className="text-sm font-semibold">
+                            <span
+                              className={`text-sm font-semibold ${
+                                isItemDeleting ? "text-gray-400" : ""
+                              }`}
+                            >
                               {Math.round(progress)}%
                             </span>
                           </div>
-                          <Progress value={progress} className="h-2" />
-                          <div className="text-xs text-gray-500 text-center">
+                          <Progress
+                            value={progress}
+                            className={`h-2 ${
+                              isItemDeleting ? "bg-gray-200" : ""
+                            }`}
+                          />
+                          <div
+                            className={`text-xs text-center ${
+                              isItemDeleting ? "text-gray-400" : "text-gray-500"
+                            }`}
+                          >
                             {totalIssued} / {totalRequired} issued
                           </div>
                         </div>
                       </td>
 
-                      <td className="px-4 py-4">
+                      <td
+                        className="px-4 py-4 cursor-pointer"
+                        onClick={
+                          isItemDeleting ? undefined : () => onIssue(req)
+                        }
+                      >
                         <StatusBadge status={req.status} />
                       </td>
 
                       <td className="px-4 py-4">
                         <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
-                            onClick={() => onIssue(req)}
-                          >
-                            <Send className="w-4 h-4 mr-1" />
-                            {req.status === "Issued"
-                              ? "View/Update"
-                              : req.status === "Partially Issued"
-                              ? "Issue More"
-                              : "Issue"}
-                          </Button>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
-                                  onClick={() => onDelete(req._id)}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                Delete Requisition
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          {isItemDeleting ? (
+                            <div className="flex items-center gap-2 text-sm text-gray-500">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Deleting...
+                            </div>
+                          ) : (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <ConfirmActionDialog
+                                    title="Delete Requisition"
+                                    description={`Are you sure you want to delete ${req.cardNumber}? This action cannot be undone.`}
+                                    onConfirm={() => onDelete(req._id)}
+                                    disabled={!!deletingId}
+                                  />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Delete Requisition
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1884,7 +2081,7 @@ export function IssueMaterial({
               variant="outline"
               onClick={fetchMaterialList}
               className="gap-2"
-              disabled={loading}
+              disabled={loading || !!deletingId}
             >
               <RefreshCw
                 className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
@@ -1903,6 +2100,7 @@ export function IssueMaterial({
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-10"
+              disabled={!!deletingId}
             />
           </div>
           <div className="flex gap-2">
@@ -1934,7 +2132,8 @@ export function IssueMaterial({
               isExpanded={expandedCards.has(req._id)}
               onToggle={() => toggleCardExpansion(req._id)}
               onIssue={() => setSelectedRequisition(req)}
-              onDelete={() => handleDelete(req._id)}
+              onDelete={() => handleRemoveInventory(req._id)}
+              isDeleting={deletingId === req._id}
             />
           ))
         )}
@@ -1953,7 +2152,7 @@ export function IssueMaterial({
           <DesktopTable
             requisitions={materialRequisitions}
             onIssue={setSelectedRequisition}
-            onDelete={handleDelete}
+            onDelete={handleRemoveInventory}
           />
         )}
       </div>

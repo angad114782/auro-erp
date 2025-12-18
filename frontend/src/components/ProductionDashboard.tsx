@@ -395,7 +395,7 @@ export function ProductionDashboard({
         <TabsContent value="overview" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Production Trends */}
-            <Card className="lg:col-span-2 shadow-lg border-0">
+            <Card className="lg:col-span-3 shadow-lg border-0">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="w-5 h-5 text-[#0c9dcb]" />
@@ -444,6 +444,118 @@ export function ProductionDashboard({
                       dataKey="rfd"
                       stroke="#ec4899"
                       strokeWidth={2}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+            <Card className="lg:col-span-2 shadow-lg border-0">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-[#0c9dcb]" />
+                  PO Quantity VS Assembly Actual Quantity
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={340}>
+                  <LineChart
+                    data={[
+                      { day: "1st", plan: 2069, actual: 770 },
+                      { day: "2nd", plan: 4138, actual: 1296 },
+                      { day: "3rd", plan: 6207, actual: 2256 },
+                      { day: "4th", plan: 8276, actual: 3616 },
+                      { day: "5th", plan: 10345, actual: 3967 },
+                      { day: "6th", plan: 12414, actual: 5348 },
+                      { day: "8th", plan: 14483, actual: 6928 },
+                      { day: "9th", plan: 16552, actual: 7678 },
+                      { day: "10th", plan: 18621, actual: 7758 },
+                      { day: "11th", plan: 20650, actual: 8720 },
+                      { day: "12th", plan: 22759, actual: 8720 },
+                      { day: "13th", plan: 24828, actual: 9296 },
+                      { day: "14th", plan: 26897, actual: 10368 },
+                      { day: "15th", plan: 28966, actual: 11627 },
+                      { day: "16th", plan: 31035, actual: 10921 },
+                      { day: "17th", plan: 33104, actual: 11747 },
+                      { day: "18th", plan: 35173, actual: 13617 },
+                      { day: "19th", plan: 37242, actual: 13617 },
+                      { day: "20th", plan: 39311, actual: 14387 },
+                      { day: "22nd", plan: 41380, actual: 15357 },
+                      { day: "23rd", plan: 43449, actual: 16127 },
+                      { day: "24th", plan: 45518, actual: 16431 },
+                      { day: "25th", plan: 47587, actual: 16431 },
+                      { day: "26th", plan: 49656, actual: 16431 },
+                      { day: "27th", plan: 51725, actual: 17091 },
+                      { day: "28th", plan: 53794, actual: 19313 },
+                      { day: "29th", plan: 53794, actual: 19313 },
+                      { day: "30th", plan: 53794, actual: 19313 },
+                    ]}
+                    margin={{ top: 30, right: 20, left: 20, bottom: 10 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#e9ecef"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fontSize: 11, fill: "#6c757d" }}
+                      axisLine={{ stroke: "#e9ecef" }}
+                      tickLine={false}
+                      interval={1}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "#6c757d" }}
+                      axisLine={{ stroke: "#e9ecef" }}
+                      tickLine={false}
+                      tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
+                    />
+                    <Tooltip
+                      formatter={(value: number, name: string) => [
+                        value.toLocaleString("en-IN"),
+                        name,
+                      ]}
+                      contentStyle={{
+                        backgroundColor: "white",
+                        border: "1px solid #e9ecef",
+                        borderRadius: "12px",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                        fontSize: "12px",
+                        padding: "10px 14px",
+                      }}
+                      labelStyle={{ color: "#495057", marginBottom: "4px" }}
+                      cursor={{
+                        stroke: "#0c9dcb",
+                        strokeWidth: 1,
+                        strokeDasharray: "5 5",
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="plan"
+                      stroke="#0c9dcb"
+                      strokeWidth={3}
+                      dot={{
+                        r: 4,
+                        fill: "#0c9dcb",
+                        strokeWidth: 2,
+                        stroke: "#fff",
+                      }}
+                      activeDot={{ r: 6, strokeWidth: 2 }}
+                      name="Plan"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="actual"
+                      stroke="#ed7d31"
+                      strokeWidth={3}
+                      dot={{
+                        r: 4,
+                        fill: "#ed7d31",
+                        strokeWidth: 2,
+                        stroke: "#fff",
+                      }}
+                      activeDot={{ r: 6, strokeWidth: 2 }}
+                      name="Actual"
                     />
                   </LineChart>
                 </ResponsiveContainer>
