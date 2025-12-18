@@ -494,3 +494,30 @@ export async function getMicroTrackingByProjectAndCard(projectId, cardId) {
     departments: grouped
   };
 }
+
+
+/* ----------------------------------------------------
+   GET ONLY TRACKING-ENABLED CARDS OF A PROJECT
+---------------------------------------------------- */
+export async function getTrackingCardsByProject(projectId) {
+
+  // 1️⃣ Find cardIds which actually have tracking
+  const trackedCardIds = await MicroTracking.distinct("cardId", {
+    projectId
+  });
+
+  if (trackedCardIds.length === 0) return [];
+
+  // 2️⃣ Fetch only those cards
+  const cards = await PCProductionCard.find({
+    _id: { $in: trackedCardIds }
+  })
+    .select(
+      "cardNumber productName cardQuantity stage assignedPlant createdAt"
+    )
+    .populate("assignedPlant", "name")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return cards;
+}

@@ -362,7 +362,7 @@ export function AddProductionCardDialog({
               </div>
               <div className="flex-1 min-w-0">
                 <DialogTitle className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 truncate">
-                  Add Production Card
+                  Add Calendar
                 </DialogTitle>
                 <DialogDescription className="text-sm sm:text-base text-gray-600">
                   Schedule: {formData.productionDate || "Not selected"}
@@ -761,7 +761,7 @@ export function AddProductionCardDialog({
               className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
             >
               <Save className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-              Create Production Card
+              Create Calendar
             </Button>
           </div>
         </div>
