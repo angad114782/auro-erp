@@ -7,9 +7,7 @@ const router = express.Router();
 router.get("/micro-tracking/project/:projectId", ctrl.getMicroTracking);
 
 // Update one row
-router.put("/micro-tracking/:id", ctrl.updateMicroTracking); //wast
 router.get("/micro-tracking/department/:projectId", ctrl.getDepartmentWiseTracking);
-router.get("/micro-tracking/project/:projectId/:cardId",ctrl.getProjectCardTracking);
 
 router.get(
   "/micro-tracking/department/:projectId/:department",
@@ -23,6 +21,19 @@ router.put(
 
 router.get("/tracking/dashboard", ctrl.trackingDashboardController);
 router.get("/tracking/dashboard/department", ctrl.trackingDashboardDepartmentController);
+
+
+
+router.get(
+  "/projects/:projectId/cards",
+  ctrl.getProjectTrackingCards
+);
+
+// 🔥 Already exists (card select hone ke baad)
+router.get(
+  "/projects/:projectId/card/:cardId",
+  ctrl.getProjectCardTracking
+);
 
 
 

@@ -18,6 +18,7 @@ import vendorRoutes from "./vendor.route.js";
 import pcProdRoutes from "./pc_productionCard.routes.js";
 import pcMrRoutes from "./pc_materialRequest.routes.js";
 import assignPlantRoutes from "./assignPlant.routes.js";
+import caassignPlantRoutes from "./caAssignPlant.routes.js";
 import microTrackingRoutes from "./microTracking.routes.js";
 import deliveryRoutes from "./delivery.routes.js";  
 
@@ -63,6 +64,7 @@ router.use("/vendors", vendorRoutes);
 router.use("/", productionCalendarRouter);
 router.use("/dashboard", dashboardRoutes);
 router.use("/assign-plant", assignPlantRoutes);
+router.use("/caassign-plant", caassignPlantRoutes);
 
 router.use("/projects/:projectId/production-cards", pcProdRoutes);
 router.use("/", pcMrRoutes);

@@ -137,3 +137,25 @@ export async function getProjectCardTracking(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+
+/* ---------------- Get all tracking cards of a project ---------------- */
+export async function getProjectTrackingCards(req, res) {
+  try {
+    const { projectId } = req.params;
+
+    if (!projectId)
+      return res.status(400).json({ error: "projectId required" });
+
+    const items = await service.getTrackingCardsByProject(projectId);
+
+    return res.json({
+      success: true,
+      items
+    });
+
+  } catch (err) {
+    console.error("getProjectTrackingCards error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}

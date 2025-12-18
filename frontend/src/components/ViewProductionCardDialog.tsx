@@ -259,7 +259,7 @@ export function ViewProductionCardDialog({
               </div>
               <div className="flex-1 min-w-0">
                 <DialogTitle className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 truncate">
-                  Edit Production Card
+                  Edit Calendar
                 </DialogTitle>
                 <DialogDescription className="text-sm sm:text-base text-gray-600 truncate">
                   Scheduled for{" "}

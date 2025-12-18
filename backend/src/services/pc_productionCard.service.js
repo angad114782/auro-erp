@@ -79,7 +79,7 @@ export async function generateNextCardNumber(projectOrId, session = null) {
     projectCodeRaw.includes("/") && projectCodeRaw.toUpperCase().includes("PC")
       ? projectCodeRaw
       : `${projectCodeRaw}/PC/${projectSeqPadded}`;
-  return `${prefix}/${yy}${mm}/${cardSeqPadded}`;
+  return `${prefix}`;
 }
 
 function extractNumeric(v) {
