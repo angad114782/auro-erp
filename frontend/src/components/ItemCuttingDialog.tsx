@@ -29,6 +29,7 @@ import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
 import { toast } from "sonner@2.0.3";
+import api from "../lib/api";
 import {
   Select,
   SelectContent,
@@ -55,21 +56,12 @@ interface ItemCuttingDialogProps {
     productName: string;
     productionId: string;
     targetQuantity: number;
-    currentQuantity?: number;
-    brand: string;
-    category: string;
-    color?: string;
-    size?: string;
-    poNumber?: string;
-    manufacturingCompany?: string;
-    country?: string;
-    stage?: string;
-    stageName?: string;
-    stageStatus?: string;
-    stageRemaining?: number;
+    cardId: string;        // ✅ ADD
+    projectId: string;     // ✅ ADD
   } | null;
-  stage: any;
+  stage: string;
 }
+
 
 const MobileItemCard = React.memo(
   ({
@@ -106,6 +98,7 @@ const MobileItemCard = React.memo(
 
     const [inputValue, setInputValue] = useState(item.cuttingToday.toString());
 
+    
     useEffect(() => {
       setInputValue(item.cuttingToday.toString());
     }, [item.cuttingToday]);
@@ -483,44 +476,44 @@ export function ItemCuttingDialog({
 
   const stageDetails = getStageDetails();
 
-  const [cuttingItems, setCuttingItems] = useState<CuttingItem[]>([
-    {
-      id: "1",
-      itemName: "Upper Leather (Premium)",
-      requiredQuantity: 2000,
-      alreadyCut: 1500,
-      cuttingToday: 0,
-      unit: "piece",
-      status: "in-progress",
-    },
-    {
-      id: "2",
-      itemName: "Sole Material (Rubber)",
-      requiredQuantity: 2000,
-      alreadyCut: 1000,
-      cuttingToday: 0,
-      unit: "piece",
-      status: "in-progress",
-    },
-    {
-      id: "3",
-      itemName: "Laces (Cotton)",
-      requiredQuantity: 2000,
-      alreadyCut: 1800,
-      cuttingToday: 0,
-      unit: "pair",
-      status: "in-progress",
-    },
-    {
-      id: "4",
-      itemName: "Insole Foam",
-      requiredQuantity: 2000,
-      alreadyCut: 1200,
-      cuttingToday: 0,
-      unit: "piece",
-      status: "in-progress",
-    },
-  ]);
+ const [cuttingItems, setCuttingItems] = useState<CuttingItem[]>([]);
+
+useEffect(() => {
+  if (!open || !productData?.projectId || !productData?.cardId) return;
+
+  api
+    .get(
+      `/micro-tracking/department/${productData.projectId}/${stage}`
+    )
+    .then((res) => {
+      const rows = res.data.data || [];
+
+      // ✅ ONLY SELECTED CARD ROWS
+      const cardRows = rows.filter(
+        (r) => r.cardId?._id === productData.cardId
+      );
+
+      const mapped: CuttingItem[] = cardRows.map((row) => ({
+        id: row._id,
+        itemName: `${row.name} (${row.specification})`,
+        requiredQuantity: row.requirement,
+        alreadyCut: row.progressDone || 0,
+        cuttingToday: row.progressToday || 0,
+        unit: row.unit || "unit",
+        status:
+          row.progressDone >= row.requirement
+            ? "completed"
+            : row.progressDone > 0
+            ? "in-progress"
+            : "pending",
+      }));
+
+      setCuttingItems(mapped);
+    })
+    .catch(() => {
+      toast.error("Failed to load micro tracking data");
+    });
+}, [open, productData, stage]);
 
   if (!productData) return null;
 
@@ -544,12 +537,19 @@ export function ItemCuttingDialog({
     }
   };
 
-  const calculateMinimumAvailable = () => {
-    const availableQuantities = cuttingItems.map(
-      (item) => item.alreadyCut + item.cuttingToday
-    );
-    return Math.min(...availableQuantities);
-  };
+ const calculateMinimumAvailable = () => {
+  if (cuttingItems.length === 0) return 0;
+
+  return Math.min(
+    ...cuttingItems.map((item) => {
+      if (!item.requiredQuantity) return 0;
+      return Math.floor(
+        (item.alreadyCut + item.cuttingToday) / item.requiredQuantity
+      );
+    })
+  );
+};
+
 
   const calculateTotalAfterCutting = (item: CuttingItem) => {
     return item.alreadyCut + item.cuttingToday;
@@ -585,32 +585,32 @@ export function ItemCuttingDialog({
     return Math.min((total / item.requiredQuantity) * 100, 100);
   };
 
-  const handleSaveCutting = () => {
-    const totalCutting = cuttingItems.reduce(
-      (sum, item) => sum + item.cuttingToday,
-      0
+ const handleSaveCutting = async () => {
+  const updates = cuttingItems.filter((i) => i.cuttingToday > 0);
+
+  if (updates.length === 0) {
+    toast.error("Enter quantity for at least one item");
+    return;
+  }
+
+  try {
+    await Promise.all(
+      updates.map((item) =>
+        api.post("/micro-tracking/update", {
+          rowId: item.id,
+          addedToday: item.cuttingToday,
+          updatedBy: "Production Manager",
+        })
+      )
     );
 
-    if (totalCutting === 0) {
-      toast.error(
-        `Please enter ${stageDetails.actionName.toLowerCase()} quantities for at least one item`
-      );
-      return;
-    }
+    toast.success(`${stageDetails.title} updated successfully`);
+    onOpenChange(false);
+  } catch {
+    toast.error("Failed to save cutting data");
+  }
+};
 
-    setCuttingItems((prev) =>
-      prev.map((item) => ({
-        ...item,
-        alreadyCut: item.alreadyCut + item.cuttingToday,
-        cuttingToday: 0,
-      }))
-    );
-
-    const minAvailable = calculateMinimumAvailable();
-    toast.success(
-      `${stageDetails.title} saved! ${minAvailable} units now ready for production`
-    );
-  };
 
   const toggleItemExpanded = (itemId: string) => {
     const newExpanded = new Set(expandedItems);

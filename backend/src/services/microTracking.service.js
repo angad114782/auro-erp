@@ -195,12 +195,15 @@ export async function updateMicroTracking(id, payload, updatedBy = "system") {
    4) GET rows inside 1 department
 ---------------------------------------------------- */
 export async function getRowsByDepartment(projectId, department) {
-  return await MicroTracking.find({ projectId, department })
+  return MicroTracking.find({
+    projectId,
+    department
+  })
     .populate({
       path: "cardId",
       select: "cardNumber productName cardQuantity stage assignedPlant"
     })
-    .sort({ name: 1 })
+    .sort({ name: 1 }) // ✅ VALID because name exists
     .lean();
 }
 

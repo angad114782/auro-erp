@@ -255,10 +255,6 @@ export function ProductionTrackingTable() {
 const [trackingCards, setTrackingCards] = useState<any[]>([]);
 const [selectedCardId, setSelectedCardId] = useState<string>("");
 const [loadingCards, setLoadingCards] = useState(false);
-const [departmentRows, setDepartmentRows] = useState<any[]>([]);
-const [loadingDeptRows, setLoadingDeptRows] = useState(false);
-const [deptRowsDialogOpen, setDeptRowsDialogOpen] = useState(false);
-
 const selectedCard = trackingCards.find(
   (card) => card._id === selectedCardId
 );
@@ -296,32 +292,6 @@ const fetchTrackingCards = async (projectId: string) => {
     setSelectedCardId("");
   } finally {
     setLoadingCards(false);
-  }
-};
-
-const fetchDepartmentRows = async (
-  projectId: string,
-  department: string
-) => {
-  try {
-    setLoadingDeptRows(true);
-
-    const res = await api.get(
-      `/micro-tracking/department/${projectId}/${department}`
-    );
-
-    if (res.data?.success) {
-      setDepartmentRows(res.data.data || []);
-      setDeptRowsDialogOpen(true);
-    } else {
-      toast.error("No tracking rows found");
-      setDepartmentRows([]);
-    }
-  } catch (err) {
-    console.error("Failed to fetch department rows", err);
-    toast.error("Failed to load tracking rows");
-  } finally {
-    setLoadingDeptRows(false);
   }
 };
 
