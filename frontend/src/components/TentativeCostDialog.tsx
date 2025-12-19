@@ -2820,7 +2820,7 @@ export function TentativeCostDialog({
 
                           <div>
                             <Label className="text-sm font-medium text-gray-600">
-                              Profit Margin (%)
+                              Profit (%)
                             </Label>
                             <div className="relative mt-1">
                               <Percent className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
@@ -3096,7 +3096,7 @@ export function TentativeCostDialog({
 
                           <div>
                             <Label className="text-sm font-medium text-gray-600">
-                              Profit Margin (%)
+                              Profit (%)
                             </Label>
                             <div className="relative mt-1">
                               <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -3112,7 +3112,7 @@ export function TentativeCostDialog({
                                   handleProfitMarginChange(e.target.value)
                                 }
                                 className="pl-10 h-10 md:h-12"
-                                placeholder="Enter profit margin %"
+                                placeholder="Enter profit %"
                               />
                             </div>
                           </div>
@@ -3208,7 +3208,7 @@ export function TentativeCostDialog({
                             <div className="flex justify-between text-sm">
                               <span className="text-gray-600">
                                 Profit (
-                                {parseNumber(displaySummary.profitMargin || 25)}
+                                {parseNumber(displaySummary.profitMargin)}
                                 %):
                               </span>
                               <span className="font-medium">
