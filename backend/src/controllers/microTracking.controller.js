@@ -58,17 +58,28 @@ export async function getDepartmentWiseTracking(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+import mongoose from "mongoose";
 
-/* ---------------- Get all rows inside a department ---------------- */
 export async function getDepartmentRows(req, res) {
   try {
-    const { projectId, department } = req.params;
+    const { projectId, cardId, department } = req.params;
 
-    const rows = await service.getRowsByDepartment(projectId, department);
+    if (
+      !mongoose.Types.ObjectId.isValid(projectId) ||
+      !mongoose.Types.ObjectId.isValid(cardId)
+    ) {
+      return res.status(400).json({ error: "Invalid IDs" });
+    }
+
+    const rows = await service.getRowsByDepartment(
+      projectId,
+      cardId,
+      department
+    );
 
     return res.json({
       success: true,
-      items: rows
+      data: rows
     });
 
   } catch (err) {

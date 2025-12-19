@@ -190,12 +190,17 @@ export async function updateMicroTracking(id, payload, updatedBy = "system") {
 
   return updated;
 }
+import mongoose from "mongoose";
 
 /* ----------------------------------------------------
    4) GET rows inside 1 department
 ---------------------------------------------------- */
-export async function getRowsByDepartment(projectId, department) {
-  return await MicroTracking.find({ projectId, department })
+export async function getRowsByDepartment(projectId, cardId, department) {
+  return MicroTracking.find({
+    projectId: new mongoose.Types.ObjectId(projectId),
+    cardId: new mongoose.Types.ObjectId(cardId), // ✅ THIS WAS MISSING
+    department
+  })
     .populate({
       path: "cardId",
       select: "cardNumber productName cardQuantity stage assignedPlant"
