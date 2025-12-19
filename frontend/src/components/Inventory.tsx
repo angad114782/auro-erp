@@ -1,4 +1,4 @@
-// Inventory.tsx - Updated with backend pagination
+// Inventory.tsx - Updated with proper tab counts
 import React, { useEffect, useState } from "react";
 import {
   Card,
@@ -30,7 +30,7 @@ import { AddItemDialog } from "./AddProductDialog";
 import { useVendorStore } from "../hooks/useVendor";
 import { inventoryService } from "../services/inventoryService";
 import { ConfirmActionDialog } from "./ConfirmActionDialog";
-import Pagination from "./Pagination"; // Import your pagination component
+import Pagination from "./Pagination";
 
 export function Inventory() {
   const {
@@ -39,7 +39,10 @@ export function Inventory() {
     pagination,
     filters,
     categoryCounts,
+    tabCounts,
     loadItems,
+    loadTabCounts,
+    refreshTabCounts,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
@@ -71,8 +74,7 @@ export function Inventory() {
   // Load data when component mounts
   useEffect(() => {
     const loadData = async () => {
-      await loadItems();
-      await loadVendors();
+      await Promise.all([loadItems(), loadVendors()]);
     };
     loadData();
   }, []);
@@ -87,7 +89,7 @@ export function Inventory() {
 
     const timer = setTimeout(() => {
       handleSearch(value);
-    }, 500); // 500ms debounce
+    }, 500);
 
     setDebounceTimer(timer);
   };
@@ -101,25 +103,11 @@ export function Inventory() {
   // Handle tab change with proper logic
   const handleTabSelect = (tab: string) => {
     setCurrentTab(tab);
-    setActiveCategory("All"); // Reset category filter when switching tabs
-    setSearchQuery(""); // Reset search when switching tabs
+    setActiveCategory("All");
+    setSearchQuery("");
     handleTabChange(tab);
   };
 
-  // Calculate total counts for each tab
-  const getTabCounts = () => {
-    const allCount = categoryCounts.find((c) => c.name === "All")?.count || 0;
-    const itemsCount = categoryCounts.find((c) => c.name === "All")?.count || 0;
-    const draftsCount = 0;
-
-    return {
-      all: allCount,
-      items: filters.isDraft === false ? items.length : 0,
-      drafts: filters.isDraft === true ? items.length : 0,
-    };
-  };
-
-  const tabCounts = getTabCounts();
   const getIconColorClasses = (color: string) => {
     const colorMap: { [key: string]: string } = {
       amber: "bg-amber-100 text-amber-600",
@@ -139,24 +127,53 @@ export function Inventory() {
     setShowAddDialog(true);
   };
 
+  // const handleDialogClose = async (open: boolean) => {
+  //   if (!open) {
+  //     // Refresh all data when dialog closes
+  //     await Promise.all([loadItems(), loadVendors(), refreshTabCounts()]);
+
+  //     // If we were editing a draft and saved it, switch to items tab if it's no longer a draft
+  //     if (editingItem && editingItem.isDraft) {
+  //       // Check if the edited item is still a draft
+  //       try {
+  //         const updatedItem = await inventoryService.getItemById(
+  //           editingItem._id
+  //         );
+  //         if (!updatedItem.isDraft && currentTab === "drafts") {
+  //           handleTabSelect("items");
+  //         }
+  //       } catch (error) {
+  //         console.error("Failed to check item status:", error);
+  //       }
+  //     }
+
+  //     setEditingItem(null);
+  //     setIsEditMode(false);
+  //   }
+  //   setShowAddDialog(open);
+  // };
+
   const handleDialogClose = async (open: boolean) => {
     if (!open) {
-      // Refresh data when dialog closes
-      await loadItems();
-      await loadVendors();
+      // Refresh data
+      await Promise.all([loadItems(), loadVendors(), refreshTabCounts()]);
+
+      // If editing a draft, switch to items tab
+      if (editingItem?.isDraft) {
+        handleTabSelect("items");
+      }
+
       setEditingItem(null);
       setIsEditMode(false);
     }
     setShowAddDialog(open);
   };
-
   const handleSoftDelete = async (item: any) => {
     if (!item || !item._id) return;
     try {
       await inventoryService.softDeleteItem(item._id);
-      // refresh data
-      await loadItems();
-      await loadVendors();
+      // Refresh all data
+      await Promise.all([loadItems(), loadVendors(), refreshTabCounts()]);
     } catch (err) {
       console.error("Soft delete failed:", err);
       await loadItems();
@@ -167,7 +184,6 @@ export function Inventory() {
     if (!open) {
       // Refresh data when update stock dialog closes
       await loadItems();
-      await loadVendors();
     }
     setShowUpdateStockDialog(open);
   };
@@ -608,12 +624,12 @@ export function Inventory() {
                           {item.category || "Uncategorized"}
                         </p>
                       </div>
-                      <div>
+                      {/* <div>
                         <span className="text-gray-500">Brand:</span>
                         <p className="font-medium truncate">
                           {item.brand || "—"}
                         </p>
-                      </div>
+                      </div> */}
                       <div>
                         <span className="text-gray-500">Vendor:</span>
                         <p className="font-medium truncate">

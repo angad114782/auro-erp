@@ -76,70 +76,52 @@ export function VendorViewDialog({
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [supplyHistory, setSupplyHistory] = useState<any[]>([]);
 
-  if (!vendor) {
-    return null;
-  }
-
-  /* =========================
-     BACKEND DATA (REPLACED MOCK)
-  ========================= */
   useEffect(() => {
     if (!vendor?._id) return;
 
     const fetchSupplyHistory = async () => {
       try {
         const res = await api.get(`/inventory/vendor/${vendor._id}`);
-
-        // 🔁 Backend → SAME shape as mock
-        const mapped = (res.data.items || []).map((tx: any) => ({
-          id: tx._id,
-          date: tx.transactionDate || tx.createdAt,
-          billNumber: tx.billNumber || "—",
-          itemName: tx.itemId?.itemName || "N/A",
-          itemCode: tx.itemId?.code || "—",
-          quantity: tx.quantity,
-          unit: tx.itemId?.quantityUnit || "",
-          status: tx.transactionType === "Stock In" ? "Delivered" : "Pending",
-          orderValue: "₹0",
-          deliveryTime: "—",
-          quality: "Good",
-        }));
-
-        setSupplyHistory(mapped);
+        setSupplyHistory(
+          (res.data.items || []).map((tx: any) => ({
+            id: tx._id,
+            date: tx.transactionDate || tx.createdAt,
+            billNumber: tx.billNumber || "—",
+            itemName: tx.itemId?.itemName || "N/A",
+            itemCode: tx.itemId?.code || "—",
+            quantity: tx.quantity,
+            unit: tx.itemId?.quantityUnit || "",
+            status: tx.transactionType === "Stock In" ? "Delivered" : "Pending",
+            orderValue: "₹0",
+            deliveryTime: "—",
+            quality: "Good",
+          }))
+        );
       } catch (err) {
-        console.error("Failed to fetch vendor supply history", err);
+        console.error(err);
       }
     };
 
     fetchSupplyHistory();
   }, [vendor?._id]);
 
-  /* =========================
-     ORIGINAL DERIVED VALUES
-  ========================= */
-  const totalOrders = supplyHistory.length;
-  const completedOrders = supplyHistory.filter(
-    (order) => order.status === "Delivered"
-  ).length;
-  const totalValue = supplyHistory.reduce((sum, order) => {
-    const value = parseInt(order.orderValue.replace(/[₹,]/g, "")) || 0;
-    return sum + value;
-  }, 0);
+  if (!vendor) return;
+  const isOpen = Boolean(vendor && open);
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={isOpen} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-[95vw] md:max-w-6xl w-[95vw] md:w-full max-h-[95vh] md:max-h-[85vh] p-0 md:rounded-lg flex flex-col overflow-hidden">
           {/* Header */}
           <div className="sticky top-0 z-50 px-4 md:px-8 py-4 md:py-6 bg-linear-to-r from-cyan-50 via-white to-cyan-50 border-b-2 border-gray-200 shadow-sm flex-shrink-0">
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 <div className="w-10 h-10 md:w-14 md:h-14 bg-linear-to-br from-cyan-500 to-cyan-600 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg text-white font-bold text-lg md:text-xl flex-shrink-0">
-                  {(vendor.vendorName || "N/A").slice(0, 2).toUpperCase()}
+                  {(vendor?.vendorName || "N/A").slice(0, 2).toUpperCase()}
                 </div>
                 <div className="min-w-0">
                   <DialogTitle className="text-lg md:text-2xl lg:text-3xl font-semibold text-gray-900 truncate">
-                    {vendor.vendorName || "Unknown Vendor"}
+                    {vendor?.vendorName || "Unknown Vendor"}
                   </DialogTitle>
                   <DialogDescription className="text-sm md:text-base lg:text-lg text-gray-600 truncate">
                     Complete vendor profile and supply history

@@ -17,14 +17,18 @@ export const useInventory = () => {
   const [filters, setFilters] = useState({
     search: "",
     category: "All",
-    isDraft: undefined as boolean | undefined, // Change to undefined to show all by default
+    isDraft: undefined as boolean | undefined,
     sortBy: "updatedAt",
     sortOrder: "desc",
   });
-  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>(
-    {}
-  );
-  const [totalAll, setTotalAll] = useState(0);
+  const [categoryCounts, setCategoryCounts] = useState<
+    Array<{ name: string; count: number }>
+  >([]);
+  const [tabCounts, setTabCounts] = useState({
+    items: 0,
+    drafts: 0,
+    all: 0,
+  });
 
   const loadItems = useCallback(
     async (
@@ -50,7 +54,7 @@ export const useInventory = () => {
         if (params.category !== undefined)
           newFilters.category = params.category || "All";
 
-        // Handle isDraft - undefined means show all, boolean means filter
+        // Handle isDraft
         if (params.isDraft !== undefined) {
           if (params.isDraft === "false" || params.isDraft === false) {
             newFilters.isDraft = false;
@@ -66,12 +70,10 @@ export const useInventory = () => {
         // Prepare params for API
         const apiParams: any = { ...loadParams };
 
-        // If category is "All", don't send it to backend
         if (apiParams.category === "All") {
           delete apiParams.category;
         }
 
-        // Handle isDraft for API
         if (apiParams.isDraft === undefined) {
           delete apiParams.isDraft;
         } else if (typeof apiParams.isDraft === "boolean") {
@@ -91,10 +93,21 @@ export const useInventory = () => {
           }
         );
 
-        // Set category counts and total
+        // Set category counts
         if (response.filters) {
-          setCategoryCounts(response.filters.categoryCounts || {});
-          setTotalAll(response.filters.totalAll || 0);
+          const categories = response.filters.categoryCounts || {};
+          const categoryArray = Object.entries(categories).map(
+            ([name, count]) => ({
+              name,
+              count: count as number,
+            })
+          );
+          // Add "All" category
+          categoryArray.unshift({
+            name: "All",
+            count: response.filters.totalAll || 0,
+          });
+          setCategoryCounts(categoryArray);
         }
       } catch (err) {
         console.error("loadItems failed:", err);
@@ -107,8 +120,7 @@ export const useInventory = () => {
           hasNextPage: false,
           hasPrevPage: false,
         });
-        setCategoryCounts({});
-        setTotalAll(0);
+        setCategoryCounts([]);
       } finally {
         setLoading(false);
       }
@@ -116,10 +128,42 @@ export const useInventory = () => {
     [filters]
   );
 
-  // Initialize load
+  // Load tab counts separately
+  const loadTabCounts = useCallback(async () => {
+    try {
+      // Load items count (non-drafts)
+      const itemsResponse = await inventoryService.getItems({
+        page: 1,
+        limit: 1,
+        isDraft: false,
+      });
+
+      // Load drafts count
+      const draftsResponse = await inventoryService.getItems({
+        page: 1,
+        limit: 1,
+        isDraft: true,
+      });
+
+      setTabCounts({
+        items: itemsResponse.pagination?.totalItems || 0,
+        drafts: draftsResponse.pagination?.totalItems || 0,
+        all:
+          (itemsResponse.pagination?.totalItems || 0) +
+          (draftsResponse.pagination?.totalItems || 0),
+      });
+    } catch (err) {
+      console.error("loadTabCounts failed:", err);
+    }
+  }, []);
+
+  // Initialize both items and tab counts
   const initializeItems = useCallback(async () => {
-    await loadItems({ page: 1, limit: 10, isDraft: false }); // Default to non-draft items
-  }, [loadItems]);
+    await Promise.all([
+      loadItems({ page: 1, limit: 10, isDraft: false }),
+      loadTabCounts(),
+    ]);
+  }, [loadItems, loadTabCounts]);
 
   // Handle page change
   const handlePageChange = useCallback(
@@ -153,33 +197,25 @@ export const useInventory = () => {
     [loadItems]
   );
 
-  // Handle tab change (items/drafts/all)
+  // Handle tab change (items/drafts)
   const handleTabChange = useCallback(
     async (tab: string) => {
       if (tab === "items") {
         await loadItems({ page: 1, isDraft: false });
       } else if (tab === "drafts") {
         await loadItems({ page: 1, isDraft: true });
-      } else {
-        await loadItems({ page: 1, isDraft: undefined }); // Show all
       }
+      // Also refresh tab counts when switching tabs
+      await loadTabCounts();
     },
-    [loadItems]
+    [loadItems, loadTabCounts]
   );
 
-  // Get category counts for display
-  const getCategoryCounts = useCallback(() => {
-    const allCount = totalAll;
-    const categories = Object.entries(categoryCounts).map(([name, count]) => ({
-      name,
-      count,
-    }));
+  // Refresh tab counts (call this after creating/updating items)
+  const refreshTabCounts = useCallback(async () => {
+    await loadTabCounts();
+  }, [loadTabCounts]);
 
-    // Always show "All" category with total count
-    return [{ name: "All", count: allCount }, ...categories];
-  }, [categoryCounts, totalAll]);
-
-  // Other methods remain the same...
   const loadTransactions = useCallback(async () => {
     try {
       const res = await inventoryService.getAllHistory();
@@ -194,29 +230,33 @@ export const useInventory = () => {
     async (payload: { formData: FormData }) => {
       try {
         const created = await inventoryService.createItem(payload.formData);
-        // Refresh the list
-        await loadItems({ page: 1 });
+        // Refresh both items list and tab counts
+        await Promise.all([loadItems({ page: 1 }), loadTabCounts()]);
         return created;
       } catch (err) {
         console.error("createItem failed:", err);
         throw err;
       }
     },
-    [loadItems]
+    [loadItems, loadTabCounts]
   );
 
   const updateItem = useCallback(
     async (itemId: string, formData: FormData) => {
       try {
         const updated = await inventoryService.updateItem(itemId, formData);
-        await loadItems({ page: pagination.currentPage });
+        // Refresh both current items and tab counts
+        await Promise.all([
+          loadItems({ page: pagination.currentPage }),
+          loadTabCounts(),
+        ]);
         return updated;
       } catch (err) {
         console.error("updateItem failed:", err);
         throw err;
       }
     },
-    [loadItems, pagination.currentPage]
+    [loadItems, pagination.currentPage, loadTabCounts]
   );
 
   const updateStock = useCallback(
@@ -242,13 +282,25 @@ export const useInventory = () => {
     }
   }, []);
 
+  const getAllHistory = useCallback(async () => {
+    try {
+      return await inventoryService.getAllHistory();
+    } catch (err) {
+      console.error("getAllhistory failed:", err);
+      return [];
+    }
+  }, []);
+
   return {
     items,
     loading,
     pagination,
     filters,
-    categoryCounts: getCategoryCounts(),
+    categoryCounts,
+    tabCounts,
     loadItems: initializeItems,
+    loadTabCounts,
+    refreshTabCounts,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
@@ -259,6 +311,7 @@ export const useInventory = () => {
     updateStock,
     getHistory,
     setItems,
+    getAllHistory,
     loadTransactions,
     transactions,
   };

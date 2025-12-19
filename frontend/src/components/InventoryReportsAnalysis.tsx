@@ -21,8 +21,6 @@ import {
   Calendar,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useInventory } from "../hooks/useInventory";
-import { useVendorStore } from "../hooks/useVendor";
 import { Button } from "./ui/button";
 import { Calendar as CalendarComponent } from "./ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -44,23 +42,22 @@ import {
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { exportInventoryReportToPDF } from "../hooks/pdf-export-ra";
+import api from "../lib/api";
+import Pagination from "./Pagination";
 
 interface DateRange {
   from: Date;
   to: Date;
 }
 
+interface PaginationState {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+}
+
 export function InventoryReportsAnalysis() {
-  const {
-    items: inventoryItems,
-    transactions: inventoryTransactions,
-    loadItems,
-    loadTransactions,
-    loading: loadingInventory,
-  } = useInventory();
-
-  const { vendors, loadVendors, loading: loadingVendors } = useVendorStore();
-
   const [searchTerm, setSearchTerm] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>({
     from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -75,166 +72,144 @@ export function InventoryReportsAnalysis() {
     new Set()
   );
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    pageSize: 10,
+  });
+
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [debouncedReportType, setDebouncedReportType] = useState(reportType);
+
+  // Debounce search term and report type
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setPagination((prev) => ({ ...prev, currentPage: 1 }));
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
-    loadItems();
-    loadTransactions();
-    loadVendors();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const timer = setTimeout(() => {
+      setDebouncedReportType(reportType);
+      setPagination((prev) => ({ ...prev, currentPage: 1 }));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [reportType]);
 
-  // Helper to normalize id or populated object for vendor/item references
-  const normalizeRefId = (ref: any) => {
-    if (!ref) return "";
-    if (typeof ref === "string") return ref;
-    if (typeof ref === "object" && (ref._id || ref.$oid)) {
-      return ref._id ? String(ref._id) : String(ref.$oid);
+  // Helper functions
+  const getItemDetails = (itemRef: any) => {
+    if (!itemRef) return null;
+    if (typeof itemRef === "object" && itemRef.itemName) {
+      return itemRef;
     }
-    return "";
+    return null;
+  };
+
+  const getItemName = (itemRef: any) => {
+    const item = getItemDetails(itemRef);
+    return item?.itemName || "Unknown Item";
   };
 
   const getVendor = (vendorRef: any) => {
-    const id = normalizeRefId(vendorRef);
-    return vendors.find((v) => String(v._id) === id) || null;
-  };
-
-  const getVendorName = (vendorRefOrId: any) =>
-    getVendor(vendorRefOrId)?.vendorName || "Unknown";
-
-  const getItem = (itemRef: any) => {
-    const id = normalizeRefId(itemRef);
-    return inventoryItems.find((i) => String(i._id) === id) || null;
-  };
-
-  const getItemName = (itemRefOrId: any) =>
-    getItem(itemRefOrId)?.itemName || "Unknown";
-
-  const getItemDetails = (itemRefOrId: any) => getItem(itemRefOrId);
-
-  // Filter transactions based on date range and report type
-  const filteredTransactions = useMemo(() => {
-    if (!Array.isArray(inventoryTransactions)) return [];
-
-    let transactions = inventoryTransactions.filter((transaction: any) => {
-      const dateStr =
-        transaction.transactionDate ||
-        transaction.createdAt ||
-        transaction.updatedAt;
-      const transactionDate = dateStr ? new Date(dateStr) : null;
-      const matchesDateRange =
-        transactionDate &&
-        transactionDate >= dateRange.from &&
-        transactionDate <= dateRange.to;
-
-      if (!matchesDateRange) return false;
-
-      const item = getItemDetails(transaction.itemId);
-      const vendorName = getVendorName(
-        transaction.vendorId || transaction.vendor
-      );
-
-      const matchesSearch =
-        !searchTerm ||
-        getItemName(transaction.itemId)
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase()) ||
-        (vendorName || "unknown")
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase()) ||
-        (transaction.billNumber &&
-          transaction.billNumber
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase()));
-
-      return matchesSearch;
-    });
-
-    // Apply report type filtering
-    if (reportType && reportType !== "daily") {
-      const now = new Date();
-      let filterDate = new Date();
-
-      switch (reportType) {
-        case "weekly":
-          filterDate.setDate(now.getDate() - 7);
-          break;
-        case "monthly":
-          filterDate.setMonth(now.getMonth() - 1);
-          break;
-        case "yearly":
-          filterDate.setFullYear(now.getFullYear() - 1);
-          break;
-        default:
-          filterDate = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate()
-          );
-      }
-
-      transactions = transactions.filter((transaction: any) => {
-        const dateStr =
-          transaction.transactionDate ||
-          transaction.createdAt ||
-          transaction.updatedAt;
-        const transactionDate = dateStr ? new Date(dateStr) : null;
-        return transactionDate && transactionDate >= filterDate;
-      });
+    if (!vendorRef) return null;
+    if (typeof vendorRef === "object" && vendorRef.vendorName) {
+      return vendorRef;
     }
+    return null;
+  };
 
-    return transactions;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    inventoryTransactions,
-    dateRange,
-    searchTerm,
-    reportType,
-    inventoryItems,
-    vendors,
-  ]);
+  const getVendorName = (vendorRef: any) => {
+    const vendor = getVendor(vendorRef);
+    return vendor?.vendorName || "Unknown Vendor";
+  };
+
+  // Fetch all inventory items for statistics
+  const fetchInventoryItems = async () => {
+    try {
+      const res = await api.get("/inventory/items");
+      if (res.data && Array.isArray(res.data.items)) {
+        setInventoryItems(res.data.items);
+      }
+    } catch (error) {
+      console.error("Error fetching inventory items:", error);
+    }
+  };
+
+  // Fetch transactions with pagination
+  const fetchTransactions = async (
+    page = 1,
+    pageSize = pagination.pageSize
+  ) => {
+    setLoading(true);
+    try {
+      const params: any = {
+        page,
+        limit: pageSize,
+      };
+
+      if (debouncedSearchTerm) params.search = debouncedSearchTerm;
+      if (dateRange.from) params.from = dateRange.from.toISOString();
+      if (dateRange.to) params.to = dateRange.to.toISOString();
+      if (debouncedReportType !== "daily")
+        params.reportType = debouncedReportType;
+
+      const res = await api.get("/inventory/history-all", { params });
+
+      if (res.data?.success) {
+        setTransactions(res.data.data.transactions);
+        setPagination(res.data.data.pagination);
+        setStats(res.data.data.stats);
+      }
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch data when dependencies change
+  useEffect(() => {
+    fetchTransactions(pagination.currentPage, pagination.pageSize);
+  }, [debouncedSearchTerm, dateRange, debouncedReportType]);
+
+  // Fetch inventory items on mount
+  useEffect(() => {
+    fetchInventoryItems();
+  }, []);
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setPagination((prev) => ({ ...prev, currentPage: page }));
+    fetchTransactions(page, pagination.pageSize);
+  };
+
+  // Handle page size change
+  const handlePageSizeChange = (size: number) => {
+    setPagination((prev) => ({ ...prev, pageSize: size, currentPage: 1 }));
+    fetchTransactions(1, size);
+  };
 
   // Calculate statistics
-  const statistics = useMemo(() => {
-    const totalTransactions = filteredTransactions.length;
-
-    const stockInTransactions = filteredTransactions.filter(
-      (t: any) => t.transactionType === "Stock In"
-    );
-    const stockOutTransactions = filteredTransactions.filter(
-      (t: any) => t.transactionType === "Stock Out"
-    );
-
-    const totalStockIn = stockInTransactions.reduce(
-      (sum: number, t: any) => sum + (Number(t.quantity) || 0),
-      0
-    );
-    const totalStockOut = stockOutTransactions.reduce(
-      (sum: number, t: any) => sum + (Number(t.quantity) || 0),
-      0
-    );
-    const totalOrderValue = stockInTransactions.reduce(
-      (sum: number, t: any) => sum + (Number(t.orderValue) || 0),
-      0
-    );
-
-    const currentTotalStock = (
-      Array.isArray(inventoryItems) ? inventoryItems : []
-    ).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
-    const lowStockItems = (
-      Array.isArray(inventoryItems) ? inventoryItems : []
-    ).filter((item: any) => Number(item.quantity) < 50).length;
-
-    return {
-      totalTransactions,
-      totalStockIn,
-      totalStockOut,
-      totalOrderValue,
-      currentTotalStock,
-      lowStockItems,
-      stockInCount: stockInTransactions.length,
-      stockOutCount: stockOutTransactions.length,
-    };
-  }, [filteredTransactions, inventoryItems]);
+  const statistics = {
+    totalTransactions: pagination.totalItems,
+    totalStockIn: stats?.totalStockIn || 0,
+    totalStockOut: stats?.totalStockOut || 0,
+    totalOrderValue: stats?.totalOrderValue || 0,
+    // currentTotalStock,
+    // lowStockItems,
+    stockInCount: stats?.stockInCount || 0,
+    stockOutCount: stats?.stockOutCount || 0,
+  };
 
   const toggleTransactionExpansion = (transactionId: string) => {
     setExpandedTransactions((prev) => {
@@ -248,11 +223,6 @@ export function InventoryReportsAnalysis() {
     });
   };
 
-  const handleExportData = (format: string) => {
-    // Export logic remains the same
-    console.log(`Exporting as ${format}`);
-  };
-
   const handleDateSelect = (date: Date | undefined) => {
     if (!date) return;
 
@@ -261,18 +231,17 @@ export function InventoryReportsAnalysis() {
     } else if (tempDateRange.from && !tempDateRange.to) {
       const from = tempDateRange.from;
       const to = date;
-
-      if (from <= to) {
-        setTempDateRange({ from, to });
-      } else {
-        setTempDateRange({ from: to, to: from });
-      }
+      setTempDateRange({
+        from: from <= to ? from : to,
+        to: from <= to ? to : from,
+      });
     }
   };
 
   const applyDateRange = () => {
     setDateRange(tempDateRange);
     setIsDatePickerOpen(false);
+    setPagination((prev) => ({ ...prev, currentPage: 1 }));
   };
 
   const cancelDateSelection = () => {
@@ -299,17 +268,7 @@ export function InventoryReportsAnalysis() {
     {
       id: "dummy-1",
       transactionDate: new Date("2024-12-18T09:30:00"),
-      itemId: "dummy-item-1",
-      vendorId: "dummy-vendor-1",
-      transactionType: "Stock In",
-      quantity: 500,
-      previousStock: 1200,
-      newStock: 1700,
-      billNumber: "INV-2024-001",
-      reason: "New Purchase Order",
-      remarks: "Quality checked and approved",
-      orderValue: 45000,
-      item: {
+      itemId: {
         itemName: "Premium Leather Sole",
         code: "PLS-001",
         category: "Raw Materials",
@@ -318,38 +277,56 @@ export function InventoryReportsAnalysis() {
         iconColor: "amber",
         quantityUnit: "Pieces",
       },
-      vendor: {
+      vendorId: {
         vendorName: "Delhi Leather Industries",
         contactPerson: "Rajesh Kumar",
         email: "rajesh@delhileather.com",
       },
+      transactionType: "Stock In",
+      quantity: 500,
+      previousStock: 1200,
+      newStock: 1700,
+      billNumber: "INV-2024-001",
+      reason: "New Purchase Order",
+      remarks: "Quality checked and approved",
+      orderValue: 45000,
     },
   ];
 
   const displayTransactions =
-    filteredTransactions.length > 0
-      ? filteredTransactions.slice(0, 10) // Limit for mobile
-      : !loadingInventory &&
-        !loadingVendors &&
-        inventoryTransactions.length === 0 &&
-        searchTerm === ""
+    transactions.length > 0
+      ? transactions
+      : !loading && searchTerm === "" && pagination.totalItems === 0
       ? dummyTransactions
       : [];
 
   const handleExport = () => {
     console.log("Exporting with data...");
     exportInventoryReportToPDF(
-      filteredTransactions.length > 0
-        ? filteredTransactions
-        : displayTransactions,
+      transactions.length > 0 ? transactions : displayTransactions,
       statistics,
       dateRange,
       reportType,
-      searchTerm,
-      getItemDetails, // Pass the helper functions
-      getVendor
+      searchTerm
     );
   };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "Invalid Date";
+      return date.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return "Invalid Date";
+    }
+  };
+
   return (
     <div className="w-full space-y-4 md:space-y-8 p-4 md:p-6">
       {/* Header Section */}
@@ -427,26 +404,7 @@ export function InventoryReportsAnalysis() {
                   <SelectItem value="yearly">Yearly Report</SelectItem>
                 </SelectContent>
               </Select>
-              {/* Mobile Floating Export Button */}
-              <div className="md:hidden fixed bottom-6 right-6 z-10">
-                <Button
-                  size="lg"
-                  className="rounded-full shadow-lg h-14 w-14"
-                  onClick={() =>
-                    exportInventoryReportToPDF(
-                      filteredTransactions.length > 0
-                        ? filteredTransactions
-                        : displayTransactions,
-                      statistics,
-                      dateRange,
-                      reportType,
-                      searchTerm
-                    )
-                  }
-                >
-                  <Download className="w-6 h-6" />
-                </Button>
-              </div>
+
               <Popover
                 open={isDatePickerOpen}
                 onOpenChange={handleDatePickerOpen}
@@ -458,8 +416,8 @@ export function InventoryReportsAnalysis() {
                   >
                     <Calendar className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-600 truncate">
-                      {dateRange.from.toLocaleDateString()} -{" "}
-                      {dateRange.to.toLocaleDateString()}
+                      {formatDate(dateRange.from.toISOString())} -{" "}
+                      {formatDate(dateRange.to.toISOString())}
                     </span>
                   </Button>
                 </PopoverTrigger>
@@ -475,9 +433,15 @@ export function InventoryReportsAnalysis() {
                         </h4>
                         <p className="text-xs text-gray-500">
                           {tempDateRange.from && tempDateRange.to
-                            ? `${tempDateRange.from.toLocaleDateString()} - ${tempDateRange.to.toLocaleDateString()}`
+                            ? `${formatDate(
+                                tempDateRange.from.toISOString()
+                              )} - ${formatDate(
+                                tempDateRange.to.toISOString()
+                              )}`
                             : tempDateRange.from
-                            ? `From: ${tempDateRange.from.toLocaleDateString()}`
+                            ? `From: ${formatDate(
+                                tempDateRange.from.toISOString()
+                              )}`
                             : "Click start date"}
                         </p>
                       </div>
@@ -566,8 +530,19 @@ export function InventoryReportsAnalysis() {
           </Card>
         )}
 
+        {/* Mobile Floating Export Button */}
+        <div className="md:hidden fixed bottom-6 right-6 z-10">
+          <Button
+            size="lg"
+            className="rounded-full shadow-lg h-14 w-14"
+            onClick={handleExport}
+          >
+            <Download className="w-6 h-6" />
+          </Button>
+        </div>
+
         {/* Statistics Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-6">
           <Card className="border-l-4 border-l-blue-500">
             <CardContent className="p-3 md:p-4">
               <div className="flex items-center justify-between">
@@ -576,7 +551,7 @@ export function InventoryReportsAnalysis() {
                     Total Transactions
                   </p>
                   <p className="text-lg md:text-2xl font-bold text-gray-900 truncate">
-                    {statistics.totalTransactions}
+                    {statistics.totalTransactions.toLocaleString()}
                   </p>
                 </div>
                 <Activity className="w-6 h-6 md:w-8 md:h-8 text-blue-500 flex-shrink-0 ml-2" />
@@ -616,22 +591,6 @@ export function InventoryReportsAnalysis() {
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-purple-500">
-            <CardContent className="p-3 md:p-4">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0">
-                  <p className="text-xs md:text-sm font-medium text-gray-600 mb-1 truncate">
-                    Order Value
-                  </p>
-                  <p className="text-lg md:text-2xl font-bold text-gray-900 truncate">
-                    ₹{statistics.totalOrderValue.toLocaleString()}
-                  </p>
-                </div>
-                <IndianRupee className="w-6 h-6 md:w-8 md:h-8 text-purple-500 flex-shrink-0 ml-2" />
-              </div>
-            </CardContent>
-          </Card>
-
           <Card className="border-l-4 border-l-cyan-500">
             <CardContent className="p-3 md:p-4">
               <div className="flex items-center justify-between">
@@ -640,7 +599,10 @@ export function InventoryReportsAnalysis() {
                     Current Stock
                   </p>
                   <p className="text-lg md:text-2xl font-bold text-gray-900 truncate">
-                    {statistics.currentTotalStock.toLocaleString()}
+                    {
+                      // statistics.currentTotalStock.toLocaleString()
+                      0
+                    }
                   </p>
                 </div>
                 <Warehouse className="w-6 h-6 md:w-8 md:h-8 text-cyan-500 flex-shrink-0 ml-2" />
@@ -656,7 +618,7 @@ export function InventoryReportsAnalysis() {
                     Low Stock Items
                   </p>
                   <p className="text-lg md:text-2xl font-bold text-gray-900 truncate">
-                    {statistics.lowStockItems}
+                    {0}
                   </p>
                 </div>
                 <AlertCircle className="w-6 h-6 md:w-8 md:h-8 text-red-500 flex-shrink-0 ml-2" />
@@ -668,7 +630,7 @@ export function InventoryReportsAnalysis() {
 
       {/* Mobile Cards View */}
       <div className="md:hidden space-y-4">
-        {displayTransactions.length === 0 ? (
+        {displayTransactions.length === 0 && !loading ? (
           <Card>
             <CardContent className="pt-6">
               <div className="text-center py-8">
@@ -680,12 +642,19 @@ export function InventoryReportsAnalysis() {
               </div>
             </CardContent>
           </Card>
+        ) : loading ? (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-3"></div>
+                <p className="text-gray-500">Loading transactions...</p>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           displayTransactions.map((transaction: any) => {
-            const item =
-              transaction.item || getItemDetails(transaction.itemId) || {};
-            const vendorObj =
-              transaction.vendor || getVendor(transaction.vendorId) || null;
+            const item = transaction.itemId || {};
+            const vendorObj = transaction.vendorId || null;
             const key = transaction._id || transaction.id || Math.random();
             const isExpanded = expandedTransactions.has(key);
 
@@ -722,7 +691,7 @@ export function InventoryReportsAnalysis() {
                             {transaction.transactionType}
                           </Badge>
                           <span className="text-sm text-gray-600">
-                            {transaction.billNumber}
+                            {transaction.billNumber || "No bill"}
                           </span>
                         </div>
                       </div>
@@ -747,7 +716,7 @@ export function InventoryReportsAnalysis() {
                           <div className="flex justify-between">
                             <span className="text-sm text-gray-600">Code</span>
                             <span className="text-sm font-medium">
-                              {item?.code}
+                              {item?.code || "N/A"}
                             </span>
                           </div>
                           <div className="flex justify-between">
@@ -755,13 +724,13 @@ export function InventoryReportsAnalysis() {
                               Category
                             </span>
                             <Badge variant="secondary" className="text-xs">
-                              {item?.category}
+                              {item?.category || "N/A"}
                             </Badge>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-sm text-gray-600">Brand</span>
                             <span className="text-sm font-medium">
-                              {item?.brand}
+                              {item?.brand || "N/A"}
                             </span>
                           </div>
                         </div>
@@ -789,7 +758,7 @@ export function InventoryReportsAnalysis() {
                                 Contact
                               </span>
                               <span className="text-sm">
-                                {vendorObj.contactPerson}
+                                {vendorObj.contactPerson || "N/A"}
                               </span>
                             </div>
                           </div>
@@ -809,7 +778,7 @@ export function InventoryReportsAnalysis() {
                             </p>
                             <p className="text-sm font-medium">
                               {(transaction.newStock || 0).toLocaleString()}{" "}
-                              {item?.quantityUnit}
+                              {item?.quantityUnit || "units"}
                             </p>
                           </div>
                           <div>
@@ -827,7 +796,7 @@ export function InventoryReportsAnalysis() {
                                 ? "+"
                                 : "-"}
                               {(transaction.quantity || 0).toLocaleString()}{" "}
-                              {item?.quantityUnit}
+                              {item?.quantityUnit || "units"}
                             </p>
                           </div>
                         </div>
@@ -836,63 +805,40 @@ export function InventoryReportsAnalysis() {
                           <div>
                             <p className="text-xs text-gray-500 mb-1">Date</p>
                             <p className="text-sm">
-                              {transaction.transactionDate
-                                ? new Date(
-                                    transaction.transactionDate
-                                  ).toLocaleDateString()
-                                : "N/A"}
+                              {formatDate(
+                                transaction.transactionDate ||
+                                  transaction.createdAt ||
+                                  transaction.updatedAt
+                              )}
                             </p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-500 mb-1">
-                              Order Value
+                              Bill Date
                             </p>
-                            <p className="text-sm font-semibold text-green-600">
-                              {transaction.orderValue
-                                ? `₹${Number(
-                                    transaction.orderValue
-                                  ).toLocaleString()}`
+                            <p className="text-sm">
+                              {transaction.billDate
+                                ? formatDate(transaction.billDate)
                                 : "N/A"}
                             </p>
                           </div>
                         </div>
 
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">Reason</p>
-                          <p className="text-sm">{transaction.reason}</p>
-                        </div>
-                      </div>
+                        {transaction.reason && (
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Reason</p>
+                            <p className="text-sm">{transaction.reason}</p>
+                          </div>
+                        )}
 
-                      <Separator />
-
-                      {/* Actions */}
-                      <div className="flex gap-2 pt-2">
-                        <Button
-                          size="sm"
-                          className="flex-1"
-                          onClick={() =>
-                            console.log("View details", transaction)
-                          }
-                        >
-                          <Eye className="w-4 h-4 mr-2" />
-                          View Details
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              Edit Transaction
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>Print Receipt</DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600">
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {transaction.remarks && (
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">
+                              Remarks
+                            </p>
+                            <p className="text-sm">{transaction.remarks}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -925,196 +871,201 @@ export function InventoryReportsAnalysis() {
                   Stock Movement
                 </th>
                 <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Order Value (₹)
-                </th>
-                <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                  Date
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {displayTransactions.map((transaction: any) => {
-                const item =
-                  transaction.item || getItemDetails(transaction.itemId) || {};
-                const vendorObj =
-                  transaction.vendor || getVendor(transaction.vendorId) || null;
-                const key = transaction._id || transaction.id || Math.random();
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 lg:px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                      <p className="text-gray-500">Loading transactions...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : displayTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 lg:px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <BarChart4 className="w-12 h-12 text-gray-300 mb-4" />
+                      <p className="text-gray-500">No transactions found</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        Try adjusting your filters
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                displayTransactions.map((transaction: any) => {
+                  const item = transaction.itemId || {};
+                  const vendorObj = transaction.vendorId || null;
+                  const key =
+                    transaction._id || transaction.id || Math.random();
 
-                return (
-                  <tr key={key} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="shrink-0 h-10 w-10">
+                  return (
+                    <tr
+                      key={key}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="shrink-0 h-10 w-10">
+                            <div
+                              className={`h-10 w-10 rounded-lg flex items-center justify-center ${
+                                item?.iconColor === "amber"
+                                  ? "bg-amber-100 text-amber-600"
+                                  : "bg-blue-100 text-blue-600"
+                              }`}
+                            >
+                              <Package className="w-5 h-5" />
+                            </div>
+                          </div>
+                          <div className="ml-3 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">
+                              {item?.itemName || "Unknown Item"}
+                            </div>
+                            <div className="text-sm text-gray-500 truncate">
+                              {item?.code || "No code"}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1 mt-1">
+                              <Badge variant="secondary" className="text-xs">
+                                {item?.category || "No category"}
+                              </Badge>
+                              {item?.brand && (
+                                <Badge variant="outline" className="text-xs">
+                                  {item.brand}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        {vendorObj ? (
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium text-gray-900 truncate">
+                              {vendorObj.vendorName}
+                            </div>
+                            <div className="text-sm text-gray-500 truncate">
+                              {vendorObj.contactPerson || "No contact"}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-sm">N/A</span>
+                        )}
+                      </td>
+
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium text-gray-900">
+                            {(transaction.newStock || 0).toLocaleString()}{" "}
+                            {item?.quantityUnit || "units"}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Prev:{" "}
+                            {(transaction.previousStock || 0).toLocaleString()}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <div className="space-y-1">
                           <div
-                            className={`h-10 w-10 rounded-lg flex items-center justify-center ${
-                              item?.iconColor === "amber"
-                                ? "bg-amber-100 text-amber-600"
-                                : "bg-blue-100 text-blue-600"
+                            className={`text-sm font-medium ${
+                              transaction.transactionType === "Stock In"
+                                ? "text-green-600"
+                                : "text-red-600"
                             }`}
                           >
-                            <Package className="w-5 h-5" />
+                            {transaction.transactionType === "Stock In"
+                              ? "+"
+                              : "-"}
+                            {(transaction.quantity || 0).toLocaleString()}{" "}
+                            {item?.quantityUnit || "units"}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Bill: {transaction.billNumber || "No bill"}
                           </div>
                         </div>
-                        <div className="ml-3 min-w-0">
-                          <div className="text-sm font-medium text-gray-900 truncate">
-                            {item?.itemName}
-                          </div>
-                          <div className="text-sm text-gray-500 truncate">
-                            {item?.code}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-1 mt-1">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              {item?.category}
-                            </span>
-                            {item?.brand && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {item.brand}
-                              </span>
+                      </td>
+
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <Badge
+                          variant={
+                            transaction.transactionType === "Stock In"
+                              ? "default"
+                              : "destructive"
+                          }
+                          className="text-sm"
+                        >
+                          {transaction.transactionType === "Stock In" ? (
+                            <TrendingUp className="w-4 h-4 mr-1 inline" />
+                          ) : (
+                            <TrendingDown className="w-4 h-4 mr-1 inline" />
+                          )}
+                          {transaction.transactionType}
+                        </Badge>
+                      </td>
+
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium text-gray-900">
+                            {formatDate(
+                              transaction.transactionDate ||
+                                transaction.createdAt ||
+                                transaction.updatedAt
                             )}
                           </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                      {vendorObj ? (
-                        <div className="space-y-1">
-                          <div className="text-sm font-medium text-gray-900 truncate">
-                            {vendorObj.vendorName}
-                          </div>
-                          <div className="text-sm text-gray-500 truncate">
-                            {vendorObj.contactPerson}
+                          <div className="text-xs text-gray-500">
+                            {transaction.billDate &&
+                              `Bill: ${formatDate(transaction.billDate)}`}
                           </div>
                         </div>
-                      ) : (
-                        <span className="text-gray-400 text-sm">N/A</span>
-                      )}
-                    </td>
-
-                    <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                      <div className="space-y-1">
-                        <div className="text-sm font-medium text-gray-900">
-                          {(transaction.newStock || 0).toLocaleString()}{" "}
-                          {item?.quantityUnit}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {transaction.transactionDate
-                            ? new Date(
-                                transaction.transactionDate
-                              ).toLocaleDateString()
-                            : ""}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                      <div className="space-y-1">
-                        <div
-                          className={`text-sm font-medium ${
-                            transaction.transactionType === "Stock In"
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {transaction.transactionType === "Stock In"
-                            ? "+"
-                            : "-"}
-                          {(transaction.quantity || 0).toLocaleString()}{" "}
-                          {item?.quantityUnit}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Prev:{" "}
-                          {(transaction.previousStock || 0).toLocaleString()}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                          transaction.transactionType === "Stock In"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {transaction.transactionType === "Stock In" ? (
-                          <TrendingUp className="w-4 h-4 mr-1" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4 mr-1" />
-                        )}
-                        {transaction.transactionType}
-                      </span>
-                    </td>
-
-                    <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-green-600">
-                        {transaction.orderValue
-                          ? `₹${Number(
-                              transaction.orderValue
-                            ).toLocaleString()}`
-                          : "N/A"}
-                      </div>
-                    </td>
-
-                    <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-blue-200 text-blue-600 hover:bg-blue-50"
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          View
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-gray-200 text-gray-600 hover:bg-gray-50"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* Table Footer */}
+        {/* Updated Table Footer with Pagination */}
         <div className="px-4 lg:px-6 py-4 border-t border-gray-200 bg-gray-50">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <p className="text-sm text-gray-500 text-center sm:text-left">
-              Showing {displayTransactions.length} of{" "}
-              {displayTransactions.length} transactions
-              {reportType !== "daily" && ` (${reportType} report)`}
-              {searchTerm && ` (filtered by search)`}
-              {filteredTransactions.length === 0 && ` (showing sample data)`}
-            </p>
+          {!loading &&
+            pagination.totalPages > 0 &&
+            pagination.totalItems > 0 && (
+              <Pagination
+                currentPage={pagination.currentPage}
+                totalPages={pagination.totalPages}
+                totalItems={pagination.totalItems}
+                pageSize={pagination.pageSize}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+                pageSizeOptions={[10, 20, 30, 50]}
+              />
+            )}
 
-            <div className="flex items-center gap-2 justify-center sm:justify-start">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-3 text-gray-600 hover:bg-gray-100"
-                disabled
-              >
-                Previous
-              </Button>
-              <div className="px-3 py-1 bg-blue-500 text-white rounded text-sm font-medium">
-                1
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-3 text-gray-600 hover:bg-gray-100"
-                disabled
-              >
-                Next
-              </Button>
+          {/* Show loading or empty state */}
+          {loading && (
+            <div className="text-center py-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+              <p className="text-gray-500 mt-2">Loading transactions...</p>
             </div>
-          </div>
+          )}
+
+          {!loading && pagination.totalItems === 0 && (
+            <div className="text-center py-4">
+              <BarChart4 className="w-12 h-12 mx-auto text-gray-300 mb-2" />
+              <p className="text-gray-500">No transactions found</p>
+              <p className="text-sm text-gray-400 mt-1">
+                Try adjusting your filters or date range
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

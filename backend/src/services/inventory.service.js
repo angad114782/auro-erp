@@ -10,8 +10,24 @@ export const createItem = async (data) => {
   }
 };
 
+// In services/inventoryService.js
 export const updateItem = async (id, data) => {
-  return await InventoryItem.findByIdAndUpdate(id, data, { new: true });
+  // Add the update timestamp
+  const updateData = {
+    ...data,
+    updatedAt: new Date(),
+  };
+
+  // If converting from draft to non-draft, update additional fields
+  if (data.isDraft === false) {
+    updateData.isDraft = false;
+    updateData.lastUpdate = new Date().toLocaleDateString();
+    updateData.lastUpdateTime = new Date().toLocaleTimeString();
+  }
+
+  return await InventoryItem.findByIdAndUpdate(id, updateData, {
+    new: true,
+  }).populate("vendorId");
 };
 
 export const getItemById = async (id) => {

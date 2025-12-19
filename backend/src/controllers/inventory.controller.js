@@ -19,6 +19,79 @@ export const reserveCode = async (req, res) => {
   }
 };
 
+// // CREATE ITEM
+// export const createItem = async (req, res) => {
+//   try {
+//     console.log("BODY:", req.body);
+//     console.log("FILE:", req.file);
+
+//     const {
+//       itemName,
+//       category,
+//       color,
+//       vendorId,
+//       expiryDate,
+//       quantity,
+//       quantityUnit,
+//       description,
+//       billNumber,
+//       billDate,
+//       isDraft,
+//       // Code is NOT in body - will be generated
+//     } = req.body;
+
+//     if (!itemName || !category) {
+//       return res.status(400).json({ message: "itemName & category required" });
+//     }
+
+//     const fileUrl = req.file?.path || null;
+
+//     // Generate code on backend
+//     const code = await generateItemCode();
+
+//     const itemPayload = {
+//       itemName,
+//       category,
+//       // brand: brand || "N/A",
+//       color: color || "N/A",
+//       vendorId: vendorId || null,
+//       expiryDate: expiryDate || "",
+//       quantity: Number(quantity) || 0,
+//       quantityUnit: quantityUnit || "piece",
+//       description: description || "",
+//       billNumber: billNumber || "",
+//       billDate: billDate || "",
+//       billAttachmentUrl: fileUrl,
+//       isDraft: isDraft === "true",
+//       code,
+//     };
+
+//     const created = await inventoryService.createItem(itemPayload);
+
+//     // Create initial transaction when item is created and has quantity
+//     if (isDraft !== "true" && Number(quantity) > 0) {
+//       await transactionService.createTransaction({
+//         itemId: created._id,
+//         transactionType: "Stock In",
+//         quantity: Number(quantity) || 0,
+//         previousStock: 0,
+//         newStock: Number(quantity) || 0,
+//         billNumber: billNumber || "",
+//         vendorId: vendorId || null,
+//         reason: "Initial stock",
+//         remarks: "Item created with initial stock",
+//         transactionDate: new Date().toISOString(),
+//         billAttachmentUrl: fileUrl,
+//         createdBy: "Admin",
+//       });
+//     }
+
+//     return res.status(201).json(created);
+//   } catch (err) {
+//     console.error("CREATE ITEM ERROR:", err);
+//     return res.status(500).json({ message: err.message });
+//   }
+// };
 // CREATE ITEM
 export const createItem = async (req, res) => {
   try {
@@ -37,7 +110,6 @@ export const createItem = async (req, res) => {
       billNumber,
       billDate,
       isDraft,
-      // Code is NOT in body - will be generated
     } = req.body;
 
     if (!itemName || !category) {
@@ -45,14 +117,11 @@ export const createItem = async (req, res) => {
     }
 
     const fileUrl = req.file?.path || null;
-
-    // Generate code on backend
     const code = await generateItemCode();
 
     const itemPayload = {
       itemName,
       category,
-      // brand: brand || "N/A",
       color: color || "N/A",
       vendorId: vendorId || null,
       expiryDate: expiryDate || "",
@@ -68,7 +137,7 @@ export const createItem = async (req, res) => {
 
     const created = await inventoryService.createItem(itemPayload);
 
-    // Create initial transaction when item is created and has quantity
+    // Create transaction only if NOT a draft AND has quantity
     if (isDraft !== "true" && Number(quantity) > 0) {
       await transactionService.createTransaction({
         itemId: created._id,
@@ -92,7 +161,6 @@ export const createItem = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
-
 // LIST ITEMS
 export const listItems = async (req, res) => {
   try {
@@ -196,14 +264,66 @@ export const listItems = async (req, res) => {
 export const updateItem = async (req, res) => {
   try {
     const data = { ...req.body };
+    const { id } = req.params;
+
+    console.log("UPDATE ITEM DATA:", data); // Debug log
+    console.log("Item ID:", id); // Debug log
 
     if (req.file) {
       data.billAttachmentUrl = `/uploads/${req.file.filename}`;
     }
 
-    const updated = await inventoryService.updateItem(req.params.id, data);
+    // Get the current item before update
+    const currentItem = await InventoryItem.findById(id);
+    console.log("Current Item (before update):", {
+      _id: currentItem?._id,
+      isDraft: currentItem?.isDraft,
+      quantity: currentItem?.quantity,
+    });
+
+    if (!currentItem) {
+      return res.status(404).json({ message: "Item not found" });
+    }
+
+    // Update the item
+    const updated = await inventoryService.updateItem(id, data);
+
+    console.log("Updated Item:", {
+      _id: updated?._id,
+      isDraft: updated?.isDraft,
+      quantity: updated?.quantity,
+    });
+
+    // Check if item WAS a draft and is NOW converted to non-draft
+    if (
+      currentItem.isDraft === true &&
+      updated.isDraft === false && // Now it's not a draft
+      updated.quantity > 0
+    ) {
+      console.log("Creating transaction for draft conversion...");
+
+      // Create initial transaction for draft conversion
+      await transactionService.createTransaction({
+        itemId: id,
+        transactionType: "Stock In",
+        quantity: Number(updated.quantity),
+        previousStock: 0, // Since it was a draft, previous stock was effectively 0
+        newStock: Number(updated.quantity),
+        billNumber: updated.billNumber || "",
+        vendorId: updated.vendorId?._id || updated.vendorId || null,
+        reason: "Initial stock from draft conversion",
+        remarks: "Draft item converted to active with initial stock",
+        transactionDate: new Date().toISOString(),
+        billAttachmentUrl: updated.billAttachmentUrl || null,
+        createdBy: "Admin",
+      });
+
+      console.log("Transaction created successfully");
+    }
+
     res.json(updated);
   } catch (err) {
+    console.error("UPDATE ITEM ERROR:", err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -292,10 +412,183 @@ export const getHistory = async (req, res) => {
 
 export const getAllHistory = async (req, res) => {
   try {
-    const list = await transactionService.getAllTransactions();
-    res.json({ success: true, data: list });
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      from,
+      to,
+      reportType = "daily",
+    } = req.query;
+
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    /* ----------------------------------------------------
+       DATE FILTER (COMMON)
+    ---------------------------------------------------- */
+    const dateMatch = {};
+
+    if (from && to) {
+      dateMatch.createdAt = {
+        $gte: new Date(from),
+        $lte: new Date(new Date(to).setHours(23, 59, 59, 999)),
+      };
+    } else if (reportType !== "daily") {
+      const now = new Date();
+      let start = new Date();
+
+      if (reportType === "weekly") start.setDate(now.getDate() - 7);
+      if (reportType === "monthly") start.setMonth(now.getMonth() - 1);
+      if (reportType === "yearly") start.setFullYear(now.getFullYear() - 1);
+
+      dateMatch.createdAt = { $gte: start, $lte: now };
+    }
+
+    /* ----------------------------------------------------
+       AGGREGATION PIPELINE
+    ---------------------------------------------------- */
+    const pipeline = [
+      { $match: dateMatch },
+
+      // JOIN ITEMS
+      {
+        $lookup: {
+          from: "inventoryitems",
+          localField: "itemId",
+          foreignField: "_id",
+          as: "item",
+        },
+      },
+      { $unwind: { path: "$item", preserveNullAndEmptyArrays: true } },
+
+      // JOIN VENDORS
+      {
+        $lookup: {
+          from: "vendors",
+          localField: "vendorId",
+          foreignField: "_id",
+          as: "vendor",
+        },
+      },
+      { $unwind: { path: "$vendor", preserveNullAndEmptyArrays: true } },
+    ];
+
+    /* ----------------------------------------------------
+       SEARCH (NOW WORKS PROPERLY)
+    ---------------------------------------------------- */
+    if (search) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { billNumber: { $regex: search, $options: "i" } },
+            { "item.itemName": { $regex: search, $options: "i" } },
+            { "item.code": { $regex: search, $options: "i" } },
+            { "vendor.vendorName": { $regex: search, $options: "i" } },
+            { "vendor.contactPerson": { $regex: search, $options: "i" } },
+          ],
+        },
+      });
+    }
+
+    /* ----------------------------------------------------
+       FACET: DATA + STATS + COUNT
+    ---------------------------------------------------- */
+    pipeline.push({
+      $facet: {
+        // PAGINATED DATA
+        transactions: [
+          { $sort: { createdAt: -1 } },
+          { $skip: skip },
+          { $limit: limitNum },
+          {
+            $project: {
+              itemId: "$item",
+              vendorId: "$vendor",
+              transactionType: 1,
+              quantity: 1,
+              previousStock: 1,
+              newStock: 1,
+              billNumber: 1,
+              billDate: 1,
+              transactionDate: 1,
+              orderValue: 1,
+              reason: 1,
+              remarks: 1,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          },
+        ],
+
+        // TOTAL COUNT
+        totalCount: [{ $count: "count" }],
+
+        // GLOBAL STATS (FILTERED BUT NOT PAGINATED)
+        stats: [
+          {
+            $group: {
+              _id: "$transactionType",
+              totalQuantity: { $sum: "$quantity" },
+              totalValue: { $sum: "$orderValue" },
+              count: { $sum: 1 },
+            },
+          },
+        ],
+      },
+    });
+
+    /* ----------------------------------------------------
+       EXECUTE
+    ---------------------------------------------------- */
+    const [result] = await InventoryTransaction.aggregate(pipeline);
+
+    const transactions = result.transactions || [];
+    const totalItems = result.totalCount[0]?.count || 0;
+
+    let stats = {
+      totalStockIn: 0,
+      totalStockOut: 0,
+      totalOrderValue: 0,
+      stockInCount: 0,
+      stockOutCount: 0,
+    };
+
+    result.stats.forEach((s) => {
+      if (s._id === "Stock In") {
+        stats.totalStockIn = s.totalQuantity;
+        stats.totalOrderValue = s.totalValue;
+        stats.stockInCount = s.count;
+      }
+      if (s._id === "Stock Out") {
+        stats.totalStockOut = s.totalQuantity;
+        stats.stockOutCount = s.count;
+      }
+    });
+
+    /* ----------------------------------------------------
+       RESPONSE
+    ---------------------------------------------------- */
+    res.json({
+      success: true,
+      data: {
+        transactions,
+        pagination: {
+          currentPage: pageNum,
+          totalPages: Math.ceil(totalItems / limitNum),
+          totalItems,
+          pageSize: limitNum,
+        },
+        stats,
+      },
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("getAllHistory error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
 
