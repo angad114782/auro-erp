@@ -50,25 +50,10 @@ interface CuttingItem {
 interface ItemCuttingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  productData: {
-    id: string;
-    productName: string;
-    productionId: string;
-    targetQuantity: number;
-    currentQuantity?: number;
-    brand: string;
-    category: string;
-    color?: string;
-    size?: string;
-    poNumber?: string;
-    manufacturingCompany?: string;
-    country?: string;
-    stage?: string;
-    stageName?: string;
-    stageStatus?: string;
-    stageRemaining?: number;
-  } | null;
+  productData: any;
   stage: any;
+  rows: any[];          // 👈 backend rows
+  loadingRows: boolean;
 }
 
 const MobileItemCard = React.memo(
@@ -377,7 +362,10 @@ export function ItemCuttingDialog({
   onOpenChange,
   productData,
   stage = "cutting",
+  rows = [],
+  loadingRows = false,
 }: ItemCuttingDialogProps) {
+
   const [isMobile, setIsMobile] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
@@ -482,45 +470,39 @@ export function ItemCuttingDialog({
   };
 
   const stageDetails = getStageDetails();
+const [cuttingItems, setCuttingItems] = useState<CuttingItem[]>([]);
 
-  const [cuttingItems, setCuttingItems] = useState<CuttingItem[]>([
-    {
-      id: "1",
-      itemName: "Upper Leather (Premium)",
-      requiredQuantity: 2000,
-      alreadyCut: 1500,
-      cuttingToday: 0,
-      unit: "piece",
-      status: "in-progress",
-    },
-    {
-      id: "2",
-      itemName: "Sole Material (Rubber)",
-      requiredQuantity: 2000,
-      alreadyCut: 1000,
-      cuttingToday: 0,
-      unit: "piece",
-      status: "in-progress",
-    },
-    {
-      id: "3",
-      itemName: "Laces (Cotton)",
-      requiredQuantity: 2000,
-      alreadyCut: 1800,
-      cuttingToday: 0,
-      unit: "pair",
-      status: "in-progress",
-    },
-    {
-      id: "4",
-      itemName: "Insole Foam",
-      requiredQuantity: 2000,
-      alreadyCut: 1200,
-      cuttingToday: 0,
-      unit: "piece",
-      status: "in-progress",
-    },
-  ]);
+useEffect(() => {
+  if (!rows || rows.length === 0) {
+    setCuttingItems([]);
+    return;
+  }
+
+  const mapped: CuttingItem[] = rows.map((row) => {
+    const required = Number(row.requirement ?? 0);
+    const issued = Number(row.issued ?? 0);
+    const today = Number(row.progressToday ?? 0);
+
+    return {
+      id: row._id,
+      itemName: row.name || "Unnamed Item",
+      requiredQuantity: required,
+      alreadyCut: issued,
+      cuttingToday: today,
+      unit: row.unit || "unit",
+      status:
+        issued >= required
+          ? "completed"
+          : issued > 0
+          ? "in-progress"
+          : "pending",
+    };
+  });
+
+  setCuttingItems(mapped);
+  setExpandedItems(new Set());
+}, [rows, open]);
+
 
   if (!productData) return null;
 
@@ -544,12 +526,16 @@ export function ItemCuttingDialog({
     }
   };
 
-  const calculateMinimumAvailable = () => {
-    const availableQuantities = cuttingItems.map(
-      (item) => item.alreadyCut + item.cuttingToday
-    );
-    return Math.min(...availableQuantities);
-  };
+ const calculateMinimumAvailable = () => {
+  if (!cuttingItems.length) return 0;
+
+  const availableQuantities = cuttingItems.map((item) =>
+    Number(item.alreadyCut || 0) + Number(item.cuttingToday || 0)
+  );
+
+  return Math.min(...availableQuantities);
+};
+
 
   const calculateTotalAfterCutting = (item: CuttingItem) => {
     return item.alreadyCut + item.cuttingToday;
@@ -580,10 +566,8 @@ export function ItemCuttingDialog({
     }
   };
 
-  const getProgressPercentage = (item: CuttingItem) => {
-    const total = calculateTotalAfterCutting(item);
-    return Math.min((total / item.requiredQuantity) * 100, 100);
-  };
+
+
 
   const handleSaveCutting = () => {
     const totalCutting = cuttingItems.reduce(
@@ -863,7 +847,10 @@ export function ItemCuttingDialog({
                         item.requiredQuantity - totalAfter,
                         0
                       );
-                      const progressPercent = getProgressPercentage(item);
+                       const progressPercent =
+    item.requiredQuantity > 0
+      ? Math.min((totalAfter / item.requiredQuantity) * 100, 100)
+      : 0;
                       const isBottleneck =
                         totalAfter === minimumAvailable &&
                         minimumAvailable < productData.targetQuantity;
@@ -985,7 +972,9 @@ export function ItemCuttingDialog({
                                   {stageDetails.title} Progress
                                 </span>
                                 <span className="text-xs font-semibold text-gray-900">
-                                  {progressPercent.toFixed(1)}%
+                                 {Number.isFinite(progressPercent)
+    ? progressPercent.toFixed(1)
+    : "0.0"}%
                                 </span>
                               </div>
                               <Progress
