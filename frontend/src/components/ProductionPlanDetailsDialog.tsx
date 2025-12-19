@@ -189,12 +189,16 @@ interface ProductionPlan {
   status: string;
   priority: string;
   remarks?: string;
-  project: { _id: string };
   artNameSnapshot?: string;
   colorSnapshot?: string;
   coverImageSnapshot?: string;
   po?: any;
   quantitySnapshot?: number;
+  project?: {
+    _id: string;
+    productCode?: string;
+    gender?: string;
+  };
 }
 
 interface Props {
@@ -221,6 +225,26 @@ const [loadingPlants, setLoadingPlants] = useState(false);
 
   const isMobile = useMediaQuery("(max-width: 768px)");
   const isTablet = useMediaQuery("(min-width: 769px) and (max-width: 1024px)");
+const [persons, setPersons] = useState<{ _id: string; name: string }[]>([]);
+useEffect(() => {
+  if (!open) return;
+
+  const loadPersons = async () => {
+    try {
+      const res = await api.get("/assign-persons?includeInactive=true");
+      setPersons(res.data.items || []);
+    } catch (e) {
+      toast.error("Failed to load task coordinators");
+    }
+  };
+
+  loadPersons();
+}, [open]);
+const getPersonName = (_id?: string) => {
+  if (!_id) return "N/A";
+  return persons.find(p => p._id === _id)?.name || `Unknown (${_id.slice(-4)})`;
+};
+
 
   const [costData, setCostData] = useState({
     upper: [],
@@ -236,12 +260,12 @@ const [loadingPlants, setLoadingPlants] = useState(false);
   });
 
   const [productionPlanningData, setProductionPlanningData] = useState({
-    assignedPlant: "Plant A - Main Factory",
-    sendDate: "2025-01-15",
-    receivedDate: "2025-01-18",
-    soleVendor: "Rubber Solutions Ltd.",
-    soleColor: "Black",
-    soleReceivedDate: "2025-01-20",
+    assignedPlant: "Na ",
+    sendDate: "Na",
+    receivedDate: "Na",
+    soleVendor: "Na",
+    soleColor: "Na",
+    soleReceivedDate: "Na",
   });
 
   const [isEditingRemarks, setIsEditingRemarks] = useState(false);
@@ -295,7 +319,6 @@ useEffect(() => {
 
   loadPlants();
 }, [open]);
-
 
   useEffect(() => {
     const loadTentativeCost = async () => {
@@ -408,18 +431,19 @@ useEffect(() => {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "High":
-        return "bg-red-100 text-red-800";
-      case "Medium":
-        return "bg-yellow-100 text-yellow-800";
-      case "Low":
-        return "bg-green-100 text-green-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
+ const getPriorityColor = (priority?: string) => {
+  switch (priority?.toLowerCase()) {
+    case "high":
+      return "bg-red-100 text-red-800";
+    case "medium":
+      return "bg-yellow-100 text-yellow-800";
+    case "low":
+      return "bg-green-100 text-green-800";
+    default:
+      return "bg-gray-100 text-gray-800";
+  }
+};
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -439,14 +463,15 @@ useEffect(() => {
               </div>
               <div className="flex-1 min-w-0">
                 <DialogTitle className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 truncate">
-                  {plan.planName}
+                  {plan.artNameSnapshot}
                 </DialogTitle>
                 <DialogDescription className="sr-only">
   Production plan details, scheduling, costs and actions.
 </DialogDescription>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm sm:text-base md:text-lg font-mono text-blue-600 truncate">
-                    {plan.projectCode}
+                   {plan?.project?.autoCode || "na"}
+
                   </span>
                   <Badge
                     className={`${getPriorityColor(
@@ -520,7 +545,9 @@ useEffect(() => {
                       Task Coordinator
                     </p>
                     <p className="text-sm font-medium text-orange-900 truncate">
-                      {plan.assignPerson || "N/A"}
+                      {getPersonName(plan.project?.assignPerson)}
+
+
                     </p>
                   </div>
                 </div>

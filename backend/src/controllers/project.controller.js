@@ -14,10 +14,11 @@ import {
 } from "../services/project.service.js";
 import { Project } from "../models/Project.model.js";
 import { createProductionFromProject } from "../services/productionProject.service.js";
-
+import { assignReservedCodeOrNew } from "../services/sequence.service.js";
 /** CREATE */
 export const create = async (req, res, next) => {
   const session = await mongoose.startSession();
+
   try {
     await session.withTransaction(async () => {
       const {
@@ -41,37 +42,43 @@ export const create = async (req, res, next) => {
         clientApproval,
       } = req.body;
 
+      // ---------- VALIDATION ----------
       if (!sequenceId)
         return res.status(400).json({ message: "sequenceId is required" });
-      if (!sequenceId)
-        return res.status(400).json({ message: "sequenceId is required" });
+
       if (!company || !brand || !category)
         return res
           .status(400)
           .json({ message: "company, brand, category are required" });
-      if (!color) return res.status(400).json({ message: "color is required" });
 
-      const seq = await SequenceCode.findOne({ _id: sequenceId }).session(
-        session
-      );
-      if (!seq) return res.status(404).json({ message: "sequence not found" });
-      if (seq.status !== "reserved")
-        return res.status(409).json({ message: "sequence is not reserved" });
+      if (!color)
+        return res.status(400).json({ message: "color is required" });
 
-      const autoCode = seq.code;
-
+      // ---------- FILES ----------
       let coverImage = "";
       let sampleImages = [];
-      if (req.files?.coverImage?.[0]) coverImage = req.files.coverImage[0].path;
+
+      if (req.files?.coverImage?.[0])
+        coverImage = req.files.coverImage[0].path;
+
       if (req.files?.sampleImages?.length)
         sampleImages = req.files.sampleImages.map((f) => f.path);
 
+      // ---------- 🔥 GET SAFE AUTO CODE FIRST ----------
+      const seq = await assignReservedCodeOrNew(
+        sequenceId,
+        null,        // projectId abhi nahi hai
+        "PRJ",
+        session
+      );
+
+      // ---------- CREATE PROJECT WITH autoCode ----------
       const project = await createProject(
         {
           company,
           brand,
           category,
-          autoCode,
+          autoCode: seq.code, // ✅ NOW PROVIDED
           type,
           country,
           assignPerson,
@@ -92,23 +99,29 @@ export const create = async (req, res, next) => {
         { session }
       );
 
-      seq.status = "assigned";
+      // ---------- LINK CODE → PROJECT ----------
       seq.project = project._id;
+      seq.status = "assigned";
       seq.assignedAt = new Date();
       await seq.save({ session });
 
-      return res
-        .status(201)
-        .json({ message: "project created", data: project });
+      return res.status(201).json({
+        message: "project created",
+        data: project,
+      });
     });
   } catch (err) {
-    if (err?.code === 11000)
-      return res.status(409).json({ message: "autoCode already exists" });
+    if (err?.code === 11000) {
+      return res
+        .status(409)
+        .json({ message: "autoCode already exists" });
+    }
     next(err);
   } finally {
     session.endSession();
   }
 };
+
 
 export const list = async (req, res, next) => {
   try {

@@ -147,7 +147,7 @@ export function CreateProductionCardDialog({
     try {
       const res = await api.get(`/projects/${projectId}/production-cards`);
 
-      console.log(res, "Production Cards API Response");
+      // console.log(res, "Production Cards API Response");
       const items =
         res?.data?.data?.items ?? res?.data?.items ?? res?.data?.data ?? [];
       const normalized = Array.isArray(items)

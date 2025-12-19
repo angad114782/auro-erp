@@ -61,15 +61,45 @@ export async function reserveCode(name = "PRJ") {
 }
 
 // submit → assign to this project
-export async function assignReservedCode(sequenceId, projectId) {
-  const seq = await SequenceCode.findOne({ _id: sequenceId });
-  if (!seq) throw new Error("sequence not found");
-  if (seq.status !== "reserved") throw new Error("sequence not reserved");
+export async function assignReservedCodeOrNew(
+  sequenceId,
+  projectId,
+  name = "PRJ",
+  session
+) {
+  let seq = null;
 
-  seq.status = "assigned";
-  seq.project = projectId;
-  await seq.save();
-  return seq.toObject();
+  // 1️⃣ Try using provided reserved sequence
+  if (sequenceId) {
+    seq = await SequenceCode.findOne({
+      _id: sequenceId,
+      status: "reserved",
+    }).session(session);
+  }
+
+  // 2️⃣ If not found / already used → reserve NEW
+  if (!seq) {
+    const fresh = await reserveCode(name);
+
+    seq = await SequenceCode.findOne({
+      _id: fresh._id,
+    }).session(session);
+  }
+
+  // 3️⃣ SAFETY CHECK
+  if (!seq) {
+    throw new Error("Unable to assign sequence code");
+  }
+
+  // 4️⃣ Mark assigned if project already exists
+  if (projectId) {
+    seq.status = "assigned";
+    seq.project = projectId;
+    seq.assignedAt = new Date();
+    await seq.save({ session });
+  }
+
+  return seq;
 }
 
 // cancel/close modal → cancel reservation

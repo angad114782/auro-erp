@@ -300,7 +300,7 @@ export function ProductionPlanning() {
         const res = await api.get("/projects/production");
         // axios returns response in res.data
         const raw = res.data;
-        console.log("raw fetchProductionPlans response:", raw);
+        // console.log("raw fetchProductionPlans response:", raw);
 
         // Normalize to array
         let rawItems: any[] = [];
