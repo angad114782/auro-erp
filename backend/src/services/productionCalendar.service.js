@@ -64,30 +64,48 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export const createCalendarEntryService = async (payload, { session, by = null } = {}) => {
-  const { projectId, scheduling, productionDetails, additional } = payload || {};
+export const createCalendarEntryService = async (
+  payload,
+  { session, by = null } = {}
+) => {
+  const { projectId, scheduling, productionDetails = {}, additional } = payload || {};
 
   if (!projectId) throw error400("projectId is required");
-  if (!scheduling?.scheduleDate) throw error400("scheduling.scheduleDate is required");
-  if (productionDetails?.quantity == null) throw error400("productionDetails.quantity is required");
+  if (!scheduling?.scheduleDate)
+    throw error400("scheduling.scheduleDate is required");
 
-  // fetch project
+  // 🔹 FETCH PROJECT FIRST
   let projectQuery = Project.findById(projectId)
     .populate("brand", "name")
     .populate("category", "name")
     .populate("company", "name");
 
   if (session) projectQuery = projectQuery.session(session);
+
   const project = await projectQuery.lean();
+  if (!project) throw error404("Project not found");
 
-  if (!project || !project.isActive) throw error404("Project not found or not active");
-
-  // fetch PO
+  // 🔹 FETCH PO
   let poQuery = PoDetails.findOne({ project: project._id });
   if (session) poQuery = poQuery.session(session);
   const po = await poQuery.lean();
 
-  // snapshot
+  // 🔥 AUTO-FILL quantity (NOW SAFE)
+  if (!productionDetails.quantity) {
+    if (po?.quantity) {
+      productionDetails.quantity = po.quantity;
+    } else if (project.quantitySnapshot) {
+      productionDetails.quantity = project.quantitySnapshot;
+    } else if (project.quantity) {
+      productionDetails.quantity = project.quantity;
+    }
+  }
+
+  if (!productionDetails.quantity) {
+    throw error400("productionDetails.quantity is required");
+  }
+
+  // 🔹 SNAPSHOT
   const snapshot = {
     autoCode: project.autoCode,
     artName: project.artName,
@@ -105,26 +123,36 @@ export const createCalendarEntryService = async (payload, { session, by = null }
     poRef: po?._id || null,
   };
 
+  // 🔹 FINAL DOC
   const doc = {
     project: project._id,
     projectSnapshot: snapshot,
     scheduling: {
       scheduleDate: new Date(scheduling.scheduleDate),
-      assignedPlant: scheduling.assignedPlant ? new mongoose.Types.ObjectId(scheduling.assignedPlant) : null,
+      assignedPlant: scheduling.assignedPlant
+        ? new mongoose.Types.ObjectId(scheduling.assignedPlant)
+        : null,
       soleFrom: scheduling.soleFrom || "",
       soleColor: scheduling.soleColor || "",
-      soleExpectedDate: scheduling.soleExpectedDate ? new Date(scheduling.soleExpectedDate) : null,
+      soleExpectedDate: scheduling.soleExpectedDate
+        ? new Date(scheduling.soleExpectedDate)
+        : null,
     },
-    productionDetails: { quantity: Number(productionDetails.quantity) },
-    additional: { remarks: additional?.remarks || "" },
+    productionDetails: {
+      quantity: Number(productionDetails.quantity),
+    },
+    additional: {
+      remarks: additional?.remarks || "",
+    },
     createdBy: by,
     updatedBy: by,
     isActive: true,
   };
 
-  const createdArr = await ProductionCalendar.create([doc], { session });
-  return createdArr[0];
+  const created = await ProductionCalendar.create([doc], { session });
+  return created[0];
 };
+
 
 function error400(msg) {
   return Object.assign(new Error(msg), { status: 400 });

@@ -555,10 +555,10 @@ useEffect(() => {
                   label: "Product Code",
                   value: productionData.projectCode || "-",
                 },
-                { label: "Art/Colour", value: productionData.artColour || "-" },
+                { label: "Colour", value: productionData.color || "-" },
                 { label: "Brand", value: productionData.brand || "-" },
                 { label: "Category", value: productionData.category || "-" },
-                { label: "Type", value: productionData.type || "-" },
+                // { label: "Type", value: productionData.type || "-" },
               ].map((item, index) => (
                 <div key={index} className="space-y-2">
                   <div className="text-xs sm:text-sm text-gray-600">

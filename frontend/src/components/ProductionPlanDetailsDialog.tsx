@@ -189,17 +189,25 @@ interface ProductionPlan {
   status: string;
   priority: string;
   remarks?: string;
+
   artNameSnapshot?: string;
   colorSnapshot?: string;
   coverImageSnapshot?: string;
-  po?: any;
+
   quantitySnapshot?: number;
+
   project?: {
     _id: string;
-    productCode?: string;
+    autoCode?: string;
     gender?: string;
+    quantity?: number;
+
+    po?: {
+      quantity?: number;
+    };
   };
 }
+
 
 interface Props {
   open: boolean;
@@ -272,16 +280,20 @@ const getPersonName = (_id?: string) => {
   const [editedRemarks, setEditedRemarks] = useState("");
   const [openCreateCardDialog, setOpenCreateCardDialog] = useState(false);
   const [isScheduleLoading, setIsScheduleLoading] = useState(false);
-  const handleSaveSchedule = async () => {
-  if (!calendarId) {
-    toast.error("Schedule not found");
-    return;
-  }
-
+ const handleSaveSchedule = async () => {
   try {
     setIsSavingSchedule(true);
 
-    await api.put(`/calendar/${calendarId}`, {
+    const payload = {
+      projectId: plan?.project?._id,
+       productionDetails: {
+    quantity:
+  plan.quantity ??
+  plan.quantitySnapshot ??
+  plan.project?.po?.quantity ??
+  0,
+
+  },
       scheduling: {
         assignedPlant: productionPlanningData.assignedPlant,
         scheduleDate: productionPlanningData.sendDate,
@@ -290,13 +302,25 @@ const getPersonName = (_id?: string) => {
         soleColor: productionPlanningData.soleColor,
         soleExpectedDate: productionPlanningData.soleReceivedDate,
       },
-    });
+    };
 
-    toast.success("Production schedule updated");
+    // 🟢 CASE 1: Schedule already exists → UPDATE
+    if (calendarId) {
+      await api.put(`/calendar/${calendarId}`, payload);
+      toast.success("Production schedule updated");
+    }
+
+    // 🟢 CASE 2: No schedule exists → CREATE NEW
+    else {
+      const res = await api.post("/calendar", payload);
+      setCalendarId(res.data?.data?._id || null);
+      toast.success("Production schedule created");
+    }
+
     setIsEditingSchedule(false);
   } catch (err) {
     console.error(err);
-    toast.error("Failed to update schedule");
+    toast.error("Failed to save production schedule");
   } finally {
     setIsSavingSchedule(false);
   }
