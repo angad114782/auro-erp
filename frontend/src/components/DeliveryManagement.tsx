@@ -5,33 +5,26 @@ import {
   CheckCircle,
   Clock,
   Calendar,
-  IndianRupee,
-  MapPin,
-  Phone,
-  User,
-  Edit,
-  Edit2,
-  Eye,
   Search,
   Filter,
-  Download,
   Plus,
-  TrendingUp,
-  AlertCircle,
-  FileText,
+  RefreshCw,
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   Save,
   X,
-  RefreshCw,
-  MoreVertical,
+  Edit2,
+  Eye,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
   Receipt,
   FileDigit,
   Truck as TruckIcon,
+  FileText,
+  Info,
+  Tag,
+  Hash,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -43,7 +36,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogDescription,
 } from "./ui/dialog";
 import { Label } from "./ui/label";
 import {
@@ -85,6 +77,9 @@ interface DeliveryItem {
   orderQuantity: number;
   status: "pending" | "parcel_delivered" | "delivered";
   agingDays: number;
+  billNumber: string;
+  deliveryDate: string;
+  lrNumber: string;
   project?: {
     _id: string;
     autoCode: string;
@@ -98,29 +93,56 @@ interface DeliveryItem {
     poNumber: string;
     deliveryDate: string;
   };
+  remarks: string; // FIXED: Changed from remark to remarks
   createdAt: string;
   updatedAt: string;
+}
+
+interface DisplayDeliveryItem {
+  id: string;
+  projectCode: string;
+  productName: string;
+  brandName: string;
+  categoryName: string;
+  gender: string;
+  poNumber: string;
+  poReceivedDate: string;
+  quantity: number;
+  deliveryStatus: "Pending" | "Parcel Delivered" | "Delivered";
+  deliveryDate: string;
+  expectedDeliveryDate: string;
+  billNumber: string;
+  lrNumber: string;
+  actualDeliveryDate: string;
+  aging: number;
+  remarks: string; // FIXED: Changed from remark to remarks
+  backendData: DeliveryItem;
+}
+
+interface EditFormData {
+  billNumber: string;
+  deliveryDate: string;
+  lrNumber: string;
+  status: string;
+  remarks: string; // FIXED: Changed from remark to remarks
 }
 
 export function DeliveryManagement({
   currentSubModule,
 }: DeliveryManagementProps) {
-  const {
-    deliveryItems: localDeliveryItems,
-    updateDeliveryItem,
-    addDeliveryItem,
-    deleteDeliveryItem,
-  } = useERPStore();
+  const { deliveryItems: localDeliveryItems, updateDeliveryItem } =
+    useERPStore();
 
   const [backendDeliveries, setBackendDeliveries] = useState<DeliveryItem[]>(
     []
   );
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDelivery, setSelectedDelivery] = useState<any>(null);
+  const [selectedDelivery, setSelectedDelivery] =
+    useState<DisplayDeliveryItem | null>(null);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [sortBy, setSortBy] = useState<"aging" | "poDate" | "deliveryDate">(
     "aging"
   );
@@ -129,8 +151,14 @@ export function DeliveryManagement({
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [isDateFromOpen, setIsDateFromOpen] = useState(false);
   const [isDateToOpen, setIsDateToOpen] = useState(false);
-  const [editStatus, setEditStatus] = useState<string>("");
-  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+
+  const [editFormData, setEditFormData] = useState<EditFormData>({
+    billNumber: "",
+    deliveryDate: "",
+    lrNumber: "",
+    status: "",
+    remarks: "", // FIXED: Changed from remark to remarks
+  });
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -152,7 +180,6 @@ export function DeliveryManagement({
 
       if (endpoint) {
         const res = await api.get(endpoint);
-        console.log("Backend response:", res.data);
         if (res.data.success) {
           setBackendDeliveries(res.data.items || []);
         } else {
@@ -172,7 +199,7 @@ export function DeliveryManagement({
     fetchBackendData();
   }, [currentSubModule]);
 
-  // Convert backend data to display format for the list
+  // Convert backend data to display format
   const displayItems = useMemo(() => {
     return backendDeliveries.map((item) => ({
       id: item._id,
@@ -180,6 +207,7 @@ export function DeliveryManagement({
       productName: item.productName || "N/A",
       brandName: item.brand || "N/A",
       categoryName: item.category || "N/A",
+      gender: item.gender || "N/A",
       poNumber: item.poNumber || "N/A",
       poReceivedDate:
         item.poReceivedDate || new Date().toISOString().split("T")[0],
@@ -190,19 +218,18 @@ export function DeliveryManagement({
           : item.status === "parcel_delivered"
           ? "Parcel Delivered"
           : "Delivered",
-      deliveryDate: item.deliveryDateExpected || "",
+      deliveryDate: item.deliveryDate || "",
       expectedDeliveryDate: item.deliveryDateExpected || "",
+      billNumber: item.billNumber || "",
+      lrNumber: item.lrNumber || "",
+      actualDeliveryDate: item.deliveryDate || "",
       aging: item.agingDays || 0,
-      // Additional fields for the new inputs
-      billNumber: "", // New field
-      lrNumber: "", // New field
-      actualDeliveryDate: "", // New field
-      // Store original backend data for details
+      remarks: item.remarks || "", // FIXED: Changed from remark to remarks
       backendData: item,
     }));
   }, [backendDeliveries]);
 
-  // Filter deliveries based on current sub-module
+  // Filter deliveries
   const filteredDeliveries = useMemo(() => {
     let filtered = displayItems;
 
@@ -214,10 +241,8 @@ export function DeliveryManagement({
           item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
           item.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
           item.brandName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (item.billNumber &&
-            item.billNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (item.lrNumber &&
-            item.lrNumber.toLowerCase().includes(searchTerm.toLowerCase()))
+          item.billNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.lrNumber.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -282,7 +307,7 @@ export function DeliveryManagement({
 
   const totalPages = Math.ceil(filteredDeliveries.length / itemsPerPage);
 
-  // Calculate statistics based on backend data
+  // Calculate statistics
   const stats = useMemo(() => {
     const pending = backendDeliveries.filter(
       (item) => item.status === "pending"
@@ -313,163 +338,185 @@ export function DeliveryManagement({
     };
   }, [backendDeliveries]);
 
-  const handleRowClick = (delivery: any) => {
+  // Handle row click
+  const handleRowClick = (delivery: DisplayDeliveryItem) => {
     setSelectedDelivery(delivery);
-    // Initialize editedData with default values for new fields
-    setEditedData({
-      ...delivery,
+    // Initialize edit form with only editable fields
+    setEditFormData({
       billNumber: delivery.billNumber || "",
+      deliveryDate: delivery.actualDeliveryDate || "",
       lrNumber: delivery.lrNumber || "",
-      actualDeliveryDate: delivery.actualDeliveryDate || "",
+      status: delivery.deliveryStatus,
+      remarks: delivery.remarks || "", // FIXED: Changed from remark to remarks
     });
-    setEditStatus(delivery.deliveryStatus);
     setIsEditing(false);
     setIsDetailsDialogOpen(true);
   };
 
+  // Handle edit click
   const handleEditClick = () => {
     setIsEditing(true);
   };
 
+  // Handle cancel edit
   const handleCancelEdit = () => {
-    setEditedData({
-      ...selectedDelivery,
-      billNumber: selectedDelivery.billNumber || "",
-      lrNumber: selectedDelivery.lrNumber || "",
-      actualDeliveryDate: selectedDelivery.actualDeliveryDate || "",
-    });
-    setEditStatus(selectedDelivery?.deliveryStatus || "");
+    if (selectedDelivery) {
+      setEditFormData({
+        billNumber: selectedDelivery.billNumber || "",
+        deliveryDate: selectedDelivery.actualDeliveryDate || "",
+        lrNumber: selectedDelivery.lrNumber || "",
+        status: selectedDelivery.deliveryStatus,
+        remarks: selectedDelivery.remarks || "", // FIXED: Changed from remark to remarks
+      });
+    }
     setIsEditing(false);
   };
 
+  // Handle save edit - optimized version
   const handleSaveEdit = async () => {
     if (!selectedDelivery) return;
 
     try {
-      // Prepare the data to save
-      const updatedData = {
-        ...editedData,
-        // Include the new fields
-        billNumber: editedData.billNumber || "",
-        lrNumber: editedData.lrNumber || "",
-        actualDeliveryDate: editedData.actualDeliveryDate || "",
+      setSaving(true);
+
+      // Helper function to compare values (handles null/undefined)
+      const hasChanged = (newValue: any, oldValue: any) => {
+        // Handle null/undefined cases
+        if (newValue === undefined || newValue === null) return false;
+        if (oldValue === undefined || oldValue === null) oldValue = "";
+
+        // Trim strings for comparison
+        if (typeof newValue === "string" && typeof oldValue === "string") {
+          return newValue.trim() !== oldValue.trim();
+        }
+
+        // For other types, use strict comparison
+        return newValue !== oldValue;
       };
 
-      // If editing status, call the API
-      if (editStatus !== selectedDelivery.deliveryStatus) {
-        const endpoint =
-          editStatus === "Parcel Delivered"
-            ? `/delivery/parcel/${selectedDelivery.id}`
-            : editStatus === "Delivered"
-            ? `/delivery/final/${selectedDelivery.id}`
-            : null;
+      // Convert frontend status to backend format
+      const statusMap = {
+        Pending: "pending",
+        "Parcel Delivered": "parcel_delivered",
+        Delivered: "delivered",
+      };
 
-        if (endpoint) {
-          const res = await api.put(endpoint);
-          if (res.data.success) {
-            toast.success(res.data.message);
-            // Refresh data after status update
-            fetchBackendData();
-          }
-        }
+      // Get current backend status
+      const currentBackendStatus =
+        statusMap[selectedDelivery.deliveryStatus] || "pending";
+      const newBackendStatus = statusMap[editFormData.status] || "pending";
+
+      // Prepare update data
+      const updateData: any = {};
+      let hasChanges = false;
+
+      // Check each field for changes
+      if (hasChanged(editFormData.billNumber, selectedDelivery.billNumber)) {
+        updateData.billNumber = editFormData.billNumber || "";
+        hasChanges = true;
       }
 
-      // Update local storage with new fields
-      updateDeliveryItem(selectedDelivery.id, updatedData);
+      if (
+        hasChanged(
+          editFormData.deliveryDate,
+          selectedDelivery.actualDeliveryDate
+        )
+      ) {
+        updateData.deliveryDate = editFormData.deliveryDate || "";
+        hasChanges = true;
+      }
 
-      toast.success("Delivery updated successfully");
-      setIsEditing(false);
-      setIsDetailsDialogOpen(false);
+      if (hasChanged(editFormData.lrNumber, selectedDelivery.lrNumber)) {
+        updateData.lrNumber = editFormData.lrNumber || "";
+        hasChanges = true;
+      }
+
+      if (hasChanged(newBackendStatus, currentBackendStatus)) {
+        updateData.status = newBackendStatus;
+        hasChanges = true;
+      }
+
+      // FIXED: Changed from remark to remarks
+      if (hasChanged(editFormData.remarks, selectedDelivery.remarks)) {
+        updateData.remarks = editFormData.remarks || ""; // FIXED: Changed from remark to remarks
+        hasChanges = true;
+      }
+
+      // If no changes, show info and exit edit mode
+      if (!hasChanges) {
+        toast.info("No changes made");
+        setIsEditing(false);
+        return;
+      }
+
+      // Add updatedBy field
+      updateData.updatedBy = "user";
+
+      console.log("Updating delivery with changes:", updateData);
+
+      // Call update API
+      const response = await api.put(
+        `/delivery/update/${selectedDelivery.id}`,
+        updateData
+      );
+
+      if (response.data.success) {
+        toast.success("Delivery updated successfully");
+
+        // Update local state
+        const updatedDelivery = response.data.delivery;
+        setBackendDeliveries((prev) =>
+          prev.map((item) =>
+            item._id === selectedDelivery.id ? updatedDelivery : item
+          )
+        );
+
+        // Update selected delivery
+        const updatedDisplayItem: DisplayDeliveryItem = {
+          ...selectedDelivery,
+          billNumber: updatedDelivery.billNumber || "",
+          actualDeliveryDate: updatedDelivery.deliveryDate || "",
+          lrNumber: updatedDelivery.lrNumber || "",
+          deliveryStatus:
+            updatedDelivery.status === "pending"
+              ? "Pending"
+              : updatedDelivery.status === "parcel_delivered"
+              ? "Parcel Delivered"
+              : "Delivered",
+          remarks: updatedDelivery.remarks || "", // FIXED: Changed from remark to remarks
+          backendData: updatedDelivery,
+        };
+
+        setSelectedDelivery(updatedDisplayItem);
+
+        // Update local storage if needed
+        updateDeliveryItem(selectedDelivery.id, updatedDisplayItem);
+
+        setIsEditing(false);
+      }
     } catch (error: any) {
-      console.error("Error updating:", error);
+      console.error("Error updating delivery:", error);
       toast.error(error.response?.data?.error || "Failed to update delivery");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleAddDelivery = () => {
-    // Add new delivery with all fields
-    const newDelivery = {
-      ...formData,
-      projectId: Date.now().toString(),
-      billNumber: formData.billNumber || "",
-      lrNumber: formData.lrNumber || "",
-      actualDeliveryDate: formData.actualDeliveryDate || "",
-    };
-
-    addDeliveryItem(newDelivery);
-
-    toast.success("Delivery added successfully");
-    setIsAddDialogOpen(false);
-    setFormData({
-      projectCode: "",
-      productName: "",
-      brandName: "",
-      categoryName: "",
-      poNumber: "",
-      poReceivedDate: "",
-      quantity: 0,
-      deliveryStatus: "Pending",
-      deliveryDate: "",
-      expectedDeliveryDate: "",
-      billNumber: "",
-      lrNumber: "",
-      actualDeliveryDate: "",
-      trackingNumber: "",
-      courierService: "",
-      deliveryAddress: "",
-      customerName: "",
-      customerContact: "",
-      remarks: "",
-    });
-  };
-
-  // Form state for editing
-  const [editedData, setEditedData] = useState<any>({
-    billNumber: "",
-    lrNumber: "",
-    actualDeliveryDate: "",
-  });
-
-  // Form state for adding
-  const [formData, setFormData] = useState<any>({
-    projectCode: "",
-    productName: "",
-    brandName: "",
-    categoryName: "",
-    poNumber: "",
-    poReceivedDate: "",
-    quantity: 0,
-    deliveryStatus: "Pending",
-    deliveryDate: "",
-    expectedDeliveryDate: "",
-    billNumber: "",
-    lrNumber: "",
-    actualDeliveryDate: "",
-    trackingNumber: "",
-    courierService: "",
-    deliveryAddress: "",
-    customerName: "",
-    customerContact: "",
-    remarks: "",
-  });
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
+  // Format date
   const formatDate = (dateString?: string) => {
     if (!dateString) return "-";
-    return new Date(dateString).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    try {
+      return new Date(dateString).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return "-";
+    }
   };
 
+  // Get status badge
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "Pending":
@@ -508,27 +555,29 @@ export function DeliveryManagement({
     }
   };
 
+  // Get aging color
   const getAgingColor = (aging: number) => {
     if (aging < 30) return "text-green-600";
     if (aging < 60) return "text-orange-600";
     return "text-red-600";
   };
 
-  // Mobile Responsive Functions
-  const toggleCardExpansion = (id: string) => {
-    setExpandedCard(expandedCard === id ? null : id);
+  // Handle form input change
+  const handleInputChange = (field: keyof EditFormData, value: string) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
-  // Mobile view renderer
-  const renderMobileCard = (delivery: any, index: number) => {
-    const isExpanded = expandedCard === delivery.id;
+  // Render mobile card
+  const renderMobileCard = (delivery: DisplayDeliveryItem, index: number) => {
     return (
       <Card
         key={delivery.id}
         className="mb-3 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
       >
         <CardContent className="p-4">
-          {/* Card Header */}
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
@@ -552,21 +601,13 @@ export function DeliveryManagement({
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 p-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleCardExpansion(delivery.id);
-                }}
+                onClick={() => handleRowClick(delivery)}
               >
-                {isExpanded ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
-                )}
+                <Eye className="w-4 h-4" />
               </Button>
             </div>
           </div>
 
-          {/* Basic Info Row */}
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
               <p className="text-xs text-gray-500">PO Number</p>
@@ -582,96 +623,26 @@ export function DeliveryManagement({
             </div>
           </div>
 
-          {/* Collapsible Content */}
-          {isExpanded && (
-            <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-gray-500">Brand</p>
-                  <p className="text-sm text-gray-900">{delivery.brandName}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Category</p>
-                  <p className="text-sm text-gray-900">
-                    {delivery.categoryName}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">PO Date</p>
-                  <p className="text-sm text-gray-900">
-                    {formatDate(delivery.poReceivedDate)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Delivery Date</p>
-                  <p className="text-sm text-gray-900">
-                    {delivery.deliveryDate
-                      ? formatDate(delivery.deliveryDate)
-                      : formatDate(delivery.expectedDeliveryDate)}
-                  </p>
-                </div>
-                {delivery.billNumber && (
-                  <div>
-                    <p className="text-xs text-gray-500">Bill No.</p>
-                    <p className="text-sm text-gray-900">
-                      {delivery.billNumber}
-                    </p>
-                  </div>
-                )}
-                {delivery.lrNumber && (
-                  <div>
-                    <p className="text-xs text-gray-500">LR No.</p>
-                    <p className="text-sm text-gray-900">{delivery.lrNumber}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                <div>
-                  <p className="text-xs text-gray-500">Aging</p>
-                  <p
-                    className={`text-sm font-medium ${getAgingColor(
-                      delivery.aging
-                    )}`}
-                  >
-                    {delivery.aging} days
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => handleRowClick(delivery)}
-                  className="text-xs px-3"
-                >
-                  <Eye className="w-3 h-3 mr-1.5" />
-                  View Details
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Quick Actions */}
-          {!isExpanded && (
-            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-              <div className="flex items-center">
-                <Clock className="w-3 h-3 text-gray-400 mr-1.5" />
-                <span
-                  className={`text-xs font-medium ${getAgingColor(
-                    delivery.aging
-                  )}`}
-                >
-                  {delivery.aging} days
-                </span>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleRowClick(delivery)}
-                className="text-xs h-7"
+          <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+            <div className="flex items-center">
+              <Clock className="w-3 h-3 text-gray-400 mr-1.5" />
+              <span
+                className={`text-xs font-medium ${getAgingColor(
+                  delivery.aging
+                )}`}
               >
-                View
-              </Button>
+                {delivery.aging} days
+              </span>
             </div>
-          )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleRowClick(delivery)}
+              className="text-xs h-7"
+            >
+              View Details
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );
@@ -679,7 +650,7 @@ export function DeliveryManagement({
 
   return (
     <div className="space-y-4 md:space-y-6 p-2 md:p-0">
-      {/* Header - Mobile Optimized */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-0">
         <div>
           <h1 className="text-xl md:text-3xl font-semibold text-gray-900">
@@ -689,33 +660,23 @@ export function DeliveryManagement({
             Track and manage product deliveries • {stats.total} Total Deliveries
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchBackendData}
-            disabled={loading}
-            className="text-xs md:text-sm h-8 md:h-9"
-          >
-            <RefreshCw
-              className={`w-3 h-3 md:w-4 md:h-4 mr-1.5 ${
-                loading ? "animate-spin" : ""
-              }`}
-            />
-            {loading ? "Refreshing..." : "Refresh"}
-          </Button>
-
-          <Button
-            size="icon"
-            className="bg-[#0c9dcb] hover:bg-[#0a8bb5] md:hidden h-8 w-8"
-            onClick={() => setIsAddDialogOpen(true)}
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchBackendData}
+          disabled={loading}
+          className="text-xs md:text-sm h-8 md:h-9"
+        >
+          <RefreshCw
+            className={`w-3 h-3 md:w-4 md:h-4 mr-1.5 ${
+              loading ? "animate-spin" : ""
+            }`}
+          />
+          {loading ? "Refreshing..." : "Refresh"}
+        </Button>
       </div>
 
-      {/* Statistics Cards - Responsive Grid */}
+      {/* Statistics Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
         <Card className="border-0 shadow-sm">
           <CardContent className="p-3 md:p-6">
@@ -777,14 +738,14 @@ export function DeliveryManagement({
                 </h3>
               </div>
               <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg bg-purple-500 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 md:w-6 md:h-6 text-white" />
+                <Clock className="w-4 h-4 md:w-6 md:h-6 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Search and Filter - Mobile Optimized */}
+      {/* Search and Filter */}
       <Card className="border-0 shadow-sm">
         <CardContent className="p-3 md:p-4">
           <div className="flex flex-col md:flex-row md:items-center gap-3">
@@ -797,236 +758,112 @@ export function DeliveryManagement({
                 className="pl-9 md:pl-10 text-sm h-9 md:h-10"
               />
             </div>
-            <div className="flex flex-wrap md:flex-nowrap items-center gap-2">
-              {/* Mobile Filter Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="md:hidden h-9">
-                    <Filter className="w-3 h-3 mr-1.5" />
-                    Filter
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <div className="p-2">
-                    <Label className="text-xs font-medium">Date Range</Label>
-                    <div className="flex flex-col gap-2 mt-2">
-                      <Popover
-                        open={isDateFromOpen}
-                        onOpenChange={setIsDateFromOpen}
-                      >
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="justify-start"
-                          >
-                            <Calendar className="w-3 h-3 mr-2" />
-                            {dateFrom
-                              ? format(dateFrom, "dd/MM/yy")
-                              : "From Date"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <CalendarComponent
-                            mode="single"
-                            selected={dateFrom}
-                            onSelect={(date) => {
-                              setDateFrom(date);
-                              setIsDateFromOpen(false);
-                            }}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <Popover
-                        open={isDateToOpen}
-                        onOpenChange={setIsDateToOpen}
-                      >
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="justify-start"
-                          >
-                            <Calendar className="w-3 h-3 mr-2" />
-                            {dateTo ? format(dateTo, "dd/MM/yy") : "To Date"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <CalendarComponent
-                            mode="single"
-                            selected={dateTo}
-                            onSelect={(date) => {
-                              setDateTo(date);
-                              setIsDateToOpen(false);
-                            }}
-                            initialFocus
-                            disabled={(date) =>
-                              dateFrom ? date < dateFrom : false
-                            }
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <Separator className="my-2" />
-                    <Label className="text-xs font-medium">Sort By</Label>
-                    <Select
-                      value={sortBy}
-                      onValueChange={(value: any) => setSortBy(value)}
-                    >
-                      <SelectTrigger className="mt-1 h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="aging">Sort by Aging</SelectItem>
-                        <SelectItem value="poDate">Sort by PO Date</SelectItem>
-                        <SelectItem value="deliveryDate">
-                          Sort by Delivery
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <div className="flex items-center justify-between mt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setSortOrder(sortOrder === "asc" ? "desc" : "asc")
-                        }
-                        className="h-8"
-                      >
-                        <ArrowUpDown className="w-3 h-3" />
-                        {sortOrder === "asc" ? "Asc" : "Desc"}
-                      </Button>
-                      {(dateFrom || dateTo) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setDateFrom(undefined);
-                            setDateTo(undefined);
-                          }}
-                          className="h-8 text-xs"
-                        >
-                          Clear
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Desktop Filters */}
-              <div className="hidden md:flex items-center gap-2">
-                <div className="flex items-center gap-2 border border-gray-200 rounded-lg p-2 bg-white">
-                  <Calendar className="w-4 h-4 text-gray-500" />
-                  <Popover
-                    open={isDateFromOpen}
-                    onOpenChange={setIsDateFromOpen}
-                  >
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="w-32 justify-start text-left font-normal border-0 p-0 h-auto hover:bg-transparent text-sm"
-                      >
-                        {dateFrom ? (
-                          format(dateFrom, "dd MMM yy")
-                        ) : (
-                          <span className="text-gray-500">From Date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={dateFrom}
-                        onSelect={(date) => {
-                          setDateFrom(date);
-                          setIsDateFromOpen(false);
-                        }}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  <span className="text-gray-400">—</span>
-                  <Popover open={isDateToOpen} onOpenChange={setIsDateToOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="w-32 justify-start text-left font-normal border-0 p-0 h-auto hover:bg-transparent text-sm"
-                      >
-                        {dateTo ? (
-                          format(dateTo, "dd MMM yy")
-                        ) : (
-                          <span className="text-gray-500">To Date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={dateTo}
-                        onSelect={(date) => {
-                          setDateTo(date);
-                          setIsDateToOpen(false);
-                        }}
-                        initialFocus
-                        disabled={(date) =>
-                          dateFrom ? date < dateFrom : false
-                        }
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {(dateFrom || dateTo) && (
+            <div className="flex items-center gap-2">
+              {/* Date filters */}
+              <div className="hidden md:flex items-center gap-2 border border-gray-200 rounded-lg p-2 bg-white">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                <Popover open={isDateFromOpen} onOpenChange={setIsDateFromOpen}>
+                  <PopoverTrigger asChild>
                     <Button
                       variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setDateFrom(undefined);
-                        setDateTo(undefined);
-                      }}
-                      className="h-6 px-2 text-xs"
+                      className="w-32 justify-start text-left font-normal border-0 p-0 h-auto hover:bg-transparent text-sm"
                     >
-                      Clear
+                      {dateFrom ? (
+                        format(dateFrom, "dd MMM yy")
+                      ) : (
+                        <span className="text-gray-500">From Date</span>
+                      )}
                     </Button>
-                  )}
-                </div>
-                <Select
-                  value={sortBy}
-                  onValueChange={(value: any) => setSortBy(value)}
-                >
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="aging">Sort by Aging</SelectItem>
-                    <SelectItem value="poDate">Sort by PO Date</SelectItem>
-                    <SelectItem value="deliveryDate">
-                      Sort by Delivery
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() =>
-                    setSortOrder(sortOrder === "asc" ? "desc" : "asc")
-                  }
-                  className="h-9 w-9"
-                >
-                  <ArrowUpDown className="w-4 h-4" />
-                </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={dateFrom}
+                      onSelect={(date) => {
+                        setDateFrom(date);
+                        setIsDateFromOpen(false);
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <span className="text-gray-400">—</span>
+                <Popover open={isDateToOpen} onOpenChange={setIsDateToOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="w-32 justify-start text-left font-normal border-0 p-0 h-auto hover:bg-transparent text-sm"
+                    >
+                      {dateTo ? (
+                        format(dateTo, "dd MMM yy")
+                      ) : (
+                        <span className="text-gray-500">To Date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={dateTo}
+                      onSelect={(date) => {
+                        setDateTo(date);
+                        setIsDateToOpen(false);
+                      }}
+                      initialFocus
+                      disabled={(date) => (dateFrom ? date < dateFrom : false)}
+                    />
+                  </PopoverContent>
+                </Popover>
+                {(dateFrom || dateTo) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDateFrom(undefined);
+                      setDateTo(undefined);
+                    }}
+                    className="h-6 px-2 text-xs"
+                  >
+                    Clear
+                  </Button>
+                )}
               </div>
+
+              {/* Sort options */}
+              <Select
+                value={sortBy}
+                onValueChange={(value: any) => setSortBy(value)}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aging">Sort by Aging</SelectItem>
+                  <SelectItem value="poDate">Sort by PO Date</SelectItem>
+                  <SelectItem value="deliveryDate">Sort by Delivery</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() =>
+                  setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+                }
+                className="h-9 w-9"
+              >
+                <ArrowUpDown className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Deliveries List/Table - Responsive */}
+      {/* Deliveries List/Table */}
       <Card className="shadow-sm border-0">
         <CardHeader className="bg-gray-50 rounded-t-lg py-3 md:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 md:gap-3">
-              <div className="w-6 h-6 md:w-8 md:h-8 bg-[#0c9dcb] rounded-lg flex items-center justify-center text-white">
+              <div className="w-6 h-6 md:w-8 md:h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
                 <Truck className="w-3 h-3 md:w-5 md:h-5" />
               </div>
               <div>
@@ -1045,14 +882,14 @@ export function DeliveryManagement({
             </div>
             {loading && (
               <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
-                <div className="animate-spin rounded-full h-3 w-3 md:h-4 md:w-4 border-b-2 border-[#0c9dcb]"></div>
+                <div className="animate-spin rounded-full h-3 w-3 md:h-4 md:w-4 border-b-2 border-blue-600"></div>
                 Loading...
               </div>
             )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {/* Mobile View - Cards */}
+          {/* Mobile View */}
           <div className="md:hidden p-3">
             {paginatedDeliveries.length === 0 ? (
               <div className="text-center py-8">
@@ -1075,7 +912,7 @@ export function DeliveryManagement({
             )}
           </div>
 
-          {/* Desktop View - Table */}
+          {/* Desktop View */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -1093,7 +930,7 @@ export function DeliveryManagement({
                     PO Received
                   </th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Delivery Date
+                    Expected Delivery
                   </th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Aging
@@ -1166,16 +1003,8 @@ export function DeliveryManagement({
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {delivery.deliveryDate
-                            ? formatDate(delivery.deliveryDate)
-                            : formatDate(delivery.expectedDeliveryDate)}
+                          {formatDate(delivery.expectedDeliveryDate)}
                         </div>
-                        {!delivery.deliveryDate &&
-                          delivery.expectedDeliveryDate && (
-                            <div className="text-xs text-gray-500">
-                              Expected
-                            </div>
-                          )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div
@@ -1201,7 +1030,7 @@ export function DeliveryManagement({
             </table>
           </div>
 
-          {/* Pagination - Responsive */}
+          {/* Pagination */}
           {filteredDeliveries.length > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between px-3 md:px-4 py-3 border-t border-gray-200">
               <div className="text-xs md:text-sm text-gray-600 mb-2 sm:mb-0">
@@ -1226,80 +1055,22 @@ export function DeliveryManagement({
                   <span className="hidden sm:inline">Previous</span>
                 </Button>
                 <div className="flex items-center gap-1">
-                  {totalPages <= 5 ? (
-                    Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                      (page) => (
-                        <Button
-                          key={page}
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(page)}
-                          className={`h-8 min-w-8 text-xs ${
-                            currentPage === page
-                              ? "bg-[#0c9dcb] hover:bg-[#0a8bb5]"
-                              : ""
-                          }`}
-                        >
-                          {page}
-                        </Button>
-                      )
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (page) => (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(page)}
+                        className={`h-8 min-w-8 text-xs ${
+                          currentPage === page
+                            ? "bg-blue-600 hover:bg-blue-700"
+                            : ""
+                        }`}
+                      >
+                        {page}
+                      </Button>
                     )
-                  ) : (
-                    <>
-                      {currentPage > 3 && (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setCurrentPage(1)}
-                            className="h-8 min-w-8 text-xs"
-                          >
-                            1
-                          </Button>
-                          <span className="px-2">...</span>
-                        </>
-                      )}
-                      {Array.from(
-                        { length: Math.min(3, totalPages) },
-                        (_, i) => {
-                          let pageNum;
-                          if (currentPage <= 3) pageNum = i + 1;
-                          else if (currentPage >= totalPages - 2)
-                            pageNum = totalPages - 3 + i + 1;
-                          else pageNum = currentPage - 1 + i;
-                          return (
-                            <Button
-                              key={pageNum}
-                              variant={
-                                currentPage === pageNum ? "default" : "outline"
-                              }
-                              size="sm"
-                              onClick={() => setCurrentPage(pageNum)}
-                              className={`h-8 min-w-8 text-xs ${
-                                currentPage === pageNum
-                                  ? "bg-[#0c9dcb] hover:bg-[#0a8bb5]"
-                                  : ""
-                              }`}
-                            >
-                              {pageNum}
-                            </Button>
-                          );
-                        }
-                      )}
-                      {currentPage < totalPages - 2 && (
-                        <>
-                          <span className="px-2">...</span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setCurrentPage(totalPages)}
-                            className="h-8 min-w-8 text-xs"
-                          >
-                            {totalPages}
-                          </Button>
-                        </>
-                      )}
-                    </>
                   )}
                 </div>
                 <Button
@@ -1366,10 +1137,11 @@ export function DeliveryManagement({
                   <div className="flex gap-1.5 md:gap-2">
                     <Button
                       onClick={handleSaveEdit}
+                      disabled={saving}
                       className="bg-green-500 hover:bg-green-600 text-xs md:text-sm h-8 md:h-9"
                     >
                       <Save className="w-3 h-3 md:w-4 md:h-4 mr-1.5" />
-                      Save
+                      {saving ? "Saving..." : "Save"}
                     </Button>
                     <Button
                       variant="outline"
@@ -1389,7 +1161,7 @@ export function DeliveryManagement({
           <div className="overflow-y-auto flex-1 px-4 md:px-8 py-4 md:py-6">
             {selectedDelivery && selectedDelivery.backendData && (
               <div className="space-y-4 md:space-y-6">
-                {/* Project Information */}
+                {/* Project Information - READ ONLY */}
                 <div className="bg-white border border-gray-200 rounded-lg md:rounded-xl p-4 md:p-6">
                   <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">
                     Project Information
@@ -1431,40 +1203,15 @@ export function DeliveryManagement({
                         <Label className="text-xs md:text-sm text-gray-600">
                           {item.label}
                         </Label>
-                        {isEditing && item.key !== "quantity" ? (
-                          <Input
-                            value={editedData[item.key] || ""}
-                            onChange={(e) =>
-                              setEditedData({
-                                ...editedData,
-                                [item.key]: e.target.value,
-                              })
-                            }
-                            className="mt-1 h-8 md:h-9 text-sm"
-                          />
-                        ) : isEditing && item.key === "quantity" ? (
-                          <Input
-                            type="number"
-                            value={editedData.quantity || 0}
-                            onChange={(e) =>
-                              setEditedData({
-                                ...editedData,
-                                quantity: parseInt(e.target.value) || 0,
-                              })
-                            }
-                            className="mt-1 h-8 md:h-9 text-sm"
-                          />
-                        ) : (
-                          <p className="text-sm md:text-base text-gray-900 mt-1">
-                            {item.value || "-"}
-                          </p>
-                        )}
+                        <p className="text-sm md:text-base text-gray-900 mt-1">
+                          {item.value || "-"}
+                        </p>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Dates Information */}
+                {/* Dates Information - READ ONLY */}
                 <div className="bg-white border border-gray-200 rounded-lg md:rounded-xl p-4 md:p-6">
                   <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">
                     Dates & Timeline
@@ -1474,45 +1221,25 @@ export function DeliveryManagement({
                       {
                         label: "PO Received Date",
                         value: formatDate(selectedDelivery.poReceivedDate),
-                        key: "poReceivedDate",
-                        type: "date",
                       },
                       {
                         label: "Expected Delivery",
                         value: formatDate(
                           selectedDelivery.expectedDeliveryDate
                         ),
-                        key: "expectedDeliveryDate",
-                        type: "date",
                       },
                       {
                         label: "Actual Delivery",
-                        value: formatDate(selectedDelivery.deliveryDate),
-                        key: "deliveryDate",
-                        type: "date",
+                        value: formatDate(selectedDelivery.actualDeliveryDate),
                       },
                     ].map((item) => (
-                      <div key={item.key}>
+                      <div key={item.label}>
                         <Label className="text-xs md:text-sm text-gray-600">
                           {item.label}
                         </Label>
-                        {isEditing ? (
-                          <Input
-                            type="date"
-                            value={editedData[item.key] || ""}
-                            onChange={(e) =>
-                              setEditedData({
-                                ...editedData,
-                                [item.key]: e.target.value,
-                              })
-                            }
-                            className="mt-1 h-8 md:h-9 text-sm"
-                          />
-                        ) : (
-                          <p className="text-sm md:text-base text-gray-900 mt-1">
-                            {item.value || "-"}
-                          </p>
-                        )}
+                        <p className="text-sm md:text-base text-gray-900 mt-1">
+                          {item.value || "-"}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -1531,7 +1258,7 @@ export function DeliveryManagement({
                   </div>
                 </div>
 
-                {/* Delivery & Shipping Information */}
+                {/* Delivery & Shipping Information - EDITABLE */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                   <div className="bg-white border border-gray-200 rounded-lg md:rounded-xl p-4 md:p-6">
                     <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4 flex items-center gap-2">
@@ -1539,6 +1266,7 @@ export function DeliveryManagement({
                       Delivery Information
                     </h3>
                     <div className="space-y-4">
+                      {/* Bill Number - Editable */}
                       <div>
                         <Label className="text-xs md:text-sm text-gray-600 flex items-center gap-1.5">
                           <Receipt className="w-3.5 h-3.5" />
@@ -1546,12 +1274,9 @@ export function DeliveryManagement({
                         </Label>
                         {isEditing ? (
                           <Input
-                            value={editedData.billNumber || ""}
+                            value={editFormData.billNumber || ""}
                             onChange={(e) =>
-                              setEditedData({
-                                ...editedData,
-                                billNumber: e.target.value,
-                              })
+                              handleInputChange("billNumber", e.target.value)
                             }
                             placeholder="Enter bill number"
                             className="mt-1 h-9 text-sm"
@@ -1562,6 +1287,8 @@ export function DeliveryManagement({
                           </p>
                         )}
                       </div>
+
+                      {/* Delivery Date - Editable */}
                       <div>
                         <Label className="text-xs md:text-sm text-gray-600 flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" />
@@ -1570,12 +1297,9 @@ export function DeliveryManagement({
                         {isEditing ? (
                           <Input
                             type="date"
-                            value={editedData.actualDeliveryDate || ""}
+                            value={editFormData.deliveryDate || ""}
                             onChange={(e) =>
-                              setEditedData({
-                                ...editedData,
-                                actualDeliveryDate: e.target.value,
-                              })
+                              handleInputChange("deliveryDate", e.target.value)
                             }
                             className="mt-1 h-9 text-sm"
                           />
@@ -1586,6 +1310,8 @@ export function DeliveryManagement({
                           </p>
                         )}
                       </div>
+
+                      {/* LR Number - Editable */}
                       <div>
                         <Label className="text-xs md:text-sm text-gray-600 flex items-center gap-1.5">
                           <FileDigit className="w-3.5 h-3.5" />
@@ -1593,12 +1319,9 @@ export function DeliveryManagement({
                         </Label>
                         {isEditing ? (
                           <Input
-                            value={editedData.lrNumber || ""}
+                            value={editFormData.lrNumber || ""}
                             onChange={(e) =>
-                              setEditedData({
-                                ...editedData,
-                                lrNumber: e.target.value,
-                              })
+                              handleInputChange("lrNumber", e.target.value)
                             }
                             placeholder="Enter LR number"
                             className="mt-1 h-9 text-sm"
@@ -1612,6 +1335,7 @@ export function DeliveryManagement({
                     </div>
                   </div>
 
+                  {/* Status - Editable */}
                   <div className="bg-white border border-gray-200 rounded-lg md:rounded-xl p-4 md:p-6">
                     <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">
                       Delivery Status
@@ -1622,8 +1346,10 @@ export function DeliveryManagement({
                       </Label>
                       {isEditing ? (
                         <Select
-                          value={editStatus}
-                          onValueChange={(value: any) => setEditStatus(value)}
+                          value={editFormData.status}
+                          onValueChange={(value) =>
+                            handleInputChange("status", value)
+                          }
                         >
                           <SelectTrigger className="mt-1 h-9 text-sm">
                             <SelectValue />
@@ -1645,7 +1371,7 @@ export function DeliveryManagement({
                   </div>
                 </div>
 
-                {/* Remarks */}
+                {/* Remarks - EDITABLE */}
                 <div className="bg-white border border-gray-200 rounded-lg md:rounded-xl p-4 md:p-6">
                   <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">
                     Remarks
@@ -1653,12 +1379,9 @@ export function DeliveryManagement({
                   <div>
                     {isEditing ? (
                       <Textarea
-                        value={editedData.remarks || ""}
-                        onChange={(e) =>
-                          setEditedData({
-                            ...editedData,
-                            remarks: e.target.value,
-                          })
+                        value={editFormData.remarks || ""} // FIXED: Changed from remark to remarks
+                        onChange={
+                          (e) => handleInputChange("remarks", e.target.value) // FIXED: Changed from remark to remarks
                         }
                         rows={3}
                         placeholder="Add any additional notes or remarks..."
@@ -1666,7 +1389,8 @@ export function DeliveryManagement({
                       />
                     ) : (
                       <p className="text-sm md:text-base text-gray-900">
-                        {selectedDelivery.remarks || "No remarks"}
+                        {selectedDelivery.remarks || "No remarks"}{" "}
+                        {/* FIXED: Changed from remark to remarks */}
                       </p>
                     )}
                   </div>

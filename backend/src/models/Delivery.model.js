@@ -9,19 +9,27 @@ const deliveryHistorySchema = new mongoose.Schema(
         field: String,
         from: mongoose.Schema.Types.Mixed,
         to: mongoose.Schema.Types.Mixed,
-      }
+      },
     ],
 
-    updatedBy: { type: String, default: "system" }
+    updatedBy: { type: String, default: "system" },
   },
   { _id: false }
 );
 
 const deliverySchema = new mongoose.Schema(
   {
-    project: { type: mongoose.Schema.Types.ObjectId, ref: "Project", required: true },
+    project: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Project",
+      required: true,
+    },
 
-    poDetails: { type: mongoose.Schema.Types.ObjectId, ref: "PoDetails", default: null },
+    poDetails: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PoDetails",
+      default: null,
+    },
 
     projectCode: String,
     productName: String,
@@ -32,19 +40,32 @@ const deliverySchema = new mongoose.Schema(
     poNumber: String,
     poReceivedDate: Date,
     deliveryDateExpected: Date,
+    billNumber: { type: String, default: "" },
+    deliveryDate: {
+      type: Date,
+      default: "",
+    },
+    lrNumber: {
+      type: String,
+      default: "",
+    },
 
     orderQuantity: Number,
 
     status: {
       type: String,
       enum: ["pending", "parcel_delivered", "delivered"],
-      default: "pending"
+      default: "pending",
+    },
+    remarks: {
+      type: String,
+      default: "",
     },
 
     agingDays: Number,
 
     // ⭐ FULL HISTORY TRACKING
-    history: [deliveryHistorySchema]
+    history: [deliveryHistorySchema],
   },
   { timestamps: true }
 );
