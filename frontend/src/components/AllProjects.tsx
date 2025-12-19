@@ -38,6 +38,7 @@ import { ColorMaterialsDialog } from "./ColorMaterialsDialog";
 import { generateProjectPDF } from "../utils/pdfDownload";
 import { useProjectQuery } from "./NewHooks/useProjectQuery";
 import { useDebounce } from "./NewHooks/useDebounce";
+import { generateProjectsListPDF } from "../components/projectsListPDF";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "";
 
@@ -125,6 +126,8 @@ export default function ProjectListCard() {
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedPriority, setSelectedPriority] = useState<string>("all");
   const [isMobile, setIsMobile] = useState(false);
+  const [isAllProjectsDownloading, setIsAllProjectsDownloading] =
+    useState(false);
 
   // Extended filters state
   const [filters, setFilters] = useState({
@@ -545,6 +548,53 @@ export default function ProjectListCard() {
     }
   };
 
+  const handleAllProjectsPDFDownload = async () => {
+    if (projects.length === 0) {
+      toast.error("No projects to download");
+      return;
+    }
+
+    setIsAllProjectsDownloading(true);
+
+    try {
+      // Prepare SIMPLE data for all projects
+      const projectsData = projects.map((project) => {
+        return {
+          project: {
+            autoCode: project.autoCode || "",
+            artName: project.artName || "",
+            company: {
+              name: project.company?.name || "",
+            },
+            status: project.status || "",
+            createdAt: project.createdAt || "",
+            // Only include what's needed for the list
+          },
+        };
+      });
+
+      // Generate PDF for all projects
+      await generateProjectsListPDF({
+        projects: projectsData,
+        filters: {
+          searchTerm: debouncedSearchTerm,
+          status: selectedStatus !== "all" ? selectedStatus : "All Status",
+          priority:
+            selectedPriority !== "all" ? selectedPriority : "All Priority",
+          date: new Date().toLocaleDateString("en-IN"),
+          pageInfo: `Page ${currentPage} of ${pages} (Showing ${projects.length} of ${total} projects)`,
+        },
+      });
+
+      toast.success(`PDF downloaded for ${projects.length} project(s)!`);
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      toast.error("Failed to generate PDF");
+    } finally {
+      setIsAllProjectsDownloading(false);
+    }
+  };
+
   // Update handleColorVariantsSave:
   const handleColorVariantsSave = useCallback(
     async (savedColorIds: string[]) => {
@@ -871,6 +921,26 @@ export default function ProjectListCard() {
                 <SelectItem value="low">Low</SelectItem>
               </SelectContent>
             </Select>
+
+            <Button
+              onClick={handleAllProjectsPDFDownload}
+              disabled={projects.length === 0 || isAllProjectsDownloading}
+              variant="outline"
+              className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700 whitespace-nowrap"
+              size="default"
+            >
+              {isAllProjectsDownloading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Export List ({projects.length})
+                </>
+              )}
+            </Button>
           </div>
 
           {/* Loading State */}
@@ -890,7 +960,7 @@ export default function ProjectListCard() {
                     <th className="p-2">Project</th>
                     <th className="p-2 hidden sm:table-cell">Company</th>
                     <th className="p-2">Status</th>
-                    <th className="p-2 hidden md:table-cell">Timeline</th>
+                    <th className="p-2 hidden md:table-cell">Date</th>
                   </tr>
                 </thead>
                 <tbody>
