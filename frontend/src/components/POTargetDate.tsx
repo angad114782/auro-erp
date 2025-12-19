@@ -726,16 +726,6 @@ export function POTargetDate() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="w-full md:w-auto">
-                <Upload className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Import</span>
-              </Button>
-              <Button variant="outline" size="sm" className="w-full md:w-auto">
-                <Download className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Export</span>
-              </Button>
-            </div>
           </div>
         </CardHeader>
 

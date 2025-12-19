@@ -2555,21 +2555,6 @@ const stageCardQuantity =
                   </div>
                   <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
                     <Button
-                      className="bg-blue-500 hover:bg-blue-600 text-xs sm:text-sm px-2 sm:px-4"
-                      size={isMobile ? "sm" : "default"}
-                    >
-                      <Edit className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                      {isMobile ? "Edit" : "Edit Production"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size={isMobile ? "sm" : "default"}
-                      className="text-xs sm:text-sm"
-                    >
-                      <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                      {isMobile ? "Comments" : "Comments"}
-                    </Button>
-                    <Button
                       onClick={() => setSelectedProductionRecord(null)}
                       variant="ghost"
                       size="sm"

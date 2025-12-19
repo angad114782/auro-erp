@@ -112,6 +112,32 @@ export function ViewProductionCardDialog({
   const [addingNewPlant, setAddingNewPlant] = useState(false);
   const [newPlantName, setNewPlantName] = useState("");
   const [loadingPlants, setLoadingPlants] = useState(false);
+const isValidObjectId = (val?: string): boolean =>
+  typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val);
+
+
+const extractPlantId = (val: any): string => {
+  if (!val) return "";
+
+  // case: already ObjectId string
+  if (typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val)) {
+    return val;
+  }
+
+  // case: populated object { _id, name }
+  if (typeof val === "object" && val._id && /^[0-9a-fA-F]{24}$/.test(val._id)) {
+    return val._id;
+  }
+
+  return "";
+};
+
+
+const selectedPlant = React.useMemo(() => {
+  if (!formData.assignedPlant) return null;
+  return plants.find((p) => p._id === formData.assignedPlant) || null;
+}, [plants, formData.assignedPlant]);
+
 
   // Load plants when dialog opens
   useEffect(() => {
@@ -177,26 +203,29 @@ export function ViewProductionCardDialog({
     }
   };
 
-  useEffect(() => {
-    if (open && productionData) {
-      const scheduling = productionData.raw?.scheduling ?? {};
-      setFormData({
-        scheduleDate: productionData.startDate ?? scheduling.scheduleDate ?? "",
-        assignedPlant:
-          productionData.assignedPlant ?? scheduling.assignedPlant ?? "",
-        quantity: (productionData.quantity ?? "").toString(),
-        remarks:
-          productionData.remarks ??
-          productionData.raw?.additional?.remarks ??
-          "",
-        soleFrom: scheduling.soleFrom ?? "",
-        soleColor: scheduling.soleColor ?? "",
-        soleExpectedDate: scheduling.soleExpectedDate
-          ? new Date(scheduling.soleExpectedDate).toISOString().split("T")[0]
-          : "",
-      });
-    }
-  }, [open, productionData]);
+useEffect(() => {
+  if (open && productionData) {
+    const scheduling = productionData.raw?.scheduling ?? {};
+
+    setFormData({
+      scheduleDate: productionData.startDate ?? scheduling.scheduleDate ?? "",
+      assignedPlant:
+        extractPlantId(productionData.assignedPlant) ||
+        extractPlantId(scheduling.assignedPlant),
+      quantity: (productionData.quantity ?? "").toString(),
+      remarks:
+        productionData.remarks ??
+        productionData.raw?.additional?.remarks ??
+        "",
+      soleFrom: scheduling.soleFrom ?? "",
+      soleColor: scheduling.soleColor ?? "",
+      soleExpectedDate: scheduling.soleExpectedDate
+        ? new Date(scheduling.soleExpectedDate).toISOString().split("T")[0]
+        : "",
+    });
+  }
+}, [open, productionData]);
+
 
   if (!productionData) return null;
 
@@ -329,13 +358,13 @@ export function ViewProductionCardDialog({
                       className="w-full h-10 sm:h-12 justify-between text-sm sm:text-base"
                     >
                       <span className="truncate">
-                        {formData.assignedPlant
-                          ? plants.find((p) => p._id === formData.assignedPlant)
-                              ?.name
-                          : loadingPlants
-                          ? "Loading..."
-                          : "Select plant..."}
-                      </span>
+  {selectedPlant
+    ? selectedPlant.name
+    : loadingPlants
+    ? "Loading..."
+    : "Select plant..."}
+</span>
+
                       <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
                     </Button>
                   </PopoverTrigger>
