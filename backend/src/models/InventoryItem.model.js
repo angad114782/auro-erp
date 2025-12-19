@@ -7,7 +7,6 @@ const inventoryItemSchema = new mongoose.Schema(
     itemName: { type: String, required: true },
     category: { type: String, required: true },
     subCategory: { type: String, default: "General" },
-    brand: { type: String, default: "N/A" },
     color: { type: String, default: "N/A" },
 
     vendorId: { type: mongoose.Schema.Types.ObjectId, ref: "Vendor" },

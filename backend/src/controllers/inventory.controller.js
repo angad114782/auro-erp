@@ -1,6 +1,23 @@
 import * as inventoryService from "../services/inventory.service.js";
 import * as transactionService from "../services/transaction.service.js";
 import { InventoryItem } from "../models/InventoryItem.model.js";
+import {
+  generateItemCode,
+  getReservedCode,
+} from "../services/sequenceServices.js";
+import mongoose from "mongoose";
+import { InventoryTransaction } from "../models/InventoryTransaction.js";
+
+// RESERVE CODE
+export const reserveCode = async (req, res) => {
+  try {
+    const reservedCode = await getReservedCode();
+    res.json({ code: reservedCode });
+  } catch (error) {
+    console.error("Error reserving code:", error);
+    res.status(500).json({ message: "Failed to reserve code" });
+  }
+};
 
 // CREATE ITEM
 export const createItem = async (req, res) => {
@@ -11,7 +28,6 @@ export const createItem = async (req, res) => {
     const {
       itemName,
       category,
-      brand,
       color,
       vendorId,
       expiryDate,
@@ -21,21 +37,24 @@ export const createItem = async (req, res) => {
       billNumber,
       billDate,
       isDraft,
-      code,
+      // Code is NOT in body - will be generated
     } = req.body;
 
     if (!itemName || !category) {
       return res.status(400).json({ message: "itemName & category required" });
     }
 
-    const fileUrl = req.file.path ? req.file.path : null;
+    const fileUrl = req.file?.path || null;
+
+    // Generate code on backend
+    const code = await generateItemCode();
 
     const itemPayload = {
       itemName,
       category,
-      brand: brand || "N/A",
+      // brand: brand || "N/A",
       color: color || "N/A",
-      vendorId: vendorId || "N/A",
+      vendorId: vendorId || null,
       expiryDate: expiryDate || "",
       quantity: Number(quantity) || 0,
       quantityUnit: quantityUnit || "piece",
@@ -49,6 +68,24 @@ export const createItem = async (req, res) => {
 
     const created = await inventoryService.createItem(itemPayload);
 
+    // Create initial transaction when item is created and has quantity
+    if (isDraft !== "true" && Number(quantity) > 0) {
+      await transactionService.createTransaction({
+        itemId: created._id,
+        transactionType: "Stock In",
+        quantity: Number(quantity) || 0,
+        previousStock: 0,
+        newStock: Number(quantity) || 0,
+        billNumber: billNumber || "",
+        vendorId: vendorId || null,
+        reason: "Initial stock",
+        remarks: "Item created with initial stock",
+        transactionDate: new Date().toISOString(),
+        billAttachmentUrl: fileUrl,
+        createdBy: "Admin",
+      });
+    }
+
     return res.status(201).json(created);
   } catch (err) {
     console.error("CREATE ITEM ERROR:", err);
@@ -56,8 +93,7 @@ export const createItem = async (req, res) => {
   }
 };
 
-// inventoryController.js
-// inventoryController.js - Updated listItems function
+// LIST ITEMS
 export const listItems = async (req, res) => {
   try {
     const {
@@ -83,7 +119,6 @@ export const listItems = async (req, res) => {
     } else if (isDraft === "false" || isDraft === false) {
       filter.isDraft = false;
     }
-    // If isDraft is not specified, don't filter by it (show all)
 
     if (category && category !== "All") {
       filter.category = category;
@@ -114,7 +149,7 @@ export const listItems = async (req, res) => {
 
     // Get category counts for current filters (excluding category filter)
     const categoryFilter = { ...filter };
-    delete categoryFilter.category; // Remove category filter to get all categories
+    delete categoryFilter.category;
 
     const categoryCounts = await InventoryItem.aggregate([
       { $match: categoryFilter },
@@ -177,49 +212,82 @@ export const updateItem = async (req, res) => {
 export const updateStock = async (req, res) => {
   try {
     const { itemId } = req.params;
-    const { type, quantity, vendorId, billNumber, billDate, notes } = req.body;
+    const { type, quantity, vendorId, billNumber, notes, billDate } = req.body;
+
+    // Get file if uploaded
+
+    const fileUrl = req.file?.path || null;
 
     const item = await InventoryItem.findById(itemId);
-    const currentStock = item.quantity;
+    if (!item) {
+      return res.status(404).json({ message: "Item not found" });
+    }
 
-    let newStock =
-      type === "add"
-        ? currentStock + Number(quantity)
-        : currentStock - Number(quantity);
+    const currentStock = item.quantity;
+    let newStock;
+
+    if (type === "add") {
+      if (vendorId && mongoose.Types.ObjectId.isValid(vendorId)) {
+        item.vendorId = vendorId;
+      }
+    }
+
+    if (type === "add") {
+      newStock = currentStock + Number(quantity);
+    } else if (type === "reduce") {
+      newStock = currentStock - Number(quantity);
+      if (newStock < 0) {
+        return res.status(400).json({ message: "Insufficient stock" });
+      }
+    } else {
+      return res.status(400).json({ message: "Invalid type" });
+    }
 
     // Update item stock
     item.quantity = newStock;
-    item.vendorId = vendorId || item.vendorId;
+    if (vendorId && vendorId !== "undefined") item.vendorId = vendorId;
     item.lastUpdate = new Date().toLocaleDateString();
     item.lastUpdateTime = new Date().toLocaleTimeString();
     await item.save();
 
-    // Store transaction
-    await transactionService.createTransaction({
+    const transactionData = {
       itemId,
       transactionType: type === "add" ? "Stock In" : "Stock Out",
-      quantity,
+      quantity: Number(quantity),
       previousStock: currentStock,
       newStock,
-      billNumber,
-      vendorId,
-      reason: type === "add" ? "Stock Added" : notes,
-      remarks: notes,
+      billDate,
+      vendorId: type === "add" ? vendorId : undefined,
+      billNumber: type === "add" ? billNumber || "" : "",
+      billAttachmentUrl: type === "add" ? fileUrl : null,
+      reason: type === "add" ? "Stock Added" : notes || "Stock Reduced",
+      remarks: notes || "",
       transactionDate: new Date().toISOString(),
       createdBy: "Admin",
-    });
+    };
 
-    res.json(item);
+    await transactionService.createTransaction(transactionData);
+
+    res.json({
+      success: true,
+      item,
+      transaction: transactionData,
+    });
   } catch (err) {
+    console.error("UPDATE STOCK ERROR:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
 // HISTORY
 export const getHistory = async (req, res) => {
-  const { itemId } = req.params;
-  const history = await transactionService.getTransactionsByItem(itemId);
-  res.json(history);
+  try {
+    const { itemId } = req.params;
+    const history = await transactionService.getTransactionsByItem(itemId);
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 };
 
 export const getAllHistory = async (req, res) => {
@@ -231,7 +299,7 @@ export const getAllHistory = async (req, res) => {
   }
 };
 
-// Soft delete an item (mark isDeleted = true)
+// Soft delete an item
 export const softDeleteItem = async (req, res) => {
   try {
     const { id } = req.params;
@@ -246,3 +314,46 @@ export const softDeleteItem = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+export async function getTransactionsByVendor(req, res) {
+  try {
+    const { vendorId } = req.params;
+    const { itemId, transactionType, fromDate, toDate } = req.query;
+
+    if (!vendorId) {
+      return res.status(400).json({
+        message: "Vendor ID is required",
+      });
+    }
+
+    const query = {
+      vendorId,
+    };
+
+    // Optional filters
+    if (itemId) query.itemId = itemId;
+    if (transactionType) query.transactionType = transactionType;
+
+    if (fromDate || toDate) {
+      query.createdAt = {};
+      if (fromDate) query.createdAt.$gte = new Date(fromDate);
+      if (toDate) query.createdAt.$lte = new Date(toDate);
+    }
+
+    const transactions = await InventoryTransaction.find(query)
+      .populate("itemId", "itemName code category quantityUnit")
+      .populate("vendorId", "vendorName vendorId phone email")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      count: transactions.length,
+      items: transactions,
+    });
+  } catch (error) {
+    console.error("Get vendor transactions error:", error);
+    res.status(500).json({
+      message: "Failed to fetch vendor transactions",
+    });
+  }
+}

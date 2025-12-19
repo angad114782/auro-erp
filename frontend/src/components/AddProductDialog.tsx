@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Plus,
   Package,
@@ -30,11 +30,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { inventoryService } from "../services/inventoryService";
 
 interface NewItem {
   itemName: string;
   category: string;
-  brand: string;
   color: string;
   vendorId: string;
   expiryDate: string;
@@ -59,7 +59,6 @@ interface Props {
 const DEFAULT_ITEM: NewItem = {
   itemName: "",
   category: "",
-  brand: "",
   color: "",
   vendorId: "",
   expiryDate: "",
@@ -70,17 +69,6 @@ const DEFAULT_ITEM: NewItem = {
   billDate: "",
   billAttachment: null,
 };
-
-function generateItemCode() {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const month = (now.getMonth() + 1).toString().padStart(2, "0");
-  const day = now.getDate().toString().padStart(2, "0");
-  const randomNum = Math.floor(1000 + Math.random() * 9000);
-  return `ITM-${currentYear}-${month}${day}-${randomNum}`;
-}
-
-/* ---------- Small reusable UI pieces ---------- */
 
 function FieldWrapper({
   label,
@@ -108,7 +96,6 @@ function FieldWrapper({
   );
 }
 
-/* File input as a small component to avoid repetition */
 function FileInputButton({
   inputId,
   file,
@@ -164,8 +151,6 @@ function FileInputButton({
   );
 }
 
-/* ------------------- Main Component ------------------- */
-
 export function AddItemDialog({
   open,
   onOpenChange,
@@ -175,16 +160,17 @@ export function AddItemDialog({
   updateItem,
   vendors = [],
 }: Props) {
-  const [newItem, setNewItem] = React.useState<NewItem>(DEFAULT_ITEM);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [newItem, setNewItem] = useState<NewItem>(DEFAULT_ITEM);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reservedCode, setReservedCode] = useState<string>("");
+  const [isLoadingCode, setIsLoadingCode] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (open) {
       if (isEditMode && editingItem) {
         setNewItem({
           itemName: editingItem.itemName || "",
           category: editingItem.category || "",
-          brand: editingItem.brand || "",
           color: editingItem.color || "",
           vendorId: editingItem.vendorId || "",
           expiryDate: editingItem.expiryDate || "",
@@ -195,11 +181,31 @@ export function AddItemDialog({
           billDate: editingItem.billDate || "",
           billAttachment: null,
         });
+        setReservedCode(editingItem.code);
       } else {
         setNewItem({ ...DEFAULT_ITEM });
+        fetchReservedCode();
       }
+    } else {
+      // Reset when dialog closes
+      setReservedCode("");
+      setNewItem({ ...DEFAULT_ITEM });
     }
   }, [open, isEditMode, editingItem]);
+
+  const fetchReservedCode = async () => {
+    try {
+      setIsLoadingCode(true);
+      const response = await inventoryService.reserveCode();
+      setReservedCode(response.code);
+    } catch (error) {
+      console.error("Failed to fetch reserved code:", error);
+      toast.error("Failed to reserve item code");
+      setReservedCode("INV/XXXX/XXXX");
+    } finally {
+      setIsLoadingCode(false);
+    }
+  };
 
   const handleSubmit = async (draft = false) => {
     if (!newItem.itemName || !newItem.category) {
@@ -214,7 +220,6 @@ export function AddItemDialog({
     formData.append("itemName", newItem.itemName);
     formData.append("category", newItem.category);
     formData.append("subCategory", "General");
-    formData.append("brand", newItem.brand || "N/A");
     formData.append("color", newItem.color || "N/A");
     formData.append("vendorId", newItem.vendorId || "");
     formData.append("expiryDate", newItem.expiryDate || "");
@@ -227,10 +232,7 @@ export function AddItemDialog({
     formData.append("billNumber", newItem.billNumber || "");
     formData.append("billDate", newItem.billDate || "");
     formData.append("isDraft", draft ? "true" : "false");
-    formData.append(
-      "code",
-      isEditMode && editingItem ? editingItem.code : generateItemCode()
-    );
+    // DO NOT append code - backend will generate it
 
     if (newItem.billAttachment) {
       formData.append("billAttachment", newItem.billAttachment);
@@ -245,6 +247,10 @@ export function AddItemDialog({
         toast.success(
           draft ? "Item saved as draft!" : "Item added successfully!"
         );
+        // Fetch new reserved code after successful creation
+        if (!draft) {
+          fetchReservedCode();
+        }
       }
 
       // Reset and close
@@ -258,7 +264,6 @@ export function AddItemDialog({
     }
   };
 
-  /* small helper for updating nested fields */
   const updateField = <K extends keyof NewItem>(key: K, value: NewItem[K]) =>
     setNewItem((prev) => ({ ...prev, [key]: value }));
 
@@ -266,7 +271,13 @@ export function AddItemDialog({
     <Dialog
       open={open}
       onOpenChange={(isOpen) => {
-        if (!isOpen) onOpenChange(false);
+        if (!isOpen) {
+          // Reset reserved code when closing without creating
+          if (!isEditMode) {
+            setReservedCode("");
+          }
+          onOpenChange(false);
+        }
       }}
     >
       <DialogContent
@@ -279,7 +290,6 @@ export function AddItemDialog({
           flex flex-col
         "
       >
-        {/* ---------- HEADER ---------- */}
         <div
           className="
             sticky top-0 z-50 
@@ -316,10 +326,8 @@ export function AddItemDialog({
           </div>
         </div>
 
-        {/* ---------- BODY SCROLL AREA ---------- */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-4 py-6 md:px-8 md:py-8 xl:px-12 xl:py-10">
-            {/* ------------- SECTION 1: ITEM INFO ------------- */}
             <div className="space-y-6 md:space-y-8">
               <div className="flex items-center gap-4 md:gap-6">
                 <div className="w-10 h-10 md:w-12 md:h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
@@ -350,9 +358,21 @@ export function AddItemDialog({
                       <span className="text-base font-mono font-bold text-gray-900 truncate">
                         {isEditMode && editingItem
                           ? editingItem.code
-                          : generateItemCode()}
+                          : isLoadingCode
+                          ? "Loading..."
+                          : reservedCode || "INV/XXXX/XXXX"}
                       </span>
+                      {!isEditMode && reservedCode && !isLoadingCode && (
+                        <Badge className="bg-blue-100 text-blue-800 text-xs px-2">
+                          Reserved
+                        </Badge>
+                      )}
                     </div>
+                    {!isEditMode && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Code reserved when dialog opens
+                      </p>
+                    )}
                   </FieldWrapper>
                 </div>
 
@@ -363,18 +383,6 @@ export function AddItemDialog({
                       value={newItem.category}
                       onChange={(e) => updateField("category", e.target.value)}
                       placeholder="e.g., Raw Materials"
-                      className="h-12 text-base border-2 focus:border-[#0c9dcb]"
-                    />
-                  </FieldWrapper>
-                </div>
-
-                <div className="xl:col-span-2">
-                  <FieldWrapper label="Brand" id="brand">
-                    <Input
-                      id="brand"
-                      value={newItem.brand}
-                      onChange={(e) => updateField("brand", e.target.value)}
-                      placeholder="e.g., Nike"
                       className="h-12 text-base border-2 focus:border-[#0c9dcb]"
                     />
                   </FieldWrapper>
@@ -438,6 +446,7 @@ export function AddItemDialog({
                       <Input
                         id="quantity"
                         type="number"
+                        min="0"
                         value={newItem.quantity}
                         onChange={(e) =>
                           updateField("quantity", e.target.value)
@@ -487,7 +496,6 @@ export function AddItemDialog({
               </div>
             </div>
 
-            {/* ------------- SECTION 2: BILLING INFO ------------- */}
             <div className="space-y-6 md:space-y-8 mt-10">
               <div className="flex items-center gap-4 md:gap-6">
                 <div className="w-10 h-10 md:w-12 md:h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-md">
@@ -560,7 +568,6 @@ export function AddItemDialog({
           </div>
         </div>
 
-        {/* ---------- FOOTER ---------- */}
         <div
           className="
             sticky bottom-0 bg-white 

@@ -413,7 +413,7 @@ export function Inventory() {
                       Category
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Brand & Color
+                      Color
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Vendor
@@ -470,10 +470,7 @@ export function Inventory() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
-                          {item.brand || "No Brand"}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {item.color || "No Color"}
+                          {item.color.toUpperCase() || "No Color"}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

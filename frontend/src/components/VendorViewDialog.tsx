@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Users,
   Package,
@@ -29,6 +29,7 @@ import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { VendorEditDialog } from "./VendorEditDialog";
+import api from "../lib/api";
 
 interface VendorViewDialogProps {
   open: boolean;
@@ -36,36 +37,9 @@ interface VendorViewDialogProps {
   vendor: any;
 }
 
-// Mock supply history data
-const getSupplyHistory = (vendorId: string) => [
-  {
-    id: "1",
-    date: "2024-09-15",
-    billNumber: "BILL-2024-001",
-    itemName: "Premium Leather Sheets",
-    itemCode: "PLS-001",
-    quantity: 500,
-    unit: "piece",
-    status: "Delivered",
-    orderValue: "₹1,25,000",
-    deliveryTime: "3 days",
-    quality: "Excellent",
-  },
-  {
-    id: "2",
-    date: "2024-09-08",
-    billNumber: "BILL-2024-002",
-    itemName: "Rubber Soles - Size 8",
-    itemCode: "RS-008",
-    quantity: 200,
-    unit: "pair",
-    status: "Delivered",
-    orderValue: "₹45,000",
-    deliveryTime: "2 days",
-    quality: "Good",
-  },
-];
-
+/* =========================
+   ORIGINAL HELPERS (UNCHANGED)
+========================= */
 const getStatusColor = (status: string) => {
   switch (status) {
     case "Delivered":
@@ -100,18 +74,55 @@ export function VendorViewDialog({
   vendor,
 }: VendorViewDialogProps) {
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [supplyHistory, setSupplyHistory] = useState<any[]>([]);
 
   if (!vendor) {
     return null;
   }
 
-  const supplyHistory = getSupplyHistory(vendor.id);
+  /* =========================
+     BACKEND DATA (REPLACED MOCK)
+  ========================= */
+  useEffect(() => {
+    if (!vendor?._id) return;
+
+    const fetchSupplyHistory = async () => {
+      try {
+        const res = await api.get(`/inventory/vendor/${vendor._id}`);
+
+        // 🔁 Backend → SAME shape as mock
+        const mapped = (res.data.items || []).map((tx: any) => ({
+          id: tx._id,
+          date: tx.transactionDate || tx.createdAt,
+          billNumber: tx.billNumber || "—",
+          itemName: tx.itemId?.itemName || "N/A",
+          itemCode: tx.itemId?.code || "—",
+          quantity: tx.quantity,
+          unit: tx.itemId?.quantityUnit || "",
+          status: tx.transactionType === "Stock In" ? "Delivered" : "Pending",
+          orderValue: "₹0",
+          deliveryTime: "—",
+          quality: "Good",
+        }));
+
+        setSupplyHistory(mapped);
+      } catch (err) {
+        console.error("Failed to fetch vendor supply history", err);
+      }
+    };
+
+    fetchSupplyHistory();
+  }, [vendor?._id]);
+
+  /* =========================
+     ORIGINAL DERIVED VALUES
+  ========================= */
   const totalOrders = supplyHistory.length;
   const completedOrders = supplyHistory.filter(
     (order) => order.status === "Delivered"
   ).length;
   const totalValue = supplyHistory.reduce((sum, order) => {
-    const value = parseInt(order.orderValue.replace(/[₹,]/g, ""));
+    const value = parseInt(order.orderValue.replace(/[₹,]/g, "")) || 0;
     return sum + value;
   }, 0);
 
@@ -277,78 +288,6 @@ export function VendorViewDialog({
                 </Card>
               </div>
 
-              {/* Performance Metrics */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <Package className="w-6 h-6 md:w-8 md:h-8 text-blue-600" />
-                      <div>
-                        <p className="text-xs md:text-sm font-semibold text-blue-600">
-                          Total Orders
-                        </p>
-                        <p className="text-xl md:text-2xl font-bold text-blue-900">
-                          {totalOrders}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-6 h-6 md:w-8 md:h-8 text-green-600" />
-                      <div>
-                        <p className="text-xs md:text-sm font-semibold text-green-600">
-                          Completed
-                        </p>
-                        <p className="text-xl md:text-2xl font-bold text-green-900">
-                          {completedOrders}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <TrendingUp className="w-6 h-6 md:w-8 md:h-8 text-purple-600" />
-                      <div>
-                        <p className="text-xs md:text-sm font-semibold text-purple-600">
-                          Success Rate
-                        </p>
-                        <p className="text-xl md:text-2xl font-bold text-purple-900">
-                          {totalOrders > 0
-                            ? Math.round((completedOrders / totalOrders) * 100)
-                            : 0}
-                          %
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <IndianRupee className="w-6 h-6 md:w-8 md:h-8 text-cyan-600" />
-                      <div>
-                        <p className="text-xs md:text-sm font-semibold text-cyan-600">
-                          Total Value
-                        </p>
-                        <p className="text-xl md:text-2xl font-bold text-cyan-900">
-                          ₹{(totalValue / 100000).toFixed(1)}L
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Separator className="my-6 md:my-8" />
-
               {/* Supply History */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
@@ -406,17 +345,6 @@ export function VendorViewDialog({
                                 {order.quantity.toLocaleString()} {order.unit}
                               </p>
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-500">
-                                Order Value
-                              </p>
-                              <div className="flex items-center gap-1">
-                                <IndianRupee className="w-3 h-3 text-green-600" />
-                                <p className="text-sm font-medium">
-                                  {order.orderValue}
-                                </p>
-                              </div>
-                            </div>
                           </div>
 
                           <div className="pt-2 border-t">
@@ -456,12 +384,6 @@ export function VendorViewDialog({
                           <th className="px-4 md:px-6 py-3 text-left text-xs font-semibold text-gray-900">
                             Quantity
                           </th>
-                          <th className="px-4 md:px-6 py-3 text-left text-xs font-semibold text-gray-900">
-                            Order Value
-                          </th>
-                          <th className="px-4 md:px-6 py-3 text-left text-xs font-semibold text-gray-900">
-                            Quality & Delivery
-                          </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -479,9 +401,7 @@ export function VendorViewDialog({
                                   <div className="text-xs text-gray-500">
                                     {new Date(order.date).toLocaleDateString(
                                       "en-GB",
-                                      {
-                                        weekday: "short",
-                                      }
+                                      { weekday: "short" }
                                     )}
                                   </div>
                                 </div>
@@ -509,27 +429,6 @@ export function VendorViewDialog({
                                 </div>
                                 <div className="text-xs text-gray-500 capitalize">
                                   {order.unit}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <IndianRupee className="w-4 h-4 text-green-600" />
-                                <div className="text-sm font-medium text-gray-900">
-                                  {order.orderValue}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  {getQualityIcon(order.quality)}
-                                  <span className="text-sm text-gray-900">
-                                    {order.quality}
-                                  </span>
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  Delivered in {order.deliveryTime}
                                 </div>
                               </div>
                             </td>

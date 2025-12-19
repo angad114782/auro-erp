@@ -1,6 +1,7 @@
 import {
   Calendar,
   Clock,
+  Download,
   FileText,
   History,
   Info,
@@ -23,6 +24,7 @@ import { Label } from "./ui/label";
 import { useVendorStore } from "../hooks/useVendor";
 import { useEffect, useState } from "react";
 import { useInventory } from "../hooks/useInventory";
+import { log } from "console";
 
 interface ItemHistoryDialogProps {
   open: boolean;
@@ -37,7 +39,7 @@ export function ItemHistoryDialog({
 }: ItemHistoryDialogProps) {
   const { vendors, loadVendors } = useVendorStore();
   const { getHistory } = useInventory();
-
+  const [loading, setLoading] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [attachmentDialogOpen, setAttachmentDialogOpen] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(
@@ -58,7 +60,7 @@ export function ItemHistoryDialog({
         setTransactions([]);
         return;
       }
-
+      setLoading(true);
       try {
         const history = await getHistory(item._id);
         // keep raw transactions, we'll resolve vendor names on render
@@ -66,6 +68,8 @@ export function ItemHistoryDialog({
       } catch (error) {
         console.error("Error fetching transactions:", error);
         setTransactions([]);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -129,14 +133,30 @@ export function ItemHistoryDialog({
     }
   };
 
-  // Resolve attachment src: if absolute URL, use it; if relative, prepend backend URL env var (if present)
+  // Resolve attachment src: FIX for backslashes and URL construction
   const resolveAttachmentSrc = (path: string) => {
     if (!path) return "";
     const isAbsolute = /^https?:\/\//i.test(path);
     if (isAbsolute) return path;
+
+    // FIX: Replace backslashes with forward slashes
+    const sanitizedPath = path.replace(/\\/g, "/");
+
     const backend = (import.meta as any).env?.VITE_BACKEND_URL || "";
-    return `${backend}${path}`;
+    // Ensure no double slashes during concatenation
+    const baseUrl = backend.endsWith("/") ? backend.slice(0, -1) : backend;
+    const finalPath = sanitizedPath.startsWith("/")
+      ? sanitizedPath
+      : `/${sanitizedPath}`;
+
+    return `${baseUrl}${finalPath}`;
   };
+
+  const TransactionsLoader = () => (
+    <div className="flex justify-center items-center py-8">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0c9dcb]"></div>
+    </div>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -239,15 +259,6 @@ export function ItemHistoryDialog({
 
                   <div>
                     <Label className="text-xs md:text-sm font-medium text-gray-600">
-                      Brand
-                    </Label>
-                    <div className="mt-1 text-sm md:text-base text-gray-900">
-                      {item.brand || "N/A"}
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label className="text-xs md:text-sm font-medium text-gray-600">
                       Color
                     </Label>
                     <div className="mt-1 text-sm md:text-base text-gray-900">
@@ -319,9 +330,12 @@ export function ItemHistoryDialog({
               <div className="bg-white border-2 border-gray-200 rounded-xl overflow-hidden">
                 {/* Mobile: Card list */}
                 <div className="md:hidden divide-y divide-gray-100">
-                  {transactions.length > 0 ? (
+                  {loading ? (
+                    <TransactionsLoader />
+                  ) : transactions.length > 0 ? (
                     transactions.map((transaction: any) => {
                       const key = transaction.id || transaction._id;
+
                       return (
                         <div key={key} className="p-4">
                           <div className="flex items-start justify-between gap-3">
@@ -435,7 +449,9 @@ export function ItemHistoryDialog({
 
                 {/* Desktop / Tablet: Table view */}
                 <div className="hidden md:block overflow-x-auto">
-                  {transactions.length > 0 ? (
+                  {loading ? (
+                    <TransactionsLoader />
+                  ) : transactions.length > 0 ? (
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>

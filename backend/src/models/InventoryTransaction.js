@@ -18,7 +18,10 @@ const inventoryTransactionSchema = new mongoose.Schema(
     newStock: { type: Number, required: true },
 
     vendorId: { type: mongoose.Schema.Types.ObjectId, ref: "Vendor" },
-
+    billDate: {
+      type: String,
+      default: "",
+    },
     billNumber: { type: String },
     billAttachmentUrl: { type: String },
 

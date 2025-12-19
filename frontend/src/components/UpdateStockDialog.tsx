@@ -1,21 +1,21 @@
 // src/components/UpdateStockDialog.tsx
-import React, { useEffect, useState } from "react";
 import {
-  Plus,
-  Minus,
-  X,
   AlertCircle,
-  Paperclip,
   Barcode,
-  CheckCircle,
   Calendar,
+  CheckCircle,
   FileText,
+  Minus,
   Package,
+  Paperclip,
+  Plus,
+  X,
 } from "lucide-react";
-import { Dialog, DialogContent } from "./ui/dialog";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "./ui/button";
+import { Dialog, DialogContent } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
 import {
   Select,
@@ -24,9 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { toast } from "sonner";
+import { Textarea } from "./ui/textarea";
 
 interface Props {
   open: boolean;
@@ -109,14 +108,30 @@ export function UpdateStockDialog({
     }
 
     try {
-      await updateStock(selectedItem._id, {
-        type: type === "add" ? "add" : "reduce",
-        quantity,
-        vendorId: stockUpdate.vendorId,
-        billNumber: stockUpdate.billNumber,
-        billDate: stockUpdate.billDate,
-        notes: stockUpdate.notes,
-      });
+      const formData = new FormData();
+
+      formData.append("type", type);
+      formData.append("quantity", String(quantity));
+
+      if (type === "add") {
+        if (stockUpdate.vendorId) {
+          formData.append("vendorId", stockUpdate.vendorId);
+        }
+
+        formData.append("billNumber", stockUpdate.billNumber || "");
+        formData.append("billDate", stockUpdate.billDate || "");
+        formData.append("notes", stockUpdate.notes || "");
+
+        if (stockUpdate.billAttachment) {
+          formData.append("billAttachment", stockUpdate.billAttachment);
+        }
+      }
+
+      if (type === "reduce") {
+        formData.append("notes", stockUpdate.notes || "");
+      }
+
+      await updateStock(selectedItem._id, formData);
 
       const action =
         type === "add" ? `Added ${quantity}` : `Reduced ${quantity}`;
@@ -139,6 +154,26 @@ export function UpdateStockDialog({
     if (additionalQuantity) return currentQuantity + additionalQuantity;
     if (subtractQuantity) return currentQuantity - subtractQuantity;
     return currentQuantity;
+  };
+
+  const isUpdateDisabled = () => {
+    // ADD STOCK → all fields required except notes
+    if (activeTab === "add-stock") {
+      return (
+        !stockUpdate.additionalQuantity ||
+        !stockUpdate.vendorId ||
+        !stockUpdate.billNumber ||
+        !stockUpdate.billDate ||
+        !stockUpdate.billAttachment
+      );
+    }
+
+    // REDUCE STOCK → only quantity required
+    if (activeTab === "reduce-stock") {
+      return !stockUpdate.subtractQuantity;
+    }
+
+    return true;
   };
 
   return (
@@ -243,6 +278,12 @@ export function UpdateStockDialog({
                 >
                   Add Stock Quantity
                 </Label>
+                {activeTab === "add-stock" && isUpdateDisabled() && (
+                  <p className="text-sm text-red-600">
+                    Please fill all required fields to add stock
+                  </p>
+                )}
+
                 <div className="relative">
                   <Plus className="absolute left-4 top-1/2 transform -translate-y-1/2 text-blue-600 w-5 h-5" />
                   <Input
@@ -611,9 +652,7 @@ export function UpdateStockDialog({
                   ? "bg-red-600 hover:bg-red-700"
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
-              disabled={
-                !stockUpdate.additionalQuantity && !stockUpdate.subtractQuantity
-              }
+              disabled={isUpdateDisabled() || isSubmitting}
             >
               {activeTab === "reduce-stock" ? (
                 <Minus className="w-5 h-5 mr-2" />
