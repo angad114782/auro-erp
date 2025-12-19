@@ -299,3 +299,50 @@ export async function getProjectsInTrackingController(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+
+import {PCProductionCard}from "../models/pc_productionCard.model.js";
+import MicroTracking from "../models/MicroTracking.model.js";
+
+export async function stopProductionCard(req, res) {
+  try {
+    const { projectId, cardId } = req.params;
+    const { updatedBy } = req.body;
+
+    // 1️⃣ Validate card
+    const card = await PCProductionCard.findOne({
+      _id: cardId,
+      projectId,
+    });
+
+    if (!card) {
+      return res.status(404).json({
+        success: false,
+        error: "Production card not found",
+      });
+    }
+
+    // 2️⃣ Revert stage to Planning
+    card.stage = "Planning";
+    card.updatedBy = updatedBy || "System";
+    await card.save();
+
+    // 3️⃣ DELETE micro-tracking for this card
+    await MicroTracking.deleteMany({
+      projectId,
+      cardId,
+    });
+
+    return res.json({
+      success: true,
+      message: "Production stopped & micro-tracking cleared",
+      cardId,
+    });
+  } catch (err) {
+    console.error("Stop production failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to stop production",
+    });
+  }
+}

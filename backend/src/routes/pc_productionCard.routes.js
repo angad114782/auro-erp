@@ -18,5 +18,6 @@ router.get("/:cardId", ctrl.getCard);
 router.put("/:cardId", ctrl.updateCard);
 router.delete("/:cardId", ctrl.deleteCard);
 router.put("/:cardId/stage", ctrl.changeStageController);
+router.delete( "/:cardId/stop", ctrl.stopProductionCard);
 
 export default router;

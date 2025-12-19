@@ -6,7 +6,7 @@ const router = express.Router();
 // Get project micro tracking
 router.get("/micro-tracking/project/:projectId", ctrl.getMicroTracking);
 
-// Update one row
+
 router.get("/micro-tracking/department/:projectId", ctrl.getDepartmentWiseTracking);
 
 router.get(
@@ -27,12 +27,18 @@ router.get("/tracking/dashboard/department", ctrl.trackingDashboardDepartmentCon
 router.get(
   "/projects/:projectId/cards",
   ctrl.getProjectTrackingCards
-);
+);// traking cards list for dropdown
 
-// 🔥 Already exists (card select hone ke baad)
+
 router.get(
-  "/projects/:projectId/card/:cardId",
+  "/projects/:projectId/cards/:cardId",
   ctrl.getProjectCardTracking
+);// cards complete info
+
+
+router.post(
+  "/micro-tracking/transfer",
+  ctrl.transferToNextDepartment
 );
 
 

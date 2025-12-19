@@ -252,6 +252,85 @@ export function ProductionTrackingTable() {
   const [trackingData, setTrackingData] = useState<APITrackingData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+const [trackingCards, setTrackingCards] = useState<any[]>([]);
+const [selectedCardId, setSelectedCardId] = useState<string>("");
+const [loadingCards, setLoadingCards] = useState(false);
+const [departmentRows, setDepartmentRows] = useState<any[]>([]);
+const [loadingDeptRows, setLoadingDeptRows] = useState(false);
+const [deptRowsDialogOpen, setDeptRowsDialogOpen] = useState(false);
+
+const selectedCard = trackingCards.find(
+  (card) => card._id === selectedCardId
+);
+const ensureSelectedCard = () => {
+  if (!selectedCard) {
+    toast.error("Please select a tracking card first");
+    return false;
+  }
+  return true;
+};
+
+const fetchTrackingCards = async (projectId: string) => {
+  try {
+    setLoadingCards(true);
+
+    const res = await api.get(`/projects/${projectId}/cards`);
+
+    if (res.data?.success) {
+      const items = res.data.items || [];
+      setTrackingCards(items);
+
+      // ✅ DEFAULT: first card auto select
+      if (items.length > 0) {
+        setSelectedCardId(items[0]._id);
+      } else {
+        setSelectedCardId("");
+      }
+    } else {
+      setTrackingCards([]);
+      setSelectedCardId("");
+    }
+  } catch (err) {
+    console.error("Failed to load tracking cards", err);
+    toast.error("Failed to load tracking cards");
+    setSelectedCardId("");
+  } finally {
+    setLoadingCards(false);
+  }
+};
+
+const fetchDepartmentRows = async (
+  projectId: string,
+  department: string
+) => {
+  try {
+    setLoadingDeptRows(true);
+
+    const res = await api.get(
+      `/micro-tracking/department/${projectId}/${department}`
+    );
+
+    if (res.data?.success) {
+      setDepartmentRows(res.data.data || []);
+      setDeptRowsDialogOpen(true);
+    } else {
+      toast.error("No tracking rows found");
+      setDepartmentRows([]);
+    }
+  } catch (err) {
+    console.error("Failed to fetch department rows", err);
+    toast.error("Failed to load tracking rows");
+  } finally {
+    setLoadingDeptRows(false);
+  }
+};
+
+
+useEffect(() => {
+  if (selectedProductionRecord?.projectId) {
+    fetchTrackingCards(selectedProductionRecord.projectId);
+  }
+}, [selectedProductionRecord]);
 
   // Check for mobile on mount and resize
   React.useEffect(() => {
@@ -314,6 +393,12 @@ export function ProductionTrackingTable() {
       // Calculate current production quantity based on selected department
       const currentQuantity = departmentTotal;
       const plannedQuantity = item.poDetails?.orderQuantity || 0;
+const stageCardQuantity =
+  item.cards?.reduce(
+    (sum, card) => sum + (card.cardQuantity || 0),
+    0
+  ) || 0;
+
 
       // Determine status based on progress
       let status:
@@ -364,7 +449,8 @@ export function ProductionTrackingTable() {
         gender: item.gender || "Unisex",
         articleName: item.artName || "Unnamed Article",
         poNumber: item.poDetails?.poNumber || "N/A",
-        poItems: item.poDetails?.orderQuantity || 0,
+         poItems: stageCardQuantity,  // 👈 NOW THIS IS CARD QTY
+  poQuantity: item.poDetails?.orderQuantity || 0, 
         monthPlan: Math.floor((item.poDetails?.orderQuantity || 0) * 0.8),
         manufacturingCompany:
           item.cards?.[0]?.assignedPlant?.name || "Unknown Plant",
@@ -1025,22 +1111,24 @@ export function ProductionTrackingTable() {
           </div>
 
           {/* Quick Stats Grid - Shows ALL key metrics */}
-          <div className="grid grid-cols-4 gap-2 mb-3">
-            <div className="bg-gray-50 rounded p-2 text-center">
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {/* <div className="bg-gray-50 rounded p-2 text-center">
               <div className="text-sm font-semibold text-gray-900">
                 {record.poItems}
               </div>
-              <div className="text-xs text-gray-500">PO Items</div>
-            </div>
+              <div className="text-xs text-gray-500">Qty.</div>
+            </div> */}
             <div className="bg-gray-50 rounded p-2 text-center">
               <div className="text-sm font-semibold text-gray-900">
-                {stageData.quantity}/{stageData.planned}
+                {stageData.quantity}/{record.poItems}
               </div>
               <div className="text-xs text-gray-500">Completed</div>
             </div>
             <div className="bg-gray-50 rounded p-2 text-center">
               <div className="text-sm font-semibold text-gray-900">
-                {record.manufacturingCompany.substring(0, 3)}...
+               {record.manufacturingCompany.length > 9
+  ? `${record.manufacturingCompany.substring(0, 9)}...`
+  : record.manufacturingCompany}
               </div>
               <div className="text-xs text-gray-500">MFG</div>
             </div>
@@ -1830,7 +1918,7 @@ export function ProductionTrackingTable() {
                                 {record.poNumber}
                               </div>
                               <div className="text-xs text-gray-600 mt-0.5">
-                                {record.poItems} items
+                                {record.poItems} Qty.
                               </div>
                               <div className="text-xs text-blue-600 font-semibold mt-0.5">
                                 {calculateProductionCards(record.id)} cards
@@ -1870,7 +1958,7 @@ export function ProductionTrackingTable() {
                                 )}
                               </div>
                               <div className="text-xs text-gray-600">
-                                {stageData.quantity}/{stageData.planned} units
+                                {stageData.quantity}/{record.poItems} Qty
                               </div>
                               <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                                 <div
@@ -1878,7 +1966,7 @@ export function ProductionTrackingTable() {
                                   style={{
                                     width: `${Math.min(
                                       100,
-                                      (stageData.quantity / stageData.planned) *
+                                      (stageData.quantity / record.poItems) *
                                         100
                                     )}%`,
                                   }}
@@ -2548,7 +2636,7 @@ export function ProductionTrackingTable() {
                                 {selectedProductionRecord.poItems}
                               </div>
                               <div className="text-xs sm:text-sm text-green-700">
-                                Total PO Items
+                                Total Cards Items
                               </div>
                             </div>
                           </div>
@@ -2736,30 +2824,52 @@ export function ProductionTrackingTable() {
                               {selectedProductionRecord.poNumber}
                             </div>
                             <div className="text-xs sm:text-sm text-gray-500">
-                              {selectedProductionRecord.poItems} units ordered
+                              {selectedProductionRecord.poQuantity} units ordered
                             </div>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                          <div className="bg-yellow-50 rounded-lg p-3 sm:p-4">
-                            <div className="text-base sm:text-lg font-bold text-yellow-600">
-                              {selectedProductionRecord.monthPlan}
-                            </div>
-                            <div className="text-xs text-yellow-700">
-                              Monthly Target
-                            </div>
-                          </div>
-                          <div className="bg-purple-50 rounded-lg p-3 sm:p-4">
-                            <div className="text-base sm:text-lg font-bold text-purple-600 truncate">
-                              {selectedProductionRecord.unitPstId}
-                            </div>
-                            <div className="text-xs text-purple-700">
-                              Unit PST ID
-                            </div>
-                          </div>
-                        </div>
                       </div>
+                      <div className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-6 space-y-4 sm:space-y-6">
+  <div>
+    <div className="text-xs sm:text-sm font-medium text-gray-600">
+      Select Tracking Card
+    </div>
+
+    <Select
+      value={selectedCardId}
+      onValueChange={setSelectedCardId}
+      disabled={loadingCards}
+    >
+      <SelectTrigger className="mt-1">
+        <SelectValue
+          placeholder={loadingCards ? "Loading cards..." : "Select card"}
+        />
+      </SelectTrigger>
+
+      <SelectContent>
+        {trackingCards.length === 0 && (
+          <SelectItem value="no-card" disabled>
+            No tracking cards found
+          </SelectItem>
+        )}
+
+        {trackingCards.map((card) => (
+          <SelectItem key={card._id} value={card._id}>
+            {card.cardNumber}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+
+    {selectedCardId && (
+      <div className="text-xs text-gray-500 mt-2">
+        Selected Card ID: {selectedCardId}
+      </div>
+    )}
+  </div>
+</div>
+
                     </div>
                   </div>
 
@@ -2777,54 +2887,66 @@ export function ProductionTrackingTable() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
                       {stages.map((stage) => {
                         const stageData = selectedProductionRecord[stage.key];
-                        const progress =
-                          (stageData.quantity / stageData.planned) * 100;
-                        const remaining =
-                          stageData.planned - stageData.quantity;
+                        
+const plannedQty = selectedCard
+  ? selectedCard.cardQuantity
+  : stageData.planned;
+const progress =
+  plannedQty > 0
+    ? (stageData.quantity / plannedQty) * 100
+    : 0;
+
+const remaining = plannedQty - stageData.quantity;
 
                         return (
                           <div
                             key={stage.key}
                             className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5 hover:border-[#0c9dcb] hover:shadow-md transition-all duration-200 cursor-pointer group"
                             onClick={() => {
-                              // Set the selected department to the clicked stage's department
-                              setSelectedDepartment(stage.department);
+  if (!ensureSelectedCard()) return;
 
-                              // Prepare product data for the ItemCuttingDialog
-                              setSelectedProductForCutting({
-                                id: selectedProductionRecord.id,
-                                productName:
-                                  selectedProductionRecord.articleName,
-                                productionId:
-                                  selectedProductionRecord.productionId,
-                                targetQuantity: stageData.planned,
-                                currentQuantity: stageData.quantity,
-                                brand: selectedProductionRecord.brand,
-                                category: selectedProductionRecord.category,
-                                color: selectedProductionRecord.color,
-                                size: selectedProductionRecord.size,
-                                poNumber: selectedProductionRecord.poNumber,
-                                manufacturingCompany:
-                                  selectedProductionRecord.manufacturingCompany,
-                                country: selectedProductionRecord.country,
-                                // Add stage-specific data
-                                stage: stage.key,
-                                stageName: stage.name,
-                                stageStatus: stageData.status,
-                                stageRemaining: remaining,
-                              });
+  setSelectedDepartment(stage.department);
 
-                              // Close the details dialog
-                              setSelectedProductionRecord(null);
+  setSelectedProductForCutting({
+    // 🔥 CARD DATA
+    cardId: selectedCard._id,
+    cardNumber: selectedCard.cardNumber,
+    cardQuantity: selectedCard.cardQuantity,
+    assignedPlant: selectedCard.assignedPlant,
 
-                              // Open the ItemCuttingDialog directly
-                              setItemCuttingDialogOpen(true);
+    // PROJECT INFO
+    projectId: selectedProductionRecord.projectId,
+    productName: selectedProductionRecord.articleName,
+    productionId: selectedProductionRecord.productionId,
+    brand: selectedProductionRecord.brand,
+    category: selectedProductionRecord.category,
+    color: selectedProductionRecord.color,
+    size: selectedProductionRecord.size,
+    poNumber: selectedProductionRecord.poNumber,
+    manufacturingCompany:
+      selectedProductionRecord.manufacturingCompany,
+    country: selectedProductionRecord.country,
 
-                              // Show toast notification
-                              toast.success(
-                                `Opening ${stage.name} update for ${selectedProductionRecord.articleName}`
-                              );
-                            }}
+    // STAGE INFO
+    stage: stage.key,
+    stageName: stage.name,
+    stageStatus: stageData.status,
+
+    // CARD QUANTITY
+    targetQuantity: selectedCard.cardQuantity,
+    currentQuantity: stageData.quantity || 0,
+    remainingQuantity:
+      selectedCard.cardQuantity - (stageData.quantity || 0),
+  });
+
+  setSelectedProductionRecord(null);
+  setItemCuttingDialogOpen(true);
+
+  toast.success(
+    `Opening ${stage.name} update for card ${selectedCard.cardNumber}`
+  );
+}}
+
                           >
                             <div className="flex items-center justify-between mb-3 sm:mb-4">
                               <div className="flex items-center gap-2 sm:gap-3">
@@ -2886,8 +3008,9 @@ export function ProductionTrackingTable() {
                                     Planned
                                   </div>
                                   <div className="font-medium group-hover:text-[#0c9dcb]">
-                                    {stageData.planned}
-                                  </div>
+  {plannedQty}
+</div>
+
                                 </div>
                                 <div>
                                   <div className="text-gray-600 group-hover:text-gray-800">
