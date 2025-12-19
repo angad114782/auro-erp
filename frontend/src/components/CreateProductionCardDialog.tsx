@@ -348,38 +348,37 @@ export function CreateProductionCardDialog({
 
   // Update handleStopProduction to revert stage
   const handleStopProduction = async (card: ProductionCardData) => {
-    setLoadingCardId(card.id);
-    try {
-      // Revert stage back to "Planning"
-      const response = await api.put(
-        `/projects/${card.projectId}/production-cards/${card._id}/stage`,
-        {
-          stage: "Planning",
-          updatedBy: "Production Manager",
-        }
+  setLoadingCardId(card.id);
+
+  try {
+    const response = await api.delete(
+      `/projects/${card.projectId}/production-cards/${card._id}/stop`,
+      {
+        data: { updatedBy: "Production Manager" },
+      }
+    );
+
+    if (response.data.success) {
+      setApiCards((prev) =>
+        prev.map((c) =>
+          c._id === card._id ? { ...c, stage: "Planning" } : c
+        )
       );
 
-      if (response.data.success) {
-        // Update the local state
-        setApiCards((prev) =>
-          prev.map((c) =>
-            c._id === card._id ? { ...c, stage: "Planning" } : c
-          )
-        );
-
-        toast.success(
-          `Production card "${card.cardName}" reverted to Planning stage!`
-        );
-      } else {
-        throw new Error("Failed to update stage");
-      }
-    } catch (error: any) {
-      console.error("Failed to stop production:", error);
-      toast.error(error?.response?.data?.error || "Failed to stop production");
-    } finally {
-      setLoadingCardId(null);
+      toast.success(
+        `Production card "${card.cardName}" stopped & tracking cleared`
+      );
+    } else {
+      throw new Error("Failed to stop production");
     }
-  };
+  } catch (error: any) {
+    console.error("Failed to stop production:", error);
+    toast.error(error?.response?.data?.error || "Failed to stop production");
+  } finally {
+    setLoadingCardId(null);
+  }
+};
+
 
   const handleSaveProductionCard = (cardData: ProductionCardData) => {
     toast.success("Production Card saved successfully!");
@@ -1004,7 +1003,6 @@ export function CreateProductionCardDialog({
                                     ).toLocaleDateString()
                                   : "Not set",
                               },
-                              { label: "Card Number", value: card.cardName },
                               {
                                 label: "Created",
                                 value: new Date(
@@ -1085,13 +1083,13 @@ export function CreateProductionCardDialog({
             >
               Cancel
             </Button>
-            <Button
+            {/* <Button
               size={isMobile ? "sm" : "default"}
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
             >
               <Factory className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
               Start Production
-            </Button>
+            </Button> */}
           </div>
         </div>
       </DialogContent>

@@ -21,31 +21,30 @@ const MicroTrackingSchema = new mongoose.Schema(
     progressDone: { type: Number, default: 0 },
     progressToday: { type: Number, default: 0 },
 
-    // ⭐ NEW FIELD
+    // ✅ CORRECT PLACE (ROW LEVEL)
+    transferred: { type: Number, default: 0 },
+    received: { type: Number, default: 0 },
+
     history: [
-  {
-    date: { type: Date, default: Date.now },
-
-    // For progressToday auto-add (old logic)
-    addedToday: Number,
-    previousDone: Number,
-    newDone: Number,
-
-    // For ANY update (dept / overwrite / multiple fields)
-    changes: [
       {
-        field: String,
-        from: mongoose.Schema.Types.Mixed,
-        to: mongoose.Schema.Types.Mixed
+        date: { type: Date, default: Date.now },
+        addedToday: Number,
+        previousDone: Number,
+        newDone: Number,
+
+        changes: [
+          {
+            field: String,
+            from: mongoose.Schema.Types.Mixed,
+            to: mongoose.Schema.Types.Mixed
+          }
+        ],
+        updatedBy: { type: String, default: "system" }
       }
-    ],
-
-    updatedBy: { type: String, default: "system" }
-  }
-]
-
+    ]
   },
   { timestamps: true }
 );
+
 
 export default mongoose.model("MicroTracking", MicroTrackingSchema);

@@ -3,17 +3,34 @@ import * as service from "../services/microTracking.service.js";
 
 
 /* ---------------- Get Micro Tracking by project ---------------- */
+/* ---------------- Get Micro Tracking by project ---------------- */
 export async function getMicroTracking(req, res) {
   try {
     const { projectId } = req.params;
-    const items = await service.getMicroTrackingByProject(projectId);
+    const { department, month, year } = req.query;
 
-    return res.json({ success: true, items });
+    const result = await service.getMicroTrackingByProject(
+      projectId,
+      department,
+      Number(month),
+      Number(year)
+    );
+
+    return res.json({
+      success: true,
+      filters: {
+        department: department || "all",
+        month: month || "all",
+        year: year || "all"
+      },
+      ...result
+    });
   } catch (err) {
     console.error("getMicroTracking error:", err);
     return res.status(500).json({ error: err.message });
   }
 }
+
 
 /* ---------------- Update progress for row ---------------- */
 export async function updateMicroTracking(req, res) {
@@ -156,6 +173,33 @@ export async function getProjectTrackingCards(req, res) {
 
   } catch (err) {
     console.error("getProjectTrackingCards error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+
+
+export async function transferToNextDepartment(req, res) {
+  try {
+    const { projectId, cardId, fromDepartment, toDepartment, quantity } = req.body;
+
+    if (!projectId || !cardId || !fromDepartment || !toDepartment || !quantity) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const result = await service.transferToNextDepartmentService(
+      projectId,
+      cardId,
+      fromDepartment,
+      toDepartment,
+      Number(quantity),
+      req.user?.name || "system"
+    );
+
+    return res.json({ success: true, ...result });
+
+  } catch (err) {
+    console.error("transferToNextDepartment error:", err);
     return res.status(500).json({ error: err.message });
   }
 }

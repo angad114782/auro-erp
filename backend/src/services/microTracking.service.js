@@ -52,14 +52,64 @@ export async function createMicroTrackingForCard(cardId) {
 /* ----------------------------------------------------
    2) GET all rows for a Project
 ---------------------------------------------------- */
-export async function getMicroTrackingByProject(projectId) {
-  return await MicroTracking.find({ projectId })
-    .populate({
-      path: "cardId",
-      select: "cardNumber productName cardQuantity stage assignedPlant"
-    })
-    .sort({ department: 1, name: 1 })
-    .lean();
+/* ----------------------------------------------------
+   GET Micro Tracking by project
+   (department + month + year)
+---------------------------------------------------- */
+export async function getMicroTrackingByProject(
+  projectId,
+  department,
+  month,
+  year
+) {
+  const filter = { projectId };
+
+  // ✅ department filter
+  if (department) {
+    filter.department = department;
+  }
+
+  // ✅ month + year filter
+  if (month && year) {
+    const startDate = new Date(year, month - 1, 1); // month is 0-based
+    const endDate = new Date(year, month, 1);
+
+    filter.createdAt = {
+      $gte: startDate,
+      $lt: endDate
+    };
+  }
+
+ const rows = await MicroTracking.find(filter)
+  .populate({
+    path: "cardId",
+    select: "cardNumber productName cardQuantity stage assignedPlant",
+    populate: {
+      path: "assignedPlant",
+      select: "name code location" // jo bhi fields chahiye
+    }
+  })
+  .sort({ cardNumber: 1, name: 1 })
+  .lean();
+
+
+  // ✅ unique card calculation
+  const cardMap = new Map();
+
+  rows.forEach(row => {
+    const cardId = row.cardId?._id?.toString();
+    if (!cardId) return;
+
+    if (!cardMap.has(cardId)) {
+      cardMap.set(cardId, row.cardId.cardQuantity || 0);
+    }
+  });
+
+  return {
+    totalCards: cardMap.size,
+    totalCardQuantity: [...cardMap.values()].reduce((a, b) => a + b, 0),
+    items: rows
+  };
 }
 
 
@@ -158,13 +208,38 @@ export async function getRowsByDepartment(projectId, department) {
 /* ----------------------------------------------------
    5) UPDATE only progressToday + push history
 ---------------------------------------------------- */
-export async function updateProgressTodayService(id, progressToday, updatedBy = "system") {
+export async function updateProgressTodayService(
+  id,
+  progressToday,
+  updatedBy = "system"
+) {
   const todayProgress = Number(progressToday || 0);
+  if (todayProgress <= 0)
+    throw new Error("progressToday must be greater than 0");
 
   const row = await MicroTracking.findById(id);
   if (!row) throw new Error("Row not found");
 
   const previousDone = Number(row.progressDone || 0);
+
+  // 🔒 IMPORTANT GUARD (for NEXT departments like printing, upper, etc.)
+  // If received is defined, user cannot exceed received quantity
+  if (row.received !== undefined && row.received !== null) {
+    const allowed = Number(row.received) - previousDone;
+
+    if (allowed <= 0) {
+      throw new Error(
+        "No quantity received from previous department. Transfer required."
+      );
+    }
+
+    if (todayProgress > allowed) {
+      throw new Error(
+        `Only ${allowed} units allowed. Transfer more from previous department.`
+      );
+    }
+  }
+
   const newDone = previousDone + todayProgress;
 
   const historyEntry = {
@@ -354,19 +429,19 @@ export async function getTrackingDashboard(month, year) {
 }
 
 export async function getTrackingDashboardByDepartment(dept, month, year) {
-
   const m = Number(month);
   const y = Number(year);
 
   const start = new Date(y, m - 1, 1);
   const end = new Date(y, m, 0, 23, 59, 59);
 
-  // STEP 1 → Find all projects that have microtracking rows in this DEPARTMENT
-  const activeProjectIds = await MicroTracking.distinct("projectId", { department: dept });
+  // STEP 1 → Projects having microtracking in this department
+  const activeProjectIds = await MicroTracking.distinct("projectId", {
+    department: dept
+  });
 
-  if (activeProjectIds.length === 0) return [];
+  if (!activeProjectIds.length) return [];
 
-  // STEP 2 → Populate full project details
   const projects = await Project.find({ _id: { $in: activeProjectIds } })
     .populate("brand", "name")
     .populate("country", "name")
@@ -376,28 +451,36 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
   const response = [];
 
   for (const p of projects) {
-    // STEP 3 → Get PO details
+    // STEP 2 → PO
     const po = await PoDetails.findOne({ project: p._id }).lean();
 
-    // STEP 4 → Get cards of project
-    const cards = await PCProductionCard.find({ projectId: p._id })
-      .populate("assignedPlant", "name")
-      .lean();
-
-    // STEP 5 → Get department specific microtracking rows
+    // STEP 3 → Department-specific microtracking rows
     const microRows = await MicroTracking.find({
       projectId: p._id,
       department: dept
     }).lean();
 
-    // Prepare result structure
+    // STEP 4 → Extract ONLY tracked cardIds
+    const trackedCardIds = [
+      ...new Set(microRows.map(r => r.cardId).filter(Boolean))
+    ];
+
+    // STEP 5 → Fetch ONLY tracked cards
+    const cards = trackedCardIds.length
+      ? await PCProductionCard.find({
+          _id: { $in: trackedCardIds }
+        })
+          .populate("assignedPlant", "name")
+          .lean()
+      : [];
+
+    // STEP 6 → Prepare summary
     const data = {
       daily: {},
       weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 },
       monthTotal: 0
     };
 
-    // STEP 6 → Loop through all histories
     for (const row of microRows) {
       for (const h of row.history || []) {
         if (!h.addedToday) continue;
@@ -414,11 +497,8 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
           day <= 21 ? "W3" :
           day <= 28 ? "W4" : "W5";
 
-        // Daily
         data.daily[day] = (data.daily[day] || 0) + added;
-        // Weekly
         data.weekly[week] += added;
-        // Monthly
         data.monthTotal += added;
       }
     }
@@ -431,20 +511,18 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
       color: p.color,
       gender: p.gender,
       assignPerson: p.assignPerson,
-
       brand: p.brand,
       country: p.country,
-
       poDetails: po || {},
-      cards,
+      cards, // ✅ ONLY STAGE-TRACKED CARDS
       department: dept,
-
       summary: data
     });
   }
 
   return response;
 }
+
 
 
 export async function getMicroTrackingByProjectAndCard(projectId, cardId) {
@@ -520,4 +598,96 @@ export async function getTrackingCardsByProject(projectId) {
     .lean();
 
   return cards;
+}
+
+
+export async function transferToNextDepartmentService(
+  projectId,
+  cardId,
+  fromDept,
+  toDept,
+  quantity,
+  updatedBy
+) {
+  // 1️⃣ Get FROM department rows
+  const fromRows = await MicroTracking.find({
+    projectId,
+    cardId,
+    department: fromDept
+  });
+
+  if (!fromRows.length)
+    throw new Error("Source department rows not found");
+
+  const totalDone = fromRows.reduce((s, r) => s + (r.progressDone || 0), 0);
+  const totalTransferred = fromRows.reduce((s, r) => s + (r.transferred || 0), 0);
+
+  const available = totalDone - totalTransferred;
+
+  if (quantity > available) {
+    throw new Error(`Only ${available} available to transfer`);
+  }
+
+  // 2️⃣ Distribute transfer proportionally
+  let remaining = quantity;
+
+  for (const row of fromRows) {
+    if (remaining <= 0) break;
+
+    const canGive =
+      (row.progressDone || 0) - (row.transferred || 0);
+
+    const give = Math.min(canGive, remaining);
+
+    if (give > 0) {
+      row.transferred += give;
+      row.history.push({
+        date: new Date(),
+        updatedBy,
+        changes: [
+          { field: "transferred", from: row.transferred - give, to: row.transferred }
+        ]
+      });
+      await row.save();
+      remaining -= give;
+    }
+  }
+
+  // 3️⃣ Update TO department rows (received)
+  const toRows = await MicroTracking.find({
+    projectId,
+    cardId,
+    department: toDept
+  });
+
+  if (!toRows.length)
+    throw new Error("Target department rows not found");
+
+  let receiveRemaining = quantity;
+
+  for (const row of toRows) {
+    if (receiveRemaining <= 0) break;
+
+    const capacity = (row.requirement || 0) - (row.received || 0);
+    const receive = Math.min(capacity, receiveRemaining);
+
+    if (receive > 0) {
+      row.received += receive;
+      row.history.push({
+        date: new Date(),
+        updatedBy,
+        changes: [
+          { field: "received", from: row.received - receive, to: row.received }
+        ]
+      });
+      await row.save();
+      receiveRemaining -= receive;
+    }
+  }
+
+  return {
+    fromDepartment: fromDept,
+    toDepartment: toDept,
+    transferred: quantity
+  };
 }
