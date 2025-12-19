@@ -10,7 +10,7 @@ router.get("/micro-tracking/project/:projectId", ctrl.getMicroTracking);
 router.get("/micro-tracking/department/:projectId", ctrl.getDepartmentWiseTracking);
 
 router.get(
-  "/micro-tracking/department/:projectId/:department",
+  "/project/:projectId/card/:cardId/department/:department",
   ctrl.getDepartmentRows
 );
 

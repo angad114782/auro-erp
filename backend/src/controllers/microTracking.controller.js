@@ -58,19 +58,24 @@ export async function getDepartmentWiseTracking(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
-
-/* ---------------- Get all rows inside a department ---------------- */
 import mongoose from "mongoose";
 
 export async function getDepartmentRows(req, res) {
   try {
-    const { projectId, department } = req.params;
+    const { projectId, cardId, department } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(projectId)) {
-      return res.status(400).json({ error: "Invalid projectId" });
+    if (
+      !mongoose.Types.ObjectId.isValid(projectId) ||
+      !mongoose.Types.ObjectId.isValid(cardId)
+    ) {
+      return res.status(400).json({ error: "Invalid IDs" });
     }
 
-    const rows = await service.getRowsByDepartment(projectId, department);
+    const rows = await service.getRowsByDepartment(
+      projectId,
+      cardId,
+      department
+    );
 
     return res.json({
       success: true,
@@ -82,7 +87,6 @@ export async function getDepartmentRows(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
-
 
 /* ---------------- Update only progressToday ---------------- */
 export async function updateProgressToday(req, res) {

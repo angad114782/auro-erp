@@ -190,20 +190,22 @@ export async function updateMicroTracking(id, payload, updatedBy = "system") {
 
   return updated;
 }
+import mongoose from "mongoose";
 
 /* ----------------------------------------------------
    4) GET rows inside 1 department
 ---------------------------------------------------- */
-export async function getRowsByDepartment(projectId, department) {
+export async function getRowsByDepartment(projectId, cardId, department) {
   return MicroTracking.find({
-    projectId,
+    projectId: new mongoose.Types.ObjectId(projectId),
+    cardId: new mongoose.Types.ObjectId(cardId), // ✅ THIS WAS MISSING
     department
   })
     .populate({
       path: "cardId",
       select: "cardNumber productName cardQuantity stage assignedPlant"
     })
-    .sort({ name: 1 }) // ✅ VALID because name exists
+    .sort({ name: 1 })
     .lean();
 }
 

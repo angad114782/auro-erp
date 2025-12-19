@@ -255,9 +255,39 @@ export function ProductionTrackingTable() {
 const [trackingCards, setTrackingCards] = useState<any[]>([]);
 const [selectedCardId, setSelectedCardId] = useState<string>("");
 const [loadingCards, setLoadingCards] = useState(false);
+
+const [departmentRows, setDepartmentRows] = useState<any[]>([]);
+const [loadingRows, setLoadingRows] = useState(false);
 const selectedCard = trackingCards.find(
   (card) => card._id === selectedCardId
 );
+
+const fetchDepartmentRows = async (
+  projectId: string,
+  cardId: string,
+  department: string
+) => {
+  try {
+    setLoadingRows(true);
+
+    const res = await api.get(
+      `/project/${projectId}/card/${cardId}/department/${department}`
+    );
+
+    if (res.data?.success) {
+      setDepartmentRows(res.data.data || []);
+    } else {
+      setDepartmentRows([]);
+    }
+  } catch (err) {
+    console.error("Failed to fetch department rows", err);
+    toast.error("Failed to load department rows");
+    setDepartmentRows([]);
+  } finally {
+    setLoadingRows(false);
+  }
+};
+
 const ensureSelectedCard = () => {
   if (!selectedCard) {
     toast.error("Please select a tracking card first");
@@ -265,6 +295,8 @@ const ensureSelectedCard = () => {
   }
   return true;
 };
+
+
 
 const fetchTrackingCards = async (projectId: string) => {
   try {
@@ -2872,50 +2904,34 @@ const remaining = plannedQty - stageData.quantity;
                           <div
                             key={stage.key}
                             className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5 hover:border-[#0c9dcb] hover:shadow-md transition-all duration-200 cursor-pointer group"
-                            onClick={() => {
-  if (!ensureSelectedCard()) return;
+    onClick={async () => {
+  if (!selectedCard) {
+    toast.error("Please select a tracking card first");
+    return;
+  }
 
-  setSelectedDepartment(stage.department);
+  // 1️⃣ Fetch rows
+  await fetchDepartmentRows(
+    selectedProductionRecord.projectId,
+    selectedCard._id,
+    stage.department
+  );
 
+  // 2️⃣ Prepare dialog payload
   setSelectedProductForCutting({
-    // 🔥 CARD DATA
+    projectId: selectedProductionRecord.projectId,
     cardId: selectedCard._id,
     cardNumber: selectedCard.cardNumber,
     cardQuantity: selectedCard.cardQuantity,
-    assignedPlant: selectedCard.assignedPlant,
-
-    // PROJECT INFO
-    projectId: selectedProductionRecord.projectId,
     productName: selectedProductionRecord.articleName,
-    productionId: selectedProductionRecord.productionId,
-    brand: selectedProductionRecord.brand,
-    category: selectedProductionRecord.category,
-    color: selectedProductionRecord.color,
-    size: selectedProductionRecord.size,
-    poNumber: selectedProductionRecord.poNumber,
-    manufacturingCompany:
-      selectedProductionRecord.manufacturingCompany,
-    country: selectedProductionRecord.country,
-
-    // STAGE INFO
     stage: stage.key,
     stageName: stage.name,
-    stageStatus: stageData.status,
-
-    // CARD QUANTITY
-    targetQuantity: selectedCard.cardQuantity,
-    currentQuantity: stageData.quantity || 0,
-    remainingQuantity:
-      selectedCard.cardQuantity - (stageData.quantity || 0),
   });
 
-  setSelectedProductionRecord(null);
+  // 3️⃣ Open dialog
   setItemCuttingDialogOpen(true);
-
-  toast.success(
-    `Opening ${stage.name} update for card ${selectedCard.cardNumber}`
-  );
 }}
+
 
                           >
                             <div className="flex items-center justify-between mb-3 sm:mb-4">
@@ -3052,11 +3068,14 @@ const remaining = plannedQty - stageData.quantity;
 
       {/* Item Cutting Dialog */}
       <ItemCuttingDialog
-        open={itemCuttingDialogOpen}
-        onOpenChange={setItemCuttingDialogOpen}
-        productData={selectedProductForCutting}
-        stage={selectedDepartment as ProductionStage}
-      />
+  open={itemCuttingDialogOpen}
+  onOpenChange={setItemCuttingDialogOpen}
+  productData={selectedProductForCutting}
+  stage={selectedDepartment as ProductionStage}
+  rows={departmentRows}          // ✅ ADD THIS
+  loadingRows={loadingRows}      // ✅ ADD THIS
+/>
+
     </div>
   );
 }
