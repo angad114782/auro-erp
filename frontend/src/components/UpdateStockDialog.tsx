@@ -141,7 +141,11 @@ export function UpdateStockDialog({
       onOpenChange(false);
     } catch (err) {
       console.error(err);
-      toast.error("Stock update failed");
+
+      const message =
+        err?.response?.data?.message || err?.message || "Something went wrong";
+
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

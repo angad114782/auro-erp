@@ -256,9 +256,13 @@ export function AddItemDialog({
       // Reset and close
       setNewItem({ ...DEFAULT_ITEM });
       onOpenChange(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Save failed");
+
+      const message =
+        err?.response?.data?.message || err?.message || "Something went wrong";
+
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

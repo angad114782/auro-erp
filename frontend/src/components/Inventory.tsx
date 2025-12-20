@@ -180,11 +180,7 @@ export function Inventory() {
     }
   };
 
-  const handleUpdateStockClose = async (open: boolean) => {
-    if (!open) {
-      // Refresh data when update stock dialog closes
-      await loadItems();
-    }
+  const handleUpdateStockClose = (open: boolean) => {
     setShowUpdateStockDialog(open);
   };
 

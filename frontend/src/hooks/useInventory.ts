@@ -264,6 +264,7 @@ export const useInventory = () => {
       try {
         const updated = await inventoryService.updateStock(itemId, payload);
         await loadItems({ page: pagination.currentPage });
+        await refreshTabCounts();
         return updated;
       } catch (err) {
         console.error("updateStock failed:", err);

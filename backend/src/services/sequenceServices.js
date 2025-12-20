@@ -40,7 +40,7 @@ export async function generateItemCode() {
   const sequenceNumber = await getNextSequenceValue("inventoryItem");
   const paddedSequence = sequenceNumber.toString().padStart(4, "0");
 
-  return `INV/${year}${month}${day}/${paddedSequence}`;
+  return `INV/${year}/${month}${day}/${paddedSequence}`;
 }
 
 export async function getReservedCode() {
@@ -53,7 +53,7 @@ export async function getReservedCode() {
     const currentSequence = await getCurrentSequenceValue("inventoryItem");
     const paddedSequence = currentSequence.toString().padStart(4, "0");
 
-    return `INV/${year}${month}${day}/${paddedSequence}`;
+    return `INV/${year}/${month}${day}/${paddedSequence}`;
   } catch (error) {
     console.error("Error generating reserved code:", error);
     throw error;
