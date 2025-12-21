@@ -1778,26 +1778,26 @@ export function ProductionCardFormDialog({
                                 return (
                                   <tr
                                     key={row._id}
-                                    className="border-b hover:bg-gray-50"
+                                    className="border-b hover:bg-gray-50 "
                                   >
-                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm bg-blue-50 border-l-2 border-r-2 border-black-300">
                                       {row.item}
                                     </td>
-                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm bg-blue-50 border-l-2 border-r-2 border-blue-300">
                                       {row.description}
                                     </td>
-                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm bg-blue-50 border-l-2 border-r-2 border-green-300">
                                       <span className="text-blue-600 font-medium">
                                         {department || "-"}
                                       </span>
                                     </td>
-                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-medium">
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-medium bg-blue-50 border-l-2 border-r-2 border-yellow-300">
                                       {requirement.toFixed(2)}
                                     </td>
-                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center bg-blue-50 border-l-2 border-r-2 border-blue-300">
                                       <Input
                                         type="number"
-                                        className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs"
+                                        className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs border border-blue-400 bg-whitefocus:ring-2 focus:ring-blue-300 "
                                         value={available === 0 ? "" : available}
                                         onChange={(e) =>
                                           handleMaterialDataChange(
@@ -1810,10 +1810,11 @@ export function ProductionCardFormDialog({
                                         }
                                       />
                                     </td>
-                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm">
+
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm bg-blue-50 border-l-2 border-r-2 border-green-300">
                                       {issued}
                                     </td>
-                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm">
+                                    <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm bg-red-50 border-l-2 border-r-2 border-red-300">
                                       {balance.toFixed(2)}
                                     </td>
                                   </tr>

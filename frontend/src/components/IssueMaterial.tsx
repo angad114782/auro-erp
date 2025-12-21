@@ -391,19 +391,30 @@ const IssueRow = ({
             inputMode="decimal"
             value={getDisplayValue()}
             onChange={(e) => handleInputChange(e.target.value)}
-            className="w-24 text-center"
             placeholder="0"
             onBlur={(e) => {
               if (e.target.value.endsWith(".")) {
                 const numValue = parseFloat(e.target.value);
-                if (!isNaN(numValue)) {
-                  handleInputChange(numValue.toString());
-                } else {
-                  handleInputChange("0");
-                }
+                handleInputChange(!isNaN(numValue) ? numValue.toString() : "0");
               }
             }}
+            className={`
+    w-24 text-center font-semibold
+    border-2
+    rounded-md
+    transition-all
+
+    ${
+      newIssuedAmount > 0
+        ? "border-green-500 bg-green-50 text-green-700"
+        : "border-blue-400 bg-blue-50"
+    }
+
+    focus:border-blue-600
+    focus:ring-2 focus:ring-blue-200
+  `}
           />
+
           <div className="text-xs text-gray-500">Max: {maxIssuable}</div>
         </div>
       </td>
