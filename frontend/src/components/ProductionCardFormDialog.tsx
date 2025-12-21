@@ -311,7 +311,7 @@ export function ProductionCardFormDialog({
 
   const [createdCardId, setCreatedCardId] = useState<string>("");
   const [materialData, setMaterialData] = useState<{
-    [key: string]: { available: number; issued: number };
+    [key: string]: { available: string; issued: number };
   }>({});
 
   const [plants, setPlants] = useState<PlantType[]>([]);
@@ -460,7 +460,7 @@ export function ProductionCardFormDialog({
   const handleMaterialDataChange = (
     itemName: string,
     field: "available" | "issued",
-    value: number
+    value: string
   ) => {
     setMaterialData((prev) => ({
       ...prev,
@@ -507,31 +507,43 @@ export function ProductionCardFormDialog({
     return 0;
   };
 
-  // Helper function to create material line with department and itemId
   const createMaterialLine = (
     row: any,
     actualReq: number,
     itemName: string
   ) => {
-    // Extract department from row data (check multiple possible field names)
-    const department = row.department || row.dept || row.departmentName || null;
+    // 1️⃣ Extract department (robust fallback)
+    const department =
+      row.department || row.dept || row.departmentName || row.section || null;
 
-    // Extract itemId - use _id as primary, fall back to id
-    const itemId = row._id || row.id;
+    // 2️⃣ Extract itemId safely
+    const itemId = row._id || row.id || null;
+
+    // 3️⃣ Convert AVAILABLE from string → number (SAFE)
+    const availableRaw = materialData[itemName]?.available;
+    const availableNum =
+      typeof availableRaw === "string"
+        ? parseFloat(availableRaw)
+        : Number(availableRaw);
+
+    const safeAvailable = Number.isFinite(availableNum) ? availableNum : 0;
+
+    // 4️⃣ Issued quantity (default 0)
+    const issuedNum = Number(materialData[itemName]?.issued) || 0;
+
+    // 5️⃣ Calculate balance safely
+    const balance = Math.max(0, actualReq - safeAvailable - issuedNum);
 
     return {
-      itemId: itemId, // Always include itemId
+      itemId, // ✅ always included
       name: row.item || row.name || row.description || "",
       specification: row.description || row.spec || "",
-      requirement: actualReq,
+      requirement: Number(actualReq.toFixed(6)), // precision-safe
       unit: row.unit || "unit",
-      available: materialData[itemName]?.available || 0,
-      issued: 0,
-      balance: Math.max(
-        0,
-        actualReq - (materialData[itemName]?.available || 0)
-      ),
-      department: department, // Include department field
+      available: Number(safeAvailable.toFixed(6)),
+      issued: issuedNum,
+      balance: Number(balance.toFixed(6)),
+      department, // ✅ department preserved
     };
   };
 
@@ -1208,18 +1220,19 @@ export function ProductionCardFormDialog({
                                   Available
                                 </span>
                                 <Input
-                                  type="number"
-                                  className="h-7 w-16 text-xs text-center"
-                                  value={available === 0 ? "" : available}
+                                  type="text" // 👈 change from number → text
+                                  inputMode="decimal" // 👈 numeric keyboard on mobile
+                                  value={
+                                    materialData[itemName]?.available ?? ""
+                                  }
                                   onChange={(e) =>
                                     handleMaterialDataChange(
                                       itemName,
                                       "available",
-                                      e.target.value === ""
-                                        ? 0
-                                        : parseFloat(e.target.value)
+                                      e.target.value
                                     )
                                   }
+                                  className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs"
                                 />
                               </div>
 
@@ -1796,18 +1809,20 @@ export function ProductionCardFormDialog({
                                     </td>
                                     <td className="px-3 sm:px-4 py-2 sm:py-3 text-center bg-blue-50 border-l-2 border-r-2 border-blue-300">
                                       <Input
-                                        type="number"
-                                        className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs border border-blue-400 bg-whitefocus:ring-2 focus:ring-blue-300 "
-                                        value={available === 0 ? "" : available}
+                                        type="text" // 👈 change from number → text
+                                        inputMode="decimal" // 👈 numeric keyboard on mobile
+                                        value={
+                                          materialData[itemName]?.available ??
+                                          ""
+                                        }
                                         onChange={(e) =>
                                           handleMaterialDataChange(
                                             itemName,
                                             "available",
-                                            e.target.value === ""
-                                              ? 0
-                                              : parseFloat(e.target.value)
+                                            e.target.value
                                           )
                                         }
+                                        className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs border border-blue-400 bg-whitefocus:ring-2 focus:ring-blue-300 "
                                       />
                                     </td>
 

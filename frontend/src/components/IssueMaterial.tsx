@@ -315,9 +315,14 @@ const IssueRow = ({
   const balanceAfter = Math.max(0, req - (avail + newIssuedAmount));
 
   const handleInputChange = (value: string) => {
+    // allow empty, decimals, and typing states
     if (value === "" || /^\d*\.?\d*$/.test(value)) {
-      if (value === "") {
-        onIssueChange(itemId, 0);
+      // block multiple dots
+      if ((value.match(/\./g) || []).length > 1) return;
+
+      // allow typing states: "", ".", "0."
+      if (value === "" || value === ".") {
+        onIssueChange(itemId, value);
         return;
       }
 
@@ -328,16 +333,17 @@ const IssueRow = ({
 
       const numValue = parseFloat(value);
       if (isNaN(numValue)) {
-        onIssueChange(itemId, 0);
+        onIssueChange(itemId, "0");
         return;
       }
 
       if (numValue < 0) {
-        onIssueChange(itemId, 0);
+        onIssueChange(itemId, "0");
       } else if (numValue > maxIssuable) {
-        onIssueChange(itemId, maxIssuable);
+        onIssueChange(itemId, maxIssuable.toString());
       } else {
-        onIssueChange(itemId, numValue);
+        // ✅ KEEP STRING
+        onIssueChange(itemId, value);
       }
     }
   };
@@ -346,14 +352,10 @@ const IssueRow = ({
     const value = issuedQuantities[itemId];
     if (value === undefined || value === null) return "";
 
-    if (typeof value === "string" && (value.endsWith(".") || value === "")) {
-      return value;
-    }
-
+    if (typeof value === "string") return value;
     if (Number(value) === 0) return "";
 
-    const numValue = Number(value);
-    return numValue.toString();
+    return value.toString();
   };
 
   return (
@@ -393,9 +395,17 @@ const IssueRow = ({
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder="0"
             onBlur={(e) => {
-              if (e.target.value.endsWith(".")) {
-                const numValue = parseFloat(e.target.value);
-                handleInputChange(!isNaN(numValue) ? numValue.toString() : "0");
+              const value = e.target.value;
+              if (value === "" || value === ".") {
+                handleInputChange("0");
+              } else if (value.endsWith(".")) {
+                // Remove trailing dot and update
+                const cleanedValue = value.slice(0, -1);
+                if (cleanedValue === "" || cleanedValue === "-") {
+                  handleInputChange("0");
+                } else {
+                  handleInputChange(cleanedValue);
+                }
               }
             }}
             className={`
@@ -456,45 +466,54 @@ const MobileIssueItem = ({
   const balanceAfter = Math.max(0, req - (avail + newIssuedAmount));
 
   const handleInputChange = (value: string) => {
-    if (value === "" || /^\d*\.?\d*$/.test(value)) {
-      if (value === "") {
-        onIssueChange(itemId, 0);
-        return;
-      }
+    // normalize mobile "." → "0."
+    if (value === ".") {
+      onIssueChange(itemId, "0.");
+      return;
+    }
 
-      if (value.endsWith(".")) {
-        onIssueChange(itemId, value);
-        return;
-      }
+    // allow empty
+    if (value === "") {
+      onIssueChange(itemId, "");
+      return;
+    }
 
-      const numValue = parseFloat(value);
-      if (isNaN(numValue)) {
-        onIssueChange(itemId, 0);
-        return;
-      }
+    // allow only valid decimal typing
+    if (!/^\d*\.?\d*$/.test(value)) return;
 
-      if (numValue < 0) {
-        onIssueChange(itemId, 0);
-      } else if (numValue > maxIssuable) {
-        onIssueChange(itemId, maxIssuable);
-      } else {
-        onIssueChange(itemId, numValue);
-      }
+    // prevent multiple dots
+    if ((value.match(/\./g) || []).length > 1) return;
+
+    // keep raw typing state (IMPORTANT)
+    if (value.endsWith(".")) {
+      onIssueChange(itemId, value);
+      return;
+    }
+
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) {
+      onIssueChange(itemId, "0");
+      return;
+    }
+
+    if (numValue < 0) {
+      onIssueChange(itemId, "0");
+    } else if (numValue > maxIssuable) {
+      onIssueChange(itemId, maxIssuable.toString());
+    } else {
+      // ✅ KEEP STRING
+      onIssueChange(itemId, value);
     }
   };
 
   const getDisplayValue = () => {
     const value = issuedQuantities[itemId];
+
     if (value === undefined || value === null) return "";
 
-    if (typeof value === "string" && (value.endsWith(".") || value === "")) {
-      return value;
-    }
+    if (typeof value === "string") return value;
 
-    if (Number(value) === 0) return "";
-
-    const numValue = Number(value);
-    return numValue.toString();
+    return value === 0 ? "" : value.toString();
   };
 
   return (
@@ -543,18 +562,16 @@ const MobileIssueItem = ({
           <Input
             type="text"
             inputMode="decimal"
+            pattern="[0-9]*[.]?[0-9]*"
             value={getDisplayValue()}
             onChange={(e) => handleInputChange(e.target.value)}
-            className="flex-1 text-center text-base py-2"
             placeholder="0"
             onBlur={(e) => {
-              if (e.target.value.endsWith(".")) {
-                const numValue = parseFloat(e.target.value);
-                if (!isNaN(numValue)) {
-                  handleInputChange(numValue.toString());
-                } else {
-                  handleInputChange("0");
-                }
+              const v = e.target.value;
+              if (v === "" || v === ".") {
+                onIssueChange(itemId, "0");
+              } else if (v.endsWith(".")) {
+                onIssueChange(itemId, v.slice(0, -1));
               }
             }}
           />

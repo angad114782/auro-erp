@@ -42,7 +42,7 @@ interface CuttingItem {
   itemName: string;
   requiredQuantity: number;
   alreadyCut: number;
-  cuttingToday: number;
+  cuttingToday: number | string; // Changed to allow string for decimal typing
   unit: string;
   status: "pending" | "in-progress" | "completed";
 }
@@ -52,7 +52,7 @@ interface ItemCuttingDialogProps {
   onOpenChange: (open: boolean) => void;
   productData: any;
   stage: any;
-  rows: any[];          // 👈 backend rows
+  rows: any[]; // 👈 backend rows
   loadingRows: boolean;
 }
 
@@ -78,7 +78,17 @@ const MobileItemCard = React.memo(
     expandedItems: Set<string>;
     stage: string;
   }) => {
-    const totalAfter = item.alreadyCut + item.cuttingToday;
+    // Helper function to parse value to number
+    const parseToNumber = (value: string | number): number => {
+      if (typeof value === "number") return value;
+      if (value === "" || value === ".") return 0;
+      const num = parseFloat(value);
+      return isNaN(num) ? 0 : num;
+    };
+
+    const alreadyCutNum = parseToNumber(item.alreadyCut);
+    const cuttingTodayNum = parseToNumber(item.cuttingToday);
+    const totalAfter = alreadyCutNum + cuttingTodayNum;
     const remaining = Math.max(item.requiredQuantity - totalAfter, 0);
     const progressPercent = Math.min(
       (totalAfter / item.requiredQuantity) * 100,
@@ -89,36 +99,90 @@ const MobileItemCard = React.memo(
       minimumAvailable < productData.targetQuantity;
     const isExpanded = expandedItems.has(item.id);
 
-    const [inputValue, setInputValue] = useState(item.cuttingToday.toString());
+    // Get display value for input - FIXED VERSION
+    const getDisplayValue = (): string => {
+      if (typeof item.cuttingToday === "string") {
+        // If it's a string, return it directly (this handles "0.", "0.0", "0.00", etc.)
+        return item.cuttingToday;
+      }
+      // If it's a number 0, show empty string for better UX
+      if (item.cuttingToday === 0) return "";
+      // Convert number to string
+      return item.cuttingToday.toString();
+    };
+
+    const [inputValue, setInputValue] = useState(getDisplayValue());
 
     useEffect(() => {
-      setInputValue(item.cuttingToday.toString());
+      setInputValue(getDisplayValue());
     }, [item.cuttingToday]);
 
     const handleInputChange = (value: string) => {
-      setInputValue(value);
-
-      if (value === "") {
-        updateCuttingQuantity(item.id, "0");
-        return;
-      }
-
-      if (/^\d+$/.test(value)) {
-        const parsed = parseInt(value, 10);
-        if (!isNaN(parsed) && parsed >= 0) {
-          updateCuttingQuantity(item.id, value);
+      // Allow: empty string, numbers, decimal points, and negative sign at start
+      if (value === "" || /^-?\d*\.?\d*$/.test(value)) {
+        // Check for multiple decimal points
+        if ((value.match(/\./g) || []).length > 1) {
+          return;
         }
+
+        // Special handling for "0" followed by decimal point
+        if (value === "0") {
+          // Keep "0" as is
+          setInputValue(value);
+          updateCuttingQuantity(item.id, value);
+          return;
+        }
+
+        // If value starts with "0" and second character is not ".", don't allow
+        // This prevents "01", "02", etc. but allows "0.", "0.1", "0.01"
+        if (value.length > 1 && value[0] === "0" && value[1] !== ".") {
+          return;
+        }
+
+        // Update both local state and parent state
+        setInputValue(value);
+        updateCuttingQuantity(item.id, value);
       }
     };
 
     const handleInputBlur = () => {
-      if (inputValue === "") {
-        setInputValue("0");
+      const value = inputValue;
+
+      if (value === "" || value === "-") {
+        setInputValue("");
         updateCuttingQuantity(item.id, "0");
+      } else if (value === ".") {
+        // If user just typed a dot, convert to "0"
+        setInputValue("");
+        updateCuttingQuantity(item.id, "0");
+      } else if (value.endsWith(".")) {
+        // Remove trailing dot and keep the number
+        const cleaned = value.slice(0, -1);
+        if (cleaned === "" || cleaned === "-") {
+          setInputValue("");
+          updateCuttingQuantity(item.id, "0");
+        } else {
+          const numValue = parseFloat(cleaned);
+          if (!isNaN(numValue)) {
+            // Format to remove unnecessary trailing zeros
+            const formatted = parseFloat(numValue.toFixed(6)).toString();
+            setInputValue(formatted);
+            updateCuttingQuantity(item.id, formatted);
+          } else {
+            setInputValue("");
+            updateCuttingQuantity(item.id, "0");
+          }
+        }
       } else {
-        const parsed = parseInt(inputValue, 10);
-        if (isNaN(parsed) || parsed < 0) {
-          setInputValue("0");
+        // Parse and store as number
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue)) {
+          // Format to remove unnecessary trailing zeros
+          const formatted = parseFloat(numValue.toFixed(6)).toString();
+          setInputValue(formatted);
+          updateCuttingQuantity(item.id, formatted);
+        } else {
+          setInputValue("");
           updateCuttingQuantity(item.id, "0");
         }
       }
@@ -158,7 +222,7 @@ const MobileItemCard = React.memo(
         className={`bg-white border-2 rounded-xl p-4 transition-all ${
           isBottleneck
             ? "border-red-300 bg-red-50"
-            : item.cuttingToday > 0
+            : cuttingTodayNum > 0
             ? "border-purple-300 bg-purple-50"
             : "border-gray-200"
         }`}
@@ -208,7 +272,7 @@ const MobileItemCard = React.memo(
           <div className="bg-gray-50 rounded p-2 text-center">
             <div className="text-xs text-gray-500">Already Cut</div>
             <div className="text-sm font-semibold text-blue-600">
-              {item.alreadyCut}
+              {alreadyCutNum}
             </div>
           </div>
           <div className="bg-gray-50 rounded p-2 text-center">
@@ -249,12 +313,12 @@ const MobileItemCard = React.memo(
               </Label>
               <Input
                 type="text"
+                inputMode="decimal"
                 value={inputValue}
                 onChange={(e) => handleInputChange(e.target.value)}
                 onBlur={handleInputBlur}
                 className="h-9 text-sm font-semibold border-2 focus:border-purple-500"
                 placeholder="0"
-                inputMode="numeric"
               />
             </div>
 
@@ -268,7 +332,7 @@ const MobileItemCard = React.memo(
                     : "text-orange-600"
                 }`}
               >
-                {totalAfter} {item.unit}
+                {totalAfter.toFixed(4)} {item.unit}
               </span>
             </div>
 
@@ -338,12 +402,12 @@ const MobileItemCard = React.memo(
             )}
 
             {/* Today's Update Indicator */}
-            {item.cuttingToday > 0 && (
+            {cuttingTodayNum > 0 && (
               <div className="p-2 bg-purple-100 rounded-lg border border-purple-200">
                 <div className="flex items-center gap-2 text-xs text-purple-800">
                   <Activity className="w-3 h-3" />
                   <span className="font-medium">
-                    Adding +{item.cuttingToday} {item.unit} today
+                    Adding +{cuttingTodayNum} {item.unit} today
                   </span>
                 </div>
               </div>
@@ -365,7 +429,6 @@ export function ItemCuttingDialog({
   rows = [],
   loadingRows = false,
 }: ItemCuttingDialogProps) {
-
   const [isMobile, setIsMobile] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
@@ -470,75 +533,98 @@ export function ItemCuttingDialog({
   };
 
   const stageDetails = getStageDetails();
-const [cuttingItems, setCuttingItems] = useState<CuttingItem[]>([]);
+  const [cuttingItems, setCuttingItems] = useState<CuttingItem[]>([]);
 
-useEffect(() => {
-  if (!rows || rows.length === 0) {
-    setCuttingItems([]);
-    return;
-  }
+  useEffect(() => {
+    if (!rows || rows.length === 0) {
+      setCuttingItems([]);
+      return;
+    }
 
-  const mapped: CuttingItem[] = rows.map((row) => {
-    const required = Number(row.requirement ?? 0);
-    const issued = Number(row.issued ?? 0);
-    const today = Number(row.progressToday ?? 0);
+    const mapped: CuttingItem[] = rows.map((row) => {
+      const required = Number(row.requirement ?? 0);
+      const issued = Number(row.issued ?? 0);
+      const today = Number(row.progressToday ?? 0);
 
-    return {
-      id: row._id,
-      itemName: row.name || "Unnamed Item",
-      requiredQuantity: required,
-      alreadyCut: issued,
-      cuttingToday: today,
-      unit: row.unit || "unit",
-      status:
-        issued >= required
-          ? "completed"
-          : issued > 0
-          ? "in-progress"
-          : "pending",
-    };
-  });
+      return {
+        id: row._id,
+        itemName: row.name || "Unnamed Item",
+        requiredQuantity: required,
+        alreadyCut: issued,
+        cuttingToday: today, // Changed to number initially
+        unit: row.unit || "unit",
+        status:
+          issued >= required
+            ? "completed"
+            : issued > 0
+            ? "in-progress"
+            : "pending",
+      };
+    });
 
-  setCuttingItems(mapped);
-  setExpandedItems(new Set());
-}, [rows, open]);
-
+    setCuttingItems(mapped);
+    setExpandedItems(new Set());
+  }, [rows, open]);
 
   if (!productData) return null;
 
+  // Helper function to parse value
+  const parseToNumber = (value: string | number): number => {
+    if (typeof value === "number") return value;
+    if (value === "" || value === ".") return 0;
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  };
+
   const updateCuttingQuantity = (itemId: string, value: string) => {
-    if (value === "") {
+    if (value === "" || value === "." || value === "-") {
       setCuttingItems((prev) =>
         prev.map((item) =>
-          item.id === itemId ? { ...item, cuttingToday: 0 } : item
+          item.id === itemId ? { ...item, cuttingToday: "0" } : item
         )
       );
       return;
     }
 
-    const parsedValue = parseInt(value, 10);
-    if (!isNaN(parsedValue) && parsedValue >= 0) {
+    // Check if it's a valid decimal number
+    const decimalRegex = /^-?\d*\.?\d*$/;
+    if (decimalRegex.test(value)) {
+      // Check for multiple decimal points
+      if ((value.match(/\./g) || []).length > 1) {
+        return; // Don't allow multiple decimal points
+      }
+
+      // If value starts with "0" and second character is not ".", don't allow
+      // This prevents "01", "02", etc. but allows "0.", "0.1", "0.01"
+      if (value.length > 1 && value[0] === "0" && value[1] !== ".") {
+        return;
+      }
+
+      // Update the state with the string value (this allows "0.00456" to be stored as string)
       setCuttingItems((prev) =>
         prev.map((item) =>
-          item.id === itemId ? { ...item, cuttingToday: parsedValue } : item
+          item.id === itemId ? { ...item, cuttingToday: value } : item
         )
       );
     }
   };
 
- const calculateMinimumAvailable = () => {
-  if (!cuttingItems.length) return 0;
+  const calculateMinimumAvailable = () => {
+    if (!cuttingItems.length) return 0;
 
-  const availableQuantities = cuttingItems.map((item) =>
-    Number(item.alreadyCut || 0) + Number(item.cuttingToday || 0)
-  );
+    const availableQuantities = cuttingItems.map((item) => {
+      const alreadyCutNum = parseToNumber(item.alreadyCut);
+      const cuttingTodayNum = parseToNumber(item.cuttingToday);
+      return alreadyCutNum + cuttingTodayNum;
+    });
 
-  return Math.min(...availableQuantities);
-};
-
+    return Math.min(...availableQuantities);
+  };
 
   const calculateTotalAfterCutting = (item: CuttingItem) => {
-    return item.alreadyCut + item.cuttingToday;
+    const alreadyCutNum = parseToNumber(item.alreadyCut);
+    const cuttingTodayNum = parseToNumber(item.cuttingToday);
+    return alreadyCutNum + cuttingTodayNum;
   };
 
   const getItemStatusBadge = (item: CuttingItem) => {
@@ -566,14 +652,11 @@ useEffect(() => {
     }
   };
 
-
-
-
   const handleSaveCutting = () => {
-    const totalCutting = cuttingItems.reduce(
-      (sum, item) => sum + item.cuttingToday,
-      0
-    );
+    const totalCutting = cuttingItems.reduce((sum, item) => {
+      const cuttingTodayNum = parseToNumber(item.cuttingToday);
+      return sum + cuttingTodayNum;
+    }, 0);
 
     if (totalCutting === 0) {
       toast.error(
@@ -583,16 +666,22 @@ useEffect(() => {
     }
 
     setCuttingItems((prev) =>
-      prev.map((item) => ({
-        ...item,
-        alreadyCut: item.alreadyCut + item.cuttingToday,
-        cuttingToday: 0,
-      }))
+      prev.map((item) => {
+        const alreadyCutNum = parseToNumber(item.alreadyCut);
+        const cuttingTodayNum = parseToNumber(item.cuttingToday);
+        return {
+          ...item,
+          alreadyCut: alreadyCutNum + cuttingTodayNum,
+          cuttingToday: 0,
+        };
+      })
     );
 
     const minAvailable = calculateMinimumAvailable();
     toast.success(
-      `${stageDetails.title} saved! ${minAvailable} units now ready for production`
+      `${stageDetails.title} saved! ${minAvailable.toFixed(
+        4
+      )} units now ready for production`
     );
   };
 
@@ -684,7 +773,10 @@ useEffect(() => {
   };
 
   const minimumAvailable = calculateMinimumAvailable();
-  const hasAnyCutting = cuttingItems.some((item) => item.cuttingToday > 0);
+  const hasAnyCutting = cuttingItems.some((item) => {
+    const cuttingTodayNum = parseToNumber(item.cuttingToday);
+    return cuttingTodayNum > 0;
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -763,7 +855,7 @@ useEffect(() => {
                     Can Produce
                   </div>
                   <div className="text-sm sm:text-base font-bold text-green-600">
-                    {minimumAvailable} {isMobile ? "prs" : "pairs"}
+                    {minimumAvailable.toFixed(4)} {isMobile ? "prs" : "pairs"}
                   </div>
                 </div>
                 <div>
@@ -792,7 +884,8 @@ useEffect(() => {
                     <p className="text-xs sm:text-sm text-orange-700">
                       You can currently produce{" "}
                       <span className="font-bold">
-                        {minimumAvailable} {isMobile ? "prs" : "pairs"}
+                        {minimumAvailable.toFixed(4)}{" "}
+                        {isMobile ? "prs" : "pairs"}
                       </span>{" "}
                       based on the minimum cut quantity across all items.
                     </p>
@@ -847,13 +940,25 @@ useEffect(() => {
                         item.requiredQuantity - totalAfter,
                         0
                       );
-                       const progressPercent =
-    item.requiredQuantity > 0
-      ? Math.min((totalAfter / item.requiredQuantity) * 100, 100)
-      : 0;
+                      const progressPercent =
+                        item.requiredQuantity > 0
+                          ? Math.min(
+                              (totalAfter / item.requiredQuantity) * 100,
+                              100
+                            )
+                          : 0;
                       const isBottleneck =
                         totalAfter === minimumAvailable &&
                         minimumAvailable < productData.targetQuantity;
+
+                      // Get display value for input - FIXED VERSION
+                      const getDisplayValue = (): string => {
+                        if (typeof item.cuttingToday === "string") {
+                          return item.cuttingToday;
+                        }
+                        if (item.cuttingToday === 0) return "";
+                        return item.cuttingToday.toString();
+                      };
 
                       return (
                         <div
@@ -861,7 +966,7 @@ useEffect(() => {
                           className={`bg-white border-2 rounded-xl p-4 sm:p-6 transition-all ${
                             isBottleneck
                               ? "border-red-300 bg-red-50"
-                              : item.cuttingToday > 0
+                              : parseToNumber(item.cuttingToday) > 0
                               ? "border-purple-300 bg-purple-50"
                               : "border-gray-200"
                           }`}
@@ -896,7 +1001,7 @@ useEffect(() => {
                                 Required
                               </div>
                               <div className="text-sm sm:text-base font-bold text-gray-900">
-                                {item.requiredQuantity} {item.unit}
+                                {item.requiredQuantity.toFixed(4)} {item.unit}
                               </div>
                             </div>
 
@@ -906,7 +1011,8 @@ useEffect(() => {
                                 Already Cut
                               </div>
                               <div className="text-sm sm:text-base font-semibold text-blue-600">
-                                {item.alreadyCut} {item.unit}
+                                {parseToNumber(item.alreadyCut).toFixed(4)}{" "}
+                                {item.unit}
                               </div>
                             </div>
 
@@ -917,16 +1023,41 @@ useEffect(() => {
                               </div>
                               <Input
                                 type="text"
-                                inputMode="numeric"
-                                value={
-                                  item.cuttingToday === 0
-                                    ? ""
-                                    : item.cuttingToday.toString()
-                                }
+                                inputMode="decimal"
+                                value={getDisplayValue()}
                                 onChange={(e) => {
                                   const value = e.target.value;
-                                  if (value === "" || /^\d*$/.test(value)) {
-                                    updateCuttingQuantity(item.id, value);
+                                  updateCuttingQuantity(item.id, value);
+                                }}
+                                onBlur={(e) => {
+                                  const value = e.target.value;
+                                  if (
+                                    value === "" ||
+                                    value === "." ||
+                                    value === "-"
+                                  ) {
+                                    updateCuttingQuantity(item.id, "0");
+                                  } else if (value.endsWith(".")) {
+                                    const cleaned = value.slice(0, -1);
+                                    if (cleaned === "" || cleaned === "-") {
+                                      updateCuttingQuantity(item.id, "0");
+                                    } else {
+                                      const numValue = parseFloat(cleaned);
+                                      if (!isNaN(numValue)) {
+                                        updateCuttingQuantity(
+                                          item.id,
+                                          numValue.toString()
+                                        );
+                                      }
+                                    }
+                                  } else {
+                                    const numValue = parseFloat(value);
+                                    if (!isNaN(numValue)) {
+                                      updateCuttingQuantity(
+                                        item.id,
+                                        numValue.toString()
+                                      );
+                                    }
                                   }
                                 }}
                                 className="h-9 sm:h-10 text-sm sm:text-base font-semibold border-2 focus:border-purple-500"
@@ -946,7 +1077,7 @@ useEffect(() => {
                                     : "text-orange-600"
                                 }`}
                               >
-                                {totalAfter} {item.unit}
+                                {totalAfter.toFixed(4)} {item.unit}
                               </div>
                             </div>
 
@@ -956,7 +1087,7 @@ useEffect(() => {
                                 Need
                               </div>
                               <div className="text-sm sm:text-base font-semibold text-orange-600">
-                                {remaining}
+                                {remaining.toFixed(4)}
                               </div>
                             </div>
                           </div>
@@ -972,9 +1103,10 @@ useEffect(() => {
                                   {stageDetails.title} Progress
                                 </span>
                                 <span className="text-xs font-semibold text-gray-900">
-                                 {Number.isFinite(progressPercent)
-    ? progressPercent.toFixed(1)
-    : "0.0"}%
+                                  {Number.isFinite(progressPercent)
+                                    ? progressPercent.toFixed(1)
+                                    : "0.0"}
+                                  %
                                 </span>
                               </div>
                               <Progress
@@ -991,12 +1123,14 @@ useEffect(() => {
                           </div>
 
                           {/* Today's Update Indicator */}
-                          {item.cuttingToday > 0 && (
+                          {parseToNumber(item.cuttingToday) > 0 && (
                             <div className="mt-3 p-2 bg-purple-100 rounded-lg border border-purple-200">
                               <div className="flex items-center gap-2 text-xs text-purple-800">
                                 <Activity className="w-3.5 h-3.5" />
                                 <span className="font-medium">
-                                  Adding +{item.cuttingToday} {item.unit} today
+                                  Adding +
+                                  {parseToNumber(item.cuttingToday).toFixed(4)}{" "}
+                                  {item.unit} today
                                 </span>
                               </div>
                             </div>
@@ -1044,7 +1178,7 @@ useEffect(() => {
                     Can Produce
                   </div>
                   <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
-                    {minimumAvailable} {isMobile ? "prs" : "pairs"}
+                    {minimumAvailable.toFixed(4)} {isMobile ? "prs" : "pairs"}
                   </div>
                 </div>
                 <div className="text-center">
@@ -1055,10 +1189,14 @@ useEffect(() => {
                     {stageDetails.title} Today
                   </div>
                   <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
-                    {cuttingItems.reduce(
-                      (sum, item) => sum + item.cuttingToday,
-                      0
-                    )}{" "}
+                    {cuttingItems
+                      .reduce((sum, item) => {
+                        const cuttingTodayNum = parseToNumber(
+                          item.cuttingToday
+                        );
+                        return sum + cuttingTodayNum;
+                      }, 0)
+                      .toFixed(4)}{" "}
                     {isMobile ? "its" : "items"}
                   </div>
                 </div>
