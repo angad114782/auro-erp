@@ -76,6 +76,7 @@ export function InventoryReportsAnalysis() {
   const [loading, setLoading] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const isEmpty = !loading && transactions.length === 0;
 
   // Pagination state
   const [pagination, setPagination] = useState<PaginationState>({
@@ -264,46 +265,14 @@ export function InventoryReportsAnalysis() {
   };
 
   // Sample transactions for empty state
-  const dummyTransactions = [
-    {
-      id: "dummy-1",
-      transactionDate: new Date("2024-12-18T09:30:00"),
-      itemId: {
-        itemName: "Premium Leather Sole",
-        code: "PLS-001",
-        category: "Raw Materials",
-        brand: "LeatherCraft",
-        color: "Brown",
-        iconColor: "amber",
-        quantityUnit: "Pieces",
-      },
-      vendorId: {
-        vendorName: "Delhi Leather Industries",
-        contactPerson: "Rajesh Kumar",
-        email: "rajesh@delhileather.com",
-      },
-      transactionType: "Stock In",
-      quantity: 500,
-      previousStock: 1200,
-      newStock: 1700,
-      billNumber: "INV-2024-001",
-      reason: "New Purchase Order",
-      remarks: "Quality checked and approved",
-      orderValue: 45000,
-    },
-  ];
 
-  const displayTransactions =
-    transactions.length > 0
-      ? transactions
-      : !loading && searchTerm === "" && pagination.totalItems === 0
-      ? dummyTransactions
-      : [];
+  const displayTransactions = transactions;
 
   const handleExport = () => {
-    console.log("Exporting with data...");
+    if (transactions.length === 0) return;
+
     exportInventoryReportToPDF(
-      transactions.length > 0 ? transactions : displayTransactions,
+      transactions,
       statistics,
       dateRange,
       reportType,
@@ -353,6 +322,7 @@ export function InventoryReportsAnalysis() {
                 size="sm"
                 className="hidden md:flex"
                 onClick={handleExport}
+                disabled={transactions.length === 0}
               >
                 <FileText className="w-4 h-4 mr-2" />
                 Export PDF
@@ -536,6 +506,7 @@ export function InventoryReportsAnalysis() {
             size="lg"
             className="rounded-full shadow-lg h-14 w-14"
             onClick={handleExport}
+            disabled={transactions.length === 0}
           >
             <Download className="w-6 h-6" />
           </Button>
@@ -667,7 +638,7 @@ export function InventoryReportsAnalysis() {
                   <div className="flex justify-between items-start">
                     <div className="flex items-start gap-3 flex-1 min-w-0">
                       <div
-                        className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${
                           item?.iconColor === "amber"
                             ? "bg-amber-100 text-amber-600"
                             : "bg-blue-100 text-blue-600"
@@ -1057,7 +1028,7 @@ export function InventoryReportsAnalysis() {
             </div>
           )}
 
-          {!loading && pagination.totalItems === 0 && (
+          {/* {!loading && pagination.totalItems === 0 && (
             <div className="text-center py-4">
               <BarChart4 className="w-12 h-12 mx-auto text-gray-300 mb-2" />
               <p className="text-gray-500">No transactions found</p>
@@ -1065,9 +1036,21 @@ export function InventoryReportsAnalysis() {
                 Try adjusting your filters or date range
               </p>
             </div>
-          )}
+          )} */}
         </div>
       </div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center">
+      <BarChart4 className="w-12 h-12 text-gray-300 mb-3" />
+      <p className="text-gray-500">No transactions found</p>
+      <p className="text-sm text-gray-400">
+        Try adjusting your filters or date range
+      </p>
     </div>
   );
 }
