@@ -696,7 +696,7 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
     <div ref={dashboardRef}>
       <div className="space-y-6">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-linear-to-br from-gray-50 to-gray-100 pb-4 flex items-center justify-between">
+        <div className=" bg-linear-to-br from-gray-50 to-gray-100 pb-4 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] flex items-center justify-center">
