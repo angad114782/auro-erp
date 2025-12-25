@@ -24,6 +24,8 @@ import { useProjects } from "../hooks/useProjects";
 import ProjectDetailsDialog from "./ProjectDetailsDialog";
 import { ProjectFilters } from "./ProjectFilters";
 import Pagination from "./Pagination";
+import { useImagePreview } from "../lib/stores/useImagePreview";
+import { getFullImageUrl } from "../lib/utils";
 
 export default function ProjectDevelopment() {
   const {
@@ -39,6 +41,7 @@ export default function ProjectDevelopment() {
     setBrands,
     setCategories,
   } = useMasters();
+  const openImagePreview = useImagePreview((s) => s.openPreview);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -447,6 +450,13 @@ export default function ProjectDevelopment() {
                                     ? project.coverImage
                                     : `${BACKEND_URL}/${project.coverImage}`
                                 }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openImagePreview(
+                                    getFullImageUrl(project.coverImage),
+                                    project.artName
+                                  );
+                                }}
                                 alt="Cover"
                                 className="w-full h-full object-cover"
                               />
@@ -647,6 +657,13 @@ export default function ProjectDevelopment() {
                                         ? project.coverImage
                                         : `${BACKEND_URL}/${project.coverImage}`
                                     }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openImagePreview(
+                                        getFullImageUrl(project.coverImage),
+                                        project.artName
+                                      );
+                                    }}
                                     alt="Cover"
                                     className="w-full h-full object-cover rounded-lg"
                                   />

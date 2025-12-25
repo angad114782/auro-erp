@@ -66,6 +66,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "./ui/sheet";
+import { useImagePreview } from "../lib/stores/useImagePreview";
+import { getFullImageUrl } from "../lib/utils";
 
 // Production Plan interface based on R&D project data
 interface ProductionPlan {
@@ -227,7 +229,7 @@ const normalizePriority = (val: any): "High" | "Medium" | "Low" => {
 export function ProductionPlanning() {
   const { rdProjects, brands, categories, types, colors, countries } =
     useERPStore();
-
+  const openImagePreview = useImagePreview((s) => s.openPreview);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -1755,6 +1757,13 @@ export function ProductionPlanning() {
                           <div className="flex items-center gap-3">
                             {plan.profileImage ? (
                               <img
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openImagePreview(
+                                    getFullImageUrl(plan?.profileImage),
+                                    plan?.planName
+                                  );
+                                }}
                                 src={`${import.meta.env.VITE_BACKEND_URL}/${
                                   plan.profileImage
                                 }`}
@@ -1868,6 +1877,13 @@ export function ProductionPlanning() {
                                   src={`${import.meta.env.VITE_BACKEND_URL}/${
                                     plan.profileImage
                                   }`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openImagePreview(
+                                      getFullImageUrl(plan?.profileImage),
+                                      plan?.planName
+                                    );
+                                  }}
                                   alt="Product"
                                   className="w-12 h-12 rounded-lg object-cover border border-gray-200 shadow-sm"
                                 />

@@ -39,6 +39,7 @@ import { generateProjectPDF } from "../utils/pdfDownload";
 import { useProjectQuery } from "./NewHooks/useProjectQuery";
 import { useDebounce } from "./NewHooks/useDebounce";
 import { generateProjectsListPDF } from "../components/projectsListPDF";
+import { useImagePreview } from "../lib/stores/useImagePreview";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "";
 
@@ -120,6 +121,10 @@ function convertColorVariants(projectData: any): Map<string, any> {
 
 export default function ProjectListCard() {
   // State for search, pagination, and filters
+
+  // const [dateFilter, setDateFilter] = useState("all");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -128,6 +133,8 @@ export default function ProjectListCard() {
   const [isMobile, setIsMobile] = useState(false);
   const [isAllProjectsDownloading, setIsAllProjectsDownloading] =
     useState(false);
+
+  const openImagePreview = useImagePreview((s) => s.openPreview);
 
   // Extended filters state
   const [filters, setFilters] = useState({
@@ -162,6 +169,7 @@ export default function ProjectListCard() {
     labour: { items: [] as any[], directTotal: 0 },
     summary: {} as any,
   });
+  const [dateFilter, setDateFilter] = useState("all");
 
   // Use debounced search
   const debouncedSearchTerm = useDebounce(searchTerm, 600);
@@ -183,7 +191,10 @@ export default function ProjectListCard() {
     brand: filters.brand,
     category: filters.category,
     type: filters.type,
+    dateFilter: dateFilter !== "all" ? dateFilter : "",
     status: selectedStatus !== "all" ? selectedStatus : "",
+    fromDate,
+    toDate,
   });
 
   const Info = ({ label, value }: { label: string; value?: any }) => (
@@ -442,6 +453,14 @@ export default function ProjectListCard() {
       production_planning: "bg-blue-100 text-blue-800",
       delivery_pending: "bg-blue-100 text-blue-800",
       delivered: "bg-blue-100 text-blue-800",
+    };
+    return statusMap[status] || "bg-gray-100 text-gray-800";
+  };
+  const getPriorityColor = (status: string) => {
+    const statusMap: Record<string, string> = {
+      low: "bg-purple-100 text-purple-800",
+      medium: "bg-red-100 text-red-800",
+      high: "bg-green-100 text-green-800",
     };
     return statusMap[status] || "bg-gray-100 text-gray-800";
   };
@@ -886,7 +905,7 @@ export default function ProjectListCard() {
 
             {/* Status Filter */}
             <Select value={selectedStatus} onValueChange={handleStatusChange}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full sm:w-[150px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -911,7 +930,7 @@ export default function ProjectListCard() {
               value={selectedPriority}
               onValueChange={handlePriorityChange}
             >
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full sm:w-[150px]">
                 <SelectValue placeholder="Priority" />
               </SelectTrigger>
               <SelectContent>
@@ -919,6 +938,32 @@ export default function ProjectListCard() {
                 <SelectItem value="high">High</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={dateFilter}
+              onValueChange={(value) => {
+                setDateFilter(value);
+                setCurrentPage(1);
+
+                // Reset custom dates when preset selected
+                if (value !== "custom") {
+                  setFromDate("");
+                  setToDate("");
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[150px]">
+                <SelectValue placeholder="Date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Dates</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="yesterday">Yesterday</SelectItem>
+                <SelectItem value="last_7_days">Last 7 Days</SelectItem>
+                <SelectItem value="last_30_days">Last 30 Days</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
               </SelectContent>
             </Select>
 
@@ -942,6 +987,29 @@ export default function ProjectListCard() {
               )}
             </Button>
           </div>
+          {dateFilter === "custom" && (
+            <div className="flex gap-2 items-center">
+              <Input
+                type="date"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+
+              <span className="text-sm text-gray-500">to</span>
+
+              <Input
+                type="date"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+          )}
 
           {/* Loading State */}
           {loading && (
@@ -954,72 +1022,178 @@ export default function ProjectListCard() {
           {/* Projects Table */}
           {!loading && (
             <>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="p-2">Project</th>
-                    <th className="p-2 hidden sm:table-cell">Company</th>
-                    <th className="p-2">Status</th>
-                    <th className="p-2 hidden md:table-cell">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {projects.length > 0 ? (
-                    projects.map((project: any) => (
-                      <tr
-                        key={project._id}
-                        onClick={() => {
-                          setSelectedProject(project);
-                          setOpenDetails(true);
-                        }}
-                        className="border-b hover:bg-gray-50 cursor-pointer"
-                      >
-                        <td className="p-2 flex items-center gap-3">
-                          <div className="w-10 h-10 rounded bg-gray-100 border overflow-hidden flex items-center justify-center">
-                            {project.coverImage ? (
-                              <img
-                                src={getFullImageUrl(project.coverImage)}
-                                className="w-full h-full object-cover"
-                                alt={project.artName}
-                              />
-                            ) : (
-                              <ImageIcon className="w-5 h-5 text-gray-400" />
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-medium">
-                              {project.autoCode}
+              {!isMobile && (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="p-2">Project</th>
+                      <th className="p-2">Company</th>
+                      <th className="p-2">Brand</th>
+                      <th className="p-2">Status</th>
+                      <th className="p-2">Priority</th>
+                      <th className="p-2 hidden md:table-cell">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projects.length > 0 ? (
+                      projects.map((project: any) => (
+                        <tr
+                          key={project._id}
+                          onClick={() => {
+                            setSelectedProject(project);
+                            setOpenDetails(true);
+                          }}
+                          className="border-b hover:bg-gray-50 cursor-pointer"
+                        >
+                          <td className="p-2 flex items-center gap-3">
+                            <div className="w-10 h-10 rounded bg-gray-100 border overflow-hidden flex items-center justify-center">
+                              {project.coverImage ? (
+                                <img
+                                  src={getFullImageUrl(project.coverImage)}
+                                  className="w-full h-full object-cover"
+                                  alt={project.artName}
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // 🔥 critical
+                                    openImagePreview(
+                                      getFullImageUrl(project.coverImage),
+                                      project.artName
+                                    );
+                                  }}
+                                />
+                              ) : (
+                                <ImageIcon className="w-5 h-5 text-gray-400" />
+                              )}
                             </div>
-                            <div className="text-xs text-gray-500">
-                              {project.artName}
+                            <div>
+                              <div className="font-medium">
+                                {project.autoCode}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {project.artName}
+                              </div>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="p-2 hidden sm:table-cell">
-                          {project.company?.name}
-                        </td>
+                          <td className="p-2 hidden sm:table-cell">
+                            {project.company?.name}
+                          </td>
+                          <td className="p-2 hidden sm:table-cell">
+                            {project.brand?.name}
+                          </td>
 
-                        <td className="p-2">
+                          <td className="p-2">
+                            <Badge className={getStatusColor(project.status)}>
+                              {project.status}
+                            </Badge>
+                          </td>
+                          <td className="p-2">
+                            <Badge
+                              className={getPriorityColor(project.priority)}
+                            >
+                              {project.priority}
+                            </Badge>
+                          </td>
+
+                          <td className="p-2 hidden md:table-cell">
+                            {formatDate(project.createdAt)}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="p-8 text-center text-gray-500"
+                        >
+                          No projects found
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+
+              {isMobile && (
+                <div className="space-y-3">
+                  {projects.map((project: any) => (
+                    <div
+                      key={project._id}
+                      onClick={() => {
+                        setSelectedProject(project);
+                        setOpenDetails(true);
+                      }}
+                      className="border rounded-xl p-4 bg-white shadow-sm active:scale-[0.99]"
+                    >
+                      {/* HEADER */}
+                      <div className="flex items-start gap-3">
+                        <div className="w-14 h-14 rounded bg-gray-100 border overflow-hidden flex items-center justify-center shrink-0">
+                          {project.coverImage ? (
+                            <img
+                              src={getFullImageUrl(project.coverImage)}
+                              className="w-full h-full object-cover"
+                              alt={project.artName}
+                              onClick={(e) => {
+                                e.stopPropagation(); // 🔥 critical
+                                openImagePreview(
+                                  getFullImageUrl(project.coverImage),
+                                  project.artName
+                                );
+                              }}
+                            />
+                          ) : (
+                            <ImageIcon className="w-6 h-6 text-gray-400" />
+                          )}
+                        </div>
+
+                        <div className="flex-1">
+                          <p className="font-semibold">{project.autoCode}</p>
+                          <p className="text-sm text-gray-500">
+                            {project.artName}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* DETAILS */}
+                      <div className="mt-3 space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Company</span>
+                          <span className="font-medium">
+                            {project.company?.name || "-"}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Brand</span>
+                          <span className="font-medium">
+                            {project.brand?.name || "-"}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Priority</span>
+                          <Badge className={getPriorityColor(project.priority)}>
+                            {project.priority}
+                          </Badge>
+                        </div>
+
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Status</span>
                           <Badge className={getStatusColor(project.status)}>
                             {project.status}
                           </Badge>
-                        </td>
+                        </div>
 
-                        <td className="p-2 hidden md:table-cell">
-                          {formatDate(project.createdAt)}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={4} className="p-8 text-center text-gray-500">
-                        No projects found
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Created</span>
+                          <span className="font-medium">
+                            {formatDate(project.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* ================= PAGINATION SECTION ================= */}
               {projects.length > 0 && (
@@ -1159,6 +1333,12 @@ export default function ProjectListCard() {
                           src={getFullImageUrl(selectedProject.coverImage)}
                           className="max-h-[320px] w-auto object-contain rounded-lg"
                           alt="Cover"
+                          onClick={() =>
+                            openImagePreview(
+                              getFullImageUrl(selectedProject.coverImage),
+                              "Cover Image"
+                            )
+                          }
                         />
                       ) : (
                         <p className="text-sm text-gray-400">No cover image</p>
@@ -1181,6 +1361,12 @@ export default function ProjectListCard() {
                                 src={getFullImageUrl(img)}
                                 className="max-h-[140px] w-auto object-contain"
                                 alt={`Sample ${i + 1}`}
+                                onClick={() =>
+                                  openImagePreview(
+                                    getFullImageUrl(img),
+                                    `Sample Image ${i + 1}`
+                                  )
+                                }
                               />
                             </div>
                           )

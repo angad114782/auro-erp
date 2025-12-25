@@ -61,6 +61,7 @@ import { useCostManagement } from "../hooks/useCostManagement";
 import { Project, projectService } from "../components/services/projectService";
 import { useRedirect } from "../hooks/useRedirect";
 import { generateProjectPDF } from "../utils/pdfDownload";
+import { useImagePreview } from "../lib/stores/useImagePreview";
 
 /**
  * AddNewItemDialog - same UI you had (kept small & functional)
@@ -199,7 +200,7 @@ export function RedSealProjectDetailsDialog(props: any) {
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
-
+  const openImagePreview = useImagePreview((s) => s.openPreview);
   // --- cost management hook
   const {
     costRows,
@@ -992,6 +993,13 @@ export function RedSealProjectDetailsDialog(props: any) {
                       <div className="bg-gray-50 border rounded-lg p-3 text-center">
                         <div className="w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden mx-auto mb-2 border shadow-sm">
                           <img
+                            onClick={(e) => {
+                              // e.stopPropagation();
+                              openImagePreview(
+                                getFullImageUrl(project.coverImage),
+                                project.artName
+                              );
+                            }}
                             src={coverImageUrl}
                             alt="cover"
                             className="w-full h-full object-cover"
@@ -1023,6 +1031,13 @@ export function RedSealProjectDetailsDialog(props: any) {
                           {coverPhoto && (
                             <div className="w-16 h-16 md:w-20 md:h-20 border rounded-md overflow-hidden shrink-0">
                               <img
+                                onClick={(e) => {
+                                  // e.stopPropagation();
+                                  openImagePreview(
+                                    getFullImageUrl(project.coverImage),
+                                    project.artName
+                                  );
+                                }}
                                 src={coverImageUrl}
                                 className="w-full h-full object-cover"
                               />

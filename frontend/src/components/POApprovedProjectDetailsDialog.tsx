@@ -50,6 +50,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { generateProjectPDF } from "../utils/pdfDownload";
+import { useImagePreview } from "../lib/stores/useImagePreview";
 
 type ProductDevelopment = {
   _id?: string;
@@ -119,6 +120,7 @@ export function POApprovedProjectDetailsDialog({
   setCategories,
   reloadProjects,
 }: POApprovedProjectDetailsDialogProps) {
+  const openImagePreview = useImagePreview((s) => s.openPreview);
   const [isEditing, setIsEditing] = useState(false);
   const [editedProject, setEditedProject] = useState<ProductDevelopment | null>(
     null
@@ -777,6 +779,13 @@ export function POApprovedProjectDetailsDialog({
                       </Label>
                       <div className="w-16 h-16 md:w-20 md:h-20 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm mx-auto mb-2">
                         <img
+                          onClick={(e) => {
+                            // e.stopPropagation();
+                            openImagePreview(
+                              getFullImageUrl(project.coverImage),
+                              project.artName
+                            );
+                          }}
                           src={getFullImageUrl(
                             coverPhoto || project.coverImage
                           )}
@@ -829,6 +838,13 @@ export function POApprovedProjectDetailsDialog({
                             <div className="group relative shrink-0">
                               <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border-2 border-blue-400 shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 cursor-pointer">
                                 <img
+                                  onClick={(e) => {
+                                    // e.stopPropagation();
+                                    openImagePreview(
+                                      getFullImageUrl(project.coverImage),
+                                      project.artName
+                                    );
+                                  }}
                                   src={getFullImageUrl(coverPhoto)}
                                   alt="Cover"
                                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
@@ -842,6 +858,13 @@ export function POApprovedProjectDetailsDialog({
                               <div key={i} className="group relative shrink-0">
                                 <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
                                   <img
+                                    onClick={(e) => {
+                                      // e.stopPropagation();
+                                      openImagePreview(
+                                        getFullImageUrl(image),
+                                        project.artName
+                                      );
+                                    }}
                                     src={getFullImageUrl(image)}
                                     alt={`Image ${i + 1}`}
                                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
@@ -856,6 +879,13 @@ export function POApprovedProjectDetailsDialog({
                             >
                               <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border border-gray-300 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-blue-300 cursor-pointer bg-white">
                                 <img
+                                  onClick={(e) => {
+                                    // e.stopPropagation();
+                                    openImagePreview(
+                                      getFullImageUrl(image),
+                                      project.artName
+                                    );
+                                  }}
                                   src={getFullImageUrl(image)}
                                   alt={`Image ${i + 1}`}
                                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"

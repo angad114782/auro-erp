@@ -27,6 +27,8 @@ import { useDebounce } from "./NewHooks/useDebounce";
 import { TableSkeleton, MobileSkeleton } from "./Skeletons";
 import { ProjectFilters } from "./ProjectFilters";
 import Pagination from "./Pagination";
+import { getFullImageUrl } from "../lib/utils";
+import { useImagePreview } from "../lib/stores/useImagePreview";
 
 export function GreenSeal() {
   const {
@@ -57,6 +59,7 @@ export function GreenSeal() {
     type: "",
   });
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+  const openImagePreview = useImagePreview((s) => s.openPreview);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 600);
   const {
@@ -276,6 +279,13 @@ export function GreenSeal() {
                                 ? p.coverImage
                                 : `${BACKEND_URL}/${p.coverImage}`
                             }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openImagePreview(
+                                getFullImageUrl(p.coverImage),
+                                p.artName
+                              );
+                            }}
                             className="w-full h-full object-cover"
                           />
                         ) : (
@@ -436,6 +446,13 @@ export function GreenSeal() {
                                       ? p.coverImage
                                       : `${BACKEND_URL}/${p.coverImage}`
                                   }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openImagePreview(
+                                      getFullImageUrl(p.coverImage),
+                                      p.artName
+                                    );
+                                  }}
                                   className="w-full h-full object-cover"
                                 />
                               ) : (

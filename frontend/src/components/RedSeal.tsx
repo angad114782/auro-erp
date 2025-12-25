@@ -27,6 +27,8 @@ import { useDebounce } from "./NewHooks/useDebounce";
 import { TableSkeleton, MobileSkeleton } from "./Skeletons";
 import { ProjectFilters } from "./ProjectFilters";
 import Pagination from "./Pagination";
+import { getFullImageUrl } from "../lib/utils";
+import { useImagePreview } from "../lib/stores/useImagePreview";
 
 export function RedSeal() {
   const {
@@ -58,6 +60,8 @@ export function RedSeal() {
     category: "",
     type: "",
   });
+  const openImagePreview = useImagePreview((s) => s.openPreview);
+
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
   const debouncedSearchTerm = useDebounce(searchTerm, 600);
@@ -288,6 +292,13 @@ export function RedSeal() {
                                     ? p.coverImage
                                     : `${BACKEND_URL}/${p.coverImage}`
                                 }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openImagePreview(
+                                    getFullImageUrl(p.coverImage),
+                                    p.artName
+                                  );
+                                }}
                                 alt="Cover"
                                 className="w-full h-full object-cover"
                               />
@@ -485,6 +496,13 @@ export function RedSeal() {
                                         : `${BACKEND_URL}/${p.coverImage}`
                                     }
                                     className="w-full h-full object-cover rounded-lg"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openImagePreview(
+                                        getFullImageUrl(p.coverImage),
+                                        p.artName
+                                      );
+                                    }}
                                   />
                                 ) : (
                                   <ImageIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-400" />

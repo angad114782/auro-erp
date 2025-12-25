@@ -19,6 +19,7 @@ import { Menu } from "lucide-react";
 import { Button } from "./components/ui/button";
 import ProjectListCard from "./components/AllProjects";
 import { ProductionTrackingTable } from "./components/ProductionTrackingTable";
+import { ImagePreviewDialog } from "./components/ImagePreviewDialog";
 
 // Main App Content (protected routes)
 function AppContent(): React.JSX.Element {
@@ -179,6 +180,7 @@ export default function AppWithProviders(): React.JSX.Element {
   return (
     <AuthProvider>
       <ERPProvider>
+        <ImagePreviewDialog />
         <App />
       </ERPProvider>
     </AuthProvider>

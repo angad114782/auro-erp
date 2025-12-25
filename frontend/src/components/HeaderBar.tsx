@@ -38,6 +38,7 @@ import { Separator } from "./ui/separator";
 import { ScrollArea } from "./ui/scroll-area";
 import { toast } from "sonner";
 import { useAuth } from "../lib/AuthContext";
+import { useRedirect } from "../hooks/useRedirect";
 
 interface HeaderBarProps {
   currentModule: string;
@@ -64,6 +65,7 @@ export function HeaderBar({
   currentModule,
 }: HeaderBarProps): React.JSX.Element {
   const { user, logout } = useAuth();
+  const { goTo } = useRedirect();
 
   // Sample notifications data
   const notifications: Notification[] = [
@@ -296,17 +298,17 @@ export function HeaderBar({
             </div>
 
             {/* Desktop Search Bar */}
-            <div className="hidden md:block relative">
+            {/* <div className="hidden md:block relative">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
                 type="text"
                 placeholder="Search across all modules..."
                 className="pl-10 pr-4 py-2 w-64 lg:w-80 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0c9dcb] focus:border-transparent focus:bg-white transition-all"
               />
-            </div>
+            </div> */}
 
             {/* Notifications */}
-            <Popover>
+            {/* <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="ghost"
@@ -330,7 +332,7 @@ export function HeaderBar({
               >
                 <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
                   {/* Header */}
-                  <div className="px-4 md:px-6 py-3 md:py-4 bg-linear-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+            {/* <div className="px-4 md:px-6 py-3 md:py-4 bg-linear-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Bell className="w-4 h-4 md:w-5 md:h-5 text-gray-700" />
@@ -357,10 +359,10 @@ export function HeaderBar({
                         </Button>
                       )}
                     </div>
-                  </div>
+                  </div> */}
 
-                  {/* Notifications List */}
-                  <ScrollArea className="h-64 md:h-80">
+            {/* Notifications List */}
+            {/* <ScrollArea className="h-64 md:h-80">
                     <div className="p-1 md:p-2">
                       {notifications.map((notification, index) => (
                         <div key={notification.id}>
@@ -454,10 +456,10 @@ export function HeaderBar({
                         </div>
                       ))}
                     </div>
-                  </ScrollArea>
+                  </ScrollArea> */}
 
-                  {/* Footer */}
-                  <div className="px-4 md:px-6 py-2 md:py-3 bg-gray-50 border-t border-gray-200">
+            {/* Footer */}
+            {/* <div className="px-4 md:px-6 py-2 md:py-3 bg-gray-50 border-t border-gray-200">
                     <Button
                       variant="ghost"
                       className="w-full text-[#0c9dcb] hover:text-[#0c9dcb] hover:bg-blue-50 justify-center text-sm"
@@ -466,9 +468,9 @@ export function HeaderBar({
                       View All Notifications
                     </Button>
                   </div>
-                </div>
-              </PopoverContent>
-            </Popover>
+                </div> */}
+            {/* </PopoverContent>
+            </Popover> */}
 
             {/* User Dropdown */}
             <DropdownMenu>
@@ -493,17 +495,17 @@ export function HeaderBar({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => toast.info("Opening profile")}>
+                <DropdownMenuItem onClick={() => goTo("users")}>
                   Profile Settings
                 </DropdownMenuItem>
-                <DropdownMenuItem
+                {/* <DropdownMenuItem
                   onClick={() => toast.info("Opening preferences")}
                 >
                   Account Preferences
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => toast.info("Opening help")}>
                   Help & Support
-                </DropdownMenuItem>
+                </DropdownMenuItem> */}
                 <DropdownMenuItem onClick={logout} className="text-red-600">
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout

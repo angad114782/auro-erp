@@ -1,4 +1,4 @@
-// useProjectQuery.ts - Updated with filter support
+// useProjectQuery.ts
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 
@@ -13,6 +13,9 @@ type Query = {
   brand?: string;
   category?: string;
   type?: string;
+  dateFilter?: string; // <-- keep string
+  fromDate?: string;
+  toDate?: string;
 };
 
 export function useProjectQuery(params: Query) {
@@ -29,7 +32,6 @@ export function useProjectQuery(params: Query) {
     async function load() {
       setLoading(true);
       try {
-        // Build query params, only include non-empty values
         const queryParams: any = {
           page: params.page ?? 1,
           limit: params.limit ?? 10,
@@ -42,7 +44,13 @@ export function useProjectQuery(params: Query) {
         if (params.company) queryParams.company = params.company;
         if (params.brand) queryParams.brand = params.brand;
         if (params.category) queryParams.category = params.category;
+        if (params.fromDate) queryParams.fromDate = params.fromDate;
+        if (params.toDate) queryParams.toDate = params.toDate;
+
         if (params.type) queryParams.type = params.type;
+
+        // ✅ DATE FILTER ADDED
+        if (params.dateFilter) queryParams.dateFilter = params.dateFilter;
 
         const res = await api.get("/projects", {
           params: queryParams,
@@ -50,6 +58,7 @@ export function useProjectQuery(params: Query) {
         });
 
         if (!mounted) return;
+
         setData(res.data.data || []);
         setTotal(res.data.total || 0);
         setPages(res.data.pages || 1);
@@ -78,6 +87,9 @@ export function useProjectQuery(params: Query) {
     params.brand,
     params.category,
     params.type,
+    params.dateFilter, // ✅ dependency added
+    params.fromDate, // ✅ ADD
+    params.toDate, // ✅ ADD
     reloadToken,
   ]);
 

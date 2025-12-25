@@ -33,6 +33,8 @@ import { useDebounce } from "./NewHooks/useDebounce";
 import { MobileSkeleton, TableSkeleton } from "./Skeletons";
 import { ProjectFilters } from "./ProjectFilters";
 import Pagination from "./Pagination";
+import { useImagePreview } from "../lib/stores/useImagePreview";
+import { getFullImageUrl } from "../lib/utils";
 
 export function POTargetDate() {
   const {
@@ -114,6 +116,7 @@ export function POTargetDate() {
     if (days === 0) return "Due today";
     return `${days} days`;
   };
+  const openImagePreview = useImagePreview((s) => s.openPreview);
 
   // PO Pending Query - uses pendingFilters
   const {
@@ -318,6 +321,13 @@ export function POTargetDate() {
             <div className="w-10 h-10 rounded-md bg-gray-100 border border-gray-200 overflow-hidden">
               {project.coverImage || project.coverPhoto ? (
                 <img
+                  onClick={(e) => {
+                    e.stopPropagation(); // 🔥 critical
+                    openImagePreview(
+                      getFullImageUrl(project.coverImage),
+                      project.artName
+                    );
+                  }}
                   src={
                     (project.coverImage || project.coverPhoto)?.startsWith?.(
                       "http"
@@ -551,6 +561,13 @@ export function POTargetDate() {
                     <div className="flex items-center justify-center">
                       {project.coverImage || project.coverPhoto ? (
                         <img
+                          onClick={(e) => {
+                            e.stopPropagation(); // 🔥 critical
+                            openImagePreview(
+                              getFullImageUrl(project.coverImage),
+                              project.artName
+                            );
+                          }}
                           src={
                             (
                               project.coverImage || project.coverPhoto

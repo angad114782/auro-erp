@@ -1,3 +1,5 @@
+import BrandModel from "../models/Brand.model.js";
+import CompanyModel from "../models/Company.model.js";
 import { PoDetails } from "../models/PoDetails.model.js";
 import { Project } from "../models/Project.model.js";
 import {
@@ -75,11 +77,82 @@ export const getProjects = async (query = {}) => {
   const filter = { isActive: true };
 
   // Text search across important fields
+  // Text search across project + company + brand
   if (search) {
+    const regex = new RegExp(search, "i");
+
+    // Find matching company & brand IDs
+    const [companyIds, brandIds] = await Promise.all([
+      CompanyModel.find({ name: regex }).distinct("_id"),
+      BrandModel.find({ name: regex }).distinct("_id"),
+    ]);
+
     filter.$or = [
-      { autoCode: { $regex: search, $options: "i" } },
-      { artName: { $regex: search, $options: "i" } },
+      { autoCode: regex },
+      { artName: regex },
+      { company: { $in: companyIds } },
+      { brand: { $in: brandIds } },
     ];
+  }
+
+  // 📅 Date filter dropdown support
+  if (query.dateFilter) {
+    const now = new Date();
+    let startDate;
+    let endDate = new Date();
+
+    switch (query.dateFilter) {
+      case "today":
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        break;
+
+      case "yesterday":
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 1);
+        startDate.setHours(0, 0, 0, 0);
+
+        endDate = new Date(startDate);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case "last_7_days":
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 7);
+        break;
+
+      case "last_30_days":
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 30);
+        break;
+
+      default:
+        break;
+    }
+
+    if (startDate) {
+      filter.createdAt = {
+        $gte: startDate,
+        $lte: endDate,
+      };
+    }
+  }
+
+  // 📅 Custom date or range
+  if (query.fromDate || query.toDate) {
+    const from = query.fromDate
+      ? new Date(query.fromDate)
+      : new Date("1970-01-01");
+
+    const to = query.toDate ? new Date(query.toDate) : new Date();
+
+    from.setHours(0, 0, 0, 0);
+    to.setHours(23, 59, 59, 999);
+
+    filter.createdAt = {
+      $gte: from,
+      $lte: to,
+    };
   }
 
   // Master data filters
