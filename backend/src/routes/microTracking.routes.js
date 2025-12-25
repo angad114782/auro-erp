@@ -40,6 +40,7 @@ router.post(
   "/micro-tracking/transfer",
   ctrl.transferToNextDepartment
 );
+router.post("/micro-tracking/transfer-today", ctrl.transferTodayWork);
 
 
 

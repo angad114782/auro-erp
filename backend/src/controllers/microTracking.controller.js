@@ -214,3 +214,30 @@ export async function transferToNextDepartment(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+
+
+
+export async function transferTodayWork(req, res) {
+  try {
+    const { projectId, cardId, fromDepartment, toDepartment } = req.body;
+
+    if (!projectId || !cardId || !fromDepartment || !toDepartment) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const result = await service.transferTodayWorkService(
+      projectId,
+      cardId,
+      fromDepartment,
+      toDepartment,
+      req.user?.name || "system"
+    );
+
+    return res.json({ success: true, ...result });
+
+  } catch (err) {
+    console.error("transferTodayWork error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}

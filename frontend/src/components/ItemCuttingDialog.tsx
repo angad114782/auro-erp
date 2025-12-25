@@ -51,10 +51,17 @@ interface ItemCuttingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   productData: any;
-  stage: any;
-  rows: any[]; // 👈 backend rows
-  loadingRows: boolean;
+
+  stage: string;
+  projectId: string;
+  cardId: string;
 }
+const mapStageToDept = (stg: string) => {
+  if (!stg) return "cutting";
+  if (stg === "upper-rej") return "upper_rej";
+  return stg;
+};
+
 
 const MobileItemCard = React.memo(
   ({
@@ -372,28 +379,34 @@ const MobileItemCard = React.memo(
                         <span>Printing</span>
                       </div>
                     </SelectItem>
-                    <SelectItem value="stitching">
+                    <SelectItem value="upper">
                       <div className="flex items-center gap-2 text-xs sm:text-sm">
                         <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
-                        <span>Stitching</span>
+                        <span>Upper</span>
                       </div>
                     </SelectItem>
-                    <SelectItem value="lasting">
+                    <SelectItem value="upper-rej">
                       <div className="flex items-center gap-2 text-xs sm:text-sm">
                         <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
-                        <span>Lasting</span>
+                        <span>Upper REJ</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="assembly">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm">
+                        <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                        <span>Assembly</span>
                       </div>
                     </SelectItem>
                     <SelectItem value="packing">
                       <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                        <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
                         <span>Packing</span>
                       </div>
                     </SelectItem>
-                    <SelectItem value="quality">
+                    <SelectItem value="rfd">
                       <div className="flex items-center gap-2 text-xs sm:text-sm">
                         <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-                        <span>Quality Check</span>
+                        <span>RFD</span>
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -742,28 +755,34 @@ export function ItemCuttingDialog({
                 <span>Printing</span>
               </div>
             </SelectItem>
-            <SelectItem value="stitching">
+            <SelectItem value="upper">
               <div className="flex items-center gap-2 text-xs sm:text-sm">
                 <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
-                <span>Stitching</span>
+                <span>Upper</span>
               </div>
             </SelectItem>
-            <SelectItem value="lasting">
+            <SelectItem value="upper-rej">
               <div className="flex items-center gap-2 text-xs sm:text-sm">
                 <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
-                <span>Lasting</span>
+                <span>Upper REJ</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="assembly">
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
+                <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                <span>Assembly</span>
               </div>
             </SelectItem>
             <SelectItem value="packing">
               <div className="flex items-center gap-2 text-xs sm:text-sm">
-                <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
                 <span>Packing</span>
               </div>
             </SelectItem>
-            <SelectItem value="quality">
+            <SelectItem value="rfd">
               <div className="flex items-center gap-2 text-xs sm:text-sm">
                 <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-                <span>Quality Check</span>
+                <span>RFD</span>
               </div>
             </SelectItem>
           </SelectContent>
