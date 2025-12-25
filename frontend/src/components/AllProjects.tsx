@@ -585,6 +585,10 @@ export default function ProjectListCard() {
             company: {
               name: project.company?.name || "",
             },
+            brand: {
+              name: project.brand.name || " ",
+            },
+            priority: project.priority || "",
             status: project.status || "",
             createdAt: project.createdAt || "",
             // Only include what's needed for the list

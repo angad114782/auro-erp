@@ -3,116 +3,154 @@ import autoTable from "jspdf-autotable";
 
 export const generateProjectsListPDF = async (data: { projects: any[] }) => {
   const { projects } = data;
-  const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+  console.log(projects, "projects");
+  const doc = new jsPDF({
+    orientation: "p", // portrait
+    unit: "mm",
+    format: "a4",
+  });
 
   const pageWidth = doc.internal.pageSize.width;
+  const pageHeight = doc.internal.pageSize.height;
   const margin = 15;
 
-  // --- 1. Minimalist Branding Header ---
+  /* =========================================================
+     HEADER
+  ========================================================= */
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
-  doc.setTextColor(30, 41, 59); // Slate 800
-  doc.text("AURA INTERNATIONAL", margin, 20);
+  doc.setTextColor(30, 41, 59); // slate-800
+  doc.text("AURA INTERNATIONAL", margin, 18);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139); // Slate 500
-  doc.text("PROJECT STATUS REPORT", margin, 25);
+  doc.setTextColor(100, 116, 139); // slate-500
+  doc.text("PROJECT STATUS REPORT", margin, 24);
 
-  // Right-aligned Date
   const dateStr = new Date().toLocaleDateString("en-IN", {
     day: "numeric",
     month: "long",
     year: "numeric",
   });
-  doc.text(dateStr, pageWidth - margin, 25, { align: "right" });
+  doc.text(dateStr, pageWidth - margin, 24, { align: "right" });
 
-  // Thin separator line
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.3);
   doc.line(margin, 28, pageWidth - margin, 28);
 
-  // --- 2. Data Transformation ---
+  /* =========================================================
+     TABLE DATA
+  ========================================================= */
   const tableData = projects.map((item) => {
     const p = item.project || item;
 
-    // Format the project cell with Code and Name
-    const projectCode = String(p.autoCode || "");
-    const artName = String(p.artName || "");
-
     return [
-      {
-        content: `${projectCode}${artName ? "\n" + artName : ""}`,
-        styles: { fontStyle: artName ? "normal" : "bold" },
-      },
-      p.company?.name || p.company || "-",
-      (p.status || "PENDING").toUpperCase(),
-      p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-IN") : "-",
+      `${p.autoCode || ""}\n${p.artName || ""}`, // Project
+      p.company?.name || "-", // Company
+      p.brand?.name || "-", // Brand
+      (p.priority || "-").toUpperCase(), // Priority
+      (p.status || "-").toUpperCase(), // Status
+      p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-IN") : "-", // Date
     ];
   });
 
-  // --- 3. Professional Table Generation ---
+  /* =========================================================
+     TABLE
+  ========================================================= */
   autoTable(doc, {
-    startY: 35,
-    head: [["PROJECT IDENTIFIER", "CLIENT", "STATUS", "DATE"]],
+    startY: 34,
+    head: [["PROJECT", "COMPANY", "BRAND", "PRIORITY", "STATUS", "DATE"]],
     body: tableData,
+
     theme: "striped",
-    headStyles: {
-      fillColor: [30, 41, 59], // Dark Slate for a high-end look
-      textColor: [255, 255, 255],
-      fontSize: 8,
-      fontStyle: "bold",
-      cellPadding: 4,
-      halign: "left",
-    },
+
     styles: {
       fontSize: 8,
       cellPadding: 4,
       valign: "middle",
-      font: "helvetica",
+      overflow: "linebreak", // ✅ FIX: allows wrapping
       textColor: [51, 65, 85],
-      lineColor: [241, 245, 249],
+      lineColor: [226, 232, 240],
       lineWidth: 0.1,
+      font: "helvetica",
     },
-    columnStyles: {
-      0: { cellWidth: 75 }, // Project Info
-      1: { cellWidth: 55 }, // Client
-      2: { cellWidth: 25, halign: "center" }, // Status
-      3: { cellWidth: 25, halign: "right" }, // Date
+
+    headStyles: {
+      fillColor: [30, 41, 59], // slate-800
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 8,
+      halign: "left",
     },
+
     alternateRowStyles: {
-      fillColor: [248, 250, 252],
+      fillColor: [248, 250, 252], // slate-50
     },
-    margin: { left: margin, right: margin },
-    // Status color coding for visual cues
-    didParseCell: (data) => {
-      if (data.section === "body" && data.column.index === 2) {
-        const status = String(data.cell.raw).toUpperCase();
-        if (status === "COMPLETED" || status === "ACTIVE") {
-          data.cell.styles.textColor = [22, 163, 74]; // Success Green
+
+    columnStyles: {
+      0: { cellWidth: 55 }, // Project
+      1: { cellWidth: 32 }, // Company
+      2: { cellWidth: 30 }, // Brand
+      3: { cellWidth: 20, halign: "center" }, // Priority
+      4: { cellWidth: 23, halign: "center" }, // Status
+      5: { cellWidth: 25, halign: "right" }, // Date
+    },
+
+    margin: {
+      left: margin,
+      right: margin,
+    },
+
+    pageBreak: "auto",
+    rowPageBreak: "avoid",
+
+    /* =========================================================
+       STATUS COLOR CODING
+    ========================================================= */
+    didParseCell: (hookData) => {
+      if (hookData.section === "body" && hookData.column.index === 4) {
+        const status = String(hookData.cell.raw).toUpperCase();
+
+        if (status.includes("APPROVED") || status.includes("DELIVERED")) {
+          hookData.cell.styles.textColor = [22, 163, 74]; // green
+        } else if (status.includes("PENDING")) {
+          hookData.cell.styles.textColor = [234, 88, 12]; // orange
+        } else if (status.includes("PROTOTYPE")) {
+          hookData.cell.styles.textColor = [124, 58, 237]; // purple
         }
       }
     },
   });
 
-  // --- 4. Total Count & Simple Footer ---
-  const finalY = (doc as any).lastAutoTable.finalY || 35;
+  /* =========================================================
+     FOOTER
+  ========================================================= */
+  const lastY = (doc as any).lastAutoTable.finalY || 34;
+
   doc.setFontSize(8);
   doc.setTextColor(148, 163, 184);
-  doc.text(`Total Records: ${projects.length}`, margin, finalY + 10);
+  doc.text(
+    `Total Projects: ${projects.length}`,
+    margin,
+    Math.min(lastY + 10, pageHeight - 20)
+  );
 
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
     doc.text(
       `Aura International | Page ${i} of ${pageCount}`,
       pageWidth / 2,
-      287,
+      pageHeight - 8,
       { align: "center" }
     );
   }
 
+  /* =========================================================
+     SAVE
+  ========================================================= */
   doc.save(
     `Aura_International_Projects_${new Date().toISOString().slice(0, 10)}.pdf`
   );
