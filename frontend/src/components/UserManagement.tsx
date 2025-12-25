@@ -45,6 +45,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "./ui/sheet";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
 interface UserData {
   _id: string;
@@ -224,13 +225,11 @@ export function UserManagement() {
   // ------------------------------
   // BACKEND USER DELETE
   // ------------------------------
-  const handleDeleteUser = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this user?")) return;
-
+  const handleDeleteUser = async (id: string, name: string) => {
     try {
       await api.delete(`/users/${id}`);
       setUsers(users.filter((u) => u._id !== id));
-      toast.success("User deleted");
+      toast.success(`User ${name} removed`);
     } catch (err) {
       toast.error("Failed to delete user");
     }
@@ -348,7 +347,7 @@ export function UserManagement() {
             <Edit className="w-4 h-4 mr-2" />
             Edit
           </Button>
-          <Button
+          {/* <Button
             variant="ghost"
             size="sm"
             onClick={() => handleDeleteUser(user._id)}
@@ -356,7 +355,12 @@ export function UserManagement() {
           >
             <Trash2 className="w-4 h-4 mr-2" />
             Delete
-          </Button>
+          </Button> */}
+          <ConfirmActionDialog
+            title="Remove user"
+            description={`Remove user ${user.name}`}
+            onConfirm={() => handleDeleteUser(user._id, user.name)}
+          />
         </div>
       </CardContent>
     </Card>
@@ -616,15 +620,21 @@ export function UserManagement() {
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
-
-                        <Button
+                        <ConfirmActionDialog
+                          title="Remove user"
+                          description={`Remove user ${user.name}`}
+                          onConfirm={() =>
+                            handleDeleteUser(user._id, user.name)
+                          }
+                        />
+                        {/* <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteUser(user._id)}
                           className="text-red-600 hover:text-red-700 hover:bg-red-50"
                         >
                           <Trash2 className="w-4 h-4" />
-                        </Button>
+                        </Button> */}
                       </div>
                     </td>
                   </tr>
@@ -798,7 +808,7 @@ export function UserManagement() {
            ADD USER DIALOG
          --------------------------------------------------- */}
       <Dialog open={addUserDialogOpen} onOpenChange={handleCloseAddDialog}>
-        <DialogContent className="max-w-md md:max-w-2xl">
+        <DialogContent className="max-w-lg w-[95vw]  p-6 ">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="w-5 h-5 text-white bg-[#0c9dcb] p-2 rounded" />
@@ -901,7 +911,7 @@ export function UserManagement() {
            EDIT USER DIALOG
          --------------------------------------------------- */}
       <Dialog open={editUserDialogOpen} onOpenChange={handleCloseEditDialog}>
-        <DialogContent className="max-w-md md:max-w-2xl">
+        <DialogContent className="max-w-lg w-[95vw]  p-6 ">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit className="w-5 h-5 text-white bg-blue-600 p-2 rounded" />
@@ -994,43 +1004,45 @@ export function UserManagement() {
         open={addRoleDialogOpen}
         onOpenChange={() => setAddRoleDialogOpen(false)}
       >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add New Role</DialogTitle>
-            <DialogDescription>Create a custom role</DialogDescription>
-          </DialogHeader>
+        <div className="p-6 sm:p-8">
+          <DialogContent className="max-w-lg w-[95vw]  p-6 ">
+            <DialogHeader>
+              <DialogTitle>Add New Role</DialogTitle>
+              <DialogDescription>Create a custom role</DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-5">
-            <div>
-              <Label>Role Name *</Label>
-              <Input
-                value={newRoleName}
-                onChange={(e) => setNewRoleName(e.target.value)}
-                placeholder="Team Lead, Developer, etc."
-              />
+            <div className="space-y-5">
+              <div>
+                <Label>Role Name *</Label>
+                <Input
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                  placeholder="Team Lead, Developer, etc."
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAddRoleDialogOpen(false);
+                    setNewRoleName("");
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  className="bg-[#0c9dcb] text-white w-full sm:w-auto"
+                  onClick={handleAddRole}
+                >
+                  <Save className="w-4 h-4 mr-2" /> Add Role
+                </Button>
+              </div>
             </div>
-
-            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setAddRoleDialogOpen(false);
-                  setNewRoleName("");
-                }}
-                className="w-full sm:w-auto"
-              >
-                Cancel
-              </Button>
-
-              <Button
-                className="bg-[#0c9dcb] text-white w-full sm:w-auto"
-                onClick={handleAddRole}
-              >
-                <Save className="w-4 h-4 mr-2" /> Add Role
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
+          </DialogContent>
+        </div>
       </Dialog>
     </div>
   );

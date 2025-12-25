@@ -459,7 +459,7 @@ export function FigmaSidebar({
           )}
 
           {/* Search - only when expanded */}
-          {!isCollapsed && (
+          {/* {!isCollapsed && (
             <div className="p-4 border-b border-gray-100">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -470,7 +470,7 @@ export function FigmaSidebar({
                 />
               </div>
             </div>
-          )}
+          )} */}
 
           {/* Navigation */}
           <nav
