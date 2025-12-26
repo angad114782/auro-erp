@@ -15,9 +15,10 @@ router.get(
 );
 
 router.put(
-  "/micro-tracking/progress-today/:id",
+  "/micro-tracking/progress-today",
   ctrl.updateProgressToday
 );
+router.post("/micro-tracking/bulk/today", ctrl.bulkTodayProcess);
 
 router.get("/tracking/dashboard", ctrl.trackingDashboardController);
 router.get("/tracking/dashboard/department", ctrl.trackingDashboardDepartmentController);

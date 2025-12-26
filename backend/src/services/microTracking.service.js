@@ -1,7 +1,6 @@
 import MicroTracking from "../models/MicroTracking.model.js";
 import { PCProductionCard } from "../models/pc_productionCard.model.js";
 
-
 function getTodayDone(row) {
   const now = new Date();
   const y = now.getFullYear();
@@ -19,12 +18,15 @@ function getTodayDone(row) {
   return sum;
 }
 
-
 function sameItem(a, b) {
   if (a.itemId != null && b.itemId != null) {
     return String(a.itemId) === String(b.itemId);
   }
-  return a.name === b.name && a.specification === b.specification && a.unit === b.unit;
+  return (
+    a.name === b.name &&
+    a.specification === b.specification &&
+    a.unit === b.unit
+  );
 }
 
 /* ----------------------------------------------------
@@ -74,10 +76,6 @@ export async function createMicroTrackingForCard(cardId) {
   return await MicroTracking.insertMany(rows);
 }
 
-
-/* ----------------------------------------------------
-   2) GET all rows for a Project
----------------------------------------------------- */
 /* ----------------------------------------------------
    GET Micro Tracking by project
    (department + month + year)
@@ -102,27 +100,26 @@ export async function getMicroTrackingByProject(
 
     filter.createdAt = {
       $gte: startDate,
-      $lt: endDate
+      $lt: endDate,
     };
   }
 
- const rows = await MicroTracking.find(filter)
-  .populate({
-    path: "cardId",
-    select: "cardNumber productName cardQuantity stage assignedPlant",
-    populate: {
-      path: "assignedPlant",
-      select: "name code location" // jo bhi fields chahiye
-    }
-  })
-  .sort({ cardNumber: 1, name: 1 })
-  .lean();
-
+  const rows = await MicroTracking.find(filter)
+    .populate({
+      path: "cardId",
+      select: "cardNumber productName cardQuantity stage assignedPlant",
+      populate: {
+        path: "assignedPlant",
+        select: "name code location", // jo bhi fields chahiye
+      },
+    })
+    .sort({ cardNumber: 1, name: 1 })
+    .lean();
 
   // ✅ unique card calculation
   const cardMap = new Map();
 
-  rows.forEach(row => {
+  rows.forEach((row) => {
     const cardId = row.cardId?._id?.toString();
     if (!cardId) return;
 
@@ -134,10 +131,9 @@ export async function getMicroTrackingByProject(
   return {
     totalCards: cardMap.size,
     totalCardQuantity: [...cardMap.values()].reduce((a, b) => a + b, 0),
-    items: rows
+    items: rows,
   };
 }
-
 
 /* ----------------------------------------------------
    3) UPDATE full row
@@ -150,7 +146,7 @@ export async function updateMicroTracking(id, payload, updatedBy = "system") {
   const historyEntry = {
     date: new Date(),
     updatedBy,
-    changes: []
+    changes: [],
   };
 
   // --------------------------
@@ -160,7 +156,7 @@ export async function updateMicroTracking(id, payload, updatedBy = "system") {
     historyEntry.changes.push({
       field: "progressDone",
       from: row.progressDone,
-      to: Number(payload.progressDone)
+      to: Number(payload.progressDone),
     });
     updates.progressDone = Number(payload.progressDone);
   }
@@ -172,7 +168,7 @@ export async function updateMicroTracking(id, payload, updatedBy = "system") {
     historyEntry.changes.push({
       field: "progressToday",
       from: row.progressToday,
-      to: Number(payload.progressToday)
+      to: Number(payload.progressToday),
     });
     updates.progressToday = Number(payload.progressToday);
   }
@@ -181,16 +177,21 @@ export async function updateMicroTracking(id, payload, updatedBy = "system") {
   // 3️⃣ Update Department
   // --------------------------
   const VALID_DEPTS = [
-    "cutting", "printing", "upper",
-    "upper_rej", "assembly", "packing",
-    "rfd", "unknown"
+    "cutting",
+    "printing",
+    "upper",
+    "upper_rej",
+    "assembly",
+    "packing",
+    "rfd",
+    "unknown",
   ];
 
   if (payload.department && VALID_DEPTS.includes(payload.department)) {
     historyEntry.changes.push({
       field: "department",
       from: row.department,
-      to: payload.department
+      to: payload.department,
     });
     updates.department = payload.department;
   }
@@ -199,18 +200,18 @@ export async function updateMicroTracking(id, payload, updatedBy = "system") {
 
   // --------------------------
   // 4️⃣ Save update + push history
-//   --------------------------
+  //   --------------------------
   const updated = await MicroTracking.findByIdAndUpdate(
     id,
     {
       $set: updates,
-      $push: { history: historyEntry }
+      $push: { history: historyEntry },
     },
     { new: true }
   )
     .populate({
       path: "cardId",
-      select: "cardNumber productName cardQuantity stage assignedPlant"
+      select: "cardNumber productName cardQuantity stage assignedPlant",
     })
     .lean();
 
@@ -221,20 +222,34 @@ import mongoose from "mongoose";
 /* ----------------------------------------------------
    4) GET rows inside 1 department
 ---------------------------------------------------- */
+
 export async function getRowsByDepartment(projectId, cardId, department) {
-  return MicroTracking.find({
+  const rows = await MicroTracking.find({
     projectId: new mongoose.Types.ObjectId(projectId),
-    cardId: new mongoose.Types.ObjectId(cardId), // ✅ THIS WAS MISSING
-    department
+    cardId: new mongoose.Types.ObjectId(cardId),
+    department,
   })
     .populate({
       path: "cardId",
-      select: "cardNumber productName cardQuantity stage assignedPlant"
+      select: "cardNumber productName cardQuantity stage assignedPlant",
     })
     .sort({ name: 1 })
     .lean();
-}
 
+  // ✅ Attach today-based computed fields for UI
+  return rows.map((r) => {
+    const todayDone = getTodayDone(r);
+    const todayTransferred = Number(r.transferredToday || 0);
+    const todayTransferable = Math.max(0, todayDone - todayTransferred);
+
+    return {
+      ...r,
+      todayDone,
+      todayTransferred,
+      todayTransferable,
+    };
+  });
+}
 
 /* ----------------------------------------------------
    5) UPDATE only progressToday + push history
@@ -245,28 +260,46 @@ export async function updateProgressTodayService(
   updatedBy = "system"
 ) {
   const todayProgress = Number(progressToday || 0);
-  if (todayProgress <= 0)
+  if (todayProgress <= 0) {
     throw new Error("progressToday must be greater than 0");
+  }
 
   const row = await MicroTracking.findById(id);
   if (!row) throw new Error("Row not found");
 
   const previousDone = Number(row.progressDone || 0);
 
-  // 🔒 IMPORTANT GUARD (for NEXT departments like printing, upper, etc.)
-  // If received is defined, user cannot exceed received quantity
-  if (row.received !== undefined && row.received !== null) {
-    const allowed = Number(row.received) - previousDone;
+  // ✅ 1) REQUIREMENT GUARD (never exceed requirement)
+  const reqTotal = Number(row.requirement || 0);
+  const reqRemaining = reqTotal - previousDone;
 
-    if (allowed <= 0) {
+  if (reqRemaining <= 0) {
+    throw new Error(
+      `Requirement already completed. Allowed: 0 (requirement ${reqTotal}, done ${previousDone})`
+    );
+  }
+
+  if (todayProgress - reqRemaining > 1e-9) {
+    throw new Error(
+      `Only ${reqRemaining} allowed. (requirement ${reqTotal}, done ${previousDone})`
+    );
+  }
+
+  // ✅ 2) RECEIVED GUARD (only if received > 0)
+  // If printing/upper direct start => received = 0 => allow
+  const receivedQty = Number(row.received || 0);
+  if (receivedQty > 0) {
+    const allowedByReceived = receivedQty - previousDone;
+
+    if (allowedByReceived <= 0) {
       throw new Error(
         "No quantity received from previous department. Transfer required."
       );
     }
 
-    if (todayProgress > allowed) {
+    if (todayProgress - allowedByReceived > 1e-9) {
       throw new Error(
-        `Only ${allowed} units allowed. Transfer more from previous department.`
+        `Only ${allowedByReceived} allowed as per received (received ${receivedQty}, done ${previousDone}).`
       );
     }
   }
@@ -281,25 +314,23 @@ export async function updateProgressTodayService(
     updatedBy
   };
 
+  // ✅ If we reached here => safe to save
   return await MicroTracking.findByIdAndUpdate(
-  id,
-  {
-    $inc: {
-      progressToday: todayProgress,
-      progressDone: todayProgress
+    id,
+    {
+      $inc: { progressToday: todayProgress, progressDone: todayProgress },
+      $set: { updatedAt: new Date() },
+      $push: { history: historyEntry }
     },
-    $set: { updatedAt: new Date() },
-    $push: { history: historyEntry }
-  },
-  { new: true }
-)
-
+    { new: true }
+  )
     .populate({
       path: "cardId",
       select: "cardNumber productName cardQuantity stage assignedPlant"
     })
     .lean();
 }
+
 
 
 /* ----------------------------------------------------
@@ -337,11 +368,10 @@ export async function getDepartmentWiseTrackingService(projectId) {
       planned,
       completed,
       remaining,
-      rate
+      rate,
     };
   });
 }
-
 
 import { Project } from "../models/Project.model.js";
 import { PoDetails } from "../models/PoDetails.model.js";
@@ -369,14 +399,18 @@ export async function getTrackingDashboard(month, year) {
     .lean();
 
   const departments = [
-    "cutting", "printing", "upper",
-    "upper_rej", "assembly", "packing", "rfd"
+    "cutting",
+    "printing",
+    "upper",
+    "upper_rej",
+    "assembly",
+    "packing",
+    "rfd",
   ];
 
   const response = [];
 
   for (const p of projects) {
-
     // STEP 3 → Get PO Details for this project
     const po = await PoDetails.findOne({ project: p._id }).lean();
 
@@ -388,16 +422,16 @@ export async function getTrackingDashboard(month, year) {
 
     // STEP 5 → fetch microtracking rows
     const microRows = await MicroTracking.find({
-      projectId: p._id
+      projectId: p._id,
     }).lean();
 
     // STEP 6 → Department summary initialize
     const resultDept = {};
-    departments.forEach(dept => {
+    departments.forEach((dept) => {
       resultDept[dept] = {
         daily: {},
         weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 },
-        monthTotal: 0
+        monthTotal: 0,
       };
     });
 
@@ -416,10 +450,15 @@ export async function getTrackingDashboard(month, year) {
         const added = Number(h.addedToday || 0);
 
         const week =
-          day <= 7 ? "W1" :
-          day <= 14 ? "W2" :
-          day <= 21 ? "W3" :
-          day <= 28 ? "W4" : "W5";
+          day <= 7
+            ? "W1"
+            : day <= 14
+            ? "W2"
+            : day <= 21
+            ? "W3"
+            : day <= 28
+            ? "W4"
+            : "W5";
 
         // Daily
         resultDept[dept].daily[day] =
@@ -453,7 +492,7 @@ export async function getTrackingDashboard(month, year) {
       poDetails: po || {},
 
       cards,
-      departments: resultDept
+      departments: resultDept,
     });
   }
 
@@ -469,7 +508,7 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
 
   // STEP 1 → Projects having microtracking in this department
   const activeProjectIds = await MicroTracking.distinct("projectId", {
-    department: dept
+    department: dept,
   });
 
   if (!activeProjectIds.length) return [];
@@ -489,18 +528,18 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
     // STEP 3 → Department-specific microtracking rows
     const microRows = await MicroTracking.find({
       projectId: p._id,
-      department: dept
+      department: dept,
     }).lean();
 
     // STEP 4 → Extract ONLY tracked cardIds
     const trackedCardIds = [
-      ...new Set(microRows.map(r => r.cardId).filter(Boolean))
+      ...new Set(microRows.map((r) => r.cardId).filter(Boolean)),
     ];
 
     // STEP 5 → Fetch ONLY tracked cards
     const cards = trackedCardIds.length
       ? await PCProductionCard.find({
-          _id: { $in: trackedCardIds }
+          _id: { $in: trackedCardIds },
         })
           .populate("assignedPlant", "name")
           .lean()
@@ -510,7 +549,7 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
     const data = {
       daily: {},
       weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 },
-      monthTotal: 0
+      monthTotal: 0,
     };
 
     for (const row of microRows) {
@@ -524,10 +563,15 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
         const added = Number(h.addedToday || 0);
 
         const week =
-          day <= 7 ? "W1" :
-          day <= 14 ? "W2" :
-          day <= 21 ? "W3" :
-          day <= 28 ? "W4" : "W5";
+          day <= 7
+            ? "W1"
+            : day <= 14
+            ? "W2"
+            : day <= 21
+            ? "W3"
+            : day <= 28
+            ? "W4"
+            : "W5";
 
         data.daily[day] = (data.daily[day] || 0) + added;
         data.weekly[week] += added;
@@ -548,14 +592,12 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
       poDetails: po || {},
       cards, // ✅ ONLY STAGE-TRACKED CARDS
       department: dept,
-      summary: data
+      summary: data,
     });
   }
 
   return response;
 }
-
-
 
 export async function getMicroTrackingByProjectAndCard(projectId, cardId) {
   const project = await Project.findById(projectId)
@@ -565,8 +607,7 @@ export async function getMicroTrackingByProjectAndCard(projectId, cardId) {
 
   if (!project) throw new Error("Project not found");
 
-  const card = await PCProductionCard.findById(cardId)
-    .lean();
+  const card = await PCProductionCard.findById(cardId).lean();
 
   if (!card) throw new Error("Card not found");
 
@@ -574,7 +615,7 @@ export async function getMicroTrackingByProjectAndCard(projectId, cardId) {
   const rows = await MicroTracking.find({ projectId, cardId })
     .populate({
       path: "cardId",
-      select: "cardNumber productName cardQuantity assignedPlant stage"
+      select: "cardNumber productName cardQuantity assignedPlant stage",
     })
     .lean();
 
@@ -585,14 +626,14 @@ export async function getMicroTrackingByProjectAndCard(projectId, cardId) {
     "upper_rej",
     "assembly",
     "packing",
-    "rfd"
+    "rfd",
   ];
 
   const grouped = {};
 
-  DEPARTMENTS.forEach(d => (grouped[d] = []));
+  DEPARTMENTS.forEach((d) => (grouped[d] = []));
 
-  rows.forEach(r => {
+  rows.forEach((r) => {
     const d = r.department || "unknown";
     if (!grouped[d]) grouped[d] = [];
     grouped[d].push(r);
@@ -601,37 +642,32 @@ export async function getMicroTrackingByProjectAndCard(projectId, cardId) {
   return {
     project,
     card,
-    departments: grouped
+    departments: grouped,
   };
 }
-
 
 /* ----------------------------------------------------
    GET ONLY TRACKING-ENABLED CARDS OF A PROJECT
 ---------------------------------------------------- */
 export async function getTrackingCardsByProject(projectId) {
-
   // 1️⃣ Find cardIds which actually have tracking
   const trackedCardIds = await MicroTracking.distinct("cardId", {
-    projectId
+    projectId,
   });
 
   if (trackedCardIds.length === 0) return [];
 
   // 2️⃣ Fetch only those cards
   const cards = await PCProductionCard.find({
-    _id: { $in: trackedCardIds }
+    _id: { $in: trackedCardIds },
   })
-    .select(
-      "cardNumber productName cardQuantity stage assignedPlant createdAt"
-    )
+    .select("cardNumber productName cardQuantity stage assignedPlant createdAt")
     .populate("assignedPlant", "name")
     .sort({ createdAt: -1 })
     .lean();
 
   return cards;
 }
-
 
 export async function transferToNextDepartmentService(
   projectId,
@@ -645,14 +681,16 @@ export async function transferToNextDepartmentService(
   const fromRows = await MicroTracking.find({
     projectId,
     cardId,
-    department: fromDept
+    department: fromDept,
   });
 
-  if (!fromRows.length)
-    throw new Error("Source department rows not found");
+  if (!fromRows.length) throw new Error("Source department rows not found");
 
   const totalDone = fromRows.reduce((s, r) => s + (r.progressDone || 0), 0);
-  const totalTransferred = fromRows.reduce((s, r) => s + (r.transferred || 0), 0);
+  const totalTransferred = fromRows.reduce(
+    (s, r) => s + (r.transferred || 0),
+    0
+  );
 
   const available = totalDone - totalTransferred;
 
@@ -666,8 +704,7 @@ export async function transferToNextDepartmentService(
   for (const row of fromRows) {
     if (remaining <= 0) break;
 
-    const canGive =
-      (row.progressDone || 0) - (row.transferred || 0);
+    const canGive = (row.progressDone || 0) - (row.transferred || 0);
 
     const give = Math.min(canGive, remaining);
 
@@ -677,8 +714,12 @@ export async function transferToNextDepartmentService(
         date: new Date(),
         updatedBy,
         changes: [
-          { field: "transferred", from: row.transferred - give, to: row.transferred }
-        ]
+          {
+            field: "transferred",
+            from: row.transferred - give,
+            to: row.transferred,
+          },
+        ],
       });
       await row.save();
       remaining -= give;
@@ -689,11 +730,10 @@ export async function transferToNextDepartmentService(
   const toRows = await MicroTracking.find({
     projectId,
     cardId,
-    department: toDept
+    department: toDept,
   });
 
-  if (!toRows.length)
-    throw new Error("Target department rows not found");
+  if (!toRows.length) throw new Error("Target department rows not found");
 
   let receiveRemaining = quantity;
 
@@ -709,8 +749,8 @@ export async function transferToNextDepartmentService(
         date: new Date(),
         updatedBy,
         changes: [
-          { field: "received", from: row.received - receive, to: row.received }
-        ]
+          { field: "received", from: row.received - receive, to: row.received },
+        ],
       });
       await row.save();
       receiveRemaining -= receive;
@@ -720,102 +760,210 @@ export async function transferToNextDepartmentService(
   return {
     fromDepartment: fromDept,
     toDepartment: toDept,
-    transferred: quantity
+    transferred: quantity,
   };
 }
 
 
+function round4(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 10000) / 10000;
+}
 
-export async function transferTodayWorkService(
-  projectId,
-  cardId,
+function normStr(v) {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function normItemId(v) {
+  const s = String(v ?? "").trim();
+  return s ? s : null;
+}
+
+function itemQueryFor(fr, toDept) {
+  const iid = normItemId(fr.itemId);
+  if (iid) {
+    return { projectId: fr.projectId, cardId: fr.cardId, department: toDept, itemId: iid };
+  }
+  // fallback match
+  return {
+    projectId: fr.projectId,
+    cardId: fr.cardId,
+    department: toDept,
+    name: fr.name,
+    specification: fr.specification,
+    unit: fr.unit
+  };
+}
+
+export async function transferTodayWorkByRowService(
+  rowId,
   fromDept,
   toDept,
   updatedBy = "system"
 ) {
-  const fromRows = await MicroTracking.find({ projectId, cardId, department: fromDept });
-  if (!fromRows.length) throw new Error("Source department rows not found");
+  if (!rowId || !fromDept || !toDept) {
+    throw new Error("rowId, fromDepartment, toDepartment required");
+  }
+  if (fromDept === toDept) throw new Error("fromDepartment and toDepartment cannot be same");
 
-  let toRows = await MicroTracking.find({ projectId, cardId, department: toDept });
+  const fr = await MicroTracking.findById(rowId);
+  if (!fr) throw new Error("Source row not found");
 
-  // If target dept rows don't exist, create (clone items)
-  if (!toRows.length) {
-    const clones = fromRows.map(r => ({
-      projectId,
-      cardId,
-      cardNumber: r.cardNumber,
-      cardQuantity: r.cardQuantity,
-      category: r.category,
-      itemId: r.itemId,
-      name: r.name,
-      specification: r.specification,
-      unit: r.unit,
-      requirement: r.requirement,
-      issued: r.issued,
-      balance: r.balance,
-      department: toDept,
-      progressDone: 0,
-      progressToday: 0,
-      transferred: 0,
-      received: 0,
+  // ✅ ensure row belongs to fromDept
+  if (String(fr.department) !== String(fromDept)) {
+    throw new Error(`Row department is ${fr.department}, not ${fromDept}`);
+  }
+
+  // ✅ today transferable from this row only
+  const todayDone = round4(getTodayDone(fr));
+  const alreadyTodayTransferred = round4(fr.transferredToday || 0);
+  const transferableToday = round4(todayDone - alreadyTodayTransferred);
+
+  if (transferableToday <= 0) {
+    return {
+      fromRowId: String(fr._id),
+      fromDepartment: fromDept,
+      toDepartment: toDept,
       transferredToday: 0,
-      history: []
-    }));
-
-    await MicroTracking.insertMany(clones);
-    toRows = await MicroTracking.find({ projectId, cardId, department: toDept });
+      message: "No today quantity available to transfer for this row"
+    };
   }
 
-  let totalTransferredToday = 0;
+  // ✅ also ensure overall availability (progressDone - transferred)
+  const overallAvailable = round4((fr.progressDone || 0) - (fr.transferred || 0));
+  const give = round4(Math.min(transferableToday, overallAvailable));
 
-  for (const fr of fromRows) {
-    const todayDone = getTodayDone(fr);
-    const alreadyTodayTransferred = Number(fr.transferredToday || 0);
-    const transferableToday = todayDone - alreadyTodayTransferred;
-
-    if (transferableToday <= 0) continue;
-
-    // also ensure not exceeding overall available (progressDone - transferred)
-    const overallAvailable = (fr.progressDone || 0) - (fr.transferred || 0);
-    const give = Math.min(transferableToday, overallAvailable);
-    if (give <= 0) continue;
-
-    const tr = toRows.find(r => sameItem(fr, r));
-    if (!tr) throw new Error(`Target row not found for item: ${fr.name}`);
-
-    const capacity = (tr.requirement || 0) - (tr.received || 0);
-    const receive = Math.min(capacity, give);
-    if (receive <= 0) continue;
-
-    // update FROM row
-    fr.transferred = (fr.transferred || 0) + receive;
-    fr.transferredToday = (fr.transferredToday || 0) + receive;
-    fr.history.push({
-      date: new Date(),
-      updatedBy,
-      changes: [
-        { field: "transferred", from: fr.transferred - receive, to: fr.transferred },
-        { field: "transferredToday", from: fr.transferredToday - receive, to: fr.transferredToday }
-      ]
-    });
-
-    // update TO row
-    tr.received = (tr.received || 0) + receive;
-    tr.history.push({
-      date: new Date(),
-      updatedBy,
-      changes: [{ field: "received", from: tr.received - receive, to: tr.received }]
-    });
-
-    await fr.save();
-    await tr.save();
-
-    totalTransferredToday += receive;
+  if (give <= 0) {
+    return {
+      fromRowId: String(fr._id),
+      fromDepartment: fromDept,
+      toDepartment: toDept,
+      transferredToday: 0,
+      message: "No overall quantity available to transfer"
+    };
   }
+
+  // ✅ FIND OR CREATE target row (UPSERT = no duplicate)
+  const query = itemQueryFor(fr, toDept);
+
+  const tr = await MicroTracking.findOneAndUpdate(
+    query,
+    {
+      $setOnInsert: {
+        projectId: fr.projectId,
+        cardId: fr.cardId,
+        cardNumber: fr.cardNumber,
+        cardQuantity: fr.cardQuantity,
+        category: fr.category,
+        itemId: normItemId(fr.itemId),
+        name: fr.name,
+        specification: fr.specification,
+        unit: fr.unit,
+
+        requirement: 0,
+        issued: 0,
+        balance: 0,
+
+        department: toDept,
+        progressDone: 0,
+        progressToday: 0,
+        transferred: 0,
+        received: 0,
+        transferredToday: 0,
+        history: []
+      }
+    },
+    { new: true, upsert: true }
+  );
+
+  // ---------- FROM updates
+  const frOldTransferred = round4(fr.transferred || 0);
+  const frOldTransferredToday = round4(fr.transferredToday || 0);
+  const frOldReq = round4(fr.requirement || 0);
+  const frOldBal = round4(fr.balance || 0);
+
+  fr.transferred = round4(frOldTransferred + give);
+  fr.transferredToday = round4(frOldTransferredToday + give);
+  fr.requirement = round4(Math.max(0, frOldReq - give));
+  fr.balance = round4(Math.max(0, frOldBal - give));
+
+  fr.history.push({
+    date: new Date(),
+    updatedBy,
+    changes: [
+      { field: "transferred", from: frOldTransferred, to: fr.transferred },
+      { field: "transferredToday", from: frOldTransferredToday, to: fr.transferredToday },
+      { field: "requirement", from: frOldReq, to: fr.requirement },
+      { field: "balance", from: frOldBal, to: fr.balance },
+      { field: "toDepartment", from: fromDept, to: toDept }
+    ]
+  });
+
+  // ---------- TO updates
+  const trOldReceived = round4(tr.received || 0);
+  const trOldReq = round4(tr.requirement || 0);
+  const trOldBal = round4(tr.balance || 0);
+
+  tr.received = round4(trOldReceived + give);
+  tr.requirement = round4(trOldReq + give);
+  tr.balance = round4(trOldBal + give);
+
+  tr.history.push({
+    date: new Date(),
+    updatedBy,
+    changes: [
+      { field: "received", from: trOldReceived, to: tr.received },
+      { field: "requirement", from: trOldReq, to: tr.requirement },
+      { field: "balance", from: trOldBal, to: tr.balance },
+      { field: "fromDepartment", from: fromDept, to: toDept }
+    ]
+  });
+
+  await fr.save();
+  await tr.save();
 
   return {
+    fromRowId: String(fr._id),
+    toRowId: String(tr._id),
     fromDepartment: fromDept,
     toDepartment: toDept,
-    transferredToday: totalTransferredToday
+    transferredToday: give
   };
+}
+
+
+export async function bulkTodayProcessService(actions, updatedBy = "system") {
+  const results = [];
+  const errors = [];
+
+  for (const a of actions) {
+    try {
+      const { rowId, progressToday, fromDepartment, toDepartment } = a;
+
+      if (!rowId || progressToday === undefined || !fromDepartment || !toDepartment) {
+        throw new Error("rowId, progressToday, fromDepartment, toDepartment required");
+      }
+
+      // 1) update today work
+      const updatedRow = await updateProgressTodayService(rowId, progressToday, updatedBy);
+
+      // 2) transfer today work (only what was done today)
+      const transfer = await transferTodayWorkByRowService(
+        rowId,
+        fromDepartment,
+        toDepartment,
+        updatedBy
+      );
+
+      results.push({
+        rowId,
+        updatedRowId: updatedRow?._id,
+        progressAdded: Number(progressToday),
+        transfer
+      });
+    } catch (e) {
+      errors.push({ rowId: a?.rowId, error: e.message });
+    }
+  }
+
+  return { results, errors };
 }

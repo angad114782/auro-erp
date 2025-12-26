@@ -91,12 +91,17 @@ export async function getDepartmentRows(req, res) {
 /* ---------------- Update only progressToday ---------------- */
 export async function updateProgressToday(req, res) {
   try {
-    const { id } = req.params;
-    const { progressToday } = req.body;
+    const { rowId, progressToday } = req.body; // ✅ id from body
     const updatedBy = req.user?.name || "system";
 
+    if (!rowId || progressToday === undefined) {
+      return res.status(400).json({
+        error: "rowId and progressToday are required"
+      });
+    }
+
     const updated = await service.updateProgressTodayService(
-      id,
+      rowId,
       progressToday,
       updatedBy
     );
@@ -220,15 +225,16 @@ export async function transferToNextDepartment(req, res) {
 
 export async function transferTodayWork(req, res) {
   try {
-    const { projectId, cardId, fromDepartment, toDepartment } = req.body;
+    const { rowId, fromDepartment, toDepartment } = req.body;
 
-    if (!projectId || !cardId || !fromDepartment || !toDepartment) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (!rowId || !fromDepartment || !toDepartment) {
+      return res.status(400).json({
+        error: "rowId, fromDepartment, toDepartment are required"
+      });
     }
 
-    const result = await service.transferTodayWorkService(
-      projectId,
-      cardId,
+    const result = await service.transferTodayWorkByRowService(
+      rowId,
       fromDepartment,
       toDepartment,
       req.user?.name || "system"
@@ -238,6 +244,25 @@ export async function transferTodayWork(req, res) {
 
   } catch (err) {
     console.error("transferTodayWork error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+
+export async function bulkTodayProcess(req, res) {
+  try {
+    const { actions } = req.body;
+    const updatedBy = req.user?.name || "system";
+
+    if (!Array.isArray(actions) || actions.length === 0) {
+      return res.status(400).json({ error: "actions array required" });
+    }
+
+    const result = await service.bulkTodayProcessService(actions, updatedBy);
+
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    console.error("bulkTodayProcess error:", err);
     return res.status(500).json({ error: err.message });
   }
 }
