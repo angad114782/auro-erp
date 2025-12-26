@@ -28,7 +28,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import api from "../lib/api";
 
 interface CuttingItem {
   id: string;
@@ -51,7 +52,8 @@ interface ItemCuttingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   productData: any;
-
+  rows: any[];
+  loadingRows: boolean;
   stage: string;
   projectId: string;
   cardId: string;
@@ -61,7 +63,6 @@ const mapStageToDept = (stg: string) => {
   if (stg === "upper-rej") return "upper_rej";
   return stg;
 };
-
 
 const MobileItemCard = React.memo(
   ({
@@ -74,6 +75,7 @@ const MobileItemCard = React.memo(
     toggleItemExpanded,
     expandedItems,
     stage,
+    onAdvanceToChange,
   }: {
     item: CuttingItem;
     isMobile: boolean;
@@ -84,6 +86,7 @@ const MobileItemCard = React.memo(
     toggleItemExpanded: (itemId: string) => void;
     expandedItems: Set<string>;
     stage: string;
+    onAdvanceToChange: (rowId: string, dept: string) => void;
   }) => {
     // Helper function to parse value to number
     const parseToNumber = (value: string | number): number => {
@@ -362,7 +365,9 @@ const MobileItemCard = React.memo(
                 <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
                   Advance To
                 </Label>
-                <Select>
+                <Select
+                  onValueChange={(value) => onAdvanceToChange(item.id, value)}
+                >
                   <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-linear-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
                     <SelectValue placeholder="Next stage..." />
                   </SelectTrigger>
@@ -434,6 +439,13 @@ const MobileItemCard = React.memo(
 
 MobileItemCard.displayName = "MobileItemCard";
 
+const saveBulkToday = async (actions: any[]) => {
+  const res = await api.post("/micro-tracking/bulk/today", {
+    actions,
+  });
+  return res.data;
+};
+
 export function ItemCuttingDialog({
   open,
   onOpenChange,
@@ -451,6 +463,15 @@ export function ItemCuttingDialog({
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+  const [nextDeptMap, setNextDeptMap] = useState<Record<string, string>>({});
+  const fromDepartment = mapStageToDept(stage);
+
+  const updateNextDepartment = (rowId: string, dept: string) => {
+    setNextDeptMap((prev) => ({
+      ...prev,
+      [rowId]: dept,
+    }));
+  };
 
   const getStageDetails = () => {
     switch (stage) {
@@ -665,37 +686,86 @@ export function ItemCuttingDialog({
     }
   };
 
-  const handleSaveCutting = () => {
-    const totalCutting = cuttingItems.reduce((sum, item) => {
-      const cuttingTodayNum = parseToNumber(item.cuttingToday);
-      return sum + cuttingTodayNum;
-    }, 0);
+  // const handleSaveCutting = () => {
+  //   const totalCutting = cuttingItems.reduce((sum, item) => {
+  //     const cuttingTodayNum = parseToNumber(item.cuttingToday);
+  //     return sum + cuttingTodayNum;
+  //   }, 0);
 
-    if (totalCutting === 0) {
-      toast.error(
-        `Please enter ${stageDetails.actionName.toLowerCase()} quantities for at least one item`
-      );
+  //   if (totalCutting === 0) {
+  //     toast.error(
+  //       `Please enter ${stageDetails.actionName.toLowerCase()} quantities for at least one item`
+  //     );
+  //     return;
+  //   }
+
+  //   setCuttingItems((prev) =>
+  //     prev.map((item) => {
+  //       const alreadyCutNum = parseToNumber(item.alreadyCut);
+  //       const cuttingTodayNum = parseToNumber(item.cuttingToday);
+  //       return {
+  //         ...item,
+  //         alreadyCut: alreadyCutNum + cuttingTodayNum,
+  //         cuttingToday: 0,
+  //       };
+  //     })
+  //   );
+
+  //   const minAvailable = calculateMinimumAvailable();
+  //   toast.success(
+  //     `${stageDetails.title} saved! ${minAvailable.toFixed(
+  //       4
+  //     )} units now ready for production`
+  //   );
+  // };
+  const handleSaveCutting = async () => {
+    const actions = cuttingItems
+      .map((item) => {
+        const progressToday = parseToNumber(item.cuttingToday);
+
+        if (progressToday <= 0) return null;
+
+        return {
+          rowId: item.id,
+          progressToday,
+          fromDepartment,
+          toDepartment: nextDeptMap[item.id] || fromDepartment, // fallback to same dept
+        };
+      })
+      .filter(Boolean);
+
+    if (actions.length === 0) {
+      toast.error("Please enter today quantity for at least one item");
       return;
     }
 
-    setCuttingItems((prev) =>
-      prev.map((item) => {
-        const alreadyCutNum = parseToNumber(item.alreadyCut);
-        const cuttingTodayNum = parseToNumber(item.cuttingToday);
-        return {
-          ...item,
-          alreadyCut: alreadyCutNum + cuttingTodayNum,
-          cuttingToday: 0,
-        };
-      })
-    );
+    try {
+      const res = await saveBulkToday(actions);
 
-    const minAvailable = calculateMinimumAvailable();
-    toast.success(
-      `${stageDetails.title} saved! ${minAvailable.toFixed(
-        4
-      )} units now ready for production`
-    );
+      if (res.errors?.length) {
+        toast.error(`Saved with ${res.errors.length} error(s). Check console.`);
+        console.error("Bulk save errors:", res.errors);
+      } else {
+        toast.success("Today's progress saved successfully");
+      }
+
+      // Reset today values after success
+      setCuttingItems((prev) =>
+        prev.map((item) => ({
+          ...item,
+          alreadyCut:
+            parseToNumber(item.alreadyCut) + parseToNumber(item.cuttingToday),
+          cuttingToday: 0,
+        }))
+      );
+
+      setNextDeptMap({});
+    } catch (err: any) {
+      console.error(err);
+      toast.error(
+        err?.response?.data?.error || "Failed to save today progress"
+      );
+    }
   };
 
   const toggleItemExpanded = (itemId: string) => {
@@ -738,7 +808,7 @@ export function ItemCuttingDialog({
         <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
           Advance To Next Stage
         </Label>
-        <Select>
+        <Select onValueChange={(value) => updateNextDepartment(item.id, value)}>
           <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-linear-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
             <SelectValue placeholder="Select next stage..." />
           </SelectTrigger>
@@ -1170,6 +1240,7 @@ export function ItemCuttingDialog({
                         toggleItemExpanded={toggleItemExpanded}
                         expandedItems={expandedItems}
                         stage={stage}
+                        onAdvanceToChange={updateNextDepartment}
                       />
                     ))}
               </div>

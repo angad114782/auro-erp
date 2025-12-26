@@ -311,7 +311,7 @@ export async function updateProgressTodayService(
     addedToday: todayProgress,
     previousDone,
     newDone,
-    updatedBy
+    updatedBy,
   };
 
   // ✅ If we reached here => safe to save
@@ -320,18 +320,16 @@ export async function updateProgressTodayService(
     {
       $inc: { progressToday: todayProgress, progressDone: todayProgress },
       $set: { updatedAt: new Date() },
-      $push: { history: historyEntry }
+      $push: { history: historyEntry },
     },
     { new: true }
   )
     .populate({
       path: "cardId",
-      select: "cardNumber productName cardQuantity stage assignedPlant"
+      select: "cardNumber productName cardQuantity stage assignedPlant",
     })
     .lean();
 }
-
-
 
 /* ----------------------------------------------------
    6) DEPARTMENT WISE SUMMARY
@@ -764,13 +762,14 @@ export async function transferToNextDepartmentService(
   };
 }
 
-
 function round4(n) {
   return Math.round((Number(n) + Number.EPSILON) * 10000) / 10000;
 }
 
 function normStr(v) {
-  return String(v ?? "").trim().toLowerCase();
+  return String(v ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function normItemId(v) {
@@ -781,7 +780,12 @@ function normItemId(v) {
 function itemQueryFor(fr, toDept) {
   const iid = normItemId(fr.itemId);
   if (iid) {
-    return { projectId: fr.projectId, cardId: fr.cardId, department: toDept, itemId: iid };
+    return {
+      projectId: fr.projectId,
+      cardId: fr.cardId,
+      department: toDept,
+      itemId: iid,
+    };
   }
   // fallback match
   return {
@@ -790,7 +794,7 @@ function itemQueryFor(fr, toDept) {
     department: toDept,
     name: fr.name,
     specification: fr.specification,
-    unit: fr.unit
+    unit: fr.unit,
   };
 }
 
@@ -803,7 +807,8 @@ export async function transferTodayWorkByRowService(
   if (!rowId || !fromDept || !toDept) {
     throw new Error("rowId, fromDepartment, toDepartment required");
   }
-  if (fromDept === toDept) throw new Error("fromDepartment and toDepartment cannot be same");
+  if (fromDept === toDept)
+    throw new Error("fromDepartment and toDepartment cannot be same");
 
   const fr = await MicroTracking.findById(rowId);
   if (!fr) throw new Error("Source row not found");
@@ -824,12 +829,14 @@ export async function transferTodayWorkByRowService(
       fromDepartment: fromDept,
       toDepartment: toDept,
       transferredToday: 0,
-      message: "No today quantity available to transfer for this row"
+      message: "No today quantity available to transfer for this row",
     };
   }
 
   // ✅ also ensure overall availability (progressDone - transferred)
-  const overallAvailable = round4((fr.progressDone || 0) - (fr.transferred || 0));
+  const overallAvailable = round4(
+    (fr.progressDone || 0) - (fr.transferred || 0)
+  );
   const give = round4(Math.min(transferableToday, overallAvailable));
 
   if (give <= 0) {
@@ -838,7 +845,7 @@ export async function transferTodayWorkByRowService(
       fromDepartment: fromDept,
       toDepartment: toDept,
       transferredToday: 0,
-      message: "No overall quantity available to transfer"
+      message: "No overall quantity available to transfer",
     };
   }
 
@@ -869,8 +876,8 @@ export async function transferTodayWorkByRowService(
         transferred: 0,
         received: 0,
         transferredToday: 0,
-        history: []
-      }
+        history: [],
+      },
     },
     { new: true, upsert: true }
   );
@@ -891,11 +898,15 @@ export async function transferTodayWorkByRowService(
     updatedBy,
     changes: [
       { field: "transferred", from: frOldTransferred, to: fr.transferred },
-      { field: "transferredToday", from: frOldTransferredToday, to: fr.transferredToday },
+      {
+        field: "transferredToday",
+        from: frOldTransferredToday,
+        to: fr.transferredToday,
+      },
       { field: "requirement", from: frOldReq, to: fr.requirement },
       { field: "balance", from: frOldBal, to: fr.balance },
-      { field: "toDepartment", from: fromDept, to: toDept }
-    ]
+      { field: "toDepartment", from: fromDept, to: toDept },
+    ],
   });
 
   // ---------- TO updates
@@ -914,8 +925,8 @@ export async function transferTodayWorkByRowService(
       { field: "received", from: trOldReceived, to: tr.received },
       { field: "requirement", from: trOldReq, to: tr.requirement },
       { field: "balance", from: trOldBal, to: tr.balance },
-      { field: "fromDepartment", from: fromDept, to: toDept }
-    ]
+      { field: "fromDepartment", from: fromDept, to: toDept },
+    ],
   });
 
   await fr.save();
@@ -926,10 +937,9 @@ export async function transferTodayWorkByRowService(
     toRowId: String(tr._id),
     fromDepartment: fromDept,
     toDepartment: toDept,
-    transferredToday: give
+    transferredToday: give,
   };
 }
-
 
 export async function bulkTodayProcessService(actions, updatedBy = "system") {
   const results = [];
@@ -939,12 +949,23 @@ export async function bulkTodayProcessService(actions, updatedBy = "system") {
     try {
       const { rowId, progressToday, fromDepartment, toDepartment } = a;
 
-      if (!rowId || progressToday === undefined || !fromDepartment || !toDepartment) {
-        throw new Error("rowId, progressToday, fromDepartment, toDepartment required");
+      if (
+        !rowId ||
+        progressToday === undefined ||
+        !fromDepartment ||
+        !toDepartment
+      ) {
+        throw new Error(
+          "rowId, progressToday, fromDepartment, toDepartment required"
+        );
       }
 
       // 1) update today work
-      const updatedRow = await updateProgressTodayService(rowId, progressToday, updatedBy);
+      const updatedRow = await updateProgressTodayService(
+        rowId,
+        progressToday,
+        updatedBy
+      );
 
       // 2) transfer today work (only what was done today)
       const transfer = await transferTodayWorkByRowService(
@@ -958,7 +979,7 @@ export async function bulkTodayProcessService(actions, updatedBy = "system") {
         rowId,
         updatedRowId: updatedRow?._id,
         progressAdded: Number(progressToday),
-        transfer
+        transfer,
       });
     } catch (e) {
       errors.push({ rowId: a?.rowId, error: e.message });
