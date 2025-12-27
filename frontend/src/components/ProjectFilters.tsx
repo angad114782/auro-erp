@@ -20,14 +20,12 @@ import {
 import { Badge } from "./ui/badge";
 
 interface ProjectFiltersProps {
-  // Master data
   countries: any[];
   companies?: any[];
   brands?: any[];
   categories?: any[];
   types?: any[];
 
-  // Current filter values
   filters: {
     country?: string;
     priority?: string;
@@ -37,12 +35,10 @@ interface ProjectFiltersProps {
     type?: string;
   };
 
-  // Callbacks
   onFiltersChange: (filters: any) => void;
   onClearFilters: () => void;
 
-  // Optional customization
-  availableFilters?: string[]; // Which filters to show
+  availableFilters?: string[];
   isMobile?: boolean;
 }
 
@@ -69,9 +65,9 @@ export function ProjectFilters({
 
   const handleFilterChange = (key: string, value: string) => {
     if (value === "all" || !value) {
-      const newFilters = { ...filters };
-      delete newFilters[key];
-      onFiltersChange(newFilters);
+      const next = { ...filters };
+      delete next[key];
+      onFiltersChange(next);
     } else {
       onFiltersChange({ ...filters, [key]: value });
     }
@@ -82,16 +78,16 @@ export function ProjectFilters({
   ).length;
 
   const FilterContent = () => (
-    <div className="space-y-4">
-      {/* Priority Filter */}
+    <div className="space-y-6">
+      {/* Priority */}
       {availableFilters.includes("priority") && (
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Priority</Label>
+          <Label>Priority</Label>
           <Select
             value={filters.priority || "all"}
-            onValueChange={(value) => handleFilterChange("priority", value)}
+            onValueChange={(v) => handleFilterChange("priority", v)}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger>
               <SelectValue placeholder="Select priority" />
             </SelectTrigger>
             <SelectContent>
@@ -104,25 +100,22 @@ export function ProjectFilters({
         </div>
       )}
 
-      {/* Country Filter */}
+      {/* Country */}
       {availableFilters.includes("country") && countries.length > 0 && (
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Country</Label>
+          <Label>Country</Label>
           <Select
             value={filters.country || "all"}
-            onValueChange={(value) => handleFilterChange("country", value)}
+            onValueChange={(v) => handleFilterChange("country", v)}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger>
               <SelectValue placeholder="Select country" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Countries</SelectItem>
-              {countries.map((country) => (
-                <SelectItem
-                  key={country._id || country.id}
-                  value={country._id || country.id}
-                >
-                  {country.name}
+              {countries.map((c) => (
+                <SelectItem key={c._id || c.id} value={c._id || c.id}>
+                  {c.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -130,25 +123,22 @@ export function ProjectFilters({
         </div>
       )}
 
-      {/* Company Filter */}
+      {/* Company */}
       {availableFilters.includes("company") && companies.length > 0 && (
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Company</Label>
+          <Label>Company</Label>
           <Select
             value={filters.company || "all"}
-            onValueChange={(value) => handleFilterChange("company", value)}
+            onValueChange={(v) => handleFilterChange("company", v)}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger>
               <SelectValue placeholder="Select company" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Companies</SelectItem>
-              {companies.map((company) => (
-                <SelectItem
-                  key={company._id || company.id}
-                  value={company._id || company.id}
-                >
-                  {company.name}
+              {companies.map((c) => (
+                <SelectItem key={c._id || c.id} value={c._id || c.id}>
+                  {c.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -156,25 +146,22 @@ export function ProjectFilters({
         </div>
       )}
 
-      {/* Brand Filter */}
+      {/* Brand */}
       {availableFilters.includes("brand") && brands.length > 0 && (
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Brand</Label>
+          <Label>Brand</Label>
           <Select
             value={filters.brand || "all"}
-            onValueChange={(value) => handleFilterChange("brand", value)}
+            onValueChange={(v) => handleFilterChange("brand", v)}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger>
               <SelectValue placeholder="Select brand" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Brands</SelectItem>
-              {brands.map((brand) => (
-                <SelectItem
-                  key={brand._id || brand.id}
-                  value={brand._id || brand.id}
-                >
-                  {brand.name}
+              {brands.map((b) => (
+                <SelectItem key={b._id || b.id} value={b._id || b.id}>
+                  {b.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -182,25 +169,22 @@ export function ProjectFilters({
         </div>
       )}
 
-      {/* Category Filter */}
+      {/* Category */}
       {availableFilters.includes("category") && categories.length > 0 && (
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Category</Label>
+          <Label>Category</Label>
           <Select
             value={filters.category || "all"}
-            onValueChange={(value) => handleFilterChange("category", value)}
+            onValueChange={(v) => handleFilterChange("category", v)}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger>
               <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((category) => (
-                <SelectItem
-                  key={category._id || category.id}
-                  value={category._id || category.id}
-                >
-                  {category.name}
+              {categories.map((c) => (
+                <SelectItem key={c._id || c.id} value={c._id || c.id}>
+                  {c.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -208,25 +192,22 @@ export function ProjectFilters({
         </div>
       )}
 
-      {/* Type Filter */}
+      {/* Type */}
       {availableFilters.includes("type") && types.length > 0 && (
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Type</Label>
+          <Label>Type</Label>
           <Select
             value={filters.type || "all"}
-            onValueChange={(value) => handleFilterChange("type", value)}
+            onValueChange={(v) => handleFilterChange("type", v)}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger>
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              {types.map((type) => (
-                <SelectItem
-                  key={type._id || type.id}
-                  value={type._id || type.id}
-                >
-                  {type.name}
+              {types.map((t) => (
+                <SelectItem key={t._id || t.id} value={t._id || t.id}>
+                  {t.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -234,7 +215,6 @@ export function ProjectFilters({
         </div>
       )}
 
-      {/* Clear Filters Button */}
       {activeFilterCount > 0 && (
         <div className="pt-4 border-t">
           <Button
@@ -253,114 +233,48 @@ export function ProjectFilters({
     </div>
   );
 
-  // Mobile/Tablet: Use Sheet (slide-in panel)
-  if (isMobile) {
-    return (
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>
-          <Button variant="outline" className="relative">
-            <Filter className="w-4 h-4 mr-2" />
-            Filters
-            {activeFilterCount > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center"
-              >
-                {activeFilterCount}
-              </Badge>
-            )}
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="right" className="w-[300px] sm:w-[400px]">
-          <SheetHeader>
-            <SheetTitle>Filter Projects</SheetTitle>
-            <SheetDescription>
-              Apply filters to refine your project list
-            </SheetDescription>
-          </SheetHeader>
-          <div className="mt-6">
-            <FilterContent />
-          </div>
-        </SheetContent>
-      </Sheet>
-    );
-  }
+  /* ===================== MOBILE / SHEET ===================== */
 
-  // Desktop: Inline filters or popover
   return (
     <div className="flex items-center gap-2">
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button variant="outline" className="relative">
             <Filter className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Filters</span>
+            Filters
             {activeFilterCount > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center"
-              >
+              <Badge className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center">
                 {activeFilterCount}
               </Badge>
             )}
           </Button>
         </SheetTrigger>
-        <SheetContent side="right" className="w-[400px]">
-          <SheetHeader>
+
+        <SheetContent side="right" className="w-[320px] sm:w-[400px] p-6">
+          <SheetHeader className="pb-4 border-b">
             <SheetTitle>Filter Projects</SheetTitle>
             <SheetDescription>
               Apply filters to refine your project list
             </SheetDescription>
           </SheetHeader>
-          <div className="mt-6">
+
+          <div className="mt-6 overflow-y-auto max-h-[calc(100vh-120px)]">
             <FilterContent />
           </div>
         </SheetContent>
       </Sheet>
 
-      {/* Active Filter Pills */}
+      {/* Active filter pills */}
       {activeFilterCount > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
           {Object.entries(filters).map(([key, value]) => {
             if (!value || value === "all") return null;
-
-            let displayValue = value;
-
-            // Get display name from master data
-            if (key === "country") {
-              const country = countries.find(
-                (c) => c._id === value || c.id === value
-              );
-              displayValue = country?.name || value;
-            } else if (key === "company") {
-              const company = companies.find(
-                (c) => c._id === value || c.id === value
-              );
-              displayValue = company?.name || value;
-            } else if (key === "brand") {
-              const brand = brands.find(
-                (b) => b._id === value || b.id === value
-              );
-              displayValue = brand?.name || value;
-            } else if (key === "category") {
-              const category = categories.find(
-                (c) => c._id === value || c.id === value
-              );
-              displayValue = category?.name || value;
-            } else if (key === "type") {
-              const type = types.find((t) => t._id === value || t.id === value);
-              displayValue = type?.name || value;
-            }
-
             return (
-              <Badge
-                key={key}
-                variant="secondary"
-                className="pl-2 pr-1 py-1 text-xs capitalize"
-              >
-                {key}: {displayValue}
+              <Badge key={key} variant="secondary" className="text-xs">
+                {key}: {value}
                 <button
                   onClick={() => handleFilterChange(key, "")}
-                  className="ml-1 hover:bg-gray-300 rounded-full p-0.5"
+                  className="ml-1 p-0.5"
                 >
                   <X className="w-3 h-3" />
                 </button>
