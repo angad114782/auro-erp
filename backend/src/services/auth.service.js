@@ -9,18 +9,27 @@ export const authService = {
   },
 
   async login(email, password) {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).select("+password");
     if (!user) return null;
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return false;
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      {
+        id: user._id,
+        role: user.role,
+        name: user.name,
+        email: user.email,
+      },
       process.env.JWT_SECRET || "my_jwt_secret",
       { expiresIn: "7d" }
     );
 
-    return { user, token };
+    // Don't send password back
+    const userWithoutPassword = user.toObject();
+    delete userWithoutPassword.password;
+
+    return { user: userWithoutPassword, token };
   },
 };

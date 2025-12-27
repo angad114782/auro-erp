@@ -3,10 +3,27 @@ import cors from "cors";
 import morgan from "morgan";
 import routes from "./routes/index.js";
 import { errorHandler } from "./middleware/error.middleware.js";
+import cookieParser from "cookie-parser";
+import { authMiddleware } from "./middleware/auth.middleware.js";
 
 const app = express();
 
-app.use(cors());
+app.use(cookieParser());
+
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:5002",
+      process.env.BACKEND_URL,
+      process.env.FRONTEND_URL,
+    ], // Your frontend URL
+    credentials: true, // Allow credentials (cookies)
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+app.use(authMiddleware.protect);
 app.use(express.json());
 app.use(morgan("dev"));
 

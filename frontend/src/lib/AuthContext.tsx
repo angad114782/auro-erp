@@ -33,7 +33,7 @@ type AuthAction =
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   clearError: () => void;
   hasPermission: (module: string) => boolean;
   getDefaultModule: () => string;
@@ -43,7 +43,6 @@ interface AuthContextType extends AuthState {
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   SuperAdmin: [
-    // "dashboard",
     "all-projects",
     "master-data",
     "rd-management",
@@ -56,7 +55,6 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "wireframe",
   ],
   Admin: [
-    // "dashboard",
     "all-projects",
     "master-data",
     "rd-management",
@@ -66,16 +64,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "users",
     "reports",
   ],
-  Manager: [
-    // "dashboard",
-    "rd-management",
-    "production",
-    "inventory",
-    "delivery",
-    "reports",
-  ],
-
-  // 👇 Supervisor DOES NOT get production parent
+  Manager: ["rd-management", "production", "inventory", "delivery", "reports"],
   Supervisor: ["production-tracking"],
 };
 
@@ -134,12 +123,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   useEffect(() => {
-    const token = localStorage.getItem("erp_token");
-    const userJson = localStorage.getItem("erp_user");
+    // Check if user is authenticated by making a request to the server
+    const checkAuth = async () => {
+      try {
+        const res = await api.get("/auth/me");
+        if (res.data.success) {
+          const user = res.data.data;
+          const formattedUser: User = {
+            id: user._id,
+            name: user.name,
+            role: user.role,
+            loginTime: new Date().toISOString(),
+            permissions: ROLE_PERMISSIONS[user.role] || [],
+          };
+          dispatch({ type: "LOGIN_SUCCESS", payload: formattedUser });
+        }
+      } catch (error) {
+        // Not authenticated, clear any stale data
+        localStorage.removeItem("erp_user");
+      }
+    };
 
-    if (token && userJson) {
-      dispatch({ type: "LOGIN_SUCCESS", payload: JSON.parse(userJson) });
-    }
+    checkAuth();
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -147,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const res = await api.post("/auth/login", { email, password });
-      const { user, token } = res.data.data;
+      const { user } = res.data.data;
 
       const formattedUser: User = {
         id: user._id,
@@ -157,8 +162,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         permissions: ROLE_PERMISSIONS[user.role] || [],
       };
 
-      localStorage.setItem("erp_token", token);
-      localStorage.setItem("erp_user", JSON.stringify(formattedUser));
+      // Store minimal user info in localStorage (not sensitive data)
+      localStorage.setItem(
+        "erp_user",
+        JSON.stringify({
+          id: user._id,
+          name: user.name,
+          role: user.role,
+        })
+      );
 
       dispatch({ type: "LOGIN_SUCCESS", payload: formattedUser });
       return true;
@@ -171,9 +183,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
-    localStorage.clear();
-    dispatch({ type: "LOGOUT" });
+  const logout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (error) {
+      // Logout even if API call fails
+      console.error("Logout API error:", error);
+    } finally {
+      localStorage.removeItem("erp_user");
+      dispatch({ type: "LOGOUT" });
+    }
   };
 
   const clearError = () => dispatch({ type: "CLEAR_ERROR" });

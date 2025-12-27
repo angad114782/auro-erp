@@ -2,9 +2,15 @@ import jwt from "jsonwebtoken";
 
 export const authMiddleware = {
   protect(req, res, next) {
-    const token = req.headers.authorization?.split(" ")[1];
+    // Get token from HTTP-only cookie
+    const token = req.cookies.token;
 
-    if (!token) return res.status(401).json({ message: "Not authorized" });
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authorized, please login",
+      });
+    }
 
     try {
       const decoded = jwt.verify(
@@ -14,14 +20,22 @@ export const authMiddleware = {
       req.user = decoded;
       next();
     } catch (err) {
-      res.status(401).json({ message: "Invalid token" });
+      // Clear invalid token
+      res.clearCookie("token");
+      res.status(401).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
     }
   },
 
   role(...allowedRoles) {
     return (req, res, next) => {
       if (!allowedRoles.includes(req.user.role)) {
-        return res.status(403).json({ message: "Access denied" });
+        return res.status(403).json({
+          success: false,
+          message: "Access denied",
+        });
       }
       next();
     };

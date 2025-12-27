@@ -20,7 +20,8 @@ import pcMrRoutes from "./pc_materialRequest.routes.js";
 import assignPlantRoutes from "./assignPlant.routes.js";
 import caassignPlantRoutes from "./caAssignPlant.routes.js";
 import microTrackingRoutes from "./microTracking.routes.js";
-import deliveryRoutes from "./delivery.routes.js";  
+import deliveryRoutes from "./delivery.routes.js";
+import { authMiddleware } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -62,13 +63,13 @@ router.use("/auth", authRoutes);
 router.use("/inventory", inventoryRoutes);
 router.use("/vendors", vendorRoutes);
 router.use("/", productionCalendarRouter);
-router.use("/dashboard", dashboardRoutes);
+router.use("/dashboard", authMiddleware.protect, dashboardRoutes);
 router.use("/assign-plant", assignPlantRoutes);
 router.use("/caassign-plant", caassignPlantRoutes);
 
 router.use("/projects/:projectId/production-cards", pcProdRoutes);
 router.use("/", pcMrRoutes);
 router.use("/production-cards", pcProdRoutes);
-router.use("/", microTrackingRoutes);
-router.use("/", deliveryRoutes); 
+router.use("/", authMiddleware.protect, microTrackingRoutes);
+router.use("/", authMiddleware.protect, deliveryRoutes);
 export default router;

@@ -11,7 +11,8 @@ const SA_EMAIL = process.env.SA_EMAIL || "admin@example.com";
 const SA_PASSWORD = process.env.SA_PASSWORD || "P@ssw0rd123";
 const SA_ROLE = process.env.SA_ROLE || "SuperAdmin"; // match your auth.role strings
 
-const MONGO_URI ='mongodb+srv://ay114782_db_user:ay114782_db_user@cluster0.7ssb13i.mongodb.net/footwear_erp?appName=Cluster0';
+const MONGO_URI =
+  "mongodb+srv://ay114782_db_user:ay114782_db_user@cluster0.7ssb13i.mongodb.net/footwear_erp?appName=Cluster0";
 if (!MONGO_URI) {
   console.error("ERROR: MONGO_URI not set in .env");
   process.exit(1);
@@ -39,7 +40,9 @@ async function seedSuperAdmin() {
         await existing.save();
         console.log(`Existing user (${SA_EMAIL}) role updated to ${SA_ROLE}`);
       } else {
-        console.log(`SuperAdmin with email ${SA_EMAIL} already exists. No changes made.`);
+        console.log(
+          `SuperAdmin with email ${SA_EMAIL} already exists. No changes made.`
+        );
       }
     } else {
       // create new user
