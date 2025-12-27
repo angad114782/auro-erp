@@ -1,44 +1,45 @@
+import mongoose from "mongoose";
 import { Project } from "../models/Project.model.js";
 
-export async function getCountryDashboardService() {
+export async function getCountryDashboardService(brandId) {
+  const match = { isActive: true };
+
+  if (brandId && brandId !== "all") {
+    if (!mongoose.Types.ObjectId.isValid(brandId)) {
+      throw new Error("Invalid brandId");
+    }
+    // NOTE: if your field is brandId instead of brand, change here:
+    match.brand = new mongoose.Types.ObjectId(brandId);
+    // match.brandId = new mongoose.Types.ObjectId(brandId);
+  }
+
   const result = await Project.aggregate([
-    // ✅ only active projects
-    {
-      $match: { isActive: true }
-    },
+    { $match: match },
 
-    // ✅ group by country
-    {
-      $group: {
-        _id: "$country",
-        totalProjects: { $sum: 1 }
-      }
-    },
+    { $group: { _id: "$country", totalProjects: { $sum: 1 } } },
 
-    // ✅ join country collection
     {
       $lookup: {
         from: "countries",
         localField: "_id",
         foreignField: "_id",
-        as: "country"
-      }
+        as: "country",
+      },
     },
 
-    { $unwind: "$country" },
+    // ✅ if some projects have no country, avoid crash:
+    { $unwind: { path: "$country", preserveNullAndEmptyArrays: false } },
 
-    // ✅ final shape
     {
       $project: {
         _id: 0,
         countryId: "$country._id",
         countryName: "$country.name",
-        totalProjects: 1
-      }
+        totalProjects: 1,
+      },
     },
 
-    // optional: sort by count
-    { $sort: { totalProjects: -1 } }
+    { $sort: { totalProjects: -1 } },
   ]);
 
   return result;
