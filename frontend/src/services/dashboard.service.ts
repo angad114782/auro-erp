@@ -1,24 +1,48 @@
 import api from "../lib/api";
-
+interface DashboardFilters {
+  brandId?: string;
+}
 export const dashboardService = {
   // Dashboard aggregated endpoint
-  async getDashboard() {
-    try {
-      const response = await api.get("/dashboard");
-      return response.data;
-    } catch (error) {
-      console.error("Error fetching dashboard:", error);
-      return {
-        projects: [],
-        brands: [],
-        categories: [],
-        users: [],
-        vendors: [],
-        inventory: [],
-        companies: [],
-      };
-    }
-  },
+  // async getDashboard() {
+  //   try {
+  //     const response = await api.get("/dashboard");
+  //     return response.data;
+  //   } catch (error) {
+  //     console.error("Error fetching dashboard:", error);
+  //     return {
+  //       projects: [],
+  //       brands: [],
+  //       categories: [],
+  //       users: [],
+  //       vendors: [],
+  //       inventory: [],
+  //       companies: [],
+  //     };
+  //   }
+  // },
+
+async getDashboard(filters?: DashboardFilters) {
+  try {
+    const response = await api.get("/dashboard", {
+      params: filters,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching dashboard:", error);
+    return {
+      projects: [],
+      brands: [],
+      categories: [],
+      users: [],
+      vendors: [],
+      inventory: [],
+      companies: [],
+    };
+  }
+},
+
+
   // Projects
   async getProjects() {
     try {

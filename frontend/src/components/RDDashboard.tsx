@@ -20,6 +20,14 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -59,65 +67,56 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
   const [assignPersonData, setAssignPersonData] = useState<any[]>([]);
   const [countryData, setCountryData] = useState<any[]>([]);
 
-  useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        const data = await dashboardService.getDashboard();
-        if (!mounted) return;
-        // controller returns an object { projects, brands, categories, users, ... }
-        setRdProjects(Array.isArray(data.projects) ? data.projects : []);
-        setBrands(Array.isArray(data.brands) ? data.brands : []);
-        setCategories(Array.isArray(data.categories) ? data.categories : []);
-        setUsers(Array.isArray(data.users) ? data.users : []);
-      } catch (err) {
-        console.error("dashboard load failed", err);
+ const [selectedBrandId, setSelectedBrandId] = useState<string>("all");
+
+
+useEffect(() => {
+  const controller = new AbortController();
+
+  const load = async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.get("/dashboard", {
+        params: selectedBrandId !== "all" ? { brandId: selectedBrandId } : {},
+        signal: controller.signal,
+      });
+
+      const data = res.data;
+
+      setRdProjects(Array.isArray(data.projects) ? data.projects : []);
+      setBrands(Array.isArray(data.brands) ? data.brands : []);
+      setCategories(Array.isArray(data.categories) ? data.categories : []);
+      setUsers(Array.isArray(data.users) ? data.users : []);
+
+      // ✅ analytics from same API
+      setAssignPersonData(
+        Array.isArray(data?.analytics?.assignPersons)
+          ? data.analytics.assignPersons
+          : []
+      );
+
+      setCountryData(
+        Array.isArray(data?.analytics?.countries)
+          ? data.analytics.countries
+          : []
+      );
+    } catch (err: any) {
+      if (err?.name !== "CanceledError") {
+        console.error("Dashboard load error:", err);
         toast.error("Failed to load dashboard data");
-      } finally {
-        if (mounted) setIsLoading(false);
       }
-    };
-
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const fetchAssignperson = async () => {
-    try {
-      const res = await api.get("/assign-persons/dashboard");
-
-      if (res.data?.success && Array.isArray(res.data.data)) {
-        setAssignPersonData(res.data.data);
-      } else {
-        setAssignPersonData([]);
-      }
-    } catch (error) {
-      console.error("Assign person dashboard error", error);
-      toast.error("Failed to load assignment analytics");
-    }
-  };
-  const fetchCountryDashboard = async () => {
-    try {
-      const res = await api.get("/countries/dashboard");
-
-      if (res.data?.success && Array.isArray(res.data.data)) {
-        setCountryData(res.data.data);
-      } else {
-        setCountryData([]);
-      }
-    } catch (error) {
-      console.error("Country dashboard error", error);
-      toast.error("Failed to load country dashboard data");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchAssignperson();
-    fetchCountryDashboard();
-  }, []);
+  load();
+  return () => controller.abort();
+}, [selectedBrandId]);
+
+
+
+ 
 
   const assignPersonChartData = useMemo(() => {
     return assignPersonData.map((p) => ({
@@ -133,8 +132,6 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
     if (!status) return "Unknown";
 
     const map = {
-      idea_submitted: "Idea Submitted",
-      costing_pending: "Costing Pending",
       costing_received: "Costing Received",
       prototype: "Prototype",
       red_seal: "Red Seal",
@@ -142,6 +139,7 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
       final_approved: "Final Approved",
       po_pending: "PO Pending",
       po_approved: "PO Approved",
+      other: "Other",
     };
 
     return (
@@ -187,12 +185,10 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
 
   // Calculate real-time analytics from actual data
   const analytics = useMemo(() => {
-    const live = rdProjects.filter(
-      (p) => !["Final Approved", "PO Issued"].includes(p.status)
-    );
-    const closed = rdProjects.filter((p) =>
-      ["Final Approved", "PO Issued"].includes(p.status)
-    );
+    const CLOSED_STATUSES = ["final_approved", "po_approved"];
+const live = rdProjects.filter((p) => !CLOSED_STATUSES.includes(p.status));
+const closed = rdProjects.filter((p) => CLOSED_STATUSES.includes(p.status));
+
     const redSealOK = rdProjects.filter(
       (p) => p.status === "red_seal" && p.clientApproval === "ok"
     );
@@ -211,44 +207,49 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
 
     const poApproved = rdProjects.filter((p) => p.status === "po_approved");
     const poPending = rdProjects.filter((p) => p.status === "po_pending");
+const KNOWN_STATUSES = [
+  "costing_pending",
+  "costing_received",
+  "prototype",
+  "red_seal",
+  "green_seal",
+  "final_approved",
+  "po_approved",
+];
+const isOtherStatus = (status?: string) =>
+  status && !KNOWN_STATUSES.includes(status);
 
     // Stage breakdown
-    const stages = [
-      {
-        stage: "Idea Submitted",
-        count: rdProjects.filter((p) => isStatus(p, "idea_submitted")).length,
-        color: "#0c9dcb",
-      },
-      {
-        stage: "Costing",
-        count: rdProjects.filter((p) =>
-          ["costing_pending", "costing_received"].includes(p.status)
-        ).length,
-        color: "#ffc107",
-      },
-      {
-        stage: "Prototype",
-        count: rdProjects.filter((p) => isStatus(p, "prototype")).length,
-        color: "#26b4e0",
-      },
-      {
-        stage: "Red Seal",
-        count: rdProjects.filter((p) => isStatus(p, "red_seal")).length,
-        color: "#dc3545",
-      },
-      {
-        stage: "Green Seal",
-        count: rdProjects.filter((p) => isStatus(p, "green_seal")).length,
-        color: "#28a745",
-      },
-      {
-        stage: "Approved",
-        count: rdProjects.filter((p) =>
-          ["final_approved", "po_approved"].includes(p.status)
-        ).length,
-        color: "#20c997",
-      },
-    ];
+   const stages = [
+  {
+    stage: "Prototype",
+    count: rdProjects.filter((p) => p.status === "prototype").length,
+    color: "#26b4e0",
+  },
+  {
+    stage: "Red Seal",
+    count: rdProjects.filter((p) => p.status === "red_seal").length,
+    color: "#dc3545",
+  },
+  {
+    stage: "Green Seal",
+    count: rdProjects.filter((p) => p.status === "green_seal").length,
+    color: "#28a745",
+  },
+  {
+    stage: "PO",
+    count: rdProjects.filter((p) =>
+      ["final_approved", "po_approved"].includes(p.status)
+    ).length,
+    color: "#20c997",
+  },
+  {
+    stage: "Others",
+    count: rdProjects.filter((p) => isOtherStatus(p.status)).length,
+    color: "#f97316", 
+  },
+];
+
 
     // Priority breakdown
     const priorities = [
@@ -712,6 +713,25 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
+        <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
+  <SelectTrigger className="w-60">
+    <SelectValue placeholder="Filter by Brand" />
+  </SelectTrigger>
+
+ <SelectContent>
+  <SelectItem value="all">All Brands</SelectItem>
+  {brands
+    .filter((b) => b?._id) // ✅ avoid null/undefined
+    .map((b) => (
+      <SelectItem key={String(b._id)} value={String(b._id)}>
+        {b.name || b.brandName || "Unnamed"}
+      </SelectItem>
+    ))}
+</SelectContent>
+
+</Select>
+
+
             <Button variant="outline" size="sm" onClick={handleExportPDF}>
               <Download className="w-4 h-4 mr-2" />
               Export Report
