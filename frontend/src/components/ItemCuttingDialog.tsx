@@ -224,13 +224,21 @@ const MobileItemCard = React.memo(
       }
     };
     console.log(item, "dddddddddddddddddddddddddddd");
-    const handleDeliverItem = () => {
-      // try {
-      //   const res = api.post(`/projects/${item.projectId}/send-to-delivery`);
-      // } catch (error) {
-
-      // }
+    const handleDeliverItem = (projectId: string) => {
+      try {
+        const res = api.post(`/projects/${projectId}/send-to-delivery`);
+      } catch (error) {}
       toast.success(`Delivered ${item.itemName} to customer successfully!`);
+    };
+
+    const clampOnBlur = (item: CuttingItem, value: string) => {
+      const alreadyCutNum = parseToNumber(item.alreadyCut);
+      const maxAllowed = item.requiredQuantity - alreadyCutNum;
+
+      const num = parseFloat(value);
+      if (isNaN(num)) return "0";
+
+      return Math.min(num, maxAllowed).toFixed(4);
     };
 
     return (
@@ -332,7 +340,10 @@ const MobileItemCard = React.memo(
                 inputMode="decimal"
                 value={inputValue}
                 onChange={(e) => handleInputChange(e.target.value)}
-                onBlur={handleInputBlur}
+                onBlur={(e) => {
+                  const finalValue = clampOnBlur(item, e.target.value);
+                  updateCuttingQuantity(item.id, finalValue);
+                }}
                 className="h-9 text-sm font-semibold border-2 focus:border-purple-500"
                 placeholder="0"
               />
@@ -360,7 +371,7 @@ const MobileItemCard = React.memo(
                 </Label>
                 <Button
                   className="w-full h-9 text-xs bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
-                  onClick={handleDeliverItem}
+                  onClick={handleDeliverItem(productData.projectId)}
                 >
                   <CheckCircle className="w-3 h-3 mr-2" />
                   Advanced to Deliver
@@ -631,36 +642,35 @@ export function ItemCuttingDialog({
   };
 
   const updateCuttingQuantity = (itemId: string, value: string) => {
-    if (value === "" || value === "." || value === "-") {
-      setCuttingItems((prev) =>
-        prev.map((item) =>
-          item.id === itemId ? { ...item, cuttingToday: "0" } : item
-        )
-      );
-      return;
-    }
+    setCuttingItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
 
-    // Check if it's a valid decimal number
-    const decimalRegex = /^-?\d*\.?\d*$/;
-    if (decimalRegex.test(value)) {
-      // Check for multiple decimal points
-      if ((value.match(/\./g) || []).length > 1) {
-        return; // Don't allow multiple decimal points
-      }
+        const alreadyCutNum = parseToNumber(item.alreadyCut);
+        const maxAllowed = Math.max(item.requiredQuantity - alreadyCutNum, 0);
 
-      // If value starts with "0" and second character is not ".", don't allow
-      // This prevents "01", "02", etc. but allows "0.", "0.1", "0.01"
-      if (value.length > 1 && value[0] === "0" && value[1] !== ".") {
-        return;
-      }
+        // allow empty / typing states
+        if (value === "" || value === "." || value === "-") {
+          return { ...item, cuttingToday: value };
+        }
 
-      // Update the state with the string value (this allows "0.00456" to be stored as string)
-      setCuttingItems((prev) =>
-        prev.map((item) =>
-          item.id === itemId ? { ...item, cuttingToday: value } : item
-        )
-      );
-    }
+        // invalid decimal
+        if (!/^-?\d*\.?\d*$/.test(value)) {
+          return item;
+        }
+
+        const numericValue = parseFloat(value);
+        if (isNaN(numericValue)) return item;
+
+        // 🔒 HARD LIMIT
+        if (numericValue > maxAllowed) {
+          toast.error(`Max allowed today is ${maxAllowed.toFixed(4)}`);
+          return { ...item, cuttingToday: maxAllowed.toString() };
+        }
+
+        return { ...item, cuttingToday: value };
+      })
+    );
   };
 
   const calculateMinimumAvailable = () => {
@@ -811,6 +821,15 @@ export function ItemCuttingDialog({
     // if (item) {
     //   toast.success(`Delivered ${item.itemName} to customer successfully!`);
     // }
+  };
+  const clampOnBlur = (item: CuttingItem, value: string) => {
+    const alreadyCutNum = parseToNumber(item.alreadyCut);
+    const maxAllowed = item.requiredQuantity - alreadyCutNum;
+
+    const num = parseFloat(value);
+    if (isNaN(num)) return "0";
+
+    return Math.min(num, maxAllowed).toFixed(4);
   };
 
   const renderAdvanceToSection = (item: CuttingItem) => {
@@ -1151,35 +1170,11 @@ export function ItemCuttingDialog({
                                   updateCuttingQuantity(item.id, value);
                                 }}
                                 onBlur={(e) => {
-                                  const value = e.target.value;
-                                  if (
-                                    value === "" ||
-                                    value === "." ||
-                                    value === "-"
-                                  ) {
-                                    updateCuttingQuantity(item.id, "0");
-                                  } else if (value.endsWith(".")) {
-                                    const cleaned = value.slice(0, -1);
-                                    if (cleaned === "" || cleaned === "-") {
-                                      updateCuttingQuantity(item.id, "0");
-                                    } else {
-                                      const numValue = parseFloat(cleaned);
-                                      if (!isNaN(numValue)) {
-                                        updateCuttingQuantity(
-                                          item.id,
-                                          numValue.toString()
-                                        );
-                                      }
-                                    }
-                                  } else {
-                                    const numValue = parseFloat(value);
-                                    if (!isNaN(numValue)) {
-                                      updateCuttingQuantity(
-                                        item.id,
-                                        numValue.toString()
-                                      );
-                                    }
-                                  }
+                                  const finalValue = clampOnBlur(
+                                    item,
+                                    e.target.value
+                                  );
+                                  updateCuttingQuantity(item.id, finalValue);
                                 }}
                                 className="h-9 sm:h-10 text-sm sm:text-base font-semibold border-2 focus:border-purple-500"
                                 placeholder="0"
