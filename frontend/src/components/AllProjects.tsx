@@ -719,14 +719,14 @@ export default function ProjectListCard() {
             )}
           </div>
 
-          <Button
+          {/* <Button
             onClick={() => setColorMaterialsDialogOpen(true)}
             className="bg-linear-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 mr-2 mb-2 text-xs md:text-sm"
             size={isMobile ? "sm" : "default"}
           >
             <Plus className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
             {isMobile ? "Variant" : "Color Variant"}
-          </Button>
+          </Button> */}
         </div>
 
         {colorVariantTabs.length === 0 && selectedProject?.color && (

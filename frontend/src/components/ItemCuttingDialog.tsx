@@ -1182,7 +1182,7 @@ export function ItemCuttingDialog({
                             </div>
 
                             {/* Total After */}
-                            <div className="col-span-4 sm:col-span-2">
+                            {/* <div className="col-span-4 sm:col-span-2">
                               <div className="text-xs font-medium text-gray-600 mb-1">
                                 Total After
                               </div>
@@ -1195,7 +1195,7 @@ export function ItemCuttingDialog({
                               >
                                 {totalAfter.toFixed(4)} {item.unit}
                               </div>
-                            </div>
+                            </div> */}
 
                             {/* Remaining */}
                             <div className="col-span-4 sm:col-span-1 text-right">
