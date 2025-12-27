@@ -46,6 +46,7 @@ interface CuttingItem {
   cuttingToday: number | string; // Changed to allow string for decimal typing
   unit: string;
   status: "pending" | "in-progress" | "completed";
+  department: string;
 }
 
 interface ItemCuttingDialogProps {
@@ -222,8 +223,13 @@ const MobileItemCard = React.memo(
         );
       }
     };
-
+    console.log(item, "dddddddddddddddddddddddddddd");
     const handleDeliverItem = () => {
+      // try {
+      //   const res = api.post(`/projects/${item.projectId}/send-to-delivery`);
+      // } catch (error) {
+
+      // }
       toast.success(`Delivered ${item.itemName} to customer successfully!`);
     };
 
@@ -333,7 +339,7 @@ const MobileItemCard = React.memo(
             </div>
 
             {/* Total After Cutting */}
-            <div className="flex justify-between items-center">
+            {/* <div className="flex justify-between items-center">
               <span className="text-xs text-gray-600">Total After Cutting</span>
               <span
                 className={`text-sm font-bold ${
@@ -344,10 +350,10 @@ const MobileItemCard = React.memo(
               >
                 {totalAfter.toFixed(4)} {item.unit}
               </span>
-            </div>
+            </div> */}
 
             {/* Deliver Button for RFD or Advance To dropdown for other stages */}
-            {stage === "rfd" ? (
+            {item.department === "rfd" ? (
               <div>
                 <Label className="text-xs font-medium text-gray-600 mb-2 block">
                   Ready for Delivery
@@ -456,6 +462,19 @@ export function ItemCuttingDialog({
 }: ItemCuttingDialogProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const calculateTotalRemaining = () => {
+    return cuttingItems.reduce((sum, item) => {
+      const alreadyCutNum = parseToNumber(item.alreadyCut);
+      const cuttingTodayNum = parseToNumber(item.cuttingToday);
+
+      const remaining =
+        item.requiredQuantity - (alreadyCutNum + cuttingTodayNum);
+
+      return sum + Math.max(remaining, 0);
+    }, 0);
+  };
+
+  console.log(stage, "stage");
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -577,20 +596,19 @@ export function ItemCuttingDialog({
 
     const mapped: CuttingItem[] = rows.map((row) => {
       const required = Number(row.requirement ?? 0);
-      const issued = Number(row.issued ?? 0);
-      const today = Number(row.progressToday ?? 0);
 
       return {
         id: row._id,
         itemName: row.name || "Unnamed Item",
         requiredQuantity: required,
-        alreadyCut: issued,
-        cuttingToday: today, // Changed to number initially
+        alreadyCut: Number(row.todayDone ?? 0), // cumulative
+        cuttingToday: 0, // ✅ ALWAYS reset on dialog open
         unit: row.unit || "unit",
+        department: row.department,
         status:
-          issued >= required
+          Number(row.todayDone) >= required
             ? "completed"
-            : issued > 0
+            : Number(row.todayDone) > 0
             ? "in-progress"
             : "pending",
       };
@@ -599,6 +617,8 @@ export function ItemCuttingDialog({
     setCuttingItems(mapped);
     setExpandedItems(new Set());
   }, [rows, open]);
+
+  console.log(rows, "rows");
 
   if (!productData) return null;
 
@@ -777,16 +797,24 @@ export function ItemCuttingDialog({
     }
     setExpandedItems(newExpanded);
   };
-
-  const handleDeliverItem = (itemId: string) => {
-    const item = cuttingItems.find((i) => i.id === itemId);
-    if (item) {
-      toast.success(`Delivered ${item.itemName} to customer successfully!`);
+  console.log(productData, "dddddddddddddddddddddddddddd");
+  const handleDeliverItem = (projectId: string) => {
+    try {
+      api.put(`/projects/${projectId}/send-to-delivery`);
+      toast.success("Item delivered to customer successfully!");
+      return;
+    } catch (error) {
+      toast.error("Failed to deliver item to customer.");
+      return;
     }
+    // const item = cuttingItems.find((i) => i.id === itemId);
+    // if (item) {
+    //   toast.success(`Delivered ${item.itemName} to customer successfully!`);
+    // }
   };
 
   const renderAdvanceToSection = (item: CuttingItem) => {
-    if (stage === "rfd") {
+    if (item.department === "rfd") {
       return (
         <div className="col-span-12 sm:col-span-4">
           <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
@@ -794,7 +822,7 @@ export function ItemCuttingDialog({
           </Label>
           <Button
             className="w-full h-9 sm:h-10 text-xs sm:text-sm bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
-            onClick={() => handleDeliverItem(item.id)}
+            onClick={() => handleDeliverItem(productData.projectId)}
           >
             <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
             {isMobile ? "Deliver" : "Advanced to Deliver"}
@@ -808,7 +836,9 @@ export function ItemCuttingDialog({
         <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
           Advance To Next Stage
         </Label>
-        <Select onValueChange={(value) => updateNextDepartment(item.id, value)}>
+        <Select
+          onValueChange={(value: any) => updateNextDepartment(item.id, value)}
+        >
           <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-linear-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
             <SelectValue placeholder="Select next stage..." />
           </SelectTrigger>
@@ -877,7 +907,7 @@ export function ItemCuttingDialog({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3 sm:gap-4 lg:gap-6">
               <div
-                className={`w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 ${stageDetails.iconBg} rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg flex-shrink-0`}
+                className={`w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 ${stageDetails.iconBg} rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg shrink-0`}
               >
                 {stageDetails.icon}
               </div>
@@ -904,7 +934,8 @@ export function ItemCuttingDialog({
                 disabled={!hasAnyCutting}
               >
                 <Save className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                {isMobile ? "Save" : `Save ${stageDetails.title}`}
+                {/* {isMobile ? "Save" : `Save ${stageDetails.title}`} */}
+                {"Save"}
               </Button>
               <button
                 onClick={() => onOpenChange(false)}
@@ -921,7 +952,7 @@ export function ItemCuttingDialog({
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 space-y-4 sm:space-y-6 lg:space-y-8">
             {/* Product Summary Card */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 sm:p-6">
+            <div className="bg-linear-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 sm:p-6">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
                 <div>
                   <div className="text-xs sm:text-sm text-gray-600 mb-1">
@@ -931,29 +962,29 @@ export function ItemCuttingDialog({
                     {productData.productName}
                   </div>
                 </div>
-                <div>
+                {/* <div>
                   <div className="text-xs sm:text-sm text-gray-600 mb-1">
                     Target Quantity
                   </div>
                   <div className="text-sm sm:text-base font-bold text-blue-600">
                     {productData.targetQuantity} {isMobile ? "prs" : "pairs"}
                   </div>
-                </div>
-                <div>
+                </div> */}
+                {/* <div>
                   <div className="text-xs sm:text-sm text-gray-600 mb-1">
                     Can Produce
                   </div>
                   <div className="text-sm sm:text-base font-bold text-green-600">
                     {minimumAvailable.toFixed(4)} {isMobile ? "prs" : "pairs"}
                   </div>
-                </div>
+                </div> */}
                 <div>
                   <div className="text-xs sm:text-sm text-gray-600 mb-1">
                     Remaining Needed
                   </div>
                   <div className="text-sm sm:text-base font-bold text-orange-600">
-                    {Math.max(productData.targetQuantity - minimumAvailable, 0)}{" "}
-                    {isMobile ? "prs" : "pairs"}
+                    {calculateTotalRemaining().toFixed(4)}{" "}
+                    {isMobile ? "its" : "items"}
                   </div>
                 </div>
               </div>
@@ -1094,10 +1125,10 @@ export function ItemCuttingDialog({
                               </div>
                             </div>
 
-                            {/* Already Cut */}
+                            {/* Completed */}
                             <div className="col-span-4 sm:col-span-2">
                               <div className="text-xs font-medium text-gray-600 mb-1">
-                                Already Cut
+                                Completed
                               </div>
                               <div className="text-sm sm:text-base font-semibold text-blue-600">
                                 {parseToNumber(item.alreadyCut).toFixed(4)}{" "}
@@ -1108,7 +1139,8 @@ export function ItemCuttingDialog({
                             {/* Cutting Today Input */}
                             <div className="col-span-4 sm:col-span-2">
                               <div className="text-xs font-medium text-gray-600 mb-1 block">
-                                {stageDetails.title} Today
+                                {/* {stageDetails.title} */}
+                                Today
                               </div>
                               <Input
                                 type="text"
@@ -1260,7 +1292,7 @@ export function ItemCuttingDialog({
                     {cuttingItems.length}
                   </div>
                 </div>
-                <div className="text-center">
+                {/* <div className="text-center">
                   <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-green-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
                     <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" />
                   </div>
@@ -1270,7 +1302,7 @@ export function ItemCuttingDialog({
                   <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
                     {minimumAvailable.toFixed(4)} {isMobile ? "prs" : "pairs"}
                   </div>
-                </div>
+                </div> */}
                 <div className="text-center">
                   <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-orange-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
                     <Clock className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg-h-6 text-white" />

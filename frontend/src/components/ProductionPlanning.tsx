@@ -2796,7 +2796,7 @@ export function ProductionPlanning() {
         open={isDateChangeDialogOpen}
         onOpenChange={setIsDateChangeDialogOpen}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg w-[95vw]  p-6 ">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-blue-600" />

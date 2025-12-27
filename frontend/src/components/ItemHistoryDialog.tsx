@@ -10,8 +10,10 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useInventory } from "../hooks/useInventory";
+import { useVendorStore } from "../hooks/useVendor";
 import type { InventoryItem } from "../lib/data-store";
-import { useERPStore } from "../lib/data-store";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -21,10 +23,6 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Label } from "./ui/label";
-import { useVendorStore } from "../hooks/useVendor";
-import { useEffect, useState } from "react";
-import { useInventory } from "../hooks/useInventory";
-import { log } from "console";
 
 interface ItemHistoryDialogProps {
   open: boolean;

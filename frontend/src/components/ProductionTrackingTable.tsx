@@ -252,87 +252,84 @@ export function ProductionTrackingTable() {
   const [trackingData, setTrackingData] = useState<APITrackingData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-const [trackingCards, setTrackingCards] = useState<any[]>([]);
-const [selectedCardId, setSelectedCardId] = useState<string>("");
-const [loadingCards, setLoadingCards] = useState(false);
+  const [trackingCards, setTrackingCards] = useState<any[]>([]);
+  const [selectedCardId, setSelectedCardId] = useState<string>("");
+  const [loadingCards, setLoadingCards] = useState(false);
 
-const [departmentRows, setDepartmentRows] = useState<any[]>([]);
-const [loadingRows, setLoadingRows] = useState(false);
-const selectedCard = trackingCards.find(
-  (card) => card._id === selectedCardId
-);
+  const [departmentRows, setDepartmentRows] = useState<any[]>([]);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const selectedCard = trackingCards.find(
+    (card) => card._id === selectedCardId
+  );
 
-const fetchDepartmentRows = async (
-  projectId: string,
-  cardId: string,
-  department: string
-) => {
-  try {
-    setLoadingRows(true);
+  const fetchDepartmentRows = async (
+    projectId: string,
+    cardId: string,
+    department: string
+  ) => {
+    try {
+      setLoadingRows(true);
 
-    const res = await api.get(
-      `/project/${projectId}/card/${cardId}/department/${department}`
-    );
+      const res = await api.get(
+        `/project/${projectId}/card/${cardId}/department/${department}`
+      );
 
-    if (res.data?.success) {
-      setDepartmentRows(res.data.data || []);
-    } else {
-      setDepartmentRows([]);
-    }
-  } catch (err) {
-    console.error("Failed to fetch department rows", err);
-    toast.error("Failed to load department rows");
-    setDepartmentRows([]);
-  } finally {
-    setLoadingRows(false);
-  }
-};
-
-const ensureSelectedCard = () => {
-  if (!selectedCard) {
-    toast.error("Please select a tracking card first");
-    return false;
-  }
-  return true;
-};
-
-
-
-const fetchTrackingCards = async (projectId: string) => {
-  try {
-    setLoadingCards(true);
-
-    const res = await api.get(`/projects/${projectId}/cards`);
-
-    if (res.data?.success) {
-      const items = res.data.items || [];
-      setTrackingCards(items);
-
-      // ✅ DEFAULT: first card auto select
-      if (items.length > 0) {
-        setSelectedCardId(items[0]._id);
+      if (res.data?.success) {
+        setDepartmentRows(res.data.data || []);
       } else {
+        setDepartmentRows([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch department rows", err);
+      toast.error("Failed to load department rows");
+      setDepartmentRows([]);
+    } finally {
+      setLoadingRows(false);
+    }
+  };
+
+  const ensureSelectedCard = () => {
+    if (!selectedCard) {
+      toast.error("Please select a tracking card first");
+      return false;
+    }
+    return true;
+  };
+
+  const fetchTrackingCards = async (projectId: string) => {
+    try {
+      setLoadingCards(true);
+
+      const res = await api.get(`/projects/${projectId}/cards`);
+
+      if (res.data?.success) {
+        const items = res.data.items || [];
+        setTrackingCards(items);
+
+        // ✅ DEFAULT: first card auto select
+        if (items.length > 0) {
+          setSelectedCardId(items[0]._id);
+        } else {
+          setSelectedCardId("");
+        }
+      } else {
+        setTrackingCards([]);
         setSelectedCardId("");
       }
-    } else {
-      setTrackingCards([]);
+    } catch (err) {
+      console.error("Failed to load tracking cards", err);
+      toast.error("Failed to load tracking cards");
       setSelectedCardId("");
+    } finally {
+      setLoadingCards(false);
     }
-  } catch (err) {
-    console.error("Failed to load tracking cards", err);
-    toast.error("Failed to load tracking cards");
-    setSelectedCardId("");
-  } finally {
-    setLoadingCards(false);
-  }
-};
+  };
 
-
-useEffect(() => {
-  if (selectedProductionRecord?.projectId) {
-    fetchTrackingCards(selectedProductionRecord.projectId);
-  }
-}, [selectedProductionRecord]);
+  useEffect(() => {
+    if (selectedProductionRecord?.projectId) {
+      fetchTrackingCards(selectedProductionRecord.projectId);
+    }
+  }, [selectedProductionRecord]);
 
   // Check for mobile on mount and resize
   React.useEffect(() => {
@@ -395,12 +392,9 @@ useEffect(() => {
       // Calculate current production quantity based on selected department
       const currentQuantity = departmentTotal;
       const plannedQuantity = item.poDetails?.orderQuantity || 0;
-const stageCardQuantity =
-  item.cards?.reduce(
-    (sum, card) => sum + (card.cardQuantity || 0),
-    0
-  ) || 0;
-
+      const stageCardQuantity =
+        item.cards?.reduce((sum, card) => sum + (card.cardQuantity || 0), 0) ||
+        0;
 
       // Determine status based on progress
       let status:
@@ -451,8 +445,8 @@ const stageCardQuantity =
         gender: item.gender || "Unisex",
         articleName: item.artName || "Unnamed Article",
         poNumber: item.poDetails?.poNumber || "N/A",
-         poItems: stageCardQuantity,  // 👈 NOW THIS IS CARD QTY
-  poQuantity: item.poDetails?.orderQuantity || 0, 
+        poItems: stageCardQuantity, // 👈 NOW THIS IS CARD QTY
+        poQuantity: item.poDetails?.orderQuantity || 0,
         monthPlan: Math.floor((item.poDetails?.orderQuantity || 0) * 0.8),
         manufacturingCompany:
           item.cards?.[0]?.assignedPlant?.name || "Unknown Plant",
@@ -1128,9 +1122,9 @@ const stageCardQuantity =
             </div>
             <div className="bg-gray-50 rounded p-2 text-center">
               <div className="text-sm font-semibold text-gray-900">
-               {record.manufacturingCompany.length > 9
-  ? `${record.manufacturingCompany.substring(0, 9)}...`
-  : record.manufacturingCompany}
+                {record.manufacturingCompany.length > 9
+                  ? `${record.manufacturingCompany.substring(0, 9)}...`
+                  : record.manufacturingCompany}
               </div>
               <div className="text-xs text-gray-500">MFG</div>
             </div>
@@ -2634,6 +2628,8 @@ const stageCardQuantity =
                           {stages.map((stage, index) => {
                             const stageData =
                               selectedProductionRecord[stage.key];
+
+                            console.log(stageData, "stagedata");
                             const progress =
                               (stageData.quantity / stageData.planned) * 100;
                             const isCompleted =
@@ -2811,52 +2807,55 @@ const stageCardQuantity =
                               {selectedProductionRecord.poNumber}
                             </div>
                             <div className="text-xs sm:text-sm text-gray-500">
-                              {selectedProductionRecord.poQuantity} units ordered
+                              {selectedProductionRecord.poQuantity} units
+                              ordered
                             </div>
                           </div>
                         </div>
-
                       </div>
                       <div className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-6 space-y-4 sm:space-y-6">
-  <div>
-    <div className="text-xs sm:text-sm font-medium text-gray-600">
-      Select Tracking Card
-    </div>
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-gray-600">
+                            Select Tracking Card
+                          </div>
 
-    <Select
-      value={selectedCardId}
-      onValueChange={setSelectedCardId}
-      disabled={loadingCards}
-    >
-      <SelectTrigger className="mt-1">
-        <SelectValue
-          placeholder={loadingCards ? "Loading cards..." : "Select card"}
-        />
-      </SelectTrigger>
+                          <Select
+                            value={selectedCardId}
+                            onValueChange={setSelectedCardId}
+                            disabled={loadingCards}
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue
+                                placeholder={
+                                  loadingCards
+                                    ? "Loading cards..."
+                                    : "Select card"
+                                }
+                              />
+                            </SelectTrigger>
 
-      <SelectContent>
-        {trackingCards.length === 0 && (
-          <SelectItem value="no-card" disabled>
-            No tracking cards found
-          </SelectItem>
-        )}
+                            <SelectContent>
+                              {trackingCards.length === 0 && (
+                                <SelectItem value="no-card" disabled>
+                                  No tracking cards found
+                                </SelectItem>
+                              )}
 
-        {trackingCards.map((card) => (
-          <SelectItem key={card._id} value={card._id}>
-            {card.cardNumber}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+                              {trackingCards.map((card) => (
+                                <SelectItem key={card._id} value={card._id}>
+                                  {card.cardNumber}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
 
-    {selectedCardId && (
-      <div className="text-xs text-gray-500 mt-2">
-        Selected Card ID: {selectedCardId}
-      </div>
-    )}
-  </div>
-</div>
-
+                          {selectedCardId && (
+                            <div className="text-xs text-gray-500 mt-2">
+                              Selected Card ID: {selectedCardId}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -2874,50 +2873,51 @@ const stageCardQuantity =
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
                       {stages.map((stage) => {
                         const stageData = selectedProductionRecord[stage.key];
-                        
-const plannedQty = selectedCard
-  ? selectedCard.cardQuantity
-  : stageData.planned;
-const progress =
-  plannedQty > 0
-    ? (stageData.quantity / plannedQty) * 100
-    : 0;
 
-const remaining = plannedQty - stageData.quantity;
+                        const plannedQty = selectedCard
+                          ? selectedCard.cardQuantity
+                          : stageData.planned;
+                        const progress =
+                          plannedQty > 0
+                            ? (stageData.quantity / plannedQty) * 100
+                            : 0;
+
+                        const remaining = plannedQty - stageData.quantity;
 
                         return (
                           <div
                             key={stage.key}
                             className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5 hover:border-[#0c9dcb] hover:shadow-md transition-all duration-200 cursor-pointer group"
-    onClick={async () => {
-  if (!selectedCard) {
-    toast.error("Please select a tracking card first");
-    return;
-  }
+                            onClick={async () => {
+                              if (!selectedCard) {
+                                toast.error(
+                                  "Please select a tracking card first"
+                                );
+                                return;
+                              }
 
-  // 1️⃣ Fetch rows
-  await fetchDepartmentRows(
-    selectedProductionRecord.projectId,
-    selectedCard._id,
-    stage.department
-  );
+                              // 1️⃣ Fetch rows
+                              await fetchDepartmentRows(
+                                selectedProductionRecord.projectId,
+                                selectedCard._id,
+                                stage.department
+                              );
 
-  // 2️⃣ Prepare dialog payload
-  setSelectedProductForCutting({
-    projectId: selectedProductionRecord.projectId,
-    cardId: selectedCard._id,
-    cardNumber: selectedCard.cardNumber,
-    cardQuantity: selectedCard.cardQuantity,
-    productName: selectedProductionRecord.articleName,
-    stage: stage.key,
-    stageName: stage.name,
-  });
+                              // 2️⃣ Prepare dialog payload
+                              setSelectedProductForCutting({
+                                projectId: selectedProductionRecord.projectId,
+                                cardId: selectedCard._id,
+                                cardNumber: selectedCard.cardNumber,
+                                cardQuantity: selectedCard.cardQuantity,
+                                productName:
+                                  selectedProductionRecord.articleName,
+                                stage: stage.key,
+                                stageName: stage.name,
+                              });
 
-  // 3️⃣ Open dialog
-  setItemCuttingDialogOpen(true);
-}}
-
-
+                              // 3️⃣ Open dialog
+                              setItemCuttingDialogOpen(true);
+                            }}
                           >
                             <div className="flex items-center justify-between mb-3 sm:mb-4">
                               <div className="flex items-center gap-2 sm:gap-3">
@@ -2979,9 +2979,8 @@ const remaining = plannedQty - stageData.quantity;
                                     Planned
                                   </div>
                                   <div className="font-medium group-hover:text-[#0c9dcb]">
-  {plannedQty}
-</div>
-
+                                    {plannedQty}
+                                  </div>
                                 </div>
                                 <div>
                                   <div className="text-gray-600 group-hover:text-gray-800">
@@ -3053,14 +3052,13 @@ const remaining = plannedQty - stageData.quantity;
 
       {/* Item Cutting Dialog */}
       <ItemCuttingDialog
-  open={itemCuttingDialogOpen}
-  onOpenChange={setItemCuttingDialogOpen}
-  productData={selectedProductForCutting}
-  stage={selectedDepartment as ProductionStage}
-  rows={departmentRows}          // ✅ ADD THIS
-  loadingRows={loadingRows}      // ✅ ADD THIS
-/>
-
+        open={itemCuttingDialogOpen}
+        onOpenChange={setItemCuttingDialogOpen}
+        productData={selectedProductForCutting}
+        stage={selectedDepartment as ProductionStage}
+        rows={departmentRows} // ✅ ADD THIS
+        loadingRows={loadingRows} // ✅ ADD THIS
+      />
     </div>
   );
 }

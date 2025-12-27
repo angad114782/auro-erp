@@ -5,7 +5,10 @@ import Fuse from "fuse.js";
 import mongoose from "mongoose";
 
 // --- existing search service (unchanged) ---
-export const searchProjectsForCalendarService = async (q, { limit = 10 } = {}) => {
+export const searchProjectsForCalendarService = async (
+  q,
+  { limit = 10 } = {}
+) => {
   const cleanQ = (q || "").trim();
   if (!cleanQ) {
     const recent = await Project.find({ isActive: true })
@@ -33,7 +36,8 @@ export const searchProjectsForCalendarService = async (q, { limit = 10 } = {}) =
     .populate("category", "name")
     .lean();
 
-  if (candidates.length <= limit) return candidates.map(mapProjectForAutocomplete);
+  if (candidates.length <= limit)
+    return candidates.map(mapProjectForAutocomplete);
 
   const fuse = new Fuse(candidates, {
     keys: [
@@ -68,7 +72,12 @@ export const createCalendarEntryService = async (
   payload,
   { session, by = null } = {}
 ) => {
-  const { projectId, scheduling, productionDetails = {}, additional } = payload || {};
+  const {
+    projectId,
+    scheduling,
+    productionDetails = {},
+    additional,
+  } = payload || {};
 
   if (!projectId) throw error400("projectId is required");
   if (!scheduling?.scheduleDate)
@@ -153,7 +162,6 @@ export const createCalendarEntryService = async (
   return created[0];
 };
 
-
 function error400(msg) {
   return Object.assign(new Error(msg), { status: 400 });
 }
@@ -161,11 +169,15 @@ function error404(msg) {
   return Object.assign(new Error(msg), { status: 404 });
 }
 
-
-export const listCalendarEntriesService = async ({ page = 1, limit = 20, projectId = null } = {}) => {
+export const listCalendarEntriesService = async ({
+  page = 1,
+  limit = 20,
+  projectId = null,
+} = {}) => {
   const skip = (page - 1) * limit;
   const filter = { isActive: true };
-  if (projectId && mongoose.Types.ObjectId.isValid(projectId)) filter.project = projectId;
+  if (projectId && mongoose.Types.ObjectId.isValid(projectId))
+    filter.project = projectId;
 
   const docs = await ProductionCalendar.find(filter)
     .sort({ "scheduling.scheduleDate": 1, createdAt: -1 })
@@ -173,7 +185,8 @@ export const listCalendarEntriesService = async ({ page = 1, limit = 20, project
     .limit(limit)
     .populate({
       path: "project",
-      select: "autoCode artName color size brand category company country gender",
+      select:
+        "autoCode artName color size brand category company country gender",
       populate: [
         { path: "brand", select: "name" },
         { path: "category", select: "name" },
@@ -189,14 +202,14 @@ export const listCalendarEntriesService = async ({ page = 1, limit = 20, project
   return { items: docs, total, page, limit };
 };
 
-
 // --- get single (only active) ---
 export const getCalendarEntryService = async (id) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
   const doc = await ProductionCalendar.findOne({ _id: id, isActive: true })
     .populate({
       path: "project",
-      select: "autoCode artName color size brand category company country gender",
+      select:
+        "autoCode artName color size brand category company country gender",
       populate: [
         { path: "brand", select: "name" },
         { path: "category", select: "name" },
@@ -209,7 +222,11 @@ export const getCalendarEntryService = async (id) => {
   return doc;
 };
 
-export const updateCalendarEntryService = async (id, payload, { session, by = null } = {}) => {
+export const updateCalendarEntryService = async (
+  id,
+  payload,
+  { session, by = null } = {}
+) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
 
   const setObj = {};
@@ -220,10 +237,44 @@ export const updateCalendarEntryService = async (id, payload, { session, by = nu
         ? new Date(payload.scheduling.scheduleDate)
         : null;
 
-    if (payload.scheduling.assignedPlant !== undefined)
-      setObj["scheduling.assignedPlant"] = payload.scheduling.assignedPlant
-        ? new mongoose.Types.ObjectId(payload.scheduling.assignedPlant)
-        : null;
+    // FIX: Check if assignedPlant is a valid ObjectId before converting
+    if (payload.scheduling.assignedPlant !== undefined) {
+      const assignedPlantValue = payload.scheduling.assignedPlant;
+      if (assignedPlantValue) {
+        // If it's already an ObjectId, use it as-is
+        if (assignedPlantValue instanceof mongoose.Types.ObjectId) {
+          setObj["scheduling.assignedPlant"] = assignedPlantValue;
+        }
+        // If it's a string that looks like an ObjectId, convert it
+        else if (
+          typeof assignedPlantValue === "string" &&
+          mongoose.Types.ObjectId.isValid(assignedPlantValue)
+        ) {
+          setObj["scheduling.assignedPlant"] = new mongoose.Types.ObjectId(
+            assignedPlantValue
+          );
+        }
+        // If it's an object with an _id field, use that
+        else if (
+          typeof assignedPlantValue === "object" &&
+          assignedPlantValue._id
+        ) {
+          if (mongoose.Types.ObjectId.isValid(assignedPlantValue._id)) {
+            setObj["scheduling.assignedPlant"] = new mongoose.Types.ObjectId(
+              assignedPlantValue._id
+            );
+          } else {
+            setObj["scheduling.assignedPlant"] = assignedPlantValue._id;
+          }
+        }
+        // Otherwise, store as-is (could be plant name or other identifier)
+        else {
+          setObj["scheduling.assignedPlant"] = assignedPlantValue;
+        }
+      } else {
+        setObj["scheduling.assignedPlant"] = null;
+      }
+    }
 
     if (payload.scheduling.soleFrom !== undefined)
       setObj["scheduling.soleFrom"] = payload.scheduling.soleFrom;
@@ -232,14 +283,16 @@ export const updateCalendarEntryService = async (id, payload, { session, by = nu
       setObj["scheduling.soleColor"] = payload.scheduling.soleColor;
 
     if (payload.scheduling.soleExpectedDate !== undefined)
-      setObj["scheduling.soleExpectedDate"] =
-        payload.scheduling.soleExpectedDate 
+      setObj["scheduling.soleExpectedDate"] = payload.scheduling
+        .soleExpectedDate
         ? new Date(payload.scheduling.soleExpectedDate)
         : null;
   }
 
   if (payload.productionDetails?.quantity !== undefined)
-    setObj["productionDetails.quantity"] = Number(payload.productionDetails.quantity);
+    setObj["productionDetails.quantity"] = Number(
+      payload.productionDetails.quantity
+    );
 
   if (payload.additional?.remarks !== undefined)
     setObj["additional.remarks"] = payload.additional.remarks;
@@ -261,9 +314,11 @@ export const updateCalendarEntryService = async (id, payload, { session, by = nu
   return doc;
 };
 
-
 // --- soft delete ---
-export const deleteCalendarEntryService = async (id, { session, by = null } = {}) => {
+export const deleteCalendarEntryService = async (
+  id,
+  { session, by = null } = {}
+) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
 
   const doc = await ProductionCalendar.findOneAndUpdate(
@@ -282,14 +337,24 @@ export const deleteCalendarEntryService = async (id, { session, by = null } = {}
 };
 
 // --- NEW: get schedules for a given projectId (useful for frontend) ---
-export const getScheduleByProjectService = async (projectId, { page = 1, limit = 50 } = {}) => {
-  if (!mongoose.Types.ObjectId.isValid(projectId)) return { items: [], total: 0, page: Number(page), limit: Number(limit) };
+export const getScheduleByProjectService = async (
+  projectId,
+  { page = 1, limit = 50 } = {}
+) => {
+  if (!mongoose.Types.ObjectId.isValid(projectId))
+    return { items: [], total: 0, page: Number(page), limit: Number(limit) };
   const skip = (page - 1) * limit;
-  const docs = await ProductionCalendar.find({ isActive: true, project: projectId })
+  const docs = await ProductionCalendar.find({
+    isActive: true,
+    project: projectId,
+  })
     .sort({ "scheduling.scheduleDate": 1 })
     .skip(skip)
     .limit(limit)
     .lean();
-  const total = await ProductionCalendar.countDocuments({ isActive: true, project: projectId });
+  const total = await ProductionCalendar.countDocuments({
+    isActive: true,
+    project: projectId,
+  });
   return { items: docs, total, page, limit };
 };
