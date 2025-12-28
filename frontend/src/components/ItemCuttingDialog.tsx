@@ -15,6 +15,7 @@ import {
   ShirtIcon,
   Wrench,
   FileCheck,
+  History,
 } from "lucide-react";
 import {
   Dialog,
@@ -36,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import api from "../lib/api";
 
 interface CuttingItem {
@@ -43,7 +45,7 @@ interface CuttingItem {
   itemName: string;
   requiredQuantity: number;
   alreadyCut: number;
-  cuttingToday: number | string; // Changed to allow string for decimal typing
+  cuttingToday: number | string;
   unit: string;
   status: "pending" | "in-progress" | "completed";
   department: string;
@@ -59,6 +61,7 @@ interface ItemCuttingDialogProps {
   projectId: string;
   cardId: string;
 }
+
 const mapStageToDept = (stg: string) => {
   if (!stg) return "cutting";
   if (stg === "upper-rej") return "upper_rej";
@@ -89,7 +92,6 @@ const MobileItemCard = React.memo(
     stage: string;
     onAdvanceToChange: (rowId: string, dept: string) => void;
   }) => {
-    // Helper function to parse value to number
     const parseToNumber = (value: string | number): number => {
       if (typeof value === "number") return value;
       if (value === "" || value === ".") return 0;
@@ -110,15 +112,11 @@ const MobileItemCard = React.memo(
       minimumAvailable < productData.targetQuantity;
     const isExpanded = expandedItems.has(item.id);
 
-    // Get display value for input - FIXED VERSION
     const getDisplayValue = (): string => {
       if (typeof item.cuttingToday === "string") {
-        // If it's a string, return it directly (this handles "0.", "0.0", "0.00", etc.)
         return item.cuttingToday;
       }
-      // If it's a number 0, show empty string for better UX
       if (item.cuttingToday === 0) return "";
-      // Convert number to string
       return item.cuttingToday.toString();
     };
 
@@ -129,28 +127,21 @@ const MobileItemCard = React.memo(
     }, [item.cuttingToday]);
 
     const handleInputChange = (value: string) => {
-      // Allow: empty string, numbers, decimal points, and negative sign at start
       if (value === "" || /^-?\d*\.?\d*$/.test(value)) {
-        // Check for multiple decimal points
         if ((value.match(/\./g) || []).length > 1) {
           return;
         }
 
-        // Special handling for "0" followed by decimal point
         if (value === "0") {
-          // Keep "0" as is
           setInputValue(value);
           updateCuttingQuantity(item.id, value);
           return;
         }
 
-        // If value starts with "0" and second character is not ".", don't allow
-        // This prevents "01", "02", etc. but allows "0.", "0.1", "0.01"
         if (value.length > 1 && value[0] === "0" && value[1] !== ".") {
           return;
         }
 
-        // Update both local state and parent state
         setInputValue(value);
         updateCuttingQuantity(item.id, value);
       }
@@ -163,11 +154,9 @@ const MobileItemCard = React.memo(
         setInputValue("");
         updateCuttingQuantity(item.id, "0");
       } else if (value === ".") {
-        // If user just typed a dot, convert to "0"
         setInputValue("");
         updateCuttingQuantity(item.id, "0");
       } else if (value.endsWith(".")) {
-        // Remove trailing dot and keep the number
         const cleaned = value.slice(0, -1);
         if (cleaned === "" || cleaned === "-") {
           setInputValue("");
@@ -175,7 +164,6 @@ const MobileItemCard = React.memo(
         } else {
           const numValue = parseFloat(cleaned);
           if (!isNaN(numValue)) {
-            // Format to remove unnecessary trailing zeros
             const formatted = parseFloat(numValue.toFixed(6)).toString();
             setInputValue(formatted);
             updateCuttingQuantity(item.id, formatted);
@@ -185,10 +173,8 @@ const MobileItemCard = React.memo(
           }
         }
       } else {
-        // Parse and store as number
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
-          // Format to remove unnecessary trailing zeros
           const formatted = parseFloat(numValue.toFixed(6)).toString();
           setInputValue(formatted);
           updateCuttingQuantity(item.id, formatted);
@@ -223,10 +209,10 @@ const MobileItemCard = React.memo(
         );
       }
     };
-    console.log(item, "dddddddddddddddddddddddddddd");
+
     const handleDeliverItem = (projectId: string) => {
       try {
-        const res = api.post(`/projects/${projectId}/send-to-delivery`);
+        api.post(`/projects/${projectId}/send-to-delivery`);
       } catch (error) {}
       toast.success(`Delivered ${item.itemName} to customer successfully!`);
     };
@@ -349,20 +335,6 @@ const MobileItemCard = React.memo(
               />
             </div>
 
-            {/* Total After Cutting */}
-            {/* <div className="flex justify-between items-center">
-              <span className="text-xs text-gray-600">Total After Cutting</span>
-              <span
-                className={`text-sm font-bold ${
-                  totalAfter >= item.requiredQuantity
-                    ? "text-green-600"
-                    : "text-orange-600"
-                }`}
-              >
-                {totalAfter.toFixed(4)} {item.unit}
-              </span>
-            </div> */}
-
             {/* Deliver Button for RFD or Advance To dropdown for other stages */}
             {item.department === "rfd" ? (
               <div>
@@ -371,7 +343,7 @@ const MobileItemCard = React.memo(
                 </Label>
                 <Button
                   className="w-full h-9 text-xs bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
-                  onClick={handleDeliverItem(productData.projectId)}
+                  onClick={() => handleDeliverItem(productData.projectId)}
                 >
                   <CheckCircle className="w-3 h-3 mr-2" />
                   Advanced to Deliver
@@ -463,6 +435,149 @@ const saveBulkToday = async (actions: any[]) => {
   return res.data;
 };
 
+// History Component
+const HistoryTabContent = ({
+  productData,
+  stage,
+}: {
+  productData: any;
+  stage: string;
+}) => {
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchHistory = async () => {
+    if (!productData?.projectId) return;
+
+    setLoading(true);
+    try {
+      const response = await api.get(
+        `/projects/${productData.projectId}/tracking-history`,
+        {
+          params: { stage },
+        }
+      );
+      setHistoryData(response.data || []);
+    } catch (error) {
+      console.error("Failed to fetch history:", error);
+      // toast.error("Failed to load history");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (productData?.projectId) {
+      fetchHistory();
+    }
+  }, [productData?.projectId, stage]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
+          <p className="text-sm text-gray-600">Loading history...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (historyData.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-center p-4">
+        <History className="w-12 h-12 text-gray-300 mb-3" />
+        <h3 className="text-lg font-medium text-gray-900 mb-1">
+          No History Yet
+        </h3>
+        <p className="text-sm text-gray-600">
+          Tracking history will appear here once you start updating items
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-300 rounded-xl p-4 mb-4">
+        <h3 className="font-semibold text-gray-900 mb-2">Tracking History</h3>
+        <p className="text-sm text-gray-600">
+          Showing all updates for {productData?.productName} in {stage}
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {historyData.map((record, index) => (
+          <div
+            key={index}
+            className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors"
+          >
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <h4 className="font-medium text-gray-900">{record.itemName}</h4>
+                <p className="text-xs text-gray-500">
+                  {new Date(record.timestamp).toLocaleDateString()} •
+                  {new Date(record.timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
+              <Badge
+                className={`
+                ${
+                  record.type === "added"
+                    ? "bg-green-100 text-green-800"
+                    : record.type === "updated"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-gray-100 text-gray-800"
+                }
+              `}
+              >
+                {record.type}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+              <div>
+                <div className="text-xs text-gray-500">Quantity Added</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  +{record.quantity} {record.unit}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Previous Total</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {record.previousTotal} {record.unit}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">New Total</div>
+                <div className="text-sm font-semibold text-green-600">
+                  {record.newTotal} {record.unit}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">By</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {record.updatedBy || "System"}
+                </div>
+              </div>
+            </div>
+
+            {record.notes && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="text-xs text-gray-500 mb-1">Notes</div>
+                <div className="text-sm text-gray-700">{record.notes}</div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export function ItemCuttingDialog({
   open,
   onOpenChange,
@@ -473,19 +588,10 @@ export function ItemCuttingDialog({
 }: ItemCuttingDialogProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const calculateTotalRemaining = () => {
-    return cuttingItems.reduce((sum, item) => {
-      const alreadyCutNum = parseToNumber(item.alreadyCut);
-      const cuttingTodayNum = parseToNumber(item.cuttingToday);
+  const [nextDeptMap, setNextDeptMap] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState("update");
 
-      const remaining =
-        item.requiredQuantity - (alreadyCutNum + cuttingTodayNum);
-
-      return sum + Math.max(remaining, 0);
-    }, 0);
-  };
-
-  console.log(stage, "stage");
+  const fromDepartment = mapStageToDept(stage);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -493,8 +599,6 @@ export function ItemCuttingDialog({
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
-  const [nextDeptMap, setNextDeptMap] = useState<Record<string, string>>({});
-  const fromDepartment = mapStageToDept(stage);
 
   const updateNextDepartment = (rowId: string, dept: string) => {
     setNextDeptMap((prev) => ({
@@ -612,8 +716,8 @@ export function ItemCuttingDialog({
         id: row._id,
         itemName: row.name || "Unnamed Item",
         requiredQuantity: required,
-        alreadyCut: Number(row.todayDone ?? 0), // cumulative
-        cuttingToday: 0, // ✅ ALWAYS reset on dialog open
+        alreadyCut: Number(row.todayDone ?? 0),
+        cuttingToday: 0,
         unit: row.unit || "unit",
         department: row.department,
         status:
@@ -629,11 +733,18 @@ export function ItemCuttingDialog({
     setExpandedItems(new Set());
   }, [rows, open]);
 
-  console.log(rows, "rows");
+  const calculateTotalRemaining = () => {
+    return cuttingItems.reduce((sum, item) => {
+      const alreadyCutNum = parseToNumber(item.alreadyCut);
+      const cuttingTodayNum = parseToNumber(item.cuttingToday);
 
-  if (!productData) return null;
+      const remaining =
+        item.requiredQuantity - (alreadyCutNum + cuttingTodayNum);
 
-  // Helper function to parse value
+      return sum + Math.max(remaining, 0);
+    }, 0);
+  };
+
   const parseToNumber = (value: string | number): number => {
     if (typeof value === "number") return value;
     if (value === "" || value === ".") return 0;
@@ -649,12 +760,10 @@ export function ItemCuttingDialog({
         const alreadyCutNum = parseToNumber(item.alreadyCut);
         const maxAllowed = Math.max(item.requiredQuantity - alreadyCutNum, 0);
 
-        // allow empty / typing states
         if (value === "" || value === "." || value === "-") {
           return { ...item, cuttingToday: value };
         }
 
-        // invalid decimal
         if (!/^-?\d*\.?\d*$/.test(value)) {
           return item;
         }
@@ -662,7 +771,6 @@ export function ItemCuttingDialog({
         const numericValue = parseFloat(value);
         if (isNaN(numericValue)) return item;
 
-        // 🔒 HARD LIMIT
         if (numericValue > maxAllowed) {
           toast.error(`Max allowed today is ${maxAllowed.toFixed(4)}`);
           return { ...item, cuttingToday: maxAllowed.toString() };
@@ -716,38 +824,6 @@ export function ItemCuttingDialog({
     }
   };
 
-  // const handleSaveCutting = () => {
-  //   const totalCutting = cuttingItems.reduce((sum, item) => {
-  //     const cuttingTodayNum = parseToNumber(item.cuttingToday);
-  //     return sum + cuttingTodayNum;
-  //   }, 0);
-
-  //   if (totalCutting === 0) {
-  //     toast.error(
-  //       `Please enter ${stageDetails.actionName.toLowerCase()} quantities for at least one item`
-  //     );
-  //     return;
-  //   }
-
-  //   setCuttingItems((prev) =>
-  //     prev.map((item) => {
-  //       const alreadyCutNum = parseToNumber(item.alreadyCut);
-  //       const cuttingTodayNum = parseToNumber(item.cuttingToday);
-  //       return {
-  //         ...item,
-  //         alreadyCut: alreadyCutNum + cuttingTodayNum,
-  //         cuttingToday: 0,
-  //       };
-  //     })
-  //   );
-
-  //   const minAvailable = calculateMinimumAvailable();
-  //   toast.success(
-  //     `${stageDetails.title} saved! ${minAvailable.toFixed(
-  //       4
-  //     )} units now ready for production`
-  //   );
-  // };
   const handleSaveCutting = async () => {
     const actions = cuttingItems
       .map((item) => {
@@ -759,7 +835,7 @@ export function ItemCuttingDialog({
           rowId: item.id,
           progressToday,
           fromDepartment,
-          toDepartment: nextDeptMap[item.id] || fromDepartment, // fallback to same dept
+          toDepartment: nextDeptMap[item.id] || fromDepartment,
         };
       })
       .filter(Boolean);
@@ -779,7 +855,6 @@ export function ItemCuttingDialog({
         toast.success("Today's progress saved successfully");
       }
 
-      // Reset today values after success
       setCuttingItems((prev) =>
         prev.map((item) => ({
           ...item,
@@ -790,6 +865,7 @@ export function ItemCuttingDialog({
       );
 
       setNextDeptMap({});
+      setActiveTab("history");
     } catch (err: any) {
       console.error(err);
       toast.error(
@@ -807,7 +883,7 @@ export function ItemCuttingDialog({
     }
     setExpandedItems(newExpanded);
   };
-  console.log(productData, "dddddddddddddddddddddddddddd");
+
   const handleDeliverItem = (projectId: string) => {
     try {
       api.put(`/projects/${projectId}/send-to-delivery`);
@@ -817,11 +893,8 @@ export function ItemCuttingDialog({
       toast.error("Failed to deliver item to customer.");
       return;
     }
-    // const item = cuttingItems.find((i) => i.id === itemId);
-    // if (item) {
-    //   toast.success(`Delivered ${item.itemName} to customer successfully!`);
-    // }
   };
+
   const clampOnBlur = (item: CuttingItem, value: string) => {
     const alreadyCutNum = parseToNumber(item.alreadyCut);
     const maxAllowed = item.requiredQuantity - alreadyCutNum;
@@ -919,408 +992,407 @@ export function ItemCuttingDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[95vw] !w-[95vw] sm:!max-w-[90vw] sm:!w-[90vw] lg:!max-w-[85vw] lg:!w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
-        {/* Sticky Header */}
-        <div
-          className={`sticky top-0 z-50 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 ${stageDetails.headerBg} border-b-2 ${stageDetails.headerBorder} shadow-sm`}
+        {/* Main Tabs Container - MOVE THIS TO THE TOP */}
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex-1 flex flex-col overflow-hidden"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3 sm:gap-4 lg:gap-6">
-              <div
-                className={`w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 ${stageDetails.iconBg} rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg shrink-0`}
-              >
-                {stageDetails.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <DialogTitle className="text-xl sm:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 truncate">
-                  {stageDetails.title} Management
-                </DialogTitle>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm sm:text-base lg:text-lg text-gray-600 truncate">
-                    {productData.productName}
-                  </span>
-                  <Badge
-                    className={`${stageDetails.badgeBg} text-xs sm:text-sm px-2 sm:px-3 py-0.5 sm:py-1 truncate`}
-                  >
-                    {productData.productionId}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
-              <Button
-                onClick={handleSaveCutting}
-                className={`${stageDetails.buttonBg} text-white h-9 sm:h-11 px-3 sm:px-6 text-xs sm:text-sm`}
-                disabled={!hasAnyCutting}
-              >
-                <Save className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                {/* {isMobile ? "Save" : `Save ${stageDetails.title}`} */}
-                {"Save"}
-              </Button>
-              <button
-                onClick={() => onOpenChange(false)}
-                type="button"
-                className="h-8 w-8 sm:h-10 sm:w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
-              >
-                <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 hover:text-gray-700" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Scrollable Main Content */}
-        <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 space-y-4 sm:space-y-6 lg:space-y-8">
-            {/* Product Summary Card */}
-            <div className="bg-linear-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 sm:p-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-                <div>
-                  <div className="text-xs sm:text-sm text-gray-600 mb-1">
-                    Product Name
-                  </div>
-                  <div className="text-sm sm:text-base font-semibold text-gray-900 truncate">
-                    {productData.productName}
-                  </div>
-                </div>
-                {/* <div>
-                  <div className="text-xs sm:text-sm text-gray-600 mb-1">
-                    Target Quantity
-                  </div>
-                  <div className="text-sm sm:text-base font-bold text-blue-600">
-                    {productData.targetQuantity} {isMobile ? "prs" : "pairs"}
-                  </div>
-                </div> */}
-                {/* <div>
-                  <div className="text-xs sm:text-sm text-gray-600 mb-1">
-                    Can Produce
-                  </div>
-                  <div className="text-sm sm:text-base font-bold text-green-600">
-                    {minimumAvailable.toFixed(4)} {isMobile ? "prs" : "pairs"}
-                  </div>
-                </div> */}
-                <div>
-                  <div className="text-xs sm:text-sm text-gray-600 mb-1">
-                    Remaining Needed
-                  </div>
-                  <div className="text-sm sm:text-base font-bold text-orange-600">
-                    {calculateTotalRemaining().toFixed(4)}{" "}
-                    {isMobile ? "its" : "items"}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Production Capacity Alert */}
-            {minimumAvailable < productData.targetQuantity && (
-              <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-3 sm:p-5">
-                <div className="flex items-start gap-3 sm:gap-4">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-lg flex items-center justify-center shrink-0">
-                    <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-orange-900 text-sm sm:text-base mb-1">
-                      Production Capacity Limited
-                    </h4>
-                    <p className="text-xs sm:text-sm text-orange-700">
-                      You can currently produce{" "}
-                      <span className="font-bold">
-                        {minimumAvailable.toFixed(4)}{" "}
-                        {isMobile ? "prs" : "pairs"}
-                      </span>{" "}
-                      based on the minimum cut quantity across all items.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {minimumAvailable >= productData.targetQuantity && (
-              <div className="bg-green-50 border-2 border-green-300 rounded-xl p-3 sm:p-5">
-                <div className="flex items-start gap-3 sm:gap-4">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-lg flex items-center justify-center shrink-0">
-                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-green-900 text-sm sm:text-base mb-1">
-                      Ready for Full Production!
-                    </h4>
-                    <p className="text-xs sm:text-sm text-green-700">
-                      All materials have been cut sufficiently. You can now
-                      produce the full target quantity of{" "}
-                      {productData.targetQuantity} {isMobile ? "prs" : "pairs"}.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Cutting Items Section */}
-            <div className="space-y-3 sm:space-y-5">
-              <div className="flex items-center gap-3 sm:gap-5">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md">
-                  <Package className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                </div>
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
-                  Raw Materials & Components {stageDetails.title}
-                </h3>
-                <Badge
-                  variant="secondary"
-                  className="bg-gray-100 text-gray-700 px-2 sm:px-3 py-1 text-xs"
+          {/* Sticky Header - NOW INSIDE TABS */}
+          <div
+            className={`sticky top-0 z-50 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 ${stageDetails.headerBg} border-b-2 ${stageDetails.headerBorder} shadow-sm`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3 sm:gap-4 lg:gap-6">
+                <div
+                  className={`w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 ${stageDetails.iconBg} rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg shrink-0`}
                 >
-                  {cuttingItems.length} Items
-                </Badge>
-              </div>
-
-              <div className="space-y-3 sm:space-y-4">
-                {!isMobile
-                  ? /* Desktop View - Table Layout */
-                    cuttingItems.map((item) => {
-                      const totalAfter = calculateTotalAfterCutting(item);
-                      const remaining = Math.max(
-                        item.requiredQuantity - totalAfter,
-                        0
-                      );
-                      const progressPercent =
-                        item.requiredQuantity > 0
-                          ? Math.min(
-                              (totalAfter / item.requiredQuantity) * 100,
-                              100
-                            )
-                          : 0;
-                      const isBottleneck =
-                        totalAfter === minimumAvailable &&
-                        minimumAvailable < productData.targetQuantity;
-
-                      // Get display value for input - FIXED VERSION
-                      const getDisplayValue = (): string => {
-                        if (typeof item.cuttingToday === "string") {
-                          return item.cuttingToday;
-                        }
-                        if (item.cuttingToday === 0) return "";
-                        return item.cuttingToday.toString();
-                      };
-
-                      return (
-                        <div
-                          key={item.id}
-                          className={`bg-white border-2 rounded-xl p-4 sm:p-6 transition-all ${
-                            isBottleneck
-                              ? "border-red-300 bg-red-50"
-                              : parseToNumber(item.cuttingToday) > 0
-                              ? "border-purple-300 bg-purple-50"
-                              : "border-gray-200"
-                          }`}
-                        >
-                          <div className="grid grid-cols-12 gap-4 sm:gap-6 items-center">
-                            {/* Item Name & Status */}
-                            <div className="col-span-12 sm:col-span-3">
-                              <div className="flex items-start gap-3">
-                                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center shrink-0 border-2 border-gray-300">
-                                  <Scissors className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold text-gray-900 text-sm sm:text-base mb-1 truncate">
-                                    {item.itemName}
-                                  </div>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {getItemStatusBadge(item)}
-                                    {isBottleneck && (
-                                      <Badge className="bg-red-100 text-red-800 border-red-200 text-xs flex items-center gap-1">
-                                        <TrendingDown className="w-3 h-3" />
-                                        {isMobile ? "BN" : "Bottleneck"}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Required Quantity */}
-                            <div className="col-span-4 sm:col-span-2">
-                              <div className="text-xs font-medium text-gray-600 mb-1">
-                                Required
-                              </div>
-                              <div className="text-sm sm:text-base font-bold text-gray-900">
-                                {item.requiredQuantity.toFixed(4)} {item.unit}
-                              </div>
-                            </div>
-
-                            {/* Completed */}
-                            <div className="col-span-4 sm:col-span-2">
-                              <div className="text-xs font-medium text-gray-600 mb-1">
-                                Completed
-                              </div>
-                              <div className="text-sm sm:text-base font-semibold text-blue-600">
-                                {parseToNumber(item.alreadyCut).toFixed(4)}{" "}
-                                {item.unit}
-                              </div>
-                            </div>
-
-                            {/* Cutting Today Input */}
-                            <div className="col-span-4 sm:col-span-2">
-                              <div className="text-xs font-medium text-gray-600 mb-1 block">
-                                {/* {stageDetails.title} */}
-                                Today
-                              </div>
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={getDisplayValue()}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  updateCuttingQuantity(item.id, value);
-                                }}
-                                onBlur={(e) => {
-                                  const finalValue = clampOnBlur(
-                                    item,
-                                    e.target.value
-                                  );
-                                  updateCuttingQuantity(item.id, finalValue);
-                                }}
-                                className="h-9 sm:h-10 text-sm sm:text-base font-semibold border-2 focus:border-purple-500"
-                                placeholder="0"
-                              />
-                            </div>
-
-                            {/* Total After */}
-                            {/* <div className="col-span-4 sm:col-span-2">
-                              <div className="text-xs font-medium text-gray-600 mb-1">
-                                Total After
-                              </div>
-                              <div
-                                className={`text-sm sm:text-base font-bold ${
-                                  totalAfter >= item.requiredQuantity
-                                    ? "text-green-600"
-                                    : "text-orange-600"
-                                }`}
-                              >
-                                {totalAfter.toFixed(4)} {item.unit}
-                              </div>
-                            </div> */}
-
-                            {/* Remaining */}
-                            <div className="col-span-4 sm:col-span-1 text-right">
-                              <div className="text-xs font-medium text-gray-600 mb-1">
-                                Need
-                              </div>
-                              <div className="text-sm sm:text-base font-semibold text-orange-600">
-                                {remaining.toFixed(4)}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Second Row with Deliver Button/Advance To Dropdown and Progress Bar */}
-                          <div className="grid grid-cols-12 gap-4 sm:gap-6 items-center mt-4">
-                            {renderAdvanceToSection(item)}
-
-                            {/* Progress Bar - Takes remaining columns */}
-                            <div className="col-span-12 sm:col-span-8">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs text-gray-600">
-                                  {stageDetails.title} Progress
-                                </span>
-                                <span className="text-xs font-semibold text-gray-900">
-                                  {Number.isFinite(progressPercent)
-                                    ? progressPercent.toFixed(1)
-                                    : "0.0"}
-                                  %
-                                </span>
-                              </div>
-                              <Progress
-                                value={progressPercent}
-                                className={`h-1.5 sm:h-2 ${
-                                  progressPercent >= 100
-                                    ? "bg-green-200"
-                                    : progressPercent >= 50
-                                    ? "bg-blue-200"
-                                    : "bg-orange-200"
-                                }`}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Today's Update Indicator */}
-                          {parseToNumber(item.cuttingToday) > 0 && (
-                            <div className="mt-3 p-2 bg-purple-100 rounded-lg border border-purple-200">
-                              <div className="flex items-center gap-2 text-xs text-purple-800">
-                                <Activity className="w-3.5 h-3.5" />
-                                <span className="font-medium">
-                                  Adding +
-                                  {parseToNumber(item.cuttingToday).toFixed(4)}{" "}
-                                  {item.unit} today
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  : /* Mobile View - Card Layout */
-                    cuttingItems.map((item) => (
-                      <MobileItemCard
-                        key={item.id}
-                        item={item}
-                        isMobile={isMobile}
-                        minimumAvailable={minimumAvailable}
-                        productData={productData}
-                        stageDetails={stageDetails}
-                        updateCuttingQuantity={updateCuttingQuantity}
-                        toggleItemExpanded={toggleItemExpanded}
-                        expandedItems={expandedItems}
-                        stage={stage}
-                        onAdvanceToChange={updateNextDepartment}
-                      />
-                    ))}
-              </div>
-            </div>
-
-            {/* Summary Statistics */}
-            <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-300 rounded-xl p-4 sm:p-6">
-              <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
-                <div className="text-center">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
-                    <Package className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" />
-                  </div>
-                  <div className="text-xs sm:text-sm text-gray-600 mb-1">
-                    Total Items
-                  </div>
-                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
-                    {cuttingItems.length}
+                  {stageDetails.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <DialogTitle className="text-xl sm:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 truncate">
+                    {stageDetails.title} Management
+                  </DialogTitle>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm sm:text-base lg:text-lg text-gray-600 truncate">
+                      {productData?.productName}
+                    </span>
+                    <Badge
+                      className={`${stageDetails.badgeBg} text-xs sm:text-sm px-2 sm:px-3 py-0.5 sm:py-1 truncate`}
+                    >
+                      {productData?.productionId}
+                    </Badge>
                   </div>
                 </div>
-                {/* <div className="text-center">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-green-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
-                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" />
-                  </div>
-                  <div className="text-xs sm:text-sm text-gray-600 mb-1">
-                    Can Produce
-                  </div>
-                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
-                    {minimumAvailable.toFixed(4)} {isMobile ? "prs" : "pairs"}
-                  </div>
-                </div> */}
-                <div className="text-center">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-orange-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
-                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg-h-6 text-white" />
-                  </div>
-                  <div className="text-xs sm:text-sm text-gray-600 mb-1">
-                    {stageDetails.title} Today
-                  </div>
-                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
-                    {cuttingItems
-                      .reduce((sum, item) => {
-                        const cuttingTodayNum = parseToNumber(
-                          item.cuttingToday
-                        );
-                        return sum + cuttingTodayNum;
-                      }, 0)
-                      .toFixed(4)}{" "}
-                    {isMobile ? "its" : "items"}
-                  </div>
-                </div>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
+                {activeTab === "update" && (
+                  <Button
+                    onClick={handleSaveCutting}
+                    className={`${stageDetails.buttonBg} text-white h-9 sm:h-11 px-3 sm:px-6 text-xs sm:text-sm`}
+                    disabled={!hasAnyCutting}
+                  >
+                    <Save className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                    {"Save"}
+                  </Button>
+                )}
+                <button
+                  onClick={() => onOpenChange(false)}
+                  type="button"
+                  className="h-8 w-8 sm:h-10 sm:w-10 p-0 hover:bg-gray-100 rounded-full cursor-pointer flex items-center justify-center border-0 bg-transparent transition-colors"
+                >
+                  <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 hover:text-gray-700" />
+                </button>
               </div>
             </div>
           </div>
-        </div>
+
+          {/* Tabs Navigation */}
+          <div className="sticky top-0 z-40 bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger
+                value="update"
+                className="data-[state=active]:bg-purple-100 data-[state=active]:text-purple-900"
+              >
+                <Package className="w-4 h-4 mr-2" />
+                Update Items
+              </TabsTrigger>
+              <TabsTrigger
+                value="history"
+                className="data-[state=active]:bg-blue-100 data-[state=active]:text-blue-900"
+              >
+                <History className="w-4 h-4 mr-2" />
+                History
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {/* Tabs Content Area */}
+          <div className="flex-1 overflow-y-auto scrollbar-hide">
+            <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 space-y-4 sm:space-y-6 lg:space-y-8">
+              {/* Update Tab Content */}
+              <TabsContent
+                value="update"
+                className="mt-0 space-y-4 sm:space-y-6 lg:space-y-8"
+              >
+                {/* Product Summary Card - NOW WITH TOP MARGIN */}
+                <div className="mt-4 bg-linear-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 sm:p-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+                    <div>
+                      <div className="text-xs sm:text-sm text-gray-600 mb-1">
+                        Product Name
+                      </div>
+                      <div className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                        {productData?.productName}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs sm:text-sm text-gray-600 mb-1">
+                        Remaining Needed
+                      </div>
+                      <div className="text-sm sm:text-base font-bold text-orange-600">
+                        {calculateTotalRemaining().toFixed(4)}{" "}
+                        {isMobile ? "its" : "items"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Production Capacity Alert */}
+                {minimumAvailable < productData?.targetQuantity && (
+                  <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-3 sm:p-5">
+                    <div className="flex items-start gap-3 sm:gap-4">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-lg flex items-center justify-center shrink-0">
+                        <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-orange-900 text-sm sm:text-base mb-1">
+                          Production Capacity Limited
+                        </h4>
+                        <p className="text-xs sm:text-sm text-orange-700">
+                          You can currently produce{" "}
+                          <span className="font-bold">
+                            {minimumAvailable.toFixed(4)}{" "}
+                            {isMobile ? "prs" : "pairs"}
+                          </span>{" "}
+                          based on the minimum cut quantity across all items.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {minimumAvailable >= productData?.targetQuantity && (
+                  <div className="bg-green-50 border-2 border-green-300 rounded-xl p-3 sm:p-5">
+                    <div className="flex items-start gap-3 sm:gap-4">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-500 rounded-lg flex items-center justify-center shrink-0">
+                        <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-green-900 text-sm sm:text-base mb-1">
+                          Ready for Full Production!
+                        </h4>
+                        <p className="text-xs sm:text-sm text-green-700">
+                          All materials have been cut sufficiently. You can now
+                          produce the full target quantity of{" "}
+                          {productData?.targetQuantity}{" "}
+                          {isMobile ? "prs" : "pairs"}.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cutting Items Section */}
+                <div className="space-y-3 sm:space-y-5">
+                  <div className="flex items-center gap-3 sm:gap-5">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md">
+                      <Package className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
+                      Raw Materials & Components {stageDetails.title}
+                    </h3>
+                    <Badge
+                      variant="secondary"
+                      className="bg-gray-100 text-gray-700 px-2 sm:px-3 py-1 text-xs"
+                    >
+                      {cuttingItems.length} Items
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3 sm:space-y-4">
+                    {!isMobile
+                      ? cuttingItems.map((item) => {
+                          const totalAfter = calculateTotalAfterCutting(item);
+                          const remaining = Math.max(
+                            item.requiredQuantity - totalAfter,
+                            0
+                          );
+                          const progressPercent =
+                            item.requiredQuantity > 0
+                              ? Math.min(
+                                  (totalAfter / item.requiredQuantity) * 100,
+                                  100
+                                )
+                              : 0;
+                          const isBottleneck =
+                            totalAfter === minimumAvailable &&
+                            minimumAvailable < productData?.targetQuantity;
+
+                          const getDisplayValue = (): string => {
+                            if (typeof item.cuttingToday === "string") {
+                              return item.cuttingToday;
+                            }
+                            if (item.cuttingToday === 0) return "";
+                            return item.cuttingToday.toString();
+                          };
+
+                          return (
+                            <div
+                              key={item.id}
+                              className={`bg-white border-2 rounded-xl p-4 sm:p-6 transition-all ${
+                                isBottleneck
+                                  ? "border-red-300 bg-red-50"
+                                  : parseToNumber(item.cuttingToday) > 0
+                                  ? "border-purple-300 bg-purple-50"
+                                  : "border-gray-200"
+                              }`}
+                            >
+                              <div className="grid grid-cols-12 gap-4 sm:gap-6 items-center">
+                                {/* Item Name & Status */}
+                                <div className="col-span-12 sm:col-span-3">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center shrink-0 border-2 border-gray-300">
+                                      <Scissors className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-semibold text-gray-900 text-sm sm:text-base mb-1 truncate">
+                                        {item.itemName}
+                                      </div>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        {getItemStatusBadge(item)}
+                                        {isBottleneck && (
+                                          <Badge className="bg-red-100 text-red-800 border-red-200 text-xs flex items-center gap-1">
+                                            <TrendingDown className="w-3 h-3" />
+                                            {isMobile ? "BN" : "Bottleneck"}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Required Quantity */}
+                                <div className="col-span-4 sm:col-span-2">
+                                  <div className="text-xs font-medium text-gray-600 mb-1">
+                                    Required
+                                  </div>
+                                  <div className="text-sm sm:text-base font-bold text-gray-900">
+                                    {item.requiredQuantity.toFixed(4)}{" "}
+                                    {item.unit}
+                                  </div>
+                                </div>
+
+                                {/* Completed */}
+                                <div className="col-span-4 sm:col-span-2">
+                                  <div className="text-xs font-medium text-gray-600 mb-1">
+                                    Completed
+                                  </div>
+                                  <div className="text-sm sm:text-base font-semibold text-blue-600">
+                                    {parseToNumber(item.alreadyCut).toFixed(4)}{" "}
+                                    {item.unit}
+                                  </div>
+                                </div>
+
+                                {/* Cutting Today Input */}
+                                <div className="col-span-4 sm:col-span-2">
+                                  <div className="text-xs font-medium text-gray-600 mb-1 block">
+                                    Today
+                                  </div>
+                                  <Input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={getDisplayValue()}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      updateCuttingQuantity(item.id, value);
+                                    }}
+                                    onBlur={(e) => {
+                                      const finalValue = clampOnBlur(
+                                        item,
+                                        e.target.value
+                                      );
+                                      updateCuttingQuantity(
+                                        item.id,
+                                        finalValue
+                                      );
+                                    }}
+                                    className="h-9 sm:h-10 text-sm sm:text-base font-semibold border-2 focus:border-purple-500"
+                                    placeholder="0"
+                                  />
+                                </div>
+
+                                {/* Remaining */}
+                                <div className="col-span-4 sm:col-span-1 text-right">
+                                  <div className="text-xs font-medium text-gray-600 mb-1">
+                                    Need
+                                  </div>
+                                  <div className="text-sm sm:text-base font-semibold text-orange-600">
+                                    {remaining.toFixed(4)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Second Row with Deliver Button/Advance To Dropdown and Progress Bar */}
+                              <div className="grid grid-cols-12 gap-4 sm:gap-6 items-center mt-4">
+                                {renderAdvanceToSection(item)}
+
+                                {/* Progress Bar - Takes remaining columns */}
+                                <div className="col-span-12 sm:col-span-8">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs text-gray-600">
+                                      {stageDetails.title} Progress
+                                    </span>
+                                    <span className="text-xs font-semibold text-gray-900">
+                                      {Number.isFinite(progressPercent)
+                                        ? progressPercent.toFixed(1)
+                                        : "0.0"}
+                                      %
+                                    </span>
+                                  </div>
+                                  <Progress
+                                    value={progressPercent}
+                                    className={`h-1.5 sm:h-2 ${
+                                      progressPercent >= 100
+                                        ? "bg-green-200"
+                                        : progressPercent >= 50
+                                        ? "bg-blue-200"
+                                        : "bg-orange-200"
+                                    }`}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Today's Update Indicator */}
+                              {parseToNumber(item.cuttingToday) > 0 && (
+                                <div className="mt-3 p-2 bg-purple-100 rounded-lg border border-purple-200">
+                                  <div className="flex items-center gap-2 text-xs text-purple-800">
+                                    <Activity className="w-3.5 h-3.5" />
+                                    <span className="font-medium">
+                                      Adding +
+                                      {parseToNumber(item.cuttingToday).toFixed(
+                                        4
+                                      )}{" "}
+                                      {item.unit} today
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      : cuttingItems.map((item) => (
+                          <MobileItemCard
+                            key={item.id}
+                            item={item}
+                            isMobile={isMobile}
+                            minimumAvailable={minimumAvailable}
+                            productData={productData}
+                            stageDetails={stageDetails}
+                            updateCuttingQuantity={updateCuttingQuantity}
+                            toggleItemExpanded={toggleItemExpanded}
+                            expandedItems={expandedItems}
+                            stage={stage}
+                            onAdvanceToChange={updateNextDepartment}
+                          />
+                        ))}
+                  </div>
+                </div>
+
+                {/* Summary Statistics */}
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-300 rounded-xl p-4 sm:p-6">
+                  <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+                    <div className="text-center">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
+                        <Package className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" />
+                      </div>
+                      <div className="text-xs sm:text-sm text-gray-600 mb-1">
+                        Total Items
+                      </div>
+                      <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
+                        {cuttingItems.length}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-orange-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
+                        <Clock className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg-h-6 text-white" />
+                      </div>
+                      <div className="text-xs sm:text-sm text-gray-600 mb-1">
+                        {stageDetails.title} Today
+                      </div>
+                      <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
+                        {cuttingItems
+                          .reduce((sum, item) => {
+                            const cuttingTodayNum = parseToNumber(
+                              item.cuttingToday
+                            );
+                            return sum + cuttingTodayNum;
+                          }, 0)
+                          .toFixed(4)}{" "}
+                        {isMobile ? "its" : "items"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* History Tab Content */}
+              <TabsContent value="history" className="mt-0">
+                <HistoryTabContent productData={productData} stage={stage} />
+              </TabsContent>
+            </div>
+          </div>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
