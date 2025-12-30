@@ -1,16 +1,23 @@
 import mongoose from "mongoose";
 import { Project } from "../models/Project.model.js";
 
-export async function getCountryDashboardService(brandId) {
+export async function getCountryDashboardService(brandId, companyId) {
   const match = { isActive: true };
 
+  // ✅ Apply company filter if provided
+  if (companyId && companyId !== "all") {
+    if (!mongoose.Types.ObjectId.isValid(companyId)) {
+      throw new Error("Invalid companyId");
+    }
+    match.company = new mongoose.Types.ObjectId(companyId);
+  }
+
+  // ✅ Apply brand filter if provided
   if (brandId && brandId !== "all") {
     if (!mongoose.Types.ObjectId.isValid(brandId)) {
       throw new Error("Invalid brandId");
     }
-    // NOTE: if your field is brandId instead of brand, change here:
     match.brand = new mongoose.Types.ObjectId(brandId);
-    // match.brandId = new mongoose.Types.ObjectId(brandId);
   }
 
   const result = await Project.aggregate([

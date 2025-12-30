@@ -47,7 +47,14 @@ import { toast } from "sonner";
 import api from "../lib/api";
 import { CreateProductionCardDialog } from "./CreateProductionCardDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "./ui/command";
 
 // Media query hook
 const useMediaQuery = (query: string) => {
@@ -208,7 +215,6 @@ interface ProductionPlan {
   };
 }
 
-
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -226,33 +232,34 @@ export function ProductionPlanDetailsDialog({
   const [calendarId, setCalendarId] = useState<string | null>(null);
   const [isEditingSchedule, setIsEditingSchedule] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
-// Plant state
-const [plants, setPlants] = useState<{ _id: string; name: string }[]>([]);
-const [openPlantDropdown, setOpenPlantDropdown] = useState(false);
-const [loadingPlants, setLoadingPlants] = useState(false);
+  // Plant state
+  const [plants, setPlants] = useState<{ _id: string; name: string }[]>([]);
+  const [openPlantDropdown, setOpenPlantDropdown] = useState(false);
+  const [loadingPlants, setLoadingPlants] = useState(false);
 
   const isMobile = useMediaQuery("(max-width: 768px)");
   const isTablet = useMediaQuery("(min-width: 769px) and (max-width: 1024px)");
-const [persons, setPersons] = useState<{ _id: string; name: string }[]>([]);
-useEffect(() => {
-  if (!open) return;
+  const [persons, setPersons] = useState<{ _id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!open) return;
 
-  const loadPersons = async () => {
-    try {
-      const res = await api.get("/assign-persons?includeInactive=true");
-      setPersons(res.data.items || []);
-    } catch (e) {
-      toast.error("Failed to load task coordinators");
-    }
+    const loadPersons = async () => {
+      try {
+        const res = await api.get("/assign-persons?includeInactive=true");
+        setPersons(res.data.items || []);
+      } catch (e) {
+        toast.error("Failed to load task coordinators");
+      }
+    };
+
+    loadPersons();
+  }, [open]);
+  const getPersonName = (_id?: string) => {
+    if (!_id) return "N/A";
+    return (
+      persons.find((p) => p._id === _id)?.name || `Unknown (${_id.slice(-4)})`
+    );
   };
-
-  loadPersons();
-}, [open]);
-const getPersonName = (_id?: string) => {
-  if (!_id) return "N/A";
-  return persons.find(p => p._id === _id)?.name || `Unknown (${_id.slice(-4)})`;
-};
-
 
   const [costData, setCostData] = useState({
     upper: [],
@@ -280,69 +287,68 @@ const getPersonName = (_id?: string) => {
   const [editedRemarks, setEditedRemarks] = useState("");
   const [openCreateCardDialog, setOpenCreateCardDialog] = useState(false);
   const [isScheduleLoading, setIsScheduleLoading] = useState(false);
- const handleSaveSchedule = async () => {
-  try {
-    setIsSavingSchedule(true);
-
-    const payload = {
-      projectId: plan?.project?._id,
-       productionDetails: {
-    quantity:
-  plan.quantity ??
-  plan.quantitySnapshot ??
-  plan.project?.po?.quantity ??
-  0,
-
-  },
-      scheduling: {
-        assignedPlant: productionPlanningData.assignedPlant,
-        scheduleDate: productionPlanningData.sendDate,
-        receivedDate: productionPlanningData.receivedDate,
-        soleFrom: productionPlanningData.soleVendor,
-        soleColor: productionPlanningData.soleColor,
-        soleExpectedDate: productionPlanningData.soleReceivedDate,
-      },
-    };
-
-    // 🟢 CASE 1: Schedule already exists → UPDATE
-    if (calendarId) {
-      await api.put(`/calendar/${calendarId}`, payload);
-      toast.success("Production schedule updated");
-    }
-
-    // 🟢 CASE 2: No schedule exists → CREATE NEW
-    else {
-      const res = await api.post("/calendar", payload);
-      setCalendarId(res.data?.data?._id || null);
-      toast.success("Production schedule created");
-    }
-
-    setIsEditingSchedule(false);
-  } catch (err) {
-    console.error(err);
-    toast.error("Failed to save production schedule");
-  } finally {
-    setIsSavingSchedule(false);
-  }
-};
-
-useEffect(() => {
-  if (!open) return;
-
-  const loadPlants = async () => {
+  const handleSaveSchedule = async () => {
     try {
-      setLoadingPlants(true);
-      const res = await api.get("/assign-plant");
-      setPlants(res.data?.items || res.data?.data || []);
-    } catch {
-      toast.error("Failed to load plants");
+      setIsSavingSchedule(true);
+
+      const payload = {
+        projectId: plan?.project?._id,
+        productionDetails: {
+          quantity:
+            plan.quantity ??
+            plan.quantitySnapshot ??
+            plan.project?.po?.quantity ??
+            0,
+        },
+        scheduling: {
+          assignedPlant: productionPlanningData.assignedPlant,
+          scheduleDate: productionPlanningData.sendDate,
+          receivedDate: productionPlanningData.receivedDate,
+          soleFrom: productionPlanningData.soleVendor,
+          soleColor: productionPlanningData.soleColor,
+          soleExpectedDate: productionPlanningData.soleReceivedDate,
+        },
+      };
+
+      // 🟢 CASE 1: Schedule already exists → UPDATE
+      if (calendarId) {
+        await api.put(`/calendar/${calendarId}`, payload);
+        toast.success("Production schedule updated");
+      }
+
+      // 🟢 CASE 2: No schedule exists → CREATE NEW
+      else {
+        const res = await api.post("/calendar", payload);
+        setCalendarId(res.data?.data?._id || null);
+        toast.success("Production schedule created");
+      }
+
+      setIsEditingSchedule(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to save production schedule");
     } finally {
-      setLoadingPlants(false);
+      setIsSavingSchedule(false);
     }
   };
 
-  loadPlants();
-}, [open]);
+  useEffect(() => {
+    if (!open) return;
+
+    const loadPlants = async () => {
+      try {
+        setLoadingPlants(true);
+        const res = await api.get("/assign-plant");
+        setPlants(res.data?.items || res.data?.data || []);
+      } catch {
+        toast.error("Failed to load plants");
+      } finally {
+        setLoadingPlants(false);
+      }
+    };
+
+    loadPlants();
+  }, [open]);
 
   useEffect(() => {
     const loadTentativeCost = async () => {
@@ -400,27 +406,26 @@ useEffect(() => {
             ? payload.items[0]
             : null;
 
-       if (first) {
-  setCalendarId(first._id); // 🔴 VERY IMPORTANT
+        if (first) {
+          setCalendarId(first._id); // 🔴 VERY IMPORTANT
 
-  const sched = first.scheduling ?? {};
-  setProductionPlanningData((prev) => ({
-    ...prev,
-    assignedPlant: sched.assignedPlant || prev.assignedPlant,
-    sendDate: sched.scheduleDate
-      ? new Date(sched.scheduleDate).toISOString().slice(0, 10)
-      : prev.sendDate,
-    receivedDate: sched.receivedDate
-      ? new Date(sched.receivedDate).toISOString().slice(0, 10)
-      : prev.receivedDate,
-    soleVendor: sched.soleFrom || prev.soleVendor,
-    soleColor: sched.soleColor || prev.soleColor,
-    soleReceivedDate: sched.soleExpectedDate
-      ? new Date(sched.soleExpectedDate).toISOString().slice(0, 10)
-      : prev.soleReceivedDate,
-  }));
-}
-
+          const sched = first.scheduling ?? {};
+          setProductionPlanningData((prev) => ({
+            ...prev,
+            assignedPlant: sched.assignedPlant || prev.assignedPlant,
+            sendDate: sched.scheduleDate
+              ? new Date(sched.scheduleDate).toISOString().slice(0, 10)
+              : prev.sendDate,
+            receivedDate: sched.receivedDate
+              ? new Date(sched.receivedDate).toISOString().slice(0, 10)
+              : prev.receivedDate,
+            soleVendor: sched.soleFrom || prev.soleVendor,
+            soleColor: sched.soleColor || prev.soleColor,
+            soleReceivedDate: sched.soleExpectedDate
+              ? new Date(sched.soleExpectedDate).toISOString().slice(0, 10)
+              : prev.soleReceivedDate,
+          }));
+        }
       } catch (err) {
         console.error("Failed to load project schedule:", err);
         toast.error("Failed to load production schedule");
@@ -455,19 +460,18 @@ useEffect(() => {
     }
   };
 
- const getPriorityColor = (priority?: string) => {
-  switch (priority?.toLowerCase()) {
-    case "high":
-      return "bg-red-100 text-red-800";
-    case "medium":
-      return "bg-yellow-100 text-yellow-800";
-    case "low":
-      return "bg-green-100 text-green-800";
-    default:
-      return "bg-gray-100 text-gray-800";
-  }
-};
-
+  const getPriorityColor = (priority?: string) => {
+    switch (priority?.toLowerCase()) {
+      case "high":
+        return "bg-red-100 text-red-800";
+      case "medium":
+        return "bg-yellow-100 text-yellow-800";
+      case "low":
+        return "bg-green-100 text-green-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -490,12 +494,11 @@ useEffect(() => {
                   {plan.artNameSnapshot}
                 </DialogTitle>
                 <DialogDescription className="sr-only">
-  Production plan details, scheduling, costs and actions.
-</DialogDescription>
+                  Production plan details, scheduling, costs and actions.
+                </DialogDescription>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm sm:text-base md:text-lg font-mono text-blue-600 truncate">
-                   {plan?.project?.autoCode || "na"}
-
+                    {plan?.project?.autoCode || "na"}
                   </span>
                   <Badge
                     className={`${getPriorityColor(
@@ -570,8 +573,6 @@ useEffect(() => {
                     </p>
                     <p className="text-sm font-medium text-orange-900 truncate">
                       {getPersonName(plan.project?.assignPerson)}
-
-
                     </p>
                   </div>
                 </div>
@@ -580,112 +581,121 @@ useEffect(() => {
 
             {/* Production Planning */}
             <div className="bg-blue-50 rounded-lg p-3 sm:p-4 border border-blue-200">
-             <div className="flex justify-between items-center mb-3">
-  <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
-    <Calendar className="w-4 h-4" />
-    Production Planning
-  </h4>
+              <div className="flex justify-between items-center mb-3">
+                <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  Production Planning
+                </h4>
 
-  {!isEditingSchedule ? (
-    <Button size="sm" variant="outline" onClick={() => setIsEditingSchedule(true)}>
-      <Edit className="w-4 h-4 mr-1" />
-      Edit
-    </Button>
-  ) : (
-    <div className="flex gap-2">
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => setIsEditingSchedule(false)}
-      >
-        Cancel
-      </Button>
-      <Button
-        size="sm"
-        onClick={handleSaveSchedule}
-        disabled={isSavingSchedule}
-        className="bg-blue-600 hover:bg-blue-700"
-      >
-        <CheckCircle className="w-4 h-4 mr-1" />
-        Save
-      </Button>
-    </div>
-  )}
-</div>
+                {!isEditingSchedule ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsEditingSchedule(true)}
+                  >
+                    <Edit className="w-4 h-4 mr-1" />
+                    Edit
+                  </Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsEditingSchedule(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveSchedule}
+                      disabled={isSavingSchedule}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      Save
+                    </Button>
+                  </div>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div>
-  <p className="text-xs text-blue-600 mb-1">Assigned Plant</p>
+                  <p className="text-xs text-blue-600 mb-1">Assigned Plant</p>
 
-  {!isEditingSchedule ? (
-    <Input
-      value={
-        plants.find(p => p._id === productionPlanningData.assignedPlant)?.name
-        || productionPlanningData.assignedPlant
-        || "—"
-      }
-      readOnly
-      className="h-8 sm:h-9 text-sm border-blue-200 bg-gray-50"
-    />
-  ) : (
-    <Popover
-      open={openPlantDropdown}
-      onOpenChange={setOpenPlantDropdown}
-    >
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          className="w-full h-8 sm:h-9 justify-between text-sm"
-        >
-          <span className="truncate">
-            {productionPlanningData.assignedPlant
-              ? plants.find(
-                  p => p._id === productionPlanningData.assignedPlant
-                )?.name
-              : loadingPlants
-              ? "Loading..."
-              : "Select plant..."}
-          </span>
-          <ChevronDown className="h-4 w-4 opacity-50" />
-        </Button>
-      </PopoverTrigger>
+                  {!isEditingSchedule ? (
+                    <Input
+                      value={
+                        plants.find(
+                          (p) => p._id === productionPlanningData.assignedPlant
+                        )?.name ||
+                        productionPlanningData.assignedPlant ||
+                        "—"
+                      }
+                      readOnly
+                      className="h-8 sm:h-9 text-sm border-blue-200 bg-gray-50"
+                    />
+                  ) : (
+                    <Popover
+                      open={openPlantDropdown}
+                      onOpenChange={setOpenPlantDropdown}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className="w-full h-8 sm:h-9 justify-between text-sm"
+                        >
+                          <span className="truncate">
+                            {productionPlanningData.assignedPlant
+                              ? plants.find(
+                                  (p) =>
+                                    p._id ===
+                                    productionPlanningData.assignedPlant
+                                )?.name
+                              : loadingPlants
+                              ? "Loading..."
+                              : "Select plant..."}
+                          </span>
+                          <ChevronDown className="h-4 w-4 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
 
-      <PopoverContent className="w-full p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search plant..." />
-          <CommandList>
-            <CommandEmpty>No plant found.</CommandEmpty>
-            <CommandGroup className="max-h-56 overflow-auto">
-              {plants.map((plant) => (
-                <CommandItem
-                  key={plant._id}
-                  value={plant.name}
-                  onSelect={() => {
-                    setProductionPlanningData((p) => ({
-                      ...p,
-                      assignedPlant: plant._id,
-                    }));
-                    setOpenPlantDropdown(false);
-                  }}
-                >
-                  <Check
-                    className={`mr-2 h-4 w-4 ${
-                      productionPlanningData.assignedPlant === plant._id
-                        ? "opacity-100"
-                        : "opacity-0"
-                    }`}
-                  />
-                  {plant.name}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  )}
-</div>
+                      <PopoverContent className="w-full p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search plant..." />
+                          <CommandList>
+                            <CommandEmpty>No plant found.</CommandEmpty>
+                            <CommandGroup className="max-h-56 overflow-auto">
+                              {plants.map((plant) => (
+                                <CommandItem
+                                  key={plant._id}
+                                  value={plant.name}
+                                  onSelect={() => {
+                                    setProductionPlanningData((p) => ({
+                                      ...p,
+                                      assignedPlant: plant._id,
+                                    }));
+                                    setOpenPlantDropdown(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={`mr-2 h-4 w-4 ${
+                                      productionPlanningData.assignedPlant ===
+                                      plant._id
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    }`}
+                                  />
+                                  {plant.name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
 
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Send Date</p>
@@ -694,13 +704,13 @@ useEffect(() => {
                     <Input
                       type="date"
                       value={productionPlanningData.sendDate}
-  readOnly={!isEditingSchedule}
-  onChange={(e) =>
-    setProductionPlanningData((p) => ({
-      ...p,
-      sendDate: e.target.value,
-    }))
-  }
+                      readOnly={!isEditingSchedule}
+                      onChange={(e) =>
+                        setProductionPlanningData((p) => ({
+                          ...p,
+                          sendDate: e.target.value,
+                        }))
+                      }
                       className="h-8 sm:h-9 pl-8 sm:pl-10 text-sm border-blue-200 bg-white"
                     />
                   </div>
@@ -711,14 +721,14 @@ useEffect(() => {
                     <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
                     <Input
                       type="date"
-                     value={productionPlanningData.receivedDate}
-  readOnly={!isEditingSchedule}
-  onChange={(e) =>
-    setProductionPlanningData((p) => ({
-      ...p,
-      receivedDate: e.target.value,
-    }))
-  }
+                      value={productionPlanningData.receivedDate}
+                      readOnly={!isEditingSchedule}
+                      onChange={(e) =>
+                        setProductionPlanningData((p) => ({
+                          ...p,
+                          receivedDate: e.target.value,
+                        }))
+                      }
                       className="h-8 sm:h-9 pl-8 sm:pl-10 text-sm border-blue-200 bg-white"
                     />
                   </div>
@@ -728,12 +738,12 @@ useEffect(() => {
                   <Input
                     value={productionPlanningData.soleVendor}
                     readOnly={!isEditingSchedule}
-  onChange={(e) =>
-    setProductionPlanningData((p) => ({
-      ...p,
-      soleVendor: e.target.value,
-    }))
-  }
+                    onChange={(e) =>
+                      setProductionPlanningData((p) => ({
+                        ...p,
+                        soleVendor: e.target.value,
+                      }))
+                    }
                     className="h-8 sm:h-9 text-sm border-blue-200 bg-white"
                   />
                 </div>
@@ -742,12 +752,12 @@ useEffect(() => {
                   <Input
                     value={productionPlanningData.soleColor}
                     readOnly={!isEditingSchedule}
-  onChange={(e) =>
-    setProductionPlanningData((p) => ({
-      ...p,
-      soleColor: e.target.value,
-    }))
-  }
+                    onChange={(e) =>
+                      setProductionPlanningData((p) => ({
+                        ...p,
+                        soleColor: e.target.value,
+                      }))
+                    }
                     className="h-8 sm:h-9 text-sm border-blue-200 bg-white"
                   />
                 </div>
@@ -761,12 +771,12 @@ useEffect(() => {
                       type="date"
                       value={productionPlanningData.soleReceivedDate}
                       readOnly={!isEditingSchedule}
-  onChange={(e) =>
-    setProductionPlanningData((p) => ({
-      ...p,
-      soleReceivedDate: e.target.value,
-    }))
-  }
+                      onChange={(e) =>
+                        setProductionPlanningData((p) => ({
+                          ...p,
+                          soleReceivedDate: e.target.value,
+                        }))
+                      }
                       className="h-8 sm:h-9 pl-8 sm:pl-10 text-sm border-blue-200 bg-white"
                     />
                   </div>

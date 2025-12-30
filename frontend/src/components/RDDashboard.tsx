@@ -32,7 +32,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import html2canvas from "html2canvas";
 
 // import html2canvas from "html2canvas";
 import {
@@ -50,7 +49,6 @@ import {
 import { toast } from "sonner@2.0.3";
 import { useRedirect } from "../hooks/useRedirect";
 import api from "../lib/api";
-import { dashboardService } from "../services/dashboard.service";
 
 interface RDDashboardProps {
   onNavigate?: (subModule: string) => void;
@@ -67,56 +65,70 @@ export function RDDashboard({ onNavigate }: RDDashboardProps) {
   const [assignPersonData, setAssignPersonData] = useState<any[]>([]);
   const [countryData, setCountryData] = useState<any[]>([]);
 
- const [selectedBrandId, setSelectedBrandId] = useState<string>("all");
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("all");
+  const [selectedBrandId, setSelectedBrandId] = useState<string>("all");
+  const [filteredBrands, setFilteredBrands] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
 
+  // Update the useEffect
+  useEffect(() => {
+    const controller = new AbortController();
 
-useEffect(() => {
-  const controller = new AbortController();
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        // Prepare query params
+        const params: any = {};
+        if (selectedCompanyId !== "all") params.companyId = selectedCompanyId;
+        if (selectedBrandId !== "all") params.brandId = selectedBrandId;
 
-  const load = async () => {
-    setIsLoading(true);
-    try {
-      const res = await api.get("/dashboard", {
-        params: selectedBrandId !== "all" ? { brandId: selectedBrandId } : {},
-        signal: controller.signal,
-      });
+        const res = await api.get("/dashboard", {
+          params,
+          signal: controller.signal,
+        });
 
-      const data = res.data;
+        const data = res.data;
 
-      setRdProjects(Array.isArray(data.projects) ? data.projects : []);
-      setBrands(Array.isArray(data.brands) ? data.brands : []);
-      setCategories(Array.isArray(data.categories) ? data.categories : []);
-      setUsers(Array.isArray(data.users) ? data.users : []);
+        setRdProjects(Array.isArray(data.projects) ? data.projects : []);
+        setCompanies(Array.isArray(data.companies) ? data.companies : []);
+        setCategories(Array.isArray(data.categories) ? data.categories : []);
+        setUsers(Array.isArray(data.users) ? data.users : []);
 
-      // ✅ analytics from same API
-      setAssignPersonData(
-        Array.isArray(data?.analytics?.assignPersons)
-          ? data.analytics.assignPersons
-          : []
-      );
+        // ✅ Use filtered brands from API response
+        setFilteredBrands(Array.isArray(data.brands) ? data.brands : []);
 
-      setCountryData(
-        Array.isArray(data?.analytics?.countries)
-          ? data.analytics.countries
-          : []
-      );
-    } catch (err: any) {
-      if (err?.name !== "CanceledError") {
-        console.error("Dashboard load error:", err);
-        toast.error("Failed to load dashboard data");
+        // ✅ analytics from same API
+        setAssignPersonData(
+          Array.isArray(data?.analytics?.assignPersons)
+            ? data.analytics.assignPersons
+            : []
+        );
+
+        setCountryData(
+          Array.isArray(data?.analytics?.countries)
+            ? data.analytics.countries
+            : []
+        );
+      } catch (err: any) {
+        if (err?.name !== "CanceledError") {
+          console.error("Dashboard load error:", err);
+          toast.error("Failed to load dashboard data");
+        }
+      } finally {
+        setIsLoading(false);
       }
-    } finally {
-      setIsLoading(false);
+    };
+
+    load();
+    return () => controller.abort();
+  }, [selectedCompanyId, selectedBrandId]);
+
+  // Reset brand when company changes
+  useEffect(() => {
+    if (selectedCompanyId === "all") {
+      setSelectedBrandId("all");
     }
-  };
-
-  load();
-  return () => controller.abort();
-}, [selectedBrandId]);
-
-
-
- 
+  }, [selectedCompanyId]);
 
   const assignPersonChartData = useMemo(() => {
     return assignPersonData.map((p) => ({
@@ -180,14 +192,11 @@ useEffect(() => {
   };
   const COUNTRY_COLORS = ["#0c9dcb", "#22c55e", "#f97316", "#a855f7"];
 
-  // Convert backend status to stage groups
-  const isStatus = (p, status) => p.status === status;
-
   // Calculate real-time analytics from actual data
   const analytics = useMemo(() => {
     const CLOSED_STATUSES = ["final_approved", "po_approved"];
-const live = rdProjects.filter((p) => !CLOSED_STATUSES.includes(p.status));
-const closed = rdProjects.filter((p) => CLOSED_STATUSES.includes(p.status));
+    const live = rdProjects.filter((p) => !CLOSED_STATUSES.includes(p.status));
+    const closed = rdProjects.filter((p) => CLOSED_STATUSES.includes(p.status));
 
     const redSealOK = rdProjects.filter(
       (p) => p.status === "red_seal" && p.clientApproval === "ok"
@@ -207,49 +216,48 @@ const closed = rdProjects.filter((p) => CLOSED_STATUSES.includes(p.status));
 
     const poApproved = rdProjects.filter((p) => p.status === "po_approved");
     const poPending = rdProjects.filter((p) => p.status === "po_pending");
-const KNOWN_STATUSES = [
-  "costing_pending",
-  "costing_received",
-  "prototype",
-  "red_seal",
-  "green_seal",
-  "final_approved",
-  "po_approved",
-];
-const isOtherStatus = (status?: string) =>
-  status && !KNOWN_STATUSES.includes(status);
+    const KNOWN_STATUSES = [
+      "costing_pending",
+      "costing_received",
+      "prototype",
+      "red_seal",
+      "green_seal",
+      "final_approved",
+      "po_approved",
+    ];
+    const isOtherStatus = (status?: string) =>
+      status && !KNOWN_STATUSES.includes(status);
 
     // Stage breakdown
-   const stages = [
-  {
-    stage: "Prototype",
-    count: rdProjects.filter((p) => p.status === "prototype").length,
-    color: "#26b4e0",
-  },
-  {
-    stage: "Red Seal",
-    count: rdProjects.filter((p) => p.status === "red_seal").length,
-    color: "#dc3545",
-  },
-  {
-    stage: "Green Seal",
-    count: rdProjects.filter((p) => p.status === "green_seal").length,
-    color: "#28a745",
-  },
-  {
-    stage: "PO",
-    count: rdProjects.filter((p) =>
-      ["final_approved", "po_approved"].includes(p.status)
-    ).length,
-    color: "#20c997",
-  },
-  {
-    stage: "Others",
-    count: rdProjects.filter((p) => isOtherStatus(p.status)).length,
-    color: "#f97316", 
-  },
-];
-
+    const stages = [
+      {
+        stage: "Prototype",
+        count: rdProjects.filter((p) => p.status === "prototype").length,
+        color: "#26b4e0",
+      },
+      {
+        stage: "Red Seal",
+        count: rdProjects.filter((p) => p.status === "red_seal").length,
+        color: "#dc3545",
+      },
+      {
+        stage: "Green Seal",
+        count: rdProjects.filter((p) => p.status === "green_seal").length,
+        color: "#28a745",
+      },
+      {
+        stage: "PO",
+        count: rdProjects.filter((p) =>
+          ["final_approved", "po_approved"].includes(p.status)
+        ).length,
+        color: "#20c997",
+      },
+      {
+        stage: "Others",
+        count: rdProjects.filter((p) => isOtherStatus(p.status)).length,
+        color: "#f97316",
+      },
+    ];
 
     // Priority breakdown
     const priorities = [
@@ -696,54 +704,119 @@ const isOtherStatus = (status?: string) =>
   return (
     <div ref={dashboardRef}>
       <div className="space-y-6">
-        {/* Header */}
-        <div className=" bg-linear-to-br from-gray-50 to-gray-100 pb-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] flex items-center justify-center">
-                <LayoutDashboard className="w-6 h-6 text-white" />
+        {/* Header - Aligned with the grid layout */}
+        <div className="space-y-4 mb-6">
+          {/* Title and Actions Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-linear-to-br from-[#0c9dcb] to-[#26b4e0] flex items-center justify-center shrink-0">
+                  <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl sm:text-3xl text-gray-900">
+                    R&D Dashboard
+                  </h1>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                    Complete overview and analytics • {analytics.total} Total
+                    Projects
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-3xl text-gray-900">R&D Dashboard</h1>
-                <p className="text-sm text-gray-600 mt-1">
-                  Complete overview and analytics • {analytics.total} Total
-                  Projects
-                </p>
+            </div>
+
+            <div className="lg:col-span-1">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportPDF}
+                  className="flex-1"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Export</span>
+                </Button>
+
+                <Button
+                  className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white flex-1"
+                  onClick={() => handleNavigate("project")}
+                  size="sm"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">New</span>
+                </Button>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-        <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
-  <SelectTrigger className="w-60">
-    <SelectValue placeholder="Filter by Brand" />
-  </SelectTrigger>
 
- <SelectContent>
-  <SelectItem value="all">All Brands</SelectItem>
-  {brands
-    .filter((b) => b?._id) // ✅ avoid null/undefined
-    .map((b) => (
-      <SelectItem key={String(b._id)} value={String(b._id)}>
-        {b.name || b.brandName || "Unnamed"}
-      </SelectItem>
-    ))}
-</SelectContent>
+          {/* Filters Row - Aligned with grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+            <div className="lg:col-span-2">
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* Company Filter */}
+                <div className="flex-1 min-w-0">
+                  <Select
+                    value={selectedCompanyId}
+                    onValueChange={(value) => {
+                      setSelectedCompanyId(value);
+                      setSelectedBrandId("all");
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Filter by Company" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Companies</SelectItem>
+                      {companies
+                        .filter((c) => c?._id && c?.isActive !== false)
+                        .map((c) => (
+                          <SelectItem key={String(c._id)} value={String(c._id)}>
+                            {c.name || c.companyName || "Unnamed"}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-</Select>
-
-
-            <Button variant="outline" size="sm" onClick={handleExportPDF}>
-              <Download className="w-4 h-4 mr-2" />
-              Export Report
-            </Button>
-
-            <Button
-              className="bg-[#0c9dcb] hover:bg-[#0a8bb5] text-white"
-              onClick={() => handleNavigate("project")}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              New Project
-            </Button>
+                {/* Brand Filter */}
+                <div className="flex-1 min-w-0">
+                  <Select
+                    value={selectedBrandId}
+                    onValueChange={setSelectedBrandId}
+                    disabled={selectedCompanyId === "all"}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue
+                        placeholder={
+                          selectedCompanyId === "all"
+                            ? "Select company first"
+                            : "Filter by Brand"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        {selectedCompanyId === "all"
+                          ? "All Brands"
+                          : `All Brands of ${
+                              companies.find((c) => c._id === selectedCompanyId)
+                                ?.name || "Company"
+                            }`}
+                      </SelectItem>
+                      {filteredBrands
+                        .filter((b) => b?._id && b?.isActive !== false)
+                        .map((b) => (
+                          <SelectItem key={String(b._id)} value={String(b._id)}>
+                            {b.name || b.brandName || "Unnamed"}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            {/* Empty column to maintain grid alignment */}
+            <div className="lg:col-span-2"></div>
           </div>
         </div>
 

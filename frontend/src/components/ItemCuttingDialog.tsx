@@ -1095,6 +1095,30 @@ export function ItemCuttingDialog({
                         {isMobile ? "its" : "items"}
                       </div>
                     </div>
+                    <div>
+                      <div className="text-xs sm:text-sm text-gray-600 mb-1">
+                        Total Remaining
+                      </div>
+                      <div className="text-sm sm:text-base font-bold text-orange-600">
+                        {cuttingItems.length}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs sm:text-sm text-gray-600 mb-1">
+                        Completed Today
+                      </div>
+                      <div className="text-sm sm:text-base font-bold text-orange-600">
+                        {cuttingItems
+                          .reduce((sum, item) => {
+                            const cuttingTodayNum = parseToNumber(
+                              item.cuttingToday
+                            );
+                            return sum + cuttingTodayNum;
+                          }, 0)
+                          .toFixed(4)}{" "}
+                        {isMobile ? "its" : "items"}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1350,7 +1374,7 @@ export function ItemCuttingDialog({
                 </div>
 
                 {/* Summary Statistics */}
-                <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-300 rounded-xl p-4 sm:p-6">
+                {/* <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-300 rounded-xl p-4 sm:p-6">
                   <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
                     <div className="text-center">
                       <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
@@ -1383,7 +1407,7 @@ export function ItemCuttingDialog({
                       </div>
                     </div>
                   </div>
-                </div>
+                </div> */}
               </TabsContent>
 
               {/* History Tab Content */}
