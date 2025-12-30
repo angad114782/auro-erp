@@ -1064,11 +1064,32 @@ export function ProductionPlanning() {
     }
   };
 
-  // Production card management functions
-  const handleStartProduction = (plan: ProductionPlan) => {
-    setSelectedPlan(plan);
-    setIsCreateCardDialogOpen(true);
+  // Replace the current Start Production button logic:
+
+  const handleStartProduction = async () => {
+    try {
+      // First, save the schedule if we're in edit mode or if it's a new schedule
+      if (isEditingSchedule || calendarId) {
+        await handleSaveSchedule();
+      }
+
+      // Then open the production card dialog
+      setOpenCreateCardDialog(true);
+    } catch (error) {
+      console.error("Failed to save schedule:", error);
+      toast.error("Failed to save production schedule");
+    }
   };
+
+  // Then update the Start Production button:
+  <Button
+    size={isMobile ? "sm" : "default"}
+    className="bg-green-500 hover:bg-green-600 text-white w-full sm:w-auto"
+    onClick={handleStartProduction}
+  >
+    <Play className="w-4 h-4 mr-2" />
+    Start Production
+  </Button>;
 
   // Convert production plan to RD Project format for the dialog
   const convertPlanToRDProject = (plan: ProductionPlan | null) => {

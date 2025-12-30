@@ -49,6 +49,7 @@ interface CuttingItem {
   unit: string;
   status: "pending" | "in-progress" | "completed";
   department: string;
+  specification: string;
 }
 
 interface ItemCuttingDialogProps {
@@ -127,7 +128,7 @@ const MobileItemCard = React.memo(
     }, [item.cuttingToday]);
 
     const handleInputChange = (value: string) => {
-      if (value === "" || /^-?\d*\.?\d*$/.test(value)) {
+      if (value === "" || /^\d*\.?\d*$/.test(value)) {
         if ((value.match(/\./g) || []).length > 1) {
           return;
         }
@@ -144,44 +145,6 @@ const MobileItemCard = React.memo(
 
         setInputValue(value);
         updateCuttingQuantity(item.id, value);
-      }
-    };
-
-    const handleInputBlur = () => {
-      const value = inputValue;
-
-      if (value === "" || value === "-") {
-        setInputValue("");
-        updateCuttingQuantity(item.id, "0");
-      } else if (value === ".") {
-        setInputValue("");
-        updateCuttingQuantity(item.id, "0");
-      } else if (value.endsWith(".")) {
-        const cleaned = value.slice(0, -1);
-        if (cleaned === "" || cleaned === "-") {
-          setInputValue("");
-          updateCuttingQuantity(item.id, "0");
-        } else {
-          const numValue = parseFloat(cleaned);
-          if (!isNaN(numValue)) {
-            const formatted = parseFloat(numValue.toFixed(6)).toString();
-            setInputValue(formatted);
-            updateCuttingQuantity(item.id, formatted);
-          } else {
-            setInputValue("");
-            updateCuttingQuantity(item.id, "0");
-          }
-        }
-      } else {
-        const numValue = parseFloat(value);
-        if (!isNaN(numValue)) {
-          const formatted = parseFloat(numValue.toFixed(6)).toString();
-          setInputValue(formatted);
-          updateCuttingQuantity(item.id, formatted);
-        } else {
-          setInputValue("");
-          updateCuttingQuantity(item.id, "0");
-        }
       }
     };
 
@@ -247,6 +210,12 @@ const MobileItemCard = React.memo(
               <div className="font-semibold text-gray-900 text-sm mb-1 truncate">
                 {item.itemName}
               </div>
+              {/* SPECIFICATION ADDED HERE */}
+              {item.specification && (
+                <div className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded mb-2 truncate border border-blue-100">
+                  {item.specification}
+                </div>
+              )}
               <div className="flex items-center gap-2 flex-wrap">
                 {getItemStatusBadge()}
                 {isBottleneck && (
@@ -288,7 +257,7 @@ const MobileItemCard = React.memo(
           <div className="bg-gray-50 rounded p-2 text-center">
             <div className="text-xs text-gray-500">Remaining</div>
             <div className="text-sm font-semibold text-orange-600">
-              {remaining}
+              {remaining.toFixed(4)}
             </div>
           </div>
         </div>
@@ -324,7 +293,9 @@ const MobileItemCard = React.memo(
               <Input
                 type="text"
                 inputMode="decimal"
-                value={inputValue}
+                value={
+                  inputValue === "0" || inputValue === "" ? "" : inputValue
+                }
                 onChange={(e) => handleInputChange(e.target.value)}
                 onBlur={(e) => {
                   const finalValue = clampOnBlur(item, e.target.value);
@@ -333,80 +304,26 @@ const MobileItemCard = React.memo(
                 className="h-9 text-sm font-semibold border-2 focus:border-purple-500"
                 placeholder="0"
               />
-            </div>
-
-            {/* Deliver Button for RFD or Advance To dropdown for other stages */}
-            {item.department === "rfd" ? (
-              <div>
-                <Label className="text-xs font-medium text-gray-600 mb-2 block">
-                  Ready for Delivery
-                </Label>
-                <Button
-                  className="w-full h-9 text-xs bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
-                  onClick={() => handleDeliverItem(productData.projectId)}
-                >
-                  <CheckCircle className="w-3 h-3 mr-2" />
-                  Advanced to Deliver
-                </Button>
-              </div>
-            ) : (
-              <div>
-                <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
-                  Advance To
-                </Label>
+              {item.department !== "rfd" && (
                 <Select
+                  value={stage ? undefined : undefined}
                   onValueChange={(value) => onAdvanceToChange(item.id, value)}
                 >
-                  <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-linear-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
-                    <SelectValue placeholder="Next stage..." />
+                  <SelectTrigger className="h-9 mt-2 text-xs border-2 border-emerald-300">
+                    <SelectValue placeholder="Next stage" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cutting">
-                      <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
-                        <span>Cutting</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="printing">
-                      <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
-                        <span>Printing</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="upper">
-                      <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
-                        <span>Upper</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="upper-rej">
-                      <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
-                        <span>Upper REJ</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="assembly">
-                      <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
-                        <span>Assembly</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="packing">
-                      <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-                        <span>Packing</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="rfd">
-                      <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-                        <span>RFD</span>
-                      </div>
-                    </SelectItem>
+                    <SelectItem value="cutting">Cutting</SelectItem>
+                    <SelectItem value="printing">Printing</SelectItem>
+                    <SelectItem value="upper">Upper</SelectItem>
+                    <SelectItem value="upper-rej">Upper REJ</SelectItem>
+                    <SelectItem value="assembly">Assembly</SelectItem>
+                    <SelectItem value="packing">Packing</SelectItem>
+                    <SelectItem value="rfd">RFD</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Today's Update Indicator */}
             {cuttingTodayNum > 0 && (
@@ -708,7 +625,6 @@ export function ItemCuttingDialog({
       setCuttingItems([]);
       return;
     }
-
     const mapped: CuttingItem[] = rows.map((row) => {
       const required = Number(row.requirement ?? 0);
 
@@ -720,6 +636,7 @@ export function ItemCuttingDialog({
         cuttingToday: 0,
         unit: row.unit || "unit",
         department: row.department,
+        specification: row.specification,
         status:
           Number(row.todayDone) >= required
             ? "completed"
@@ -760,16 +677,16 @@ export function ItemCuttingDialog({
         const alreadyCutNum = parseToNumber(item.alreadyCut);
         const maxAllowed = Math.max(item.requiredQuantity - alreadyCutNum, 0);
 
-        if (value === "" || value === "." || value === "-") {
+        if (value === "" || value === ".") {
           return { ...item, cuttingToday: value };
         }
 
-        if (!/^-?\d*\.?\d*$/.test(value)) {
+        if (!/^\d*\.?\d*$/.test(value)) {
           return item;
         }
 
         const numericValue = parseFloat(value);
-        if (isNaN(numericValue)) return item;
+        if (isNaN(numericValue) || numericValue < 0) return item;
 
         if (numericValue > maxAllowed) {
           toast.error(`Max allowed today is ${maxAllowed.toFixed(4)}`);
@@ -923,70 +840,76 @@ export function ItemCuttingDialog({
       );
     }
 
-    return (
-      <div className="col-span-12 sm:col-span-4">
-        <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
-          Advance To Next Stage
-        </Label>
-        <Select
-          onValueChange={(value: any) => updateNextDepartment(item.id, value)}
-        >
-          <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-linear-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
-            <SelectValue placeholder="Select next stage..." />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="cutting">
-              <div className="flex items-center gap-2 text-xs sm:text-sm">
-                <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
-                <span>Cutting</span>
-              </div>
-            </SelectItem>
-            <SelectItem value="printing">
-              <div className="flex items-center gap-2 text-xs sm:text-sm">
-                <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
-                <span>Printing</span>
-              </div>
-            </SelectItem>
-            <SelectItem value="upper">
-              <div className="flex items-center gap-2 text-xs sm:text-sm">
-                <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
-                <span>Upper</span>
-              </div>
-            </SelectItem>
-            <SelectItem value="upper-rej">
-              <div className="flex items-center gap-2 text-xs sm:text-sm">
-                <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
-                <span>Upper REJ</span>
-              </div>
-            </SelectItem>
-            <SelectItem value="assembly">
-              <div className="flex items-center gap-2 text-xs sm:text-sm">
-                <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
-                <span>Assembly</span>
-              </div>
-            </SelectItem>
-            <SelectItem value="packing">
-              <div className="flex items-center gap-2 text-xs sm:text-sm">
-                <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-                <span>Packing</span>
-              </div>
-            </SelectItem>
-            <SelectItem value="rfd">
-              <div className="flex items-center gap-2 text-xs sm:text-sm">
-                <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-                <span>RFD</span>
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-    );
+    // return (
+    //   <div className="col-span-12 sm:col-span-4">
+    //     <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
+    //       Advance To Next Stage
+    //     </Label>
+    //     <Select
+    //       onValueChange={(value: any) => updateNextDepartment(item.id, value)}
+    //     >
+    //       <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-linear-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
+    //         <SelectValue placeholder="Select next stage..." />
+    //       </SelectTrigger>
+    //       <SelectContent>
+    //         <SelectItem value="cutting">
+    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
+    //             <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
+    //             <span>Cutting</span>
+    //           </div>
+    //         </SelectItem>
+    //         <SelectItem value="printing">
+    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
+    //             <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
+    //             <span>Printing</span>
+    //           </div>
+    //         </SelectItem>
+    //         <SelectItem value="upper">
+    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
+    //             <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
+    //             <span>Upper</span>
+    //           </div>
+    //         </SelectItem>
+    //         <SelectItem value="upper-rej">
+    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
+    //             <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
+    //             <span>Upper REJ</span>
+    //           </div>
+    //         </SelectItem>
+    //         <SelectItem value="assembly">
+    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
+    //             <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+    //             <span>Assembly</span>
+    //           </div>
+    //         </SelectItem>
+    //         <SelectItem value="packing">
+    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
+    //             <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
+    //             <span>Packing</span>
+    //           </div>
+    //         </SelectItem>
+    //         <SelectItem value="rfd">
+    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
+    //             <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
+    //             <span>RFD</span>
+    //           </div>
+    //         </SelectItem>
+    //       </SelectContent>
+    //     </Select>
+    //   </div>
+    // );
   };
 
   const minimumAvailable = calculateMinimumAvailable();
-  const hasAnyCutting = cuttingItems.some((item) => {
+  const hasAnyValidAction = cuttingItems.some((item) => {
     const cuttingTodayNum = parseToNumber(item.cuttingToday);
-    return cuttingTodayNum > 0;
+    const nextDept = nextDeptMap[item.id];
+
+    if (item.department === "rfd") {
+      return cuttingTodayNum > 0;
+    }
+
+    return cuttingTodayNum > 0 && !!nextDept;
   });
 
   return (
@@ -1030,7 +953,7 @@ export function ItemCuttingDialog({
                   <Button
                     onClick={handleSaveCutting}
                     className={`${stageDetails.buttonBg} text-white h-9 sm:h-11 px-3 sm:px-6 text-xs sm:text-sm`}
-                    disabled={!hasAnyCutting}
+                    disabled={!hasAnyValidAction}
                   >
                     <Save className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                     {"Save"}
@@ -1226,13 +1149,18 @@ export function ItemCuttingDialog({
                                 {/* Item Name & Status */}
                                 <div className="col-span-12 sm:col-span-3">
                                   <div className="flex items-start gap-3">
-                                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center shrink-0 border-2 border-gray-300">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-linear-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center shrink-0 border-2 border-gray-300">
                                       <Scissors className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="font-semibold text-gray-900 text-sm sm:text-base mb-1 truncate">
                                         {item.itemName}
                                       </div>
+                                      {item.specification && (
+                                        <div className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded mb-2 truncate border border-blue-100">
+                                          {item.specification}
+                                        </div>
+                                      )}
                                       <div className="flex items-center gap-2 flex-wrap">
                                         {getItemStatusBadge(item)}
                                         {isBottleneck && (
@@ -1269,31 +1197,80 @@ export function ItemCuttingDialog({
                                 </div>
 
                                 {/* Cutting Today Input */}
-                                <div className="col-span-4 sm:col-span-2">
-                                  <div className="text-xs font-medium text-gray-600 mb-1 block">
-                                    Today
+                                <div className="col-span-12 sm:col-span-3">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {/* Today Input */}
+                                    <div>
+                                      <div className="text-xs font-medium text-gray-600 mb-1">
+                                        Today
+                                      </div>
+                                      <Input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={getDisplayValue()}
+                                        onChange={(e) =>
+                                          updateCuttingQuantity(
+                                            item.id,
+                                            e.target.value
+                                          )
+                                        }
+                                        onBlur={(e) => {
+                                          const finalValue = clampOnBlur(
+                                            item,
+                                            e.target.value
+                                          );
+                                          updateCuttingQuantity(
+                                            item.id,
+                                            finalValue
+                                          );
+                                        }}
+                                        className="h-9 text-sm font-semibold border-2 focus:border-purple-500"
+                                        placeholder="0"
+                                      />
+                                    </div>
+
+                                    {/* Next Stage */}
+                                    {item.department !== "rfd" && (
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-600 mb-1">
+                                          Next Stage
+                                        </div>
+                                        <Select
+                                          value={nextDeptMap[item.id]}
+                                          onValueChange={(value) =>
+                                            updateNextDepartment(item.id, value)
+                                          }
+                                        >
+                                          <SelectTrigger className="h-9 text-sm border-2 border-emerald-300">
+                                            <SelectValue placeholder="Select" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="cutting">
+                                              Cutting
+                                            </SelectItem>
+                                            <SelectItem value="printing">
+                                              Printing
+                                            </SelectItem>
+                                            <SelectItem value="upper">
+                                              Upper
+                                            </SelectItem>
+                                            <SelectItem value="upper-rej">
+                                              Upper REJ
+                                            </SelectItem>
+                                            <SelectItem value="assembly">
+                                              Assembly
+                                            </SelectItem>
+                                            <SelectItem value="packing">
+                                              Packing
+                                            </SelectItem>
+                                            <SelectItem value="rfd">
+                                              RFD
+                                            </SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    )}
                                   </div>
-                                  <Input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={getDisplayValue()}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      updateCuttingQuantity(item.id, value);
-                                    }}
-                                    onBlur={(e) => {
-                                      const finalValue = clampOnBlur(
-                                        item,
-                                        e.target.value
-                                      );
-                                      updateCuttingQuantity(
-                                        item.id,
-                                        finalValue
-                                      );
-                                    }}
-                                    className="h-9 sm:h-10 text-sm sm:text-base font-semibold border-2 focus:border-purple-500"
-                                    placeholder="0"
-                                  />
                                 </div>
 
                                 {/* Remaining */}
@@ -1309,10 +1286,10 @@ export function ItemCuttingDialog({
 
                               {/* Second Row with Deliver Button/Advance To Dropdown and Progress Bar */}
                               <div className="grid grid-cols-12 gap-4 sm:gap-6 items-center mt-4">
-                                {renderAdvanceToSection(item)}
+                                {/* {renderAdvanceToSection(item)} */}
 
                                 {/* Progress Bar - Takes remaining columns */}
-                                <div className="col-span-12 sm:col-span-8">
+                                <div className="col-span-12">
                                   <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs text-gray-600">
                                       {stageDetails.title} Progress
@@ -1372,42 +1349,6 @@ export function ItemCuttingDialog({
                         ))}
                   </div>
                 </div>
-
-                {/* Summary Statistics */}
-                {/* <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-300 rounded-xl p-4 sm:p-6">
-                  <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
-                    <div className="text-center">
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-blue-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
-                        <Package className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" />
-                      </div>
-                      <div className="text-xs sm:text-sm text-gray-600 mb-1">
-                        Total Items
-                      </div>
-                      <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
-                        {cuttingItems.length}
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-orange-500 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-md">
-                        <Clock className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg-h-6 text-white" />
-                      </div>
-                      <div className="text-xs sm:text-sm text-gray-600 mb-1">
-                        {stageDetails.title} Today
-                      </div>
-                      <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
-                        {cuttingItems
-                          .reduce((sum, item) => {
-                            const cuttingTodayNum = parseToNumber(
-                              item.cuttingToday
-                            );
-                            return sum + cuttingTodayNum;
-                          }, 0)
-                          .toFixed(4)}{" "}
-                        {isMobile ? "its" : "items"}
-                      </div>
-                    </div>
-                  </div>
-                </div> */}
               </TabsContent>
 
               {/* History Tab Content */}

@@ -232,6 +232,9 @@ export function ProductionPlanDetailsDialog({
   const [calendarId, setCalendarId] = useState<string | null>(null);
   const [isEditingSchedule, setIsEditingSchedule] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  // Add these state variables
+  const [addingNewPlant, setAddingNewPlant] = useState(false);
+  const [newPlantName, setNewPlantName] = useState("");
   // Plant state
   const [plants, setPlants] = useState<{ _id: string; name: string }[]>([]);
   const [openPlantDropdown, setOpenPlantDropdown] = useState(false);
@@ -295,9 +298,9 @@ export function ProductionPlanDetailsDialog({
         projectId: plan?.project?._id,
         productionDetails: {
           quantity:
-            plan.quantity ??
-            plan.quantitySnapshot ??
-            plan.project?.po?.quantity ??
+            plan?.quantity ??
+            plan?.quantitySnapshot ??
+            plan?.project?.po?.quantity ??
             0,
         },
         scheduling: {
@@ -319,6 +322,7 @@ export function ProductionPlanDetailsDialog({
       // 🟢 CASE 2: No schedule exists → CREATE NEW
       else {
         const res = await api.post("/calendar", payload);
+        console.log(res.data.data, "fffffffffffffffffffffffff");
         setCalendarId(res.data?.data?._id || null);
         toast.success("Production schedule created");
       }
@@ -401,6 +405,8 @@ export function ProductionPlanDetailsDialog({
         setIsScheduleLoading(true);
         const res = await api.get(`/projects/${plan.project._id}/schedule`);
         const payload = res.data?.data ?? res.data;
+
+        console.log(payload, "fffffeeeeeeeeeeeeeeeeeeeeeee");
         const first =
           Array.isArray(payload.items) && payload.items.length > 0
             ? payload.items[0]
@@ -472,7 +478,46 @@ export function ProductionPlanDetailsDialog({
         return "bg-gray-100 text-gray-800";
     }
   };
+  const handleCreateNewPlant = async () => {
+    if (!newPlantName.trim()) {
+      toast.error("Please enter a plant name");
+      return;
+    }
 
+    try {
+      const res = await api.post("/assign-plant", {
+        name: newPlantName.trim(),
+      });
+
+      const createdPlant = res.data?.data || res.data;
+
+      // Add new plant to the list
+      setPlants((prev) => [createdPlant, ...prev]);
+
+      // Automatically select the newly created plant
+      setProductionPlanningData((prev) => ({
+        ...prev,
+        assignedPlant: createdPlant._id,
+      }));
+
+      toast.success(`Plant "${createdPlant.name}" created and selected`);
+    } catch (err: any) {
+      console.error("Failed to create plant:", err);
+
+      // Handle duplicate error
+      if (
+        err?.response?.data?.message?.includes("already exists") ||
+        err?.response?.status === 409
+      ) {
+        toast.error("A plant with this name already exists");
+      } else {
+        toast.error("Failed to create plant");
+      }
+    } finally {
+      setNewPlantName("");
+      setAddingNewPlant(false);
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -490,9 +535,9 @@ export function ProductionPlanDetailsDialog({
                 <Factory className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <DialogTitle className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 truncate">
+                <div className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 truncate">
                   {plan.artNameSnapshot}
-                </DialogTitle>
+                </div>
                 <DialogDescription className="sr-only">
                   Production plan details, scheduling, costs and actions.
                 </DialogDescription>
@@ -620,7 +665,7 @@ export function ProductionPlanDetailsDialog({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div>
-                  <p className="text-xs text-blue-600 mb-1">Assigned Plant</p>
+                  <p className="text-xs text-blue-600 mb-1">Assigned Plant *</p>
 
                   {!isEditingSchedule ? (
                     <Input
@@ -643,6 +688,7 @@ export function ProductionPlanDetailsDialog({
                         <Button
                           variant="outline"
                           role="combobox"
+                          aria-expanded={openPlantDropdown}
                           className="w-full h-8 sm:h-9 justify-between text-sm"
                         >
                           <span className="truncate">
@@ -654,22 +700,25 @@ export function ProductionPlanDetailsDialog({
                                 )?.name
                               : loadingPlants
                               ? "Loading..."
-                              : "Select plant..."}
+                              : "Select plant"}
                           </span>
                           <ChevronDown className="h-4 w-4 opacity-50" />
                         </Button>
                       </PopoverTrigger>
-
                       <PopoverContent className="w-full p-0" align="start">
                         <Command>
-                          <CommandInput placeholder="Search plant..." />
+                          <CommandInput
+                            placeholder="Search plants..."
+                            className="h-9"
+                          />
                           <CommandList>
                             <CommandEmpty>No plant found.</CommandEmpty>
-                            <CommandGroup className="max-h-56 overflow-auto">
+                            <CommandGroup className="max-h-64 overflow-auto">
                               {plants.map((plant) => (
                                 <CommandItem
                                   key={plant._id}
                                   value={plant.name}
+                                  className="flex items-center justify-between"
                                   onSelect={() => {
                                     setProductionPlanningData((p) => ({
                                       ...p,
@@ -678,25 +727,110 @@ export function ProductionPlanDetailsDialog({
                                     setOpenPlantDropdown(false);
                                   }}
                                 >
-                                  <Check
-                                    className={`mr-2 h-4 w-4 ${
-                                      productionPlanningData.assignedPlant ===
-                                      plant._id
-                                        ? "opacity-100"
-                                        : "opacity-0"
-                                    }`}
-                                  />
-                                  {plant.name}
+                                  <div className="flex items-center flex-1 min-w-0">
+                                    <Check
+                                      className={`mr-2 h-4 w-4 ${
+                                        productionPlanningData.assignedPlant ===
+                                        plant._id
+                                          ? "opacity-100"
+                                          : "opacity-0"
+                                      }`}
+                                    />
+                                    <span className="truncate">
+                                      {plant.name}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="p-1 hover:bg-red-50 rounded"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }}
+                                    onClick={async (e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      try {
+                                        await api.delete(
+                                          `/assign-plant/${plant._id}`
+                                        );
+                                        setPlants((prev) =>
+                                          prev.filter(
+                                            (p) => p._id !== plant._id
+                                          )
+                                        );
+                                        toast.success("Plant deleted");
+                                      } catch (err) {
+                                        toast.error("Delete failed");
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-red-500 opacity-60 hover:opacity-100" />
+                                  </button>
                                 </CommandItem>
                               ))}
                             </CommandGroup>
+
+                            {/* Add new plant inline - JUST LIKE CREATE PROJECT DIALOG */}
+                            <div className="border-t p-2">
+                              {!addingNewPlant ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  className="w-full justify-start text-blue-600"
+                                  onClick={() => setAddingNewPlant(true)}
+                                >
+                                  <Plus className="w-4 h-4 mr-2" />
+                                  Create New Plant
+                                </Button>
+                              ) : (
+                                <div className="space-y-2">
+                                  <Input
+                                    placeholder="Enter new plant name..."
+                                    value={newPlantName}
+                                    onChange={(e) =>
+                                      setNewPlantName(e.target.value)
+                                    }
+                                    onKeyDown={(e) =>
+                                      e.key === "Enter" &&
+                                      handleCreateNewPlant()
+                                    }
+                                    autoFocus
+                                    className="text-sm"
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={handleCreateNewPlant}
+                                      className="flex-1 text-xs"
+                                    >
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      Add
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setAddingNewPlant(false);
+                                        setNewPlantName("");
+                                      }}
+                                      className="flex-1 text-xs"
+                                    >
+                                      <X className="w-3 h-3 mr-1" />
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </CommandList>
                         </Command>
                       </PopoverContent>
                     </Popover>
                   )}
                 </div>
-
                 <div>
                   <p className="text-xs text-blue-600 mb-1">Send Date</p>
                   <div className="relative">

@@ -877,6 +877,7 @@ export async function fetchProductionCardsForProject(projectId, opts = {}) {
 
   const [items, total] = await Promise.all([
     PCProductionCard.find(q)
+      .populate({ path: "projectId", select: "autoCode artName" })
       .populate({ path: "assignedPlant", select: "name" })
       .populate({ path: "materialRequests", select: "_id status createdAt" })
       .sort(sort)

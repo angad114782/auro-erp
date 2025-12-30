@@ -1102,9 +1102,9 @@ export function DeliveryManagement({
                   <Truck className="w-5 h-5 md:w-7 md:h-7 text-white" />
                 </div>
                 <div>
-                  <DialogTitle className="text-lg md:text-2xl lg:text-3xl font-semibold text-gray-900 mb-1 md:mb-2">
+                  <div className="text-lg md:text-xl lg:text-2xl font-semibold text-gray-900 mb-1 md:mb-2">
                     Delivery Details
-                  </DialogTitle>
+                  </div>
                   <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
                     <span className="text-sm md:text-lg text-gray-600">
                       {selectedDelivery?.projectCode}
@@ -1265,8 +1265,9 @@ export function DeliveryManagement({
                       <TruckIcon className="w-4 h-4 md:w-5 md:h-5" />
                       Delivery Information
                     </h3>
-                    <div className="space-y-4">
-                      {/* Bill Number - Editable */}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Bill Number */}
                       <div>
                         <Label className="text-xs md:text-sm text-gray-600 flex items-center gap-1.5">
                           <Receipt className="w-3.5 h-3.5" />
@@ -1288,7 +1289,7 @@ export function DeliveryManagement({
                         )}
                       </div>
 
-                      {/* Delivery Date - Editable */}
+                      {/* Delivery Date */}
                       <div>
                         <Label className="text-xs md:text-sm text-gray-600 flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" />
@@ -1311,8 +1312,8 @@ export function DeliveryManagement({
                         )}
                       </div>
 
-                      {/* LR Number - Editable */}
-                      <div>
+                      {/* LR Number – full width on desktop */}
+                      <div className="md:col-span-2">
                         <Label className="text-xs md:text-sm text-gray-600 flex items-center gap-1.5">
                           <FileDigit className="w-3.5 h-3.5" />
                           LR Number

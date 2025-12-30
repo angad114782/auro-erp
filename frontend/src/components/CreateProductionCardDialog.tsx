@@ -108,6 +108,8 @@ export function CreateProductionCardDialog({
   }, []);
 
   const rdProjects = projects;
+
+  console.log(rdProjects, "sssssssssssssssss");
   const [selectedProject, setSelectedProject] = useState<any>(null);
 
   const [showProductionCardForm, setShowProductionCardForm] = useState(false);
@@ -150,6 +152,8 @@ export function CreateProductionCardDialog({
       // console.log(res, "Production Cards API Response");
       const items =
         res?.data?.data?.items ?? res?.data?.items ?? res?.data?.data ?? [];
+
+      console.log(items, "Fetched Production Cards");
       const normalized = Array.isArray(items)
         ? items
         : Array.isArray(res?.data)
@@ -348,37 +352,36 @@ export function CreateProductionCardDialog({
 
   // Update handleStopProduction to revert stage
   const handleStopProduction = async (card: ProductionCardData) => {
-  setLoadingCardId(card.id);
+    setLoadingCardId(card.id);
 
-  try {
-    const response = await api.delete(
-      `/projects/${card.projectId}/production-cards/${card._id}/stop`,
-      {
-        data: { updatedBy: "Production Manager" },
+    try {
+      const response = await api.delete(
+        `/projects/${card.projectId}/production-cards/${card._id}/stop`,
+        {
+          data: { updatedBy: "Production Manager" },
+        }
+      );
+
+      if (response.data.success) {
+        setApiCards((prev) =>
+          prev.map((c) =>
+            c._id === card._id ? { ...c, stage: "Planning" } : c
+          )
+        );
+
+        toast.success(
+          `Production card "${card.cardName}" stopped & tracking cleared`
+        );
+      } else {
+        throw new Error("Failed to stop production");
       }
-    );
-
-    if (response.data.success) {
-      setApiCards((prev) =>
-        prev.map((c) =>
-          c._id === card._id ? { ...c, stage: "Planning" } : c
-        )
-      );
-
-      toast.success(
-        `Production card "${card.cardName}" stopped & tracking cleared`
-      );
-    } else {
-      throw new Error("Failed to stop production");
+    } catch (error: any) {
+      console.error("Failed to stop production:", error);
+      toast.error(error?.response?.data?.error || "Failed to stop production");
+    } finally {
+      setLoadingCardId(null);
     }
-  } catch (error: any) {
-    console.error("Failed to stop production:", error);
-    toast.error(error?.response?.data?.error || "Failed to stop production");
-  } finally {
-    setLoadingCardId(null);
-  }
-};
-
+  };
 
   const handleSaveProductionCard = (cardData: ProductionCardData) => {
     toast.success("Production Card saved successfully!");
@@ -437,7 +440,7 @@ export function CreateProductionCardDialog({
     const isTracking = card.stage === "Tracking";
     const isStarting = startingProduction === card.id;
     const isLoading = loadingCardId === card.id;
-
+    console.log(card, "sdddddddddddddd");
     return (
       <div className="flex flex-col gap-3 w-full">
         {/* Main Action Buttons */}
@@ -619,6 +622,7 @@ export function CreateProductionCardDialog({
         toast.error("Could not find card data for PDF generation");
         return;
       }
+      console.log(fullCard, "Full card data for PDF");
 
       // Prepare material sections
       const materialSections = {
@@ -645,10 +649,26 @@ export function CreateProductionCardDialog({
         totalOrder - (otherCardsAllocation + thisCardAllocated)
       );
 
+      // FIX: Get art name from the nested projectId object
+      const artName =
+        fullCard.projectId?.artName ||
+        selectedProject?.artName ||
+        fullCard.artName ||
+        card.cardName ||
+        "N/A";
+
+      // FIX: Get project ID properly
+      const projectId =
+        fullCard.projectId?._id ||
+        fullCard.projectId?.autoCode ||
+        card.projectId ||
+        "N/A";
+
       const pdfData = {
         cardNumber: card.cardName || fullCard.cardNumber || "N/A",
+        artName: artName, // Use the extracted art name
         productName: card.cardName,
-        projectId: card.projectId || "N/A",
+        projectId: projectId, // Use the extracted project ID
         cardQuantity: thisCardAllocated,
         startDate:
           card.startDate || fullCard.startDate || new Date().toISOString(),
@@ -675,6 +695,8 @@ export function CreateProductionCardDialog({
         },
       };
 
+      console.log("PDF Data prepared:", pdfData);
+
       toast.promise(generateProductionCardPDF(pdfData), {
         loading: "Generating professional PDF report...",
         success: "PDF report downloaded successfully!",
@@ -685,7 +707,6 @@ export function CreateProductionCardDialog({
       toast.error("Failed to generate PDF report");
     }
   };
-
   const handleDialogClose = () => {
     // Reset the state
     setProductionCardCreated(null);

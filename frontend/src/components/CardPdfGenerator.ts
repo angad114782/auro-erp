@@ -189,20 +189,13 @@ export async function generateProductionCardPDF(
 
   const startX = LAYOUT.marginX;
   const rowH = 11; // Row 1: Product (Wide) | Project ID | Quantity
-
-  drawGridCell(
-    doc,
-    "Product Name",
-    cardData.productName,
-    startX,
-    yPos,
-    100,
-    rowH
-  );
+  const artNameToDisplay =
+    cardData?.artName || cardData?.productName || "Not Specified";
+  drawGridCell(doc, "Art Name", artNameToDisplay, startX, yPos, 100, rowH);
   drawGridCell(
     doc,
     "Project ID",
-    cardData.projectId,
+    cardData.productName,
     startX + 100,
     yPos,
     50,
