@@ -3014,34 +3014,6 @@ export function ProductionTrackingTable() {
                         );
                       })}
                     </div>
-
-                    {/* Quick Actions Footer */}
-                    <div className="bg-linear-to-r from-blue-50 to-indigo-50 rounded-xl p-4 sm:p-6 border border-blue-200">
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                        <div>
-                          <h4 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">
-                            Quick Update Actions
-                          </h4>
-                          <p className="text-xs sm:text-sm text-gray-600">
-                            Click any stage card above to update directly
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs"
-                            onClick={() => {
-                              setSelectedProductionRecord(null);
-                              setStageUpdateDialogOpen(true);
-                            }}
-                          >
-                            <Edit className="w-3 h-3 mr-1" />
-                            Bulk Update
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -3055,7 +3027,8 @@ export function ProductionTrackingTable() {
         open={itemCuttingDialogOpen}
         onOpenChange={setItemCuttingDialogOpen}
         productData={selectedProductForCutting}
-        stage={selectedDepartment as ProductionStage}
+        stage={selectedProductForCutting?.stage || selectedDepartment}
+        // stage={selectedDepartment as ProductionStage}
         rows={departmentRows} // ✅ ADD THIS
         loadingRows={loadingRows} // ✅ ADD THIS
       />

@@ -40,7 +40,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import api from "../lib/api";
 
-
 interface HistoryRecord {
   itemName: string;
   timestamp: string;
@@ -53,12 +52,10 @@ interface HistoryRecord {
   notes?: string;
 }
 
-
-
 interface CuttingItem {
   id: string;
   itemName: string;
-  cardQuantity: number;        // ✅ required total
+  cardQuantity: number; // ✅ required total
   alreadyCut: number;
   cuttingToday: number | string;
   unit: string;
@@ -66,7 +63,6 @@ interface CuttingItem {
   department: string;
   specification: string;
 }
-
 
 interface ItemCuttingDialogProps {
   open: boolean;
@@ -90,7 +86,6 @@ function parseToNumber(value: string | number): number {
   const num = parseFloat(value);
   return Number.isNaN(num) ? 0 : num;
 }
-
 
 const MobileItemCard = React.memo(
   ({
@@ -116,9 +111,6 @@ const MobileItemCard = React.memo(
     stage: string;
     onAdvanceToChange: (rowId: string, dept: string) => void;
   }) => {
-
-
-
     const alreadyCutNum = parseToNumber(item.alreadyCut);
     const cuttingTodayNum = parseToNumber(item.cuttingToday);
     const totalAfter = alreadyCutNum + cuttingTodayNum;
@@ -170,7 +162,7 @@ const MobileItemCard = React.memo(
     const getItemStatusBadge = () => {
       const total = totalAfter;
       const percentage =
-  item.cardQuantity > 0 ? (total / item.cardQuantity) * 100 : 0;
+        item.cardQuantity > 0 ? (total / item.cardQuantity) * 100 : 0;
 
       if (percentage >= 100) {
         return (
@@ -202,8 +194,7 @@ const MobileItemCard = React.memo(
 
     const clampOnBlur = (item: CuttingItem, value: string) => {
       const alreadyCutNum = parseToNumber(item.alreadyCut);
-     const maxAllowed = Math.max(item.cardQuantity - alreadyCutNum, 0);
-
+      const maxAllowed = Math.max(item.cardQuantity - alreadyCutNum, 0);
 
       const num = parseFloat(value);
       if (isNaN(num)) return "0";
@@ -306,44 +297,64 @@ const MobileItemCard = React.memo(
         {/* Expanded Content */}
         {isExpanded && (
           <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
-            {/* Cutting Today Input */}
-            <div>
-              <Label className="text-xs font-medium text-gray-600 mb-1 block">
-                {stageDetails.title} Today
-              </Label>
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={
-                  inputValue === "0" || inputValue === "" ? "" : inputValue
-                }
-                onChange={(e) => handleInputChange(e.target.value)}
-                onBlur={(e) => {
-                  const finalValue = clampOnBlur(item, e.target.value);
-                  updateCuttingQuantity(item.id, finalValue);
-                }}
-                className="h-9 text-sm font-semibold border-2 focus:border-purple-500"
-                placeholder="0"
-              />
-              {item.department !== "rfd" && (
-                <Select
-                  value={stage ? undefined : undefined}
-                  onValueChange={(value) => onAdvanceToChange(item.id, value)}
-                >
-                  <SelectTrigger className="h-9 mt-2 text-xs border-2 border-emerald-300">
-                    <SelectValue placeholder="Next stage" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cutting">Cutting</SelectItem>
-                    <SelectItem value="printing">Printing</SelectItem>
-                    <SelectItem value="upper">Upper</SelectItem>
-                    <SelectItem value="upper-rej">Upper REJ</SelectItem>
-                    <SelectItem value="assembly">Assembly</SelectItem>
-                    <SelectItem value="packing">Packing</SelectItem>
-                    <SelectItem value="rfd">RFD</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Today Input */}
+              <div>
+                <Label className="text-xs font-medium text-gray-600 mb-1 block">
+                  {stageDetails.title} Today
+                </Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={
+                    inputValue === "0" || inputValue === "" ? "" : inputValue
+                  }
+                  onChange={(e) => handleInputChange(e.target.value)}
+                  onBlur={(e) => {
+                    const finalValue = clampOnBlur(item, e.target.value);
+                    updateCuttingQuantity(item.id, finalValue);
+                  }}
+                  className="h-9 text-sm font-semibold border-2 focus:border-purple-500"
+                  placeholder="0"
+                />
+              </div>
+
+              {/* Delivery Button for RFD OR Next Stage dropdown */}
+              <div>
+                <Label className="text-xs font-medium text-gray-600 mb-1 block">
+                  {item.department === "rfd" ? "Delivery" : "Next Stage"}
+                </Label>
+                {item.department === "rfd" ? (
+                  <Button
+                    className="w-full h-9 text-xs bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
+                    onClick={() =>
+                      productData?.projectId &&
+                      handleDeliverItem(productData.projectId)
+                    }
+                  >
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    Deliver
+                  </Button>
+                ) : (
+                  <Select
+                    value={stage ? undefined : undefined}
+                    onValueChange={(value) => onAdvanceToChange(item.id, value)}
+                  >
+                    <SelectTrigger className="h-9 text-xs border-2 border-emerald-300">
+                      <SelectValue placeholder="Next stage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cutting">Cutting</SelectItem>
+                      <SelectItem value="printing">Printing</SelectItem>
+                      <SelectItem value="upper">Upper</SelectItem>
+                      <SelectItem value="upper-rej">Upper REJ</SelectItem>
+                      <SelectItem value="assembly">Assembly</SelectItem>
+                      <SelectItem value="packing">Packing</SelectItem>
+                      <SelectItem value="rfd">RFD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
 
             {/* Today's Update Indicator */}
@@ -385,33 +396,35 @@ const HistoryTabContent = ({
   const [loading, setLoading] = useState(false);
 
   const fetchHistory = async () => {
-  if (!productData?.projectId) return;
+    if (!productData?.projectId) return;
 
-  setLoading(true);
-  try {
-    const res = await api.get(
-      `/projects/${productData.projectId}/tracking-history`,
-      { params: { stage } }
-    );
+    setLoading(true);
+    try {
+      const res = await api.get(
+        `/projects/${productData.projectId}/tracking-history`,
+        { params: { stage } }
+      );
 
-    // ✅ handle all common shapes
-    const raw = res.data;
-    const list =
-      Array.isArray(raw) ? raw :
-      Array.isArray(raw?.data) ? raw.data :
-      Array.isArray(raw?.items) ? raw.items :
-      Array.isArray(raw?.history) ? raw.history :
-      [];
+      // ✅ handle all common shapes
+      const raw = res.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.items)
+        ? raw.items
+        : Array.isArray(raw?.history)
+        ? raw.history
+        : [];
 
-    setHistoryData(list);
-  } catch (error) {
-    console.error("Failed to fetch history:", error);
-    setHistoryData([]); // ✅ avoid crash
-  } finally {
-    setLoading(false);
-  }
-};
-
+      setHistoryData(list);
+    } catch (error) {
+      console.error("Failed to fetch history:", error);
+      setHistoryData([]); // ✅ avoid crash
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (productData?.projectId) {
@@ -655,50 +668,49 @@ export function ItemCuttingDialog({
       setCuttingItems([]);
       return;
     }
- const mapped: CuttingItem[] = rows.map((row) => {
-  const required = Number(row.cardQuantity ?? row.cardId?.cardQuantity ?? 0);
-  const completed = Number(row.progressDone ?? 0);
+    const mapped: CuttingItem[] = rows.map((row) => {
+      const required = Number(
+        row.cardQuantity ?? row.cardId?.cardQuantity ?? 0
+      );
+      const completed = Number(row.progressDone ?? 0);
 
-  return {
-    id: row._id,
-    itemName: row.name || "Unnamed Item",
-    cardQuantity: required,    // ✅ required total = cardQuantity
-    alreadyCut: completed,
-    cuttingToday: 0,
-    unit: row.unit || "unit",
-    department: row.department,
-    specification: row.specification,
-    status:
-      completed >= required
-        ? "completed"
-        : completed > 0
-        ? "in-progress"
-        : "pending",
-  };
-});
-
-
+      return {
+        id: row._id,
+        itemName: row.name || "Unnamed Item",
+        cardQuantity: required, // ✅ required total = cardQuantity
+        alreadyCut: completed,
+        cuttingToday: 0,
+        unit: row.unit || "unit",
+        department: row.department,
+        specification: row.specification,
+        status:
+          completed >= required
+            ? "completed"
+            : completed > 0
+            ? "in-progress"
+            : "pending",
+      };
+    });
 
     setCuttingItems(mapped);
     setExpandedItems(new Set());
   }, [rows, open]);
 
- const calculateTotalRemaining = () => {
-  return cuttingItems.reduce((sum, item) => {
-    const totalAfter =
-      Number(item.alreadyCut || 0) + parseToNumber(item.cuttingToday);
-    const remaining = Math.max(Number(item.cardQuantity || 0) - totalAfter, 0);
-    return sum + remaining;
+  const calculateTotalRemaining = () => {
+    return cuttingItems.reduce((sum, item) => {
+      const totalAfter =
+        Number(item.alreadyCut || 0) + parseToNumber(item.cuttingToday);
+      const remaining = Math.max(
+        Number(item.cardQuantity || 0) - totalAfter,
+        0
+      );
+      return sum + remaining;
+    }, 0);
+  };
+
+  const completedToday = cuttingItems.reduce((sum, item) => {
+    return sum + parseToNumber(item.cuttingToday);
   }, 0);
-};
-
-
-const completedToday = cuttingItems.reduce((sum, item) => {
-  return sum + parseToNumber(item.cuttingToday);
-}, 0);
-
-
- 
 
   const updateCuttingQuantity = (itemId: string, value: string) => {
     setCuttingItems((prev) =>
@@ -707,7 +719,6 @@ const completedToday = cuttingItems.reduce((sum, item) => {
 
         const alreadyCutNum = parseToNumber(item.alreadyCut);
         const maxAllowed = Math.max(item.cardQuantity - alreadyCutNum, 0);
-
 
         if (value === "" || value === ".") {
           return { ...item, cuttingToday: value };
@@ -846,8 +857,7 @@ const completedToday = cuttingItems.reduce((sum, item) => {
 
   const clampOnBlur = (item: CuttingItem, value: string) => {
     const alreadyCutNum = parseToNumber(item.alreadyCut);
-   const maxAllowed = item.cardQuantity - alreadyCutNum;
-
+    const maxAllowed = item.cardQuantity - alreadyCutNum;
 
     const num = parseFloat(value);
     if (isNaN(num)) return "0";
@@ -1148,8 +1158,13 @@ const completedToday = cuttingItems.reduce((sum, item) => {
                             item.cardQuantity - totalAfter,
                             0
                           );
-                         const progressPercent =
-  item.cardQuantity > 0 ? Math.min((totalAfter / item.cardQuantity) * 100, 100) : 0;
+                          const progressPercent =
+                            item.cardQuantity > 0
+                              ? Math.min(
+                                  (totalAfter / item.cardQuantity) * 100,
+                                  100
+                                )
+                              : 0;
                           const isBottleneck =
                             totalAfter === minimumAvailable &&
                             minimumAvailable < productData?.targetQuantity;
@@ -1208,7 +1223,8 @@ const completedToday = cuttingItems.reduce((sum, item) => {
                                     Required
                                   </div>
                                   <div className="text-sm sm:text-base font-bold text-gray-900">
-                                   {Number(item.cardQuantity || 0).toFixed(4)} {item.unit}
+                                    {Number(item.cardQuantity || 0).toFixed(4)}{" "}
+                                    {item.unit}
                                   </div>
                                 </div>
 
@@ -1218,7 +1234,8 @@ const completedToday = cuttingItems.reduce((sum, item) => {
                                     Completed
                                   </div>
                                   <div className="text-sm sm:text-base font-semibold text-blue-600">
-                                    {Number(item.alreadyCut || 0).toFixed(4)} {item.unit}
+                                    {Number(item.alreadyCut || 0).toFixed(4)}{" "}
+                                    {item.unit}
                                   </div>
                                 </div>
 
@@ -1255,12 +1272,26 @@ const completedToday = cuttingItems.reduce((sum, item) => {
                                       />
                                     </div>
 
-                                    {/* Next Stage */}
-                                    {item.department !== "rfd" && (
-                                      <div>
-                                        <div className="text-xs font-medium text-gray-600 mb-1">
-                                          Next Stage
-                                        </div>
+                                    {/* Next Stage OR Delivery Button for RFD */}
+                                    <div>
+                                      <div className="text-xs font-medium text-gray-600 mb-1">
+                                        {item.department === "rfd"
+                                          ? "Delivery"
+                                          : "Next Stage"}
+                                      </div>
+                                      {item.department === "rfd" ? (
+                                        <Button
+                                          className="w-full h-9 text-xs bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
+                                          onClick={() =>
+                                            handleDeliverItem(
+                                              productData.projectId
+                                            )
+                                          }
+                                        >
+                                          <CheckCircle className="w-3 h-3 mr-1" />
+                                          Deliver
+                                        </Button>
+                                      ) : (
                                         <Select
                                           value={nextDeptMap[item.id]}
                                           onValueChange={(value) =>
@@ -1294,8 +1325,8 @@ const completedToday = cuttingItems.reduce((sum, item) => {
                                             </SelectItem>
                                           </SelectContent>
                                         </Select>
-                                      </div>
-                                    )}
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
 
@@ -1305,7 +1336,12 @@ const completedToday = cuttingItems.reduce((sum, item) => {
                                     Need
                                   </div>
                                   <div className="text-sm sm:text-base font-semibold text-orange-600">
-                                  {Math.max(Number(item.cardQuantity || 0) - (Number(item.alreadyCut || 0) + parseToNumber(item.cuttingToday)),0).toFixed(4)}
+                                    {Math.max(
+                                      Number(item.cardQuantity || 0) -
+                                        (Number(item.alreadyCut || 0) +
+                                          parseToNumber(item.cuttingToday)),
+                                      0
+                                    ).toFixed(4)}
                                   </div>
                                 </div>
                               </div>

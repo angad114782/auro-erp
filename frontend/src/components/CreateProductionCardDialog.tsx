@@ -271,14 +271,26 @@ export function CreateProductionCardDialog({
 
     const projectId = selectedProject.id || selectedProject._id;
 
+    if (!projectId) {
+      return { totalOrderQty: 0, totalAllocated: 0, totalAvailable: 0 };
+    }
+
     // Sum all production card quantities for this project
     const totalAllocated = displayProductionCards.reduce((sum, card) => {
-      // Make sure we're only counting cards for this project
-      const cardProjectId =
-        card.projectId ||
-        (selectedProject?.id ? String(selectedProject.id) : null);
+      // Extract project ID from card properly
+      let cardProjectId: string | null = null;
 
-      if (cardProjectId && projectId && cardProjectId === String(projectId)) {
+      // Handle both string and object cases for projectId
+      if (card.projectId) {
+        if (typeof card.projectId === "object" && card.projectId !== null) {
+          cardProjectId = card.projectId._id || card.projectId.id || null;
+        } else {
+          cardProjectId = card.projectId;
+        }
+      }
+
+      // Compare project IDs as strings
+      if (cardProjectId && String(cardProjectId) === String(projectId)) {
         const quantity =
           parseFloat(card.cardQuantity) || parseFloat(card.targetQuantity) || 0;
         return sum + quantity;
@@ -296,7 +308,6 @@ export function CreateProductionCardDialog({
 
     return { totalOrderQty, totalAllocated, totalAvailable };
   };
-
   const { totalOrderQty, totalAllocated, totalAvailable } =
     calculateTotalAllocation();
 
@@ -318,10 +329,11 @@ export function CreateProductionCardDialog({
   // Update handleStartProduction to use stage API
   const handleStartProduction = async (card: ProductionCardData) => {
     setStartingProduction(card.id);
+    console.log(card, "Starting production for card");
     try {
       // Update stage to "Tracking" using the API
       const response = await api.put(
-        `/projects/${card.projectId}/production-cards/${card._id}/stage`,
+        `/projects/${card?.projectId?._id}/production-cards/${card._id}/stage`,
         {
           stage: "Tracking",
           updatedBy: "Production Manager", // You can get this from user context
@@ -356,7 +368,7 @@ export function CreateProductionCardDialog({
 
     try {
       const response = await api.delete(
-        `/projects/${card.projectId}/production-cards/${card._id}/stop`,
+        `/projects/${card?.projectId?._id}/production-cards/${card._id}/stop`,
         {
           data: { updatedBy: "Production Manager" },
         }
