@@ -988,3 +988,105 @@ export async function bulkTodayProcessService(actions, updatedBy = "system") {
 
   return { results, errors };
 }
+
+
+
+
+
+
+function mapStageToDept(stg) {
+  if (!stg) return null;
+  if (stg === "upper-rej") return "upper_rej";
+  return stg;
+}
+
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export async function getTrackingHistoryService(projectId, stage, cardId) {
+  if (!mongoose.Types.ObjectId.isValid(projectId)) {
+    throw new Error("Invalid projectId");
+  }
+
+  const filter = { projectId: new mongoose.Types.ObjectId(projectId) };
+
+  // ✅ optional cardId filter
+  if (cardId) {
+    if (!mongoose.Types.ObjectId.isValid(cardId)) throw new Error("Invalid cardId");
+    filter.cardId = new mongoose.Types.ObjectId(cardId);
+  }
+
+  // ✅ optional stage filter
+  // NOTE: tumhare data me category="upper" but department="assembly" ho sakta hai
+  // isliye OR match use karo
+  const dept = mapStageToDept(stage);
+  if (dept) {
+    filter.$or = [{ department: dept }, { category: dept }];
+  }
+
+  const rows = await MicroTracking.find(filter)
+    .select("name unit department category history")
+    .lean();
+
+  const flat = [];
+
+  for (const r of rows) {
+    const itemName = r?.name || "Unnamed";
+    const unit = r?.unit || "unit";
+    const rowStage = r?.department || r?.category || "";
+
+    for (const h of r.history || []) {
+      const timestamp = h.date || new Date();
+
+      // ✅ Case A: Today-progress history (addedToday, previousDone, newDone)
+      if (h.addedToday !== undefined) {
+        flat.push({
+          itemName,
+          unit,
+          stage: rowStage,
+          timestamp,
+
+          type: num(h.addedToday) > 0 ? "added" : "updated",
+          quantity: num(h.addedToday),
+          previousTotal: num(h.previousDone),
+          newTotal: num(h.newDone),
+
+          updatedBy: h.updatedBy || "system",
+          notes: "",
+        });
+        continue;
+      }
+
+      // ✅ Case B: Transfer / update history (changes array)
+      const changes = Array.isArray(h.changes) ? h.changes : [];
+      const notes =
+        changes.length > 0
+          ? changes.map((c) => `${c.field}: ${c.from} → ${c.to}`).join(", ")
+          : "";
+
+      // quantity yaha fixed nahi hoti, but UI wants it
+      // so we keep it 0 and show notes
+      flat.push({
+        itemName,
+        unit,
+        stage: rowStage,
+        timestamp,
+
+        type: "updated",
+        quantity: 0,
+        previousTotal: 0,
+        newTotal: 0,
+
+        updatedBy: h.updatedBy || "system",
+        notes,
+      });
+    }
+  }
+
+  // ✅ latest first
+  flat.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  return flat;
+}

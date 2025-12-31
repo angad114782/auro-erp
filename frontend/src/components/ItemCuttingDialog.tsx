@@ -40,10 +40,25 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import api from "../lib/api";
 
+
+interface HistoryRecord {
+  itemName: string;
+  timestamp: string;
+  type: "added" | "updated";
+  quantity: number;
+  previousTotal: number;
+  newTotal: number;
+  unit: string;
+  updatedBy?: string;
+  notes?: string;
+}
+
+
+
 interface CuttingItem {
   id: string;
   itemName: string;
-  requiredQuantity: number;
+  cardQuantity: number;        // ✅ required total
   alreadyCut: number;
   cuttingToday: number | string;
   unit: string;
@@ -51,6 +66,7 @@ interface CuttingItem {
   department: string;
   specification: string;
 }
+
 
 interface ItemCuttingDialogProps {
   open: boolean;
@@ -68,6 +84,13 @@ const mapStageToDept = (stg: string) => {
   if (stg === "upper-rej") return "upper_rej";
   return stg;
 };
+function parseToNumber(value: string | number): number {
+  if (typeof value === "number") return value;
+  if (value === "" || value === ".") return 0;
+  const num = parseFloat(value);
+  return Number.isNaN(num) ? 0 : num;
+}
+
 
 const MobileItemCard = React.memo(
   ({
@@ -93,19 +116,15 @@ const MobileItemCard = React.memo(
     stage: string;
     onAdvanceToChange: (rowId: string, dept: string) => void;
   }) => {
-    const parseToNumber = (value: string | number): number => {
-      if (typeof value === "number") return value;
-      if (value === "" || value === ".") return 0;
-      const num = parseFloat(value);
-      return isNaN(num) ? 0 : num;
-    };
+
+
 
     const alreadyCutNum = parseToNumber(item.alreadyCut);
     const cuttingTodayNum = parseToNumber(item.cuttingToday);
     const totalAfter = alreadyCutNum + cuttingTodayNum;
-    const remaining = Math.max(item.requiredQuantity - totalAfter, 0);
+    const remaining = Math.max(item.cardQuantity - totalAfter, 0);
     const progressPercent = Math.min(
-      (totalAfter / item.requiredQuantity) * 100,
+      (totalAfter / item.cardQuantity) * 100,
       100
     );
     const isBottleneck =
@@ -150,7 +169,8 @@ const MobileItemCard = React.memo(
 
     const getItemStatusBadge = () => {
       const total = totalAfter;
-      const percentage = (total / item.requiredQuantity) * 100;
+      const percentage =
+  item.cardQuantity > 0 ? (total / item.cardQuantity) * 100 : 0;
 
       if (percentage >= 100) {
         return (
@@ -182,7 +202,8 @@ const MobileItemCard = React.memo(
 
     const clampOnBlur = (item: CuttingItem, value: string) => {
       const alreadyCutNum = parseToNumber(item.alreadyCut);
-      const maxAllowed = item.requiredQuantity - alreadyCutNum;
+     const maxAllowed = Math.max(item.cardQuantity - alreadyCutNum, 0);
+
 
       const num = parseFloat(value);
       if (isNaN(num)) return "0";
@@ -245,7 +266,7 @@ const MobileItemCard = React.memo(
           <div className="bg-gray-50 rounded p-2 text-center">
             <div className="text-xs text-gray-500">Required</div>
             <div className="text-sm font-bold text-gray-900">
-              {item.requiredQuantity}
+              {item.cardQuantity}
             </div>
           </div>
           <div className="bg-gray-50 rounded p-2 text-center">
@@ -364,24 +385,33 @@ const HistoryTabContent = ({
   const [loading, setLoading] = useState(false);
 
   const fetchHistory = async () => {
-    if (!productData?.projectId) return;
+  if (!productData?.projectId) return;
 
-    setLoading(true);
-    try {
-      const response = await api.get(
-        `/projects/${productData.projectId}/tracking-history`,
-        {
-          params: { stage },
-        }
-      );
-      setHistoryData(response.data || []);
-    } catch (error) {
-      console.error("Failed to fetch history:", error);
-      // toast.error("Failed to load history");
-    } finally {
-      setLoading(false);
-    }
-  };
+  setLoading(true);
+  try {
+    const res = await api.get(
+      `/projects/${productData.projectId}/tracking-history`,
+      { params: { stage } }
+    );
+
+    // ✅ handle all common shapes
+    const raw = res.data;
+    const list =
+      Array.isArray(raw) ? raw :
+      Array.isArray(raw?.data) ? raw.data :
+      Array.isArray(raw?.items) ? raw.items :
+      Array.isArray(raw?.history) ? raw.history :
+      [];
+
+    setHistoryData(list);
+  } catch (error) {
+    console.error("Failed to fetch history:", error);
+    setHistoryData([]); // ✅ avoid crash
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   useEffect(() => {
     if (productData?.projectId) {
@@ -625,49 +655,50 @@ export function ItemCuttingDialog({
       setCuttingItems([]);
       return;
     }
-    const mapped: CuttingItem[] = rows.map((row) => {
-      const required = Number(row.requirement ?? 0);
+ const mapped: CuttingItem[] = rows.map((row) => {
+  const required = Number(row.cardQuantity ?? row.cardId?.cardQuantity ?? 0);
+  const completed = Number(row.progressDone ?? 0);
 
-      return {
-        id: row._id,
-        itemName: row.name || "Unnamed Item",
-        requiredQuantity: required,
-        alreadyCut: Number(row.todayDone ?? 0),
-        cuttingToday: 0,
-        unit: row.unit || "unit",
-        department: row.department,
-        specification: row.specification,
-        status:
-          Number(row.todayDone) >= required
-            ? "completed"
-            : Number(row.todayDone) > 0
-            ? "in-progress"
-            : "pending",
-      };
-    });
+  return {
+    id: row._id,
+    itemName: row.name || "Unnamed Item",
+    cardQuantity: required,    // ✅ required total = cardQuantity
+    alreadyCut: completed,
+    cuttingToday: 0,
+    unit: row.unit || "unit",
+    department: row.department,
+    specification: row.specification,
+    status:
+      completed >= required
+        ? "completed"
+        : completed > 0
+        ? "in-progress"
+        : "pending",
+  };
+});
+
+
 
     setCuttingItems(mapped);
     setExpandedItems(new Set());
   }, [rows, open]);
 
-  const calculateTotalRemaining = () => {
-    return cuttingItems.reduce((sum, item) => {
-      const alreadyCutNum = parseToNumber(item.alreadyCut);
-      const cuttingTodayNum = parseToNumber(item.cuttingToday);
+ const calculateTotalRemaining = () => {
+  return cuttingItems.reduce((sum, item) => {
+    const totalAfter =
+      Number(item.alreadyCut || 0) + parseToNumber(item.cuttingToday);
+    const remaining = Math.max(Number(item.cardQuantity || 0) - totalAfter, 0);
+    return sum + remaining;
+  }, 0);
+};
 
-      const remaining =
-        item.requiredQuantity - (alreadyCutNum + cuttingTodayNum);
 
-      return sum + Math.max(remaining, 0);
-    }, 0);
-  };
+const completedToday = cuttingItems.reduce((sum, item) => {
+  return sum + parseToNumber(item.cuttingToday);
+}, 0);
 
-  const parseToNumber = (value: string | number): number => {
-    if (typeof value === "number") return value;
-    if (value === "" || value === ".") return 0;
-    const num = parseFloat(value);
-    return isNaN(num) ? 0 : num;
-  };
+
+ 
 
   const updateCuttingQuantity = (itemId: string, value: string) => {
     setCuttingItems((prev) =>
@@ -675,7 +706,8 @@ export function ItemCuttingDialog({
         if (item.id !== itemId) return item;
 
         const alreadyCutNum = parseToNumber(item.alreadyCut);
-        const maxAllowed = Math.max(item.requiredQuantity - alreadyCutNum, 0);
+        const maxAllowed = Math.max(item.cardQuantity - alreadyCutNum, 0);
+
 
         if (value === "" || value === ".") {
           return { ...item, cuttingToday: value };
@@ -718,7 +750,7 @@ export function ItemCuttingDialog({
 
   const getItemStatusBadge = (item: CuttingItem) => {
     const total = calculateTotalAfterCutting(item);
-    const percentage = (total / item.requiredQuantity) * 100;
+    const percentage = (total / item.cardQuantity) * 100;
 
     if (percentage >= 100) {
       return (
@@ -814,7 +846,8 @@ export function ItemCuttingDialog({
 
   const clampOnBlur = (item: CuttingItem, value: string) => {
     const alreadyCutNum = parseToNumber(item.alreadyCut);
-    const maxAllowed = item.requiredQuantity - alreadyCutNum;
+   const maxAllowed = item.cardQuantity - alreadyCutNum;
+
 
     const num = parseFloat(value);
     if (isNaN(num)) return "0";
@@ -1112,16 +1145,11 @@ export function ItemCuttingDialog({
                       ? cuttingItems.map((item) => {
                           const totalAfter = calculateTotalAfterCutting(item);
                           const remaining = Math.max(
-                            item.requiredQuantity - totalAfter,
+                            item.cardQuantity - totalAfter,
                             0
                           );
-                          const progressPercent =
-                            item.requiredQuantity > 0
-                              ? Math.min(
-                                  (totalAfter / item.requiredQuantity) * 100,
-                                  100
-                                )
-                              : 0;
+                         const progressPercent =
+  item.cardQuantity > 0 ? Math.min((totalAfter / item.cardQuantity) * 100, 100) : 0;
                           const isBottleneck =
                             totalAfter === minimumAvailable &&
                             minimumAvailable < productData?.targetQuantity;
@@ -1180,8 +1208,7 @@ export function ItemCuttingDialog({
                                     Required
                                   </div>
                                   <div className="text-sm sm:text-base font-bold text-gray-900">
-                                    {item.requiredQuantity.toFixed(4)}{" "}
-                                    {item.unit}
+                                   {Number(item.cardQuantity || 0).toFixed(4)} {item.unit}
                                   </div>
                                 </div>
 
@@ -1191,8 +1218,7 @@ export function ItemCuttingDialog({
                                     Completed
                                   </div>
                                   <div className="text-sm sm:text-base font-semibold text-blue-600">
-                                    {parseToNumber(item.alreadyCut).toFixed(4)}{" "}
-                                    {item.unit}
+                                    {Number(item.alreadyCut || 0).toFixed(4)} {item.unit}
                                   </div>
                                 </div>
 
@@ -1279,7 +1305,7 @@ export function ItemCuttingDialog({
                                     Need
                                   </div>
                                   <div className="text-sm sm:text-base font-semibold text-orange-600">
-                                    {remaining.toFixed(4)}
+                                  {Math.max(Number(item.cardQuantity || 0) - (Number(item.alreadyCut || 0) + parseToNumber(item.cuttingToday)),0).toFixed(4)}
                                   </div>
                                 </div>
                               </div>
