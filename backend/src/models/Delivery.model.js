@@ -71,4 +71,12 @@ const deliverySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+deliverySchema.index(
+  { project: 1, poDetails: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: { $in: ["pending", "parcel_delivered"] } },
+  }
+);
+
 export const Delivery = mongoose.model("Delivery", deliverySchema);

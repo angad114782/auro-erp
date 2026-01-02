@@ -23,9 +23,20 @@ export async function sendToDeliveryController(req, res) {
     });
   } catch (err) {
     console.error("sendToDeliveryController error:", err);
-    return res.status(500).json({ error: err.message });
+
+    // ✅ not a server crash → business rule
+    if (String(err.message || "").includes("No new finished quantity")) {
+      return res.status(409).json({ success: false, error: err.message });
+    }
+
+    if (String(err.message || "").includes("No finished quantity in RFD")) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+
+    return res.status(500).json({ success: false, error: err.message });
   }
 }
+
 
 export async function markParcelDeliveredController(req, res) {
   try {

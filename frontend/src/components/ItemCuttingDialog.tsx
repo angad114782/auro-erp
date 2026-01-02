@@ -884,16 +884,21 @@ export function ItemCuttingDialog({
     setExpandedItems(newExpanded);
   };
 
-  const handleDeliverItem = (projectId: string) => {
-    try {
-      api.put(`/projects/${projectId}/send-to-delivery`);
-      toast.success("Item delivered to customer successfully!");
-      return;
-    } catch (error) {
-      toast.error("Failed to deliver item to customer.");
-      return;
-    }
-  };
+const handleDeliverItem = async (projectId: string) => {
+  try {
+    const res = await api.put(`/projects/${projectId}/send-to-delivery`);
+    toast.success(res.data?.message || "Sent to delivery!");
+  } catch (err: any) {
+    const msg =
+      err?.response?.data?.error ||
+      err?.message ||
+      "Failed to send to delivery";
+
+    // ✅ this is normal case (no new qty)
+    toast.info(msg);
+  }
+};
+
 
   const clampOnBlur = (item: CuttingItem, value: string) => {
     const alreadyCutNum = parseToNumber(item.alreadyCut);

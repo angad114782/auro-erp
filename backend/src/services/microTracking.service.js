@@ -936,31 +936,35 @@ export async function bulkTodayProcessService(actions, updatedBy = "system") {
     try {
       const { rowId, progressToday, fromDepartment, toDepartment } = a;
 
-      if (
-        !rowId ||
-        progressToday === undefined ||
-        !fromDepartment ||
-        !toDepartment
-      ) {
-        throw new Error(
-          "rowId, progressToday, fromDepartment, toDepartment required"
-        );
+      if (!rowId || progressToday === undefined || !fromDepartment) {
+        throw new Error("rowId, progressToday, fromDepartment required");
       }
 
-      // 1) update today work
+      // 1) update today work (always)
       const updatedRow = await updateProgressTodayService(
         rowId,
         progressToday,
         updatedBy
       );
 
-      // 2) transfer today work (only what was done today)
-      const transfer = await transferTodayWorkByRowService(
-        rowId,
-        fromDepartment,
-        toDepartment,
-        updatedBy
-      );
+      // 2) transfer only if valid and different
+      let transfer = null;
+
+      if (toDepartment && fromDepartment !== toDepartment) {
+        transfer = await transferTodayWorkByRowService(
+          rowId,
+          fromDepartment,
+          toDepartment,
+          updatedBy
+        );
+      } else {
+        transfer = {
+          skipped: true,
+          reason: "No transfer needed (same dept or missing toDepartment)",
+          fromDepartment,
+          toDepartment,
+        };
+      }
 
       results.push({
         rowId,
