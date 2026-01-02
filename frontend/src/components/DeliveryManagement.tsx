@@ -75,6 +75,7 @@ interface DeliveryItem {
   poReceivedDate: string;
   deliveryDateExpected: string;
   orderQuantity: number;
+  sendQuantity: number;
   status: "pending" | "parcel_delivered" | "delivered";
   agingDays: number;
   billNumber: string;
@@ -93,7 +94,7 @@ interface DeliveryItem {
     poNumber: string;
     deliveryDate: string;
   };
-  remarks: string; // FIXED: Changed from remark to remarks
+  remarks: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -108,6 +109,7 @@ interface DisplayDeliveryItem {
   poNumber: string;
   poReceivedDate: string;
   quantity: number;
+  sendQuantity: number;
   deliveryStatus: "Pending" | "Parcel Delivered" | "Delivered";
   deliveryDate: string;
   expectedDeliveryDate: string;
@@ -115,7 +117,7 @@ interface DisplayDeliveryItem {
   lrNumber: string;
   actualDeliveryDate: string;
   aging: number;
-  remarks: string; // FIXED: Changed from remark to remarks
+  remarks: string;
   backendData: DeliveryItem;
 }
 
@@ -124,7 +126,8 @@ interface EditFormData {
   deliveryDate: string;
   lrNumber: string;
   status: string;
-  remarks: string; // FIXED: Changed from remark to remarks
+  remarks: string;
+  sendQuantity: number;
 }
 
 export function DeliveryManagement({
@@ -157,7 +160,8 @@ export function DeliveryManagement({
     deliveryDate: "",
     lrNumber: "",
     status: "",
-    remarks: "", // FIXED: Changed from remark to remarks
+    remarks: "",
+    sendQuantity: 0,
   });
 
   // Pagination state
@@ -212,6 +216,7 @@ export function DeliveryManagement({
       poReceivedDate:
         item.poReceivedDate || new Date().toISOString().split("T")[0],
       quantity: item.orderQuantity || 0,
+      sendQuantity: item.sendQuantity || 0,
       deliveryStatus:
         item.status === "pending"
           ? "Pending"
@@ -224,7 +229,7 @@ export function DeliveryManagement({
       lrNumber: item.lrNumber || "",
       actualDeliveryDate: item.deliveryDate || "",
       aging: item.agingDays || 0,
-      remarks: item.remarks || "", // FIXED: Changed from remark to remarks
+      remarks: item.remarks || "",
       backendData: item,
     }));
   }, [backendDeliveries]);
@@ -347,7 +352,8 @@ export function DeliveryManagement({
       deliveryDate: delivery.actualDeliveryDate || "",
       lrNumber: delivery.lrNumber || "",
       status: delivery.deliveryStatus,
-      remarks: delivery.remarks || "", // FIXED: Changed from remark to remarks
+      remarks: delivery.remarks || "",
+      sendQuantity: delivery.sendQuantity || 0,
     });
     setIsEditing(false);
     setIsDetailsDialogOpen(true);
@@ -366,13 +372,55 @@ export function DeliveryManagement({
         deliveryDate: selectedDelivery.actualDeliveryDate || "",
         lrNumber: selectedDelivery.lrNumber || "",
         status: selectedDelivery.deliveryStatus,
-        remarks: selectedDelivery.remarks || "", // FIXED: Changed from remark to remarks
+        remarks: selectedDelivery.remarks || "",
+        sendQuantity: selectedDelivery.sendQuantity || 0,
       });
     }
     setIsEditing(false);
   };
 
-  // Handle save edit - optimized version
+  // Handle form input change
+  const handleInputChange = (
+    field: keyof EditFormData,
+    value: string | number
+  ) => {
+    // Special handling for sendQuantity to allow decimals
+    if (field === "sendQuantity") {
+      // If value is a string, parse it as float
+      if (typeof value === "string") {
+        // Allow empty string or decimal numbers
+        if (value === "" || value === ".") {
+          setEditFormData((prev) => ({
+            ...prev,
+            [field]: value as any,
+          }));
+        } else {
+          const parsedValue = parseFloat(value);
+          // Only update if it's a valid number or 0
+          if (!isNaN(parsedValue)) {
+            setEditFormData((prev) => ({
+              ...prev,
+              [field]: parsedValue,
+            }));
+          }
+        }
+      } else {
+        // Value is already a number
+        setEditFormData((prev) => ({
+          ...prev,
+          [field]: value,
+        }));
+      }
+    } else {
+      // For other fields
+      setEditFormData((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
+    }
+  };
+
+  // Handle save edit
   const handleSaveEdit = async () => {
     if (!selectedDelivery) return;
 
@@ -388,6 +436,11 @@ export function DeliveryManagement({
         // Trim strings for comparison
         if (typeof newValue === "string" && typeof oldValue === "string") {
           return newValue.trim() !== oldValue.trim();
+        }
+
+        // For numbers comparison (with tolerance for floating point)
+        if (typeof newValue === "number" && typeof oldValue === "number") {
+          return Math.abs(newValue - oldValue) > 0.0001;
         }
 
         // For other types, use strict comparison
@@ -436,9 +489,37 @@ export function DeliveryManagement({
         hasChanges = true;
       }
 
-      // FIXED: Changed from remark to remarks
       if (hasChanged(editFormData.remarks, selectedDelivery.remarks)) {
-        updateData.remarks = editFormData.remarks || ""; // FIXED: Changed from remark to remarks
+        updateData.remarks = editFormData.remarks || "";
+        hasChanges = true;
+      }
+
+      // Check send quantity change - only for pending and parcel delivered
+      if (
+        currentSubModule !== "delivered" &&
+        hasChanged(editFormData.sendQuantity, selectedDelivery.sendQuantity)
+      ) {
+        const maxQuantity = selectedDelivery.quantity;
+        const newSendQuantity = editFormData.sendQuantity || 0;
+
+        // Validate send quantity doesn't exceed order quantity (with tolerance for floating point)
+        if (newSendQuantity > maxQuantity + 0.0001) {
+          // Small tolerance for floating point
+          toast.error(
+            `Send quantity (${newSendQuantity.toFixed(
+              4
+            )}) cannot exceed order quantity (${maxQuantity.toFixed(4)})`
+          );
+          return;
+        }
+
+        // Validate send quantity is not negative
+        if (newSendQuantity < 0) {
+          toast.error("Send quantity cannot be negative");
+          return;
+        }
+
+        updateData.sendQuantity = newSendQuantity;
         hasChanges = true;
       }
 
@@ -477,13 +558,14 @@ export function DeliveryManagement({
           billNumber: updatedDelivery.billNumber || "",
           actualDeliveryDate: updatedDelivery.deliveryDate || "",
           lrNumber: updatedDelivery.lrNumber || "",
+          sendQuantity: updatedDelivery.sendQuantity || 0,
           deliveryStatus:
             updatedDelivery.status === "pending"
               ? "Pending"
               : updatedDelivery.status === "parcel_delivered"
               ? "Parcel Delivered"
               : "Delivered",
-          remarks: updatedDelivery.remarks || "", // FIXED: Changed from remark to remarks
+          remarks: updatedDelivery.remarks || "",
           backendData: updatedDelivery,
         };
 
@@ -562,12 +644,12 @@ export function DeliveryManagement({
     return "text-red-600";
   };
 
-  // Handle form input change
-  const handleInputChange = (field: keyof EditFormData, value: string) => {
-    setEditFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+  // Format number with decimal support
+  const formatNumber = (num: number) => {
+    return num.toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 4,
+    });
   };
 
   // Render mobile card
@@ -616,12 +698,52 @@ export function DeliveryManagement({
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Quantity</p>
+              <p className="text-xs text-gray-500">Order Quantity</p>
               <p className="text-sm font-medium text-gray-900">
-                {delivery.quantity.toLocaleString()}
+                {formatNumber(delivery.quantity)}
               </p>
             </div>
           </div>
+
+          {/* Send Quantity Section - Only for Pending and Parcel Delivered */}
+          {(currentSubModule === "delivery-pending" ||
+            currentSubModule === "parcel-delivered") && (
+            <div className="mb-3 p-2 bg-gray-50 rounded-lg">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs font-medium text-gray-700">
+                  Send Quantity
+                </span>
+                <span className="text-xs text-gray-500">
+                  {formatNumber(delivery.sendQuantity || 0)} /{" "}
+                  {formatNumber(delivery.quantity)}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className="bg-green-500 h-1.5 rounded-full"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      ((delivery.sendQuantity || 0) / delivery.quantity) * 100
+                    )}%`,
+                  }}
+                ></div>
+              </div>
+              {delivery.sendQuantity > 0 && (
+                <div className="flex justify-between mt-1">
+                  <span className="text-xs text-gray-500">
+                    Sent: {formatNumber(delivery.sendQuantity || 0)}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    Remaining:{" "}
+                    {formatNumber(
+                      delivery.quantity - (delivery.sendQuantity || 0)
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-between pt-3 border-t border-gray-100">
             <div className="flex items-center">
@@ -936,8 +1058,15 @@ export function DeliveryManagement({
                     Aging
                   </th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Quantity
+                    Order Quantity
                   </th>
+                  {/* Add Send Quantity column - only for Pending and Parcel Delivered tabs */}
+                  {(currentSubModule === "delivery-pending" ||
+                    currentSubModule === "parcel-delivered") && (
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Send Quantity
+                    </th>
+                  )}
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
@@ -946,7 +1075,10 @@ export function DeliveryManagement({
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedDeliveries.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center">
+                    <td
+                      colSpan={currentSubModule === "delivered" ? 8 : 9}
+                      className="px-4 py-8 text-center"
+                    >
                       <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <Package className="w-8 h-8 text-gray-400" />
                       </div>
@@ -1017,9 +1149,38 @@ export function DeliveryManagement({
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {delivery.quantity.toLocaleString()}
+                          {formatNumber(delivery.quantity)}
                         </div>
                       </td>
+                      {/* Send Quantity cell - only for Pending and Parcel Delivered tabs */}
+                      {(currentSubModule === "delivery-pending" ||
+                        currentSubModule === "parcel-delivered") && (
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium text-gray-900">
+                              {formatNumber(delivery.sendQuantity || 0)}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              of {formatNumber(delivery.quantity)}
+                            </div>
+                            {delivery.sendQuantity > 0 && (
+                              <div className="w-20 bg-gray-200 rounded-full h-1">
+                                <div
+                                  className="bg-green-500 h-1 rounded-full"
+                                  style={{
+                                    width: `${Math.min(
+                                      100,
+                                      ((delivery.sendQuantity || 0) /
+                                        delivery.quantity) *
+                                        100
+                                    )}%`,
+                                  }}
+                                ></div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      )}
                       <td className="px-4 py-3 whitespace-nowrap">
                         {getStatusBadge(delivery.deliveryStatus)}
                       </td>
@@ -1195,7 +1356,20 @@ export function DeliveryManagement({
                       },
                       {
                         label: "Quantity",
-                        value: selectedDelivery.quantity.toLocaleString(),
+                        value: (
+                          <div>
+                            <div className="text-sm md:text-base text-gray-900 font-medium">
+                              {formatNumber(selectedDelivery.quantity)}
+                            </div>
+                            {/* Show constraint for send quantity if applicable */}
+                            {(currentSubModule === "delivery-pending" ||
+                              currentSubModule === "parcel-delivered") && (
+                              <div className="text-xs text-blue-600 mt-0.5">
+                                Max send quantity allowed (can be decimal)
+                              </div>
+                            )}
+                          </div>
+                        ),
                         key: "quantity",
                       },
                     ].map((item) => (
@@ -1203,9 +1377,13 @@ export function DeliveryManagement({
                         <Label className="text-xs md:text-sm text-gray-600">
                           {item.label}
                         </Label>
-                        <p className="text-sm md:text-base text-gray-900 mt-1">
-                          {item.value || "-"}
-                        </p>
+                        {typeof item.value === "string" ? (
+                          <p className="text-sm md:text-base text-gray-900 mt-1">
+                            {item.value || "-"}
+                          </p>
+                        ) : (
+                          item.value
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1336,36 +1514,195 @@ export function DeliveryManagement({
                     </div>
                   </div>
 
-                  {/* Status - Editable */}
+                  {/* Status and Send Quantity - Editable */}
                   <div className="bg-white border border-gray-200 rounded-lg md:rounded-xl p-4 md:p-6">
                     <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">
-                      Delivery Status
+                      Delivery Status & Quantity
                     </h3>
-                    <div>
-                      <Label className="text-xs md:text-sm text-gray-600">
-                        Current Status
-                      </Label>
-                      {isEditing ? (
-                        <Select
-                          value={editFormData.status}
-                          onValueChange={(value) =>
-                            handleInputChange("status", value)
-                          }
-                        >
-                          <SelectTrigger className="mt-1 h-9 text-sm">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Pending">Pending</SelectItem>
-                            <SelectItem value="Parcel Delivered">
-                              Parcel Delivered
-                            </SelectItem>
-                            <SelectItem value="Delivered">Delivered</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="mt-2">
-                          {getStatusBadge(selectedDelivery.deliveryStatus)}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                      {/* Status Field */}
+                      <div>
+                        <Label className="text-xs md:text-sm text-gray-600">
+                          Delivery Status
+                        </Label>
+                        {isEditing ? (
+                          <Select
+                            value={editFormData.status}
+                            onValueChange={(value) =>
+                              handleInputChange("status", value)
+                            }
+                          >
+                            <SelectTrigger className="mt-1 h-9 text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Pending">Pending</SelectItem>
+                              <SelectItem value="Parcel Delivered">
+                                Parcel Delivered
+                              </SelectItem>
+                              <SelectItem value="Delivered">
+                                Delivered
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="mt-2">
+                            {getStatusBadge(selectedDelivery.deliveryStatus)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Send Quantity Field - Only for Pending and Parcel Delivered tabs */}
+                      {(currentSubModule === "delivery-pending" ||
+                        currentSubModule === "parcel-delivered") && (
+                        <div>
+                          <Label className="text-xs md:text-sm text-gray-600 flex items-center gap-1.5">
+                            <Hash className="w-3.5 h-3.5" />
+                            Send Quantity
+                            <Info
+                              className="w-3 h-3 text-gray-400"
+                              title="Can be decimal value. Cannot exceed order quantity."
+                            />
+                          </Label>
+
+                          {isEditing ? (
+                            <div className="space-y-2 mt-1">
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  step="0.0001"
+                                  min="0"
+                                  max={selectedDelivery?.quantity || 0}
+                                  value={editFormData.sendQuantity || ""}
+                                  onChange={(e) => {
+                                    handleInputChange(
+                                      "sendQuantity",
+                                      e.target.value
+                                    );
+                                  }}
+                                  placeholder="Enter send quantity"
+                                  className="h-9 text-sm"
+                                />
+                                <span className="text-sm text-gray-500">/</span>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {formatNumber(
+                                    selectedDelivery?.quantity || 0
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Validation message */}
+                              {editFormData.sendQuantity >
+                                (selectedDelivery?.quantity || 0) && (
+                                <p className="text-xs text-red-500">
+                                  Send quantity cannot exceed order quantity (
+                                  {formatNumber(
+                                    selectedDelivery?.quantity || 0
+                                  )}
+                                  )
+                                </p>
+                              )}
+
+                              {/* Quantity usage indicator */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-gray-600">
+                                    Quantity Usage
+                                  </span>
+                                  <span className="font-medium">
+                                    {(
+                                      ((editFormData.sendQuantity || 0) /
+                                        (selectedDelivery?.quantity || 1)) *
+                                      100
+                                    ).toFixed(2)}
+                                    %
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                    style={{
+                                      width: `${Math.min(
+                                        100,
+                                        ((editFormData.sendQuantity || 0) /
+                                          (selectedDelivery?.quantity || 1)) *
+                                          100
+                                      )}%`,
+                                    }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-2 mt-1">
+                              <div className="flex items-baseline gap-2">
+                                <p className="text-lg md:text-xl font-semibold text-gray-900">
+                                  {formatNumber(
+                                    selectedDelivery?.sendQuantity || 0
+                                  )}
+                                </p>
+                                <span className="text-gray-400">/</span>
+                                <p className="text-base md:text-lg text-gray-700">
+                                  {formatNumber(
+                                    selectedDelivery?.quantity || 0
+                                  )}
+                                </p>
+                                <span className="text-sm text-gray-500 ml-2">
+                                  (
+                                  {formatNumber(
+                                    selectedDelivery?.quantity -
+                                      (selectedDelivery?.sendQuantity || 0)
+                                  )}{" "}
+                                  remaining)
+                                </span>
+                              </div>
+
+                              {/* Progress bar for visualization */}
+                              {selectedDelivery &&
+                                selectedDelivery.quantity > 0 && (
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-gray-600">
+                                        Quantity Sent
+                                      </span>
+                                      <span className="font-medium">
+                                        {(
+                                          ((selectedDelivery.sendQuantity ||
+                                            0) /
+                                            selectedDelivery.quantity) *
+                                          100
+                                        ).toFixed(2)}
+                                        %
+                                      </span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                      <div
+                                        className="bg-green-600 h-2 rounded-full"
+                                        style={{
+                                          width: `${Math.min(
+                                            100,
+                                            ((selectedDelivery.sendQuantity ||
+                                              0) /
+                                              selectedDelivery.quantity) *
+                                              100
+                                          )}%`,
+                                        }}
+                                      ></div>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-gray-500">
+                                      <span>0</span>
+                                      <span>
+                                        Order Quantity:{" "}
+                                        {formatNumber(
+                                          selectedDelivery.quantity
+                                        )}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1380,9 +1717,9 @@ export function DeliveryManagement({
                   <div>
                     {isEditing ? (
                       <Textarea
-                        value={editFormData.remarks || ""} // FIXED: Changed from remark to remarks
-                        onChange={
-                          (e) => handleInputChange("remarks", e.target.value) // FIXED: Changed from remark to remarks
+                        value={editFormData.remarks || ""}
+                        onChange={(e) =>
+                          handleInputChange("remarks", e.target.value)
                         }
                         rows={3}
                         placeholder="Add any additional notes or remarks..."
@@ -1390,8 +1727,7 @@ export function DeliveryManagement({
                       />
                     ) : (
                       <p className="text-sm md:text-base text-gray-900">
-                        {selectedDelivery.remarks || "No remarks"}{" "}
-                        {/* FIXED: Changed from remark to remarks */}
+                        {selectedDelivery.remarks || "No remarks"}
                       </p>
                     )}
                   </div>

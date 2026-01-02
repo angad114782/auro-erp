@@ -11,8 +11,10 @@ export async function sendToDeliveryController(req, res) {
   try {
     const { projectId } = req.params;
 
-   const delivery = await service.sendToDeliveryService(projectId, req.user?.name || "system");
-
+    const delivery = await service.sendToDeliveryService(
+      projectId,
+      req.user?.name || "system"
+    );
 
     return res.json({
       success: true,
@@ -84,6 +86,7 @@ export async function updatedDelivery(req, res) {
       lrNumber,
       status,
       remarks,
+      sendQuantity,
       updatedBy = "system",
     } = req.body;
 
@@ -112,6 +115,7 @@ export async function updatedDelivery(req, res) {
       { name: "lrNumber", value: lrNumber },
       { name: "status", value: status },
       { name: "remarks", value: remarks },
+      { name: "sendQuantity", value: sendQuantity },
     ];
 
     fieldsToTrack.forEach(({ name, value }) => {
@@ -162,6 +166,26 @@ export async function updatedDelivery(req, res) {
       }
     }
     if (remarks !== undefined) updateData.remarks = remarks;
+
+    // Handle send quantity with decimal support
+    if (sendQuantity !== undefined) {
+      // Validate send quantity doesn't exceed order quantity (with tolerance)
+      if (sendQuantity > delivery.orderQuantity + 0.0001) {
+        return res.status(400).json({
+          success: false,
+          error: "Send quantity cannot exceed order quantity",
+        });
+      }
+      // Validate send quantity is not negative
+      if (sendQuantity < 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Send quantity cannot be negative",
+        });
+      }
+      // Round to 4 decimal places to avoid floating point issues
+      updateData.sendQuantity = parseFloat(sendQuantity.toFixed(4));
+    }
 
     // Handle delivery date
     if (deliveryDate !== undefined) {

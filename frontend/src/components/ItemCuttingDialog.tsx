@@ -188,8 +188,9 @@ const MobileItemCard = React.memo(
     const handleDeliverItem = (projectId: string) => {
       try {
         api.post(`/projects/${projectId}/send-to-delivery`);
-      } catch (error) {}
-      toast.success(`Delivered ${item.itemName} to customer successfully!`);
+      } catch (error) {
+        toast.success(`Delivered ${item.itemName} to customer successfully!`);
+      }
     };
 
     const clampOnBlur = (item: CuttingItem, value: string) => {
@@ -789,22 +790,43 @@ export function ItemCuttingDialog({
       .map((item) => {
         const progressToday = parseToNumber(item.cuttingToday);
 
+        // Skip if no progress today
         if (progressToday <= 0) return null;
+
+        // For RFD items, no department selection needed
+        if (item.department === "rfd") {
+          return {
+            rowId: item.id,
+            progressToday,
+            fromDepartment,
+            toDepartment: fromDepartment, // or "rfd" as needed
+          };
+        }
+
+        // For non-RFD items, check if department is selected
+        const nextDept = nextDeptMap[item.id];
+        if (!nextDept) {
+          // Don't include in actions if no department selected
+          return null;
+        }
 
         return {
           rowId: item.id,
           progressToday,
           fromDepartment,
-          toDepartment: nextDeptMap[item.id] || fromDepartment,
+          toDepartment: nextDept,
         };
       })
       .filter(Boolean);
 
     if (actions.length === 0) {
-      toast.error("Please enter today quantity for at least one item");
+      toast.error(
+        "Please enter today's quantity AND select next stage for at least one item"
+      );
       return;
     }
 
+    // ... rest of the function remains the same
     try {
       const res = await saveBulkToday(actions);
 
@@ -815,16 +837,34 @@ export function ItemCuttingDialog({
         toast.success("Today's progress saved successfully");
       }
 
+      // Only update items that were actually saved
       setCuttingItems((prev) =>
-        prev.map((item) => ({
-          ...item,
-          alreadyCut:
-            parseToNumber(item.alreadyCut) + parseToNumber(item.cuttingToday),
-          cuttingToday: 0,
-        }))
+        prev.map((item) => {
+          const wasSaved = actions.some(
+            (action: any) => action.rowId === item.id
+          );
+          if (wasSaved) {
+            return {
+              ...item,
+              alreadyCut:
+                parseToNumber(item.alreadyCut) +
+                parseToNumber(item.cuttingToday),
+              cuttingToday: 0,
+            };
+          }
+          return item;
+        })
       );
 
-      setNextDeptMap({});
+      // Clear department selection only for saved items
+      setNextDeptMap((prev) => {
+        const newMap = { ...prev };
+        actions.forEach((action: any) => {
+          delete newMap[action.rowId];
+        });
+        return newMap;
+      });
+
       setActiveTab("history");
     } catch (err: any) {
       console.error(err);
@@ -946,15 +986,15 @@ export function ItemCuttingDialog({
   const minimumAvailable = calculateMinimumAvailable();
   const hasAnyValidAction = cuttingItems.some((item) => {
     const cuttingTodayNum = parseToNumber(item.cuttingToday);
-    const nextDept = nextDeptMap[item.id];
 
+    // For RFD items, only need cuttingToday > 0
     if (item.department === "rfd") {
       return cuttingTodayNum > 0;
     }
 
-    return cuttingTodayNum > 0 && !!nextDept;
+    // For non-RFD items, need BOTH cuttingToday > 0 AND next department selected
+    return cuttingTodayNum > 0 && !!nextDeptMap[item.id];
   });
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[95vw] !w-[95vw] sm:!max-w-[90vw] sm:!w-[90vw] lg:!max-w-[85vw] lg:!w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
@@ -992,6 +1032,28 @@ export function ItemCuttingDialog({
                 </div>
               </div>
               <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
+                {hasAnyValidAction && (
+                  <div className="text-xs text-green-600 font-medium mb-2">
+                    Ready to save{" "}
+                    {
+                      cuttingItems.filter((item) => {
+                        const today = parseToNumber(item.cuttingToday);
+                        if (item.department === "rfd") return today > 0;
+                        return today > 0 && !!nextDeptMap[item.id];
+                      }).length
+                    }{" "}
+                    item(s)
+                  </div>
+                )}
+
+                {!hasAnyValidAction &&
+                  cuttingItems.some(
+                    (item) => parseToNumber(item.cuttingToday) > 0
+                  ) && (
+                    <div className="text-xs text-amber-600 font-medium mb-2">
+                      Please select next stage for items with quantity entered
+                    </div>
+                  )}
                 {activeTab === "update" && (
                   <Button
                     onClick={handleSaveCutting}
@@ -999,7 +1061,15 @@ export function ItemCuttingDialog({
                     disabled={!hasAnyValidAction}
                   >
                     <Save className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                    {"Save"}
+                    {hasAnyValidAction
+                      ? `Save ${
+                          cuttingItems.filter((item) => {
+                            const today = parseToNumber(item.cuttingToday);
+                            if (item.department === "rfd") return today > 0;
+                            return today > 0 && !!nextDeptMap[item.id];
+                          }).length
+                        } Item(s)`
+                      : "Save"}
                   </Button>
                 )}
                 <button
