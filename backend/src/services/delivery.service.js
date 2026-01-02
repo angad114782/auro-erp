@@ -55,62 +55,105 @@ export async function sendToDeliveryService(projectId, user = "system") {
 
   const po = await PoDetails.findOne({ project: projectId }).lean();
 
-  // ✅ RFD ready qty
-  const { totalReady, perCard } = await getProjectRfdReadyQty(projectId);
+  // ✅ RFD ready qty (total till now)
+  const { totalReady } = await getProjectRfdReadyQty(projectId);
 
   if (totalReady <= 0) {
     throw new Error("No finished quantity in RFD. Nothing to send for delivery.");
   }
 
-  // ✅ Manage orderQuantity
-  const poQty = Number(po?.orderQuantity || 0);
-  const finalQty = poQty > 0 ? Math.min(poQty, totalReady) : totalReady;
+  // ✅ find existing pending delivery for same project+po
+  const existing = await Delivery.findOne({
+    project: projectId,
+    poDetails: po?._id || null,
+    status: "pending",
+  });
 
-  // Update Project Status
+  const alreadyQty = Number(existing?.orderQuantity || 0);
+
+  // ✅ how much NEW qty to add today
+  let delta = totalReady - alreadyQty;
+
+  // ✅ respect PO orderQuantity cap (optional)
+  const poQty = Number(po?.orderQuantity || 0);
+  if (poQty > 0) {
+    const maxAllowedNow = poQty - alreadyQty;
+    delta = Math.min(delta, maxAllowedNow);
+  }
+
+  if (delta <= 0) {
+    throw new Error(
+      `No new finished quantity since last send. Ready=${totalReady}, alreadySent=${alreadyQty}`
+    );
+  }
+
+  // ✅ project status
   await Project.findByIdAndUpdate(projectId, { status: "delivery_pending" });
 
   const today = new Date();
   const poReceived = po?.issuedAt || today;
   const agingDays = Math.ceil((today - poReceived) / (1000 * 60 * 60 * 24));
 
-  const delivery = await Delivery.create({
-    project: projectId,
-    poDetails: po?._id || null,
+  // ✅ update existing OR create new
+  let deliveryDoc;
 
-    projectCode: project.autoCode,
-    productName: project.artName,
-    category: project.category?.name || "",
-    brand: project.brand?.name || "",
-    gender: project.gender || "",
+  if (existing) {
+    const newQty = alreadyQty + delta;
 
-    poNumber: po?.poNumber || "",
-    poReceivedDate: po?.issuedAt || null,
-    deliveryDateExpected: po?.deliveryDate || null,
+    deliveryDoc = await Delivery.findByIdAndUpdate(
+      existing._id,
+      {
+        orderQuantity: newQty,
+        agingDays,
+        $push: {
+          history: {
+            date: new Date(),
+            updatedBy: user,
+            changes: [
+              { field: "orderQuantity", from: alreadyQty, to: newQty },
+              { field: "rfdReadyQuantity", from: alreadyQty, to: totalReady },
+            ],
+          },
+        },
+      },
+      { new: true }
+    );
+  } else {
+    deliveryDoc = await Delivery.create({
+      project: projectId,
+      poDetails: po?._id || null,
 
-    // ✅ IMPORTANT: now delivery quantity comes from RFD completion
-    orderQuantity: finalQty,
+      projectCode: project.autoCode,
+      productName: project.artName,
+      category: project.category?.name || "",
+      brand: project.brand?.name || "",
+      gender: project.gender || "",
 
-    // optional fields if you want (only if schema allows)
-    // poOrderQuantity: poQty,
-    // rfdReadyQuantity: totalReady,
-    // rfdPerCard: perCard,
+      poNumber: po?.poNumber || "",
+      poReceivedDate: po?.issuedAt || null,
+      deliveryDateExpected: po?.deliveryDate || null,
 
-    status: "pending",
-    agingDays,
-  });
+      orderQuantity: delta, // ✅ FIRST send qty
+      status: "pending",
+      agingDays,
 
-  await addDeliveryHistory(
-    delivery._id,
-    [
-      { field: "status", from: "planning/tracking", to: "pending" },
-      { field: "orderQuantity", from: poQty, to: finalQty },
-      { field: "rfdReadyQuantity", from: 0, to: totalReady },
-    ],
-    user
-  );
+      history: [
+        {
+          date: new Date(),
+          updatedBy: user,
+          changes: [
+            { field: "status", from: "planning/tracking", to: "pending" },
+            { field: "orderQuantity", from: 0, to: delta },
+            { field: "rfdReadyQuantity", from: 0, to: totalReady },
+          ],
+        },
+      ],
+    });
+  }
 
-  return delivery;
+  return deliveryDoc;
 }
+
 
 
 // export async function markParcelDelivered(deliveryId, user = "system") {
