@@ -11,7 +11,8 @@ export async function sendToDeliveryController(req, res) {
   try {
     const { projectId } = req.params;
 
-    const delivery = await service.sendToDeliveryService(projectId);
+   const delivery = await service.sendToDeliveryService(projectId, req.user?.name || "system");
+
 
     return res.json({
       success: true,

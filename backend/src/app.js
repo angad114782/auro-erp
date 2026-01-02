@@ -23,7 +23,7 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-app.use(authMiddleware.protect);
+// app.use(authMiddleware.protect);
 app.use(express.json());
 app.use(morgan("dev"));
 

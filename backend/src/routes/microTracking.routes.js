@@ -33,5 +33,8 @@ router.post("/micro-tracking/transfer", ctrl.transferToNextDepartment);
 router.post("/micro-tracking/transfer-today", ctrl.transferTodayWork);
 // ✅ Tracking history for a project (optional stage filter)
 router.get("/projects/:projectId/tracking-history", ctrl.getTrackingHistory);
-
+router.get(
+  "/summary",
+  ctrl.getDeptCardSummaryController
+);
 export default router;

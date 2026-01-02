@@ -254,57 +254,52 @@ export async function getRowsByDepartment(projectId, cardId, department) {
 /* ----------------------------------------------------
    5) UPDATE only progressToday + push history
 ---------------------------------------------------- */
-export async function updateProgressTodayService(
-  id,
-  progressToday,
-  updatedBy = "system"
-) {
-  const todayProgress = Number(progressToday || 0);
-  if (todayProgress <= 0) {
-    throw new Error("progressToday must be greater than 0");
-  }
+function round4(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 10000) / 10000;
+}
+
+export async function updateProgressTodayService(id, progressToday, updatedBy="system") {
+  const todayProgress = round4(progressToday);
+  if (todayProgress <= 0) throw new Error("progressToday must be greater than 0");
 
   const row = await MicroTracking.findById(id);
   if (!row) throw new Error("Row not found");
 
-  const previousDone = Number(row.progressDone || 0);
+  const previousDone = round4(row.progressDone || 0);
 
-  // ✅ 1) REQUIREMENT GUARD (never exceed requirement)
-  const reqTotal = Number(row.requirement || 0);
-  const reqRemaining = reqTotal - previousDone;
+  // ✅ NEW: MAX CAP = cardQuantity (pairs)
+  const capTotal = round4(row.cardQuantity || 0);
+  const capRemaining = round4(capTotal - previousDone);
 
-  if (reqRemaining <= 0) {
+  if (capRemaining <= 0) {
     throw new Error(
-      `Requirement already completed. Allowed: 0 (requirement ${reqTotal}, done ${previousDone})`
+      `Card quantity already completed. Allowed: 0 (cardQty ${capTotal}, done ${previousDone})`
     );
   }
 
-  if (todayProgress - reqRemaining > 1e-9) {
+  if (todayProgress > capRemaining + 1e-9) {
     throw new Error(
-      `Only ${reqRemaining} allowed. (requirement ${reqTotal}, done ${previousDone})`
+      `Only ${capRemaining} allowed. (cardQty ${capTotal}, done ${previousDone})`
     );
   }
 
-  // ✅ 2) RECEIVED GUARD (only if received > 0)
-  // If printing/upper direct start => received = 0 => allow
-  const receivedQty = Number(row.received || 0);
+  // ✅ RECEIVED guard same (works for next departments)
+  const receivedQty = round4(row.received || 0);
   if (receivedQty > 0) {
-    const allowedByReceived = receivedQty - previousDone;
+    const allowedByReceived = round4(receivedQty - previousDone);
 
     if (allowedByReceived <= 0) {
-      throw new Error(
-        "No quantity received from previous department. Transfer required."
-      );
+      throw new Error("No quantity received from previous department. Transfer required.");
     }
 
-    if (todayProgress - allowedByReceived > 1e-9) {
+    if (todayProgress > allowedByReceived + 1e-9) {
       throw new Error(
         `Only ${allowedByReceived} allowed as per received (received ${receivedQty}, done ${previousDone}).`
       );
     }
   }
 
-  const newDone = previousDone + todayProgress;
+  const newDone = round4(previousDone + todayProgress);
 
   const historyEntry = {
     date: new Date(),
@@ -314,7 +309,6 @@ export async function updateProgressTodayService(
     updatedBy,
   };
 
-  // ✅ If we reached here => safe to save
   return await MicroTracking.findByIdAndUpdate(
     id,
     {
@@ -323,12 +317,7 @@ export async function updateProgressTodayService(
       $push: { history: historyEntry },
     },
     { new: true }
-  )
-    .populate({
-      path: "cardId",
-      select: "cardNumber productName cardQuantity stage assignedPlant",
-    })
-    .lean();
+  ).lean();
 }
 
 /* ----------------------------------------------------
@@ -762,9 +751,7 @@ export async function transferToNextDepartmentService(
   };
 }
 
-function round4(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 10000) / 10000;
-}
+
 
 function normStr(v) {
   return String(v ?? "")
@@ -1090,3 +1077,72 @@ export async function getTrackingHistoryService(projectId, stage, cardId) {
 
   return flat;
 }
+// services/microTracking.service.js
+
+
+/**
+ * ✅ Card-wise Summary for a Department
+ * Required:
+ * - If FIRST department (decided from DB card.stage) => card.cardQuantity
+ * - Else => SUM(received)  (flow based)
+ */
+export async function getDeptCardSummaryService(
+  projectId,
+  cardId,
+  department,
+  updatedBy = "system"
+) {
+  // ✅ validations
+  if (!mongoose.Types.ObjectId.isValid(projectId)) {
+    throw new Error("Invalid projectId");
+  }
+  if (!mongoose.Types.ObjectId.isValid(cardId)) {
+    throw new Error("Invalid cardId");
+  }
+
+  const dept = mapStageToDept(department);
+  if (!dept) throw new Error("Invalid department");
+
+  // ✅ fetch card (to detect first dept)
+  const card = await PCProductionCard.findById(cardId)
+    .select("cardQuantity stage")
+    .lean();
+
+  if (!card) throw new Error("Card not found");
+
+  const firstDept = mapStageToDept(card.stage) || "cutting";
+  const isFirstDept = String(firstDept) === String(dept);
+
+  // ✅ fetch rows
+  const rows = await MicroTracking.find({
+    projectId: new mongoose.Types.ObjectId(projectId),
+    cardId: new mongoose.Types.ObjectId(cardId),
+    department: dept,
+  }).lean();
+
+  // ✅ compute
+  const today = rows.reduce((s, r) => s + num(getTodayDone(r)), 0);
+  const receivedSum = rows.reduce((s, r) => s + num(r.received), 0);
+  const completed = rows.reduce((s, r) => s + num(r.progressDone), 0);
+
+  // ✅ required logic
+  const required = isFirstDept ? num(card.cardQuantity) : num(receivedSum);
+
+  return {
+    projectId,
+    cardId,
+    department: dept,
+
+    firstDept,
+    isFirstDept,
+
+    required,
+    completed,
+    today,
+    need: Math.max(required - completed, 0),
+
+    rowsCount: rows.length,
+    updatedBy, // optional
+  };
+}
+

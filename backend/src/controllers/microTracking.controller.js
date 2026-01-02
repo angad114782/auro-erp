@@ -283,3 +283,36 @@ export async function getTrackingHistory(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+
+import { getDeptCardSummaryService } from "../services/microTracking.service.js";
+
+export async function getDeptCardSummaryController(req, res) {
+  try {
+    const { projectId, cardId, department } = req.query;
+
+    if (!projectId || !cardId || !department) {
+      return res.status(400).json({
+        success: false,
+        error: "projectId, cardId, department are required",
+      });
+    }
+
+    const updatedBy = req.user?.name || "system";
+
+    const summary = await getDeptCardSummaryService(
+      projectId,
+      cardId,
+      department,
+      updatedBy
+    );
+
+    return res.json({ success: true, summary });
+  } catch (err) {
+    console.error("getDeptCardSummaryController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Failed to get summary",
+    });
+  }
+}

@@ -3,6 +3,31 @@
 import { Project } from "../models/Project.model.js";
 import { PoDetails } from "../models/PoDetails.model.js";
 import { Delivery } from "../models/Delivery.model.js";
+import MicroTracking from "../models/MicroTracking.model.js";
+import mongoose from "mongoose";
+
+async function getProjectRfdReadyQty(projectId) {
+  const pid = new mongoose.Types.ObjectId(projectId);
+
+  // Per card: min(progressDone) across rfd rows
+  const perCard = await MicroTracking.aggregate([
+    { $match: { projectId: pid, department: "rfd" } },
+    {
+      $group: {
+        _id: "$cardId",
+        ready: { $min: { $ifNull: ["$progressDone", 0] } },
+        rowsCount: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const totalReady = perCard.reduce((s, c) => s + Number(c.ready || 0), 0);
+
+  return {
+    totalReady,
+    perCard, // optional debug
+  };
+}
 
 async function addDeliveryHistory(deliveryId, changes, updatedBy = "system") {
   await Delivery.findByIdAndUpdate(deliveryId, {
@@ -30,17 +55,24 @@ export async function sendToDeliveryService(projectId, user = "system") {
 
   const po = await PoDetails.findOne({ project: projectId }).lean();
 
+  // ✅ RFD ready qty
+  const { totalReady, perCard } = await getProjectRfdReadyQty(projectId);
+
+  if (totalReady <= 0) {
+    throw new Error("No finished quantity in RFD. Nothing to send for delivery.");
+  }
+
+  // ✅ Manage orderQuantity
+  const poQty = Number(po?.orderQuantity || 0);
+  const finalQty = poQty > 0 ? Math.min(poQty, totalReady) : totalReady;
+
   // Update Project Status
-  await Project.findByIdAndUpdate(projectId, {
-    status: "delivery_pending",
-  });
+  await Project.findByIdAndUpdate(projectId, { status: "delivery_pending" });
 
   const today = new Date();
   const poReceived = po?.issuedAt || today;
-
   const agingDays = Math.ceil((today - poReceived) / (1000 * 60 * 60 * 24));
 
-  // Create Delivery Record
   const delivery = await Delivery.create({
     project: projectId,
     poDetails: po?._id || null,
@@ -55,21 +87,31 @@ export async function sendToDeliveryService(projectId, user = "system") {
     poReceivedDate: po?.issuedAt || null,
     deliveryDateExpected: po?.deliveryDate || null,
 
-    orderQuantity: po?.orderQuantity || 0,
+    // ✅ IMPORTANT: now delivery quantity comes from RFD completion
+    orderQuantity: finalQty,
+
+    // optional fields if you want (only if schema allows)
+    // poOrderQuantity: poQty,
+    // rfdReadyQuantity: totalReady,
+    // rfdPerCard: perCard,
 
     status: "pending",
     agingDays,
   });
 
-  // ⭐ ADD HISTORY ENTRY
   await addDeliveryHistory(
     delivery._id,
-    [{ field: "status", from: "planning/tracking", to: "pending" }],
+    [
+      { field: "status", from: "planning/tracking", to: "pending" },
+      { field: "orderQuantity", from: poQty, to: finalQty },
+      { field: "rfdReadyQuantity", from: 0, to: totalReady },
+    ],
     user
   );
 
   return delivery;
 }
+
 
 // export async function markParcelDelivered(deliveryId, user = "system") {
 //   const old = await Delivery.findById(deliveryId);
