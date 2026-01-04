@@ -1,568 +1,475 @@
-import MicroTracking from "../models/MicroTracking.model.js";
+import MicroTrackingCard from "../models/MicroTracking.model.js";
 import { PCProductionCard } from "../models/pc_productionCard.model.js";
+import { Project } from "../models/Project.model.js"; 
+import mongoose from "mongoose";
+// ✅ TODO: Replace with your actual MR model path/name
+import { PCMaterialRequest } from "../models/pc_materialRequest.model.js";
 
-function getTodayDone(row) {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const d = now.getDate();
+const DEPARTMENTS = [
+  "cutting",
+  "printing",
+  "upper",
+  "upper_rej",
+  "assembly",
+  "packing",
+  "rfd",
+];
 
-  let sum = 0;
-  for (const h of row.history || []) {
-    if (!h.addedToday) continue;
-    const dt = new Date(h.date);
-    if (dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d) {
-      sum += Number(h.addedToday || 0);
-    }
-  }
-  return sum;
+
+const AGG_DEPTS = new Set(["assembly","packing","rfd"]);
+const ITEM_DEPTS = new Set(["cutting","printing","upper","upper_rej"]);
+
+
+
+function aggregateDeptForCard(doc, dept) {
+  const deptRows = (doc.rows || []).filter(
+    (r) => r.isActive !== false && normDept(r.department) === dept
+  );
+  if (!deptRows.length) return null;
+
+  const minOf = (field) => Math.min(...deptRows.map((r) => toNum(r[field])));
+
+  // bottleneck by receivedQty
+  const bottleneckItem = deptRows.reduce(
+    (minR, r) => (toNum(r.receivedQty) < toNum(minR.receivedQty) ? r : minR),
+    deptRows[0]
+  );
+
+  return {
+    dept,
+    receivedQty: minOf("receivedQty"),
+    completedQty: minOf("completedQty"),
+    transferredQty: minOf("transferredQty"),
+    itemsCount: deptRows.length,
+    bottleneckItem: {
+      itemId: bottleneckItem.itemId,
+      name: bottleneckItem.name,
+      receivedQty: toNum(bottleneckItem.receivedQty),
+    },
+  };
 }
 
-function sameItem(a, b) {
-  if (a.itemId != null && b.itemId != null) {
-    return String(a.itemId) === String(b.itemId);
+function hasDeptActivityInMonth(doc, dept, start, end) {
+  // ✅ if any history event in dept rows within month -> active
+  const deptRows = (doc.rows || []).filter(
+    (r) => r.isActive !== false && normDept(r.department) === dept
+  );
+
+  for (const r of deptRows) {
+    for (const h of r.history || []) {
+      const ts = new Date(h.ts || h.date || h.createdAt || 0);
+      if (ts >= start && ts <= end) return true;
+    }
   }
+
+  // ✅ fallback: tracking created this month
+  const createdAt = new Date(doc.createdAt || 0);
+  if (createdAt >= start && createdAt <= end) return true;
+
+  return false;
+}
+
+
+function normDeptOrNull(v) {
+  const d = String(v || "").trim().toLowerCase();
+  return DEPARTMENTS.includes(d) ? d : null;
+}
+
+function normDept(v) {
+  return normDeptOrNull(v) || "cutting";
+}
+
+function pickFirstDeptFromCard(card) {
+  const pick = (arr) =>
+    (arr || [])
+      .map((x) => normDeptOrNull(x?.department))
+      .find(Boolean);
+
   return (
-    a.name === b.name &&
-    a.specification === b.specification &&
-    a.unit === b.unit
+    pick(card.upper) ||
+    pick(card.components) ||
+    pick(card.materials) ||
+    pick(card.packaging) ||
+    pick(card.misc) ||
+    "cutting"
   );
 }
 
-/* ----------------------------------------------------
-   1) CREATE rows for a Production Card
----------------------------------------------------- */
-export async function createMicroTrackingForCard(cardId) {
-  // check if tracking already exists
-  const existing = await MicroTracking.findOne({ cardId }).lean();
+function buildItemKey(it) {
+  const iid = it?.itemId != null ? String(it.itemId).trim() : "";
+  if (iid) return `iid:${iid}`;
 
-  if (existing) {
-    // Return all rows for this card
-    return await MicroTracking.find({ cardId }).lean();
+  const n = String(it?.name || "").trim().toLowerCase();
+  const s = String(it?.specification || "").trim().toLowerCase();
+  const u = String(it?.unit || "").trim().toLowerCase();
+  return `n:${n}|s:${s}|u:${u}`;
+}
+
+function toNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * ✅ pushRows with DEDUPE by itemKey
+ * - If same itemKey already exists -> merge snapshot issuedQty (max)
+ * - RECEIVE history only for firstDept rows (tracking start)
+ */
+function pushRows(rows, arr = [], category, firstDept, cardQty, updatedBy, seen) {
+  for (const it of arr || []) {
+    const name = String(it?.name || "").trim();
+    if (!name) continue;
+
+    const dept = normDept(it?.department);
+    const issued = toNum(it?.issued || 0);
+
+    const key = buildItemKey(it);
+
+    // ✅ dedupe: same item already added -> merge (no new row)
+    if (seen.has(key)) {
+      const existing = rows.find((r) => r.itemKey === key);
+      if (existing) {
+        existing.issuedQty = Math.max(toNum(existing.issuedQty), issued);
+        if (!existing.category) existing.category = category;
+      }
+      continue;
+    }
+
+    seen.add(key);
+
+    const isFirst = dept === firstDept;
+    const receivedInit = isFirst ? toNum(cardQty || 0) : 0;
+
+    const row = {
+      category,
+      itemId: it?.itemId ?? null,
+      itemKey: key,
+
+      name,
+      specification: String(it?.specification || "").trim(),
+      unit: String(it?.unit || "unit").trim(),
+
+      department: dept,
+
+      // ✅ tracking numbers
+      receivedQty: receivedInit,
+      issuedQty: issued, // ✅ snapshot only
+      completedQty: 0,
+      transferredQty: 0,
+
+      history: [],
+      isActive: true,
+    };
+
+    // ✅ TRACKING START LOG: ONLY RECEIVE
+    if (isFirst && receivedInit > 0) {
+      row.history.push({
+        ts: new Date(),
+        type: "RECEIVE",
+        qty: receivedInit,
+        fromDept: "",
+        toDept: firstDept,
+        meta: { category, reason: "TRACKING_START" },
+        updatedBy: updatedBy || "system",
+      });
+    }
+
+    rows.push(row);
   }
+}
 
+/**
+ * ✅ Build issued map from MR (source of truth when card isn't updated)
+ * - Uses SAME itemKey logic so row matching never fails
+ * - Uses MAX snapshot per key
+ */
+/**
+ * ✅ Collect issued snapshot from MR by itemId string
+ */
+function buildIssuedByItemIdFromMR(mr) {
+  const map = new Map();
+
+  const add = (arr = []) => {
+    for (const it of arr || []) {
+      const id = it?.itemId != null ? String(it.itemId).trim() : "";
+      if (!id) continue;
+
+      const issued = toNum(it?.issued || 0);
+      const prev = toNum(map.get(id));
+      // snapshot -> take max
+      map.set(id, Math.max(prev, issued));
+    }
+  };
+
+  add(mr.upper);
+  add(mr.materials);
+  add(mr.components);
+  add(mr.packaging);
+  add(mr.misc);
+
+  return map;
+}
+
+/**
+ * ✅ Sync issuedQty from latest MR into MicroTracking rows
+ */
+export async function syncMicroTrackingIssuedFromMR(cardId, updatedBy = "system") {
   const card = await PCProductionCard.findById(cardId).lean();
   if (!card) throw new Error("Production Card not found");
 
-  const rows = [];
-
-  const pushRows = (array, category) => {
-    array.forEach((item) => {
-      rows.push({
-        projectId: card.projectId,
-        cardId: card._id,
-        cardNumber: card.cardNumber,
-        cardQuantity: card.cardQuantity,
-        category,
-        itemId: item.itemId,
-        name: item.name,
-        specification: item.specification,
-        unit: item.unit,
-        requirement: item.requirement,
-        issued: item.issued,
-        balance: item.balance,
-        department: item.department || "unknown",
-        progressDone: 0,
-        progressToday: 0,
-      });
-    });
-  };
-
-  pushRows(card.upper || [], "upper");
-  pushRows(card.components || [], "components");
-
-  if (rows.length === 0) return [];
-
-  return await MicroTracking.insertMany(rows);
-}
-
-/* ----------------------------------------------------
-   GET Micro Tracking by project
-   (department + month + year)
----------------------------------------------------- */
-export async function getMicroTrackingByProject(
-  projectId,
-  department,
-  month,
-  year
-) {
-  const filter = { projectId };
-
-  // ✅ department filter
-  if (department) {
-    filter.department = department;
-  }
-
-  // ✅ month + year filter
-  if (month && year) {
-    const startDate = new Date(year, month - 1, 1); // month is 0-based
-    const endDate = new Date(year, month, 1);
-
-    filter.createdAt = {
-      $gte: startDate,
-      $lt: endDate,
-    };
-  }
-
-  const rows = await MicroTracking.find(filter)
-    .populate({
-      path: "cardId",
-      select: "cardNumber productName cardQuantity stage assignedPlant",
-      populate: {
-        path: "assignedPlant",
-        select: "name code location", // jo bhi fields chahiye
-      },
-    })
-    .sort({ cardNumber: 1, name: 1 })
-    .lean();
-
-  // ✅ unique card calculation
-  const cardMap = new Map();
-
-  rows.forEach((row) => {
-    const cardId = row.cardId?._id?.toString();
-    if (!cardId) return;
-
-    if (!cardMap.has(cardId)) {
-      cardMap.set(cardId, row.cardId.cardQuantity || 0);
-    }
+  const doc = await MicroTrackingCard.findOne({
+    projectId: card.projectId,
+    cardId: card._id,
+    isActive: true,
   });
 
-  return {
-    totalCards: cardMap.size,
-    totalCardQuantity: [...cardMap.values()].reduce((a, b) => a + b, 0),
-    items: rows,
-  };
-}
+  if (!doc) return null;
 
-/* ----------------------------------------------------
-   3) UPDATE full row
----------------------------------------------------- */
-export async function updateMicroTracking(id, payload, updatedBy = "system") {
-  const row = await MicroTracking.findById(id);
-  if (!row) throw new Error("Row not found");
-
-  const updates = {};
-  const historyEntry = {
-    date: new Date(),
-    updatedBy,
-    changes: [],
-  };
-
-  // --------------------------
-  // 1️⃣ Update progressDone
-  // --------------------------
-  if (payload.progressDone !== undefined) {
-    historyEntry.changes.push({
-      field: "progressDone",
-      from: row.progressDone,
-      to: Number(payload.progressDone),
-    });
-    updates.progressDone = Number(payload.progressDone);
-  }
-
-  // --------------------------
-  // 2️⃣ Update progressToday
-  // --------------------------
-  if (payload.progressToday !== undefined) {
-    historyEntry.changes.push({
-      field: "progressToday",
-      from: row.progressToday,
-      to: Number(payload.progressToday),
-    });
-    updates.progressToday = Number(payload.progressToday);
-  }
-
-  // --------------------------
-  // 3️⃣ Update Department
-  // --------------------------
-  const VALID_DEPTS = [
-    "cutting",
-    "printing",
-    "upper",
-    "upper_rej",
-    "assembly",
-    "packing",
-    "rfd",
-    "unknown",
-  ];
-
-  if (payload.department && VALID_DEPTS.includes(payload.department)) {
-    historyEntry.changes.push({
-      field: "department",
-      from: row.department,
-      to: payload.department,
-    });
-    updates.department = payload.department;
-  }
-
-  updates.updatedAt = new Date();
-
-  // --------------------------
-  // 4️⃣ Save update + push history
-  //   --------------------------
-  const updated = await MicroTracking.findByIdAndUpdate(
-    id,
-    {
-      $set: updates,
-      $push: { history: historyEntry },
-    },
-    { new: true }
-  )
-    .populate({
-      path: "cardId",
-      select: "cardNumber productName cardQuantity stage assignedPlant",
-    })
-    .lean();
-
-  return updated;
-}
-import mongoose from "mongoose";
-
-/* ----------------------------------------------------
-   4) GET rows inside 1 department
----------------------------------------------------- */
-
-export async function getRowsByDepartment(projectId, cardId, department) {
-  const rows = await MicroTracking.find({
-    projectId: new mongoose.Types.ObjectId(projectId),
-    cardId: new mongoose.Types.ObjectId(cardId),
-    department,
+  // ✅ IMPORTANT: MR uses productionCardId + isDeleted
+  const mr = await PCMaterialRequest.findOne({
+    projectId: card.projectId,
+    productionCardId: card._id,
+    isDeleted: false,
   })
-    .populate({
-      path: "cardId",
-      select: "cardNumber productName cardQuantity stage assignedPlant",
-    })
-    .sort({ name: 1 })
+    .sort({ createdAt: -1 })
     .lean();
+console.log("✅ MR FOUND:", {
+  mrId: mr?._id,
+  status: mr?.status,
+  isDeleted: mr?.isDeleted,
+  upperCount: mr?.upper?.length,
+});
+console.log("📦 MR ITEM SAMPLE:", {
+  itemId: mr?.upper?.[0]?.itemId,
+  issued: mr?.upper?.[0]?.issued,
+  department: mr?.upper?.[0]?.department,
+});
 
-  // ✅ Attach today-based computed fields for UI
-  return rows.map((r) => {
-    const todayDone = getTodayDone(r);
-    const todayTransferred = Number(r.transferredToday || 0);
-    const todayTransferable = Math.max(0, todayDone - todayTransferred);
+  if (!mr) return doc.toObject();
 
-    return {
-      ...r,
-      todayDone,
-      todayTransferred,
-      todayTransferable,
-    };
-  });
-}
+  const issuedMap = buildIssuedByItemIdFromMR(mr);
 
-/* ----------------------------------------------------
-   5) UPDATE only progressToday + push history
----------------------------------------------------- */
-function round4(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 10000) / 10000;
-}
+  let changed = false;
 
-export async function updateProgressTodayService(id, progressToday, updatedBy="system") {
-  const todayProgress = round4(progressToday);
-  if (todayProgress <= 0) throw new Error("progressToday must be greater than 0");
+  for (const row of doc.rows || []) {
+    const rid = row?.itemId != null ? String(row.itemId).trim() : "";
+    if (!rid) continue;
 
-  const row = await MicroTracking.findById(id);
-  if (!row) throw new Error("Row not found");
+    const newIssued = toNum(issuedMap.get(rid) || 0);
+    const oldIssued = toNum(row.issuedQty || 0);
 
-  const previousDone = round4(row.progressDone || 0);
+    if (newIssued !== oldIssued) {
+      const delta = newIssued - oldIssued;
 
-  // ✅ NEW: MAX CAP = cardQuantity (pairs)
-  const capTotal = round4(row.cardQuantity || 0);
-  const capRemaining = round4(capTotal - previousDone);
+      row.issuedQty = newIssued;
+      changed = true;
 
-  if (capRemaining <= 0) {
-    throw new Error(
-      `Card quantity already completed. Allowed: 0 (cardQty ${capTotal}, done ${previousDone})`
-    );
-  }
-
-  if (todayProgress > capRemaining + 1e-9) {
-    throw new Error(
-      `Only ${capRemaining} allowed. (cardQty ${capTotal}, done ${previousDone})`
-    );
-  }
-
-  // ✅ RECEIVED guard same (works for next departments)
-  const receivedQty = round4(row.received || 0);
-  if (receivedQty > 0) {
-    const allowedByReceived = round4(receivedQty - previousDone);
-
-    if (allowedByReceived <= 0) {
-      throw new Error("No quantity received from previous department. Transfer required.");
-    }
-
-    if (todayProgress > allowedByReceived + 1e-9) {
-      throw new Error(
-        `Only ${allowedByReceived} allowed as per received (received ${receivedQty}, done ${previousDone}).`
-      );
-    }
-  }
-
-  const newDone = round4(previousDone + todayProgress);
-
-  const historyEntry = {
-    date: new Date(),
-    addedToday: todayProgress,
-    previousDone,
-    newDone,
-    updatedBy,
-  };
-
-  return await MicroTracking.findByIdAndUpdate(
-    id,
-    {
-      $inc: { progressToday: todayProgress, progressDone: todayProgress },
-      $set: { updatedAt: new Date() },
-      $push: { history: historyEntry },
-    },
-    { new: true }
-  ).lean();
-}
-
-/* ----------------------------------------------------
-   6) DEPARTMENT WISE SUMMARY
----------------------------------------------------- */
-export async function getDepartmentWiseTrackingService(projectId) {
-  const rows = await MicroTracking.find({ projectId }).lean();
-
-  const DEPARTMENTS = [
-    "cutting",
-    "printing",
-    "upper",
-    "upper_rej",
-    "assembly",
-    "packing",
-    "rfd",
-  ];
-
-  return DEPARTMENTS.map((dept) => {
-    const items = rows.filter((r) => r.department === dept);
-
-    let planned = 0;
-    let completed = 0;
-
-    for (const it of items) {
-      planned += Number(it.requirement || 0);
-      completed += Number(it.progressDone || 0);
-    }
-
-    const remaining = planned - completed;
-    const rate = planned === 0 ? 0 : Math.round((completed / planned) * 100);
-
-    return {
-      department: dept,
-      planned,
-      completed,
-      remaining,
-      rate,
-    };
-  });
-}
-
-import { Project } from "../models/Project.model.js";
-import { PoDetails } from "../models/PoDetails.model.js";
-
-export async function getTrackingDashboard(month, year) {
-  const m = Number(month);
-  const y = Number(year);
-
-  const start = new Date(y, m - 1, 1);
-  const end = new Date(y, m, 0, 23, 59, 59);
-
-  // STEP 1 → MicroTracking वाले unique projects
-  const activeProjectIds = await MicroTracking.distinct("projectId");
-
-  if (activeProjectIds.length === 0) return [];
-
-  // STEP 2 → FULL PROJECT DETAILS + BRAND + CATEGORY + COUNTRY + ASSIGN PERSON
-  const projects = await Project.find({ _id: { $in: activeProjectIds } })
-    .populate("company", "name")
-    .populate("brand", "name")
-    .populate("category", "name")
-    .populate("type", "name")
-    .populate("country", "name")
-    .populate("assignPerson", "name email mobile")
-    .lean();
-
-  const departments = [
-    "cutting",
-    "printing",
-    "upper",
-    "upper_rej",
-    "assembly",
-    "packing",
-    "rfd",
-  ];
-
-  const response = [];
-
-  for (const p of projects) {
-    // STEP 3 → Get PO Details for this project
-    const po = await PoDetails.findOne({ project: p._id }).lean();
-
-    // STEP 4 → fetch all cards
-    const cards = await PCProductionCard.find({ projectId: p._id })
-      .populate("assignedPlant", "name")
-      .populate("materialRequests")
-      .lean();
-
-    // STEP 5 → fetch microtracking rows
-    const microRows = await MicroTracking.find({
-      projectId: p._id,
-    }).lean();
-
-    // STEP 6 → Department summary initialize
-    const resultDept = {};
-    departments.forEach((dept) => {
-      resultDept[dept] = {
-        daily: {},
-        weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 },
-        monthTotal: 0,
-      };
-    });
-
-    // STEP 7 → Calculate daily, weekly, monthly using FULL HISTORY
-    for (const row of microRows) {
-      const dept = row.department;
-      if (!departments.includes(dept)) continue;
-
-      for (const h of row.history || []) {
-        if (!h.addedToday) continue;
-
-        const dateObj = new Date(h.date);
-        if (dateObj < start || dateObj > end) continue;
-
-        const day = dateObj.getDate();
-        const added = Number(h.addedToday || 0);
-
-        const week =
-          day <= 7
-            ? "W1"
-            : day <= 14
-            ? "W2"
-            : day <= 21
-            ? "W3"
-            : day <= 28
-            ? "W4"
-            : "W5";
-
-        // Daily
-        resultDept[dept].daily[day] =
-          (resultDept[dept].daily[day] || 0) + added;
-
-        // Weekly
-        resultDept[dept].weekly[week] += added;
-
-        // Month total
-        resultDept[dept].monthTotal += added;
+      if (delta > 0) {
+        row.history = row.history || [];
+        row.history.push({
+          ts: new Date(),
+          type: "ISSUE",
+          qty: delta,
+          fromDept: "store",
+          toDept: row.department,
+          meta: { reason: "MR_SYNC", source: "pcmaterialrequests" },
+          updatedBy,
+        });
       }
     }
-
-    // FINAL PROJECT SUMMARY RECORD
-    response.push({
-      projectId: p._id,
-      autoCode: p.autoCode,
-      artName: p.artName,
-      size: p.size,
-      color: p.color,
-      gender: p.gender,
-      status: p.status,
-
-      company: p.company,
-      brand: p.brand,
-      category: p.category,
-      type: p.type,
-      country: p.country,
-      assignPerson: p.assignPerson,
-
-      poDetails: po || {},
-
-      cards,
-      departments: resultDept,
-    });
   }
 
-  return response;
+  if (changed) await doc.save();
+  return doc.toObject();
 }
 
+
+export async function createMicroTrackingForCard(cardId, updatedBy = "system") {
+  const card = await PCProductionCard.findById(cardId).lean();
+  if (!card) throw new Error("Production Card not found");
+
+  const qty = toNum(card.cardQuantity || 0);
+  const firstDept = pickFirstDeptFromCard(card);
+
+  // ✅ stop duplicates (one doc per card)
+  const exists = await MicroTrackingCard.findOne({
+    projectId: card.projectId,
+    cardId: card._id,
+    isActive: true,
+  }).lean();
+
+  if (exists) return exists;
+
+  const rows = [];
+  const seen = new Set();
+
+  pushRows(rows, card.upper, "upper", firstDept, qty, updatedBy, seen);
+  pushRows(rows, card.materials, "materials", firstDept, qty, updatedBy, seen);
+  pushRows(rows, card.components, "components", firstDept, qty, updatedBy, seen);
+  pushRows(rows, card.packaging, "packaging", firstDept, qty, updatedBy, seen);
+  pushRows(rows, card.misc, "misc", firstDept, qty, updatedBy, seen);
+
+  const doc = await MicroTrackingCard.create({
+    projectId: card.projectId,
+    cardId: card._id,
+    cardNumber: card.cardNumber,
+    cardQuantity: qty,
+    firstDept,
+    rows,
+    isActive: true,
+  });
+
+  return doc.toObject();
+}
+
+
+
 export async function getTrackingDashboardByDepartment(dept, month, year) {
+  const dRaw = String(dept || "").trim().toLowerCase();
+  const d = (dRaw === "upperrej" || dRaw === "upper_rej") ? "upper_rej" : dRaw;
+
   const m = Number(month);
   const y = Number(year);
 
-  const start = new Date(y, m - 1, 1);
+  if (!d) throw new Error("dept is required");
+  if (!m || !y) throw new Error("month & year required");
+
+  const start = new Date(y, m - 1, 1, 0, 0, 0);
   const end = new Date(y, m, 0, 23, 59, 59);
 
-  // STEP 1 → Projects having microtracking in this department
-  const activeProjectIds = await MicroTracking.distinct("projectId", {
-    department: dept,
-  });
+  // ✅ Step-1: fetch docs that have dept rows (no month filter here)
+  const rawDocs = await MicroTrackingCard.find({
+    isActive: true,
+    rows: { $elemMatch: { department: d, isActive: true } },
+  })
+    .select("projectId cardId rows cardNumber cardQuantity createdAt")
+    .lean();
 
-  if (!activeProjectIds.length) return [];
+  // ✅ Step-2: apply month filter safely in JS
+  const trackingDocs = rawDocs.filter((doc) => hasDeptActivityInMonth(doc, d, start, end));
+  if (!trackingDocs.length) return [];
 
-  const projects = await Project.find({ _id: { $in: activeProjectIds } })
+  const projectIds = [
+    ...new Set(trackingDocs.map((t) => String(t.projectId)).filter(Boolean)),
+  ].map((id) => new mongoose.Types.ObjectId(id));
+
+  const projects = await Project.find({ _id: { $in: projectIds }, isActive: true })
     .populate("brand", "name")
     .populate("country", "name")
     .populate("assignPerson", "name email mobile")
     .lean();
 
+  let PoDetailsModel = mongoose.models.PoDetails;
+  if (!PoDetailsModel) {
+    try { PoDetailsModel = mongoose.model("PoDetails"); } catch { PoDetailsModel = null; }
+  }
+
+  const poList = PoDetailsModel
+    ? await PoDetailsModel.find({ project: { $in: projectIds } }).lean()
+    : [];
+  const poMap = new Map(poList.map((po) => [String(po.project), po]));
+
+  const trackedCardIds = [
+    ...new Set(trackingDocs.map((t) => String(t.cardId)).filter(Boolean)),
+  ].map((id) => new mongoose.Types.ObjectId(id));
+
+  const cards = trackedCardIds.length
+    ? await PCProductionCard.find({ _id: { $in: trackedCardIds } })
+        .populate("assignedPlant", "name")
+        .lean()
+    : [];
+
+  const cardMap = new Map(cards.map((c) => [String(c._id), c]));
+
+  // group docs by project
+  const byProject = new Map();
+  for (const t of trackingDocs) {
+    const pid = String(t.projectId);
+    if (!byProject.has(pid)) byProject.set(pid, []);
+    byProject.get(pid).push(t);
+  }
+
   const response = [];
 
   for (const p of projects) {
-    // STEP 2 → PO
-    const po = await PoDetails.findOne({ project: p._id }).lean();
+    const pid = String(p._id);
+    const docsForProject = byProject.get(pid) || [];
 
-    // STEP 3 → Department-specific microtracking rows
-    const microRows = await MicroTracking.find({
-      projectId: p._id,
-      department: dept,
-    }).lean();
-
-    // STEP 4 → Extract ONLY tracked cardIds
-    const trackedCardIds = [
-      ...new Set(microRows.map((r) => r.cardId).filter(Boolean)),
-    ];
-
-    // STEP 5 → Fetch ONLY tracked cards
-    const cards = trackedCardIds.length
-      ? await PCProductionCard.find({
-          _id: { $in: trackedCardIds },
-        })
-          .populate("assignedPlant", "name")
-          .lean()
-      : [];
-
-    // STEP 6 → Prepare summary
-    const data = {
+    // ✅ summary (optional)
+    const summary = {
       daily: {},
       weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 },
       monthTotal: 0,
     };
 
-    for (const row of microRows) {
-      for (const h of row.history || []) {
-        if (!h.addedToday) continue;
+    const deptCards = [];
 
-        const d = new Date(h.date);
-        if (d < start || d > end) continue;
+    for (const doc of docsForProject) {
+      const card = cardMap.get(String(doc.cardId));
 
-        const day = d.getDate();
-        const added = Number(h.addedToday || 0);
+      // ✅ AGG view (assembly/packing/rfd)
+      if (AGG_DEPTS.has(d)) {
+        const agg = aggregateDeptForCard(doc, d);
+        if (!agg) continue;
 
-        const week =
-          day <= 7
-            ? "W1"
-            : day <= 14
-            ? "W2"
-            : day <= 21
-            ? "W3"
-            : day <= 28
-            ? "W4"
-            : "W5";
+        deptCards.push({
+          cardId: doc.cardId,
+          cardNumber: doc.cardNumber,
+          cardQuantity: doc.cardQuantity,
+          assignedPlant: card?.assignedPlant || null,
+          startDate: card?.startDate || null,
+          agg,
+        });
 
-        data.daily[day] = (data.daily[day] || 0) + added;
-        data.weekly[week] += added;
-        data.monthTotal += added;
+        // ✅ summary (if you want WORK_ADDED only)
+        const deptRows = (doc.rows || []).filter(
+          (r) => r.isActive !== false && normDept(r.department) === d
+        );
+        for (const row of deptRows) {
+          for (const h of row.history || []) {
+            const dt = new Date(h.ts || 0);
+            if (dt < start || dt > end) continue;
+            if (String(h.type || "") !== "WORK_ADDED") continue;
+
+            const day = dt.getDate();
+            const week =
+              day <= 7 ? "W1" : day <= 14 ? "W2" : day <= 21 ? "W3" : day <= 28 ? "W4" : "W5";
+
+            summary.weekly[week] += toNum(h.qty);
+            summary.monthTotal += toNum(h.qty);
+          }
+        }
+
+        continue;
+      }
+
+      // ✅ ITEM view (cutting/printing/upper/upper_rej)
+      if (card) deptCards.push(card);
+
+      const deptRows = (doc.rows || []).filter(
+        (r) => normDept(r.department) === d && r.isActive !== false
+      );
+
+      for (const row of deptRows) {
+        for (const h of row.history || []) {
+          const dt = new Date(h.ts || 0);
+          if (dt < start || dt > end) continue;
+          if (String(h.type || "") !== "WORK_ADDED") continue;
+
+          const yyyy = dt.getFullYear();
+          const mm = String(dt.getMonth() + 1).padStart(2, "0");
+          const dd = String(dt.getDate()).padStart(2, "0");
+          const dateKey = `${yyyy}-${mm}-${dd}`;
+
+          const added = toNum(h.qty);
+          const day = dt.getDate();
+          const week =
+            day <= 7 ? "W1" : day <= 14 ? "W2" : day <= 21 ? "W3" : day <= 28 ? "W4" : "W5";
+
+          summary.daily[dateKey] = (summary.daily[dateKey] || 0) + added;
+          summary.weekly[week] += added;
+          summary.monthTotal += added;
+        }
       }
     }
 
@@ -576,73 +483,38 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
       assignPerson: p.assignPerson,
       brand: p.brand,
       country: p.country,
-      poDetails: po || {},
-      cards, // ✅ ONLY STAGE-TRACKED CARDS
-      department: dept,
-      summary: data,
+      poDetails: poMap.get(pid) || null,
+
+      department: d,
+      summary,
+
+      // ✅ cards structure differs for agg vs item
+      cards: AGG_DEPTS.has(d)
+        ? deptCards // [{cardId, cardNumber, agg...}]
+        : [...new Map(deptCards.map((c) => [String(c._id), c])).values()],
     });
   }
 
   return response;
 }
 
-export async function getMicroTrackingByProjectAndCard(projectId, cardId) {
-  const project = await Project.findById(projectId)
-    .populate("brand", "name")
-    .populate("country", "name")
-    .lean();
 
-  if (!project) throw new Error("Project not found");
-
-  const card = await PCProductionCard.findById(cardId).lean();
-
-  if (!card) throw new Error("Card not found");
-
-  // fetch rows for this card only
-  const rows = await MicroTracking.find({ projectId, cardId })
-    .populate({
-      path: "cardId",
-      select: "cardNumber productName cardQuantity assignedPlant stage",
-    })
-    .lean();
-
-  const DEPARTMENTS = [
-    "cutting",
-    "printing",
-    "upper",
-    "upper_rej",
-    "assembly",
-    "packing",
-    "rfd",
-  ];
-
-  const grouped = {};
-
-  DEPARTMENTS.forEach((d) => (grouped[d] = []));
-
-  rows.forEach((r) => {
-    const d = r.department || "unknown";
-    if (!grouped[d]) grouped[d] = [];
-    grouped[d].push(r);
-  });
-
-  return {
-    project,
-    card,
-    departments: grouped,
-  };
-}
 
 /* ----------------------------------------------------
    GET ONLY TRACKING-ENABLED CARDS OF A PROJECT
 ---------------------------------------------------- */
 export async function getTrackingCardsByProject(projectId) {
+  if (!projectId) throw new Error("projectId required");
+
+  const pid = new mongoose.Types.ObjectId(String(projectId));
+
   // 1️⃣ Find cardIds which actually have tracking
-  const trackedCardIds = await MicroTracking.distinct("cardId", {
-    projectId,
+  const trackedCardIds = await MicroTrackingCard.distinct("cardId", {
+    projectId: pid,
+    isActive: true,
   });
 
-  if (trackedCardIds.length === 0) return [];
+  if (!trackedCardIds.length) return [];
 
   // 2️⃣ Fetch only those cards
   const cards = await PCProductionCard.find({
@@ -656,497 +528,227 @@ export async function getTrackingCardsByProject(projectId) {
   return cards;
 }
 
-export async function transferToNextDepartmentService(
-  projectId,
-  cardId,
-  fromDept,
-  toDept,
-  quantity,
-  updatedBy
-) {
-  // 1️⃣ Get FROM department rows
-  const fromRows = await MicroTracking.find({
-    projectId,
-    cardId,
-    department: fromDept,
-  });
 
-  if (!fromRows.length) throw new Error("Source department rows not found");
+export async function getMicroTrackingByCard(cardId, dept = "") {
+  if (!cardId) throw new Error("cardId required");
 
-  const totalDone = fromRows.reduce((s, r) => s + (r.progressDone || 0), 0);
-  const totalTransferred = fromRows.reduce(
-    (s, r) => s + (r.transferred || 0),
-    0
-  );
+  const d = String(dept || "").trim().toLowerCase();
+  const deptNorm = (d === "upperrej" || d === "upper_rej") ? "upper_rej" : d;
 
-  const available = totalDone - totalTransferred;
+  const doc = await MicroTrackingCard.findOne({ cardId, isActive: true })
+    .populate([
+      {
+        path: "projectId",
+        select: `
+          autoCode company brand category type country assignPerson
+          color artName size gender priority status productDesc
+          redSealTargetDate coverImage sampleImages
+          clientFinalCost clientApproval nextUpdate
+          createdAt updatedAt
+        `,
+        populate: [
+          { path: "company", select: "name companyName title" },
+          { path: "brand", select: "name title" },
+          { path: "category", select: "name title" },
+          { path: "type", select: "name title" },
+          { path: "country", select: "name code" },
+          { path: "assignPerson", select: "name" },
+        ],
+      },
+      { path: "cardId", select: "cardNumber cardQuantity status stage startDate" },
+    ])
+    .lean();
 
-  if (quantity > available) {
-    throw new Error(`Only ${available} available to transfer`);
+  if (!doc) throw new Error("MicroTracking not found for card");
+
+  // ✅ PoDetails safe
+  const PoDetailsModel = mongoose.models.PoDetails;
+  let poDetails = null;
+  if (PoDetailsModel) {
+    poDetails = await PoDetailsModel.findOne({ project: doc.projectId?._id })
+      .populate({ path: "updatedBy", select: "name email" })
+      .lean();
   }
 
-  // 2️⃣ Distribute transfer proportionally
-  let remaining = quantity;
+  // ✅ If no dept -> return full doc
+  if (!deptNorm) {
+    return { ...doc, poDetails: poDetails || null, agg: null };
+  }
 
-  for (const row of fromRows) {
-    if (remaining <= 0) break;
+  // ✅ ITEM_DEPTS => return rows
+  if (ITEM_DEPTS.has(deptNorm)) {
+    const rows = (doc.rows || []).filter(
+      (r) => r.isActive !== false && String(r.department || "").toLowerCase() === deptNorm
+    );
 
-    const canGive = (row.progressDone || 0) - (row.transferred || 0);
+    return {
+      ...doc,
+      rows,
+      agg: null,
+      poDetails: poDetails || null,
+    };
+  }
 
-    const give = Math.min(canGive, remaining);
+  // ✅ AGG_DEPTS => return agg + rows empty
+  if (AGG_DEPTS.has(deptNorm)) {
+    const agg = aggregateDeptForCard(doc, deptNorm); // ✅ now agg will not be null
+    return {
+      ...doc,
+      rows: [],
+      agg,
+      poDetails: poDetails || null,
+    };
+  }
 
-    if (give > 0) {
-      row.transferred += give;
-      row.history.push({
-        date: new Date(),
-        updatedBy,
-        changes: [
+  // ✅ fallback: unknown dept -> full rows
+  return { ...doc, poDetails: poDetails || null, agg: null };
+}
+
+
+
+
+
+
+export async function addWorkAndTransfer({
+  cardId,
+  fromDept,
+  dept, // backward compatible
+  itemId,
+  qtyWork = 0,
+  qtyTransfer = 0,
+  toDept,
+  updatedBy = "system",
+}) {
+  if (!cardId) throw new Error("cardId required");
+
+  const sourceDeptRaw = fromDept || dept;
+  if (!sourceDeptRaw) throw new Error("fromDept (or dept) required");
+  if (!itemId) throw new Error("itemId required");
+
+  const d = normDept(sourceDeptRaw);
+  const targetDept = toDept ? normDept(toDept) : nextDeptOf(d);
+  if (!targetDept) throw new Error(`Next department not found from ${d}`);
+
+  const workQty = toNum(qtyWork);
+  const transferQty = toNum(qtyTransfer);
+
+  if (workQty < 0 || transferQty < 0) throw new Error("qty cannot be negative");
+  if (workQty === 0 && transferQty === 0) throw new Error("qtyWork or qtyTransfer required");
+
+  const doc = await MicroTrackingCard.findOne({ cardId, isActive: true });
+  if (!doc) throw new Error("MicroTracking doc not found");
+
+  const src = (doc.rows || []).find(
+    (r) =>
+      r.isActive !== false &&
+      String(r.itemId || "") === String(itemId) &&
+      normDept(r.department) === d
+  );
+  if (!src) throw new Error(`Row not found for itemId ${itemId} in dept ${d}`);
+
+  src.history = src.history || [];
+
+  // ✅ WORK
+  if (workQty > 0) {
+    const receivedQty = toNum(src.receivedQty);
+    const issuedQty = toNum(src.issuedQty);
+    const completedQty = toNum(src.completedQty);
+
+    const maxAllowed = Math.min(receivedQty, issuedQty);
+    const availableToWork = maxAllowed - completedQty;
+
+    if (availableToWork <= 0) throw new Error(`No available qty to work. maxAllowed=${maxAllowed}, completed=${completedQty}`);
+    if (workQty > availableToWork) throw new Error(`Work qty exceeds limit. Allowed=${availableToWork}`);
+
+    src.completedQty = completedQty + workQty;
+
+    src.history.push({
+      ts: new Date(),
+      type: "WORK_ADDED",
+      qty: workQty,
+      fromDept: d,
+      toDept: d,
+      meta: { reason: "MANUAL_WORK" },
+      updatedBy,
+    });
+  }
+
+  // ✅ TRANSFER
+  if (transferQty > 0) {
+    const completedQty = toNum(src.completedQty);
+    const transferredQty = toNum(src.transferredQty);
+
+    const canTransfer = completedQty - transferredQty;
+    if (canTransfer <= 0) throw new Error(`Nothing to transfer. completed=${completedQty}, transferred=${transferredQty}`);
+    if (transferQty > canTransfer) throw new Error(`Transfer qty exceeds limit. Allowed=${canTransfer}`);
+
+    src.transferredQty = transferredQty + transferQty;
+
+    src.history.push({
+      ts: new Date(),
+      type: "TRANSFER",
+      qty: transferQty,
+      fromDept: d,
+      toDept: targetDept,
+      meta: { reason: "MOVE_NEXT_DEPT" },
+      updatedBy,
+    });
+
+    // ✅ find existing target row
+    const tgt = (doc.rows || []).find(
+      (r) =>
+        r.isActive !== false &&
+        String(r.itemId || "") === String(itemId) &&
+        normDept(r.department) === targetDept
+    );
+
+    if (!tgt) {
+      // ✅ create new target row with received already set
+      doc.rows.push({
+        itemId: src.itemId,
+        name: src.name,
+        specification: src.specification,
+        unit: src.unit,
+        category: src.category,
+        department: targetDept,
+
+        receivedQty: transferQty,     // ✅ IMPORTANT
+        issuedQty: 0,                 // ✅ keep 0 (issue happens in that dept if needed)
+        completedQty: 0,
+        transferredQty: 0,
+
+        history: [
           {
-            field: "transferred",
-            from: row.transferred - give,
-            to: row.transferred,
+            ts: new Date(),
+            type: "RECEIVE",
+            qty: transferQty,
+            fromDept: d,
+            toDept: targetDept,
+            meta: { reason: "FROM_PREV_DEPT" },
+            updatedBy,
           },
         ],
+        isActive: true,
       });
-      await row.save();
-      remaining -= give;
-    }
-  }
-
-  // 3️⃣ Update TO department rows (received)
-  const toRows = await MicroTracking.find({
-    projectId,
-    cardId,
-    department: toDept,
-  });
-
-  if (!toRows.length) throw new Error("Target department rows not found");
-
-  let receiveRemaining = quantity;
-
-  for (const row of toRows) {
-    if (receiveRemaining <= 0) break;
-
-    const capacity = (row.requirement || 0) - (row.received || 0);
-    const receive = Math.min(capacity, receiveRemaining);
-
-    if (receive > 0) {
-      row.received += receive;
-      row.history.push({
-        date: new Date(),
+    } else {
+      // ✅ increment receive
+      tgt.receivedQty = toNum(tgt.receivedQty) + transferQty;
+      tgt.history = tgt.history || [];
+      tgt.history.push({
+        ts: new Date(),
+        type: "RECEIVE",
+        qty: transferQty,
+        fromDept: d,
+        toDept: targetDept,
+        meta: { reason: "FROM_PREV_DEPT" },
         updatedBy,
-        changes: [
-          { field: "received", from: row.received - receive, to: row.received },
-        ],
-      });
-      await row.save();
-      receiveRemaining -= receive;
-    }
-  }
-
-  return {
-    fromDepartment: fromDept,
-    toDepartment: toDept,
-    transferred: quantity,
-  };
-}
-
-
-
-function normStr(v) {
-  return String(v ?? "")
-    .trim()
-    .toLowerCase();
-}
-
-function normItemId(v) {
-  const s = String(v ?? "").trim();
-  return s ? s : null;
-}
-
-function itemQueryFor(fr, toDept) {
-  const iid = normItemId(fr.itemId);
-  if (iid) {
-    return {
-      projectId: fr.projectId,
-      cardId: fr.cardId,
-      department: toDept,
-      itemId: iid,
-    };
-  }
-  // fallback match
-  return {
-    projectId: fr.projectId,
-    cardId: fr.cardId,
-    department: toDept,
-    name: fr.name,
-    specification: fr.specification,
-    unit: fr.unit,
-  };
-}
-
-export async function transferTodayWorkByRowService(
-  rowId,
-  fromDept,
-  toDept,
-  updatedBy = "system"
-) {
-  if (!rowId || !fromDept || !toDept) {
-    throw new Error("rowId, fromDepartment, toDepartment required");
-  }
-  if (fromDept === toDept)
-    throw new Error("fromDepartment and toDepartment cannot be same");
-
-  const fr = await MicroTracking.findById(rowId);
-  if (!fr) throw new Error("Source row not found");
-
-  // ✅ ensure row belongs to fromDept
-  if (String(fr.department) !== String(fromDept)) {
-    throw new Error(`Row department is ${fr.department}, not ${fromDept}`);
-  }
-
-  // ✅ today transferable from this row only
-  const todayDone = round4(getTodayDone(fr));
-  const alreadyTodayTransferred = round4(fr.transferredToday || 0);
-  const transferableToday = round4(todayDone - alreadyTodayTransferred);
-
-  if (transferableToday <= 0) {
-    return {
-      fromRowId: String(fr._id),
-      fromDepartment: fromDept,
-      toDepartment: toDept,
-      transferredToday: 0,
-      message: "No today quantity available to transfer for this row",
-    };
-  }
-
-  // ✅ also ensure overall availability (progressDone - transferred)
-  const overallAvailable = round4(
-    (fr.progressDone || 0) - (fr.transferred || 0)
-  );
-  const give = round4(Math.min(transferableToday, overallAvailable));
-
-  if (give <= 0) {
-    return {
-      fromRowId: String(fr._id),
-      fromDepartment: fromDept,
-      toDepartment: toDept,
-      transferredToday: 0,
-      message: "No overall quantity available to transfer",
-    };
-  }
-
-  // ✅ FIND OR CREATE target row (UPSERT = no duplicate)
-  const query = itemQueryFor(fr, toDept);
-
-  const tr = await MicroTracking.findOneAndUpdate(
-    query,
-    {
-      $setOnInsert: {
-        projectId: fr.projectId,
-        cardId: fr.cardId,
-        cardNumber: fr.cardNumber,
-        cardQuantity: fr.cardQuantity,
-        category: fr.category,
-        itemId: normItemId(fr.itemId),
-        name: fr.name,
-        specification: fr.specification,
-        unit: fr.unit,
-
-        requirement: 0,
-        issued: 0,
-        balance: 0,
-
-        department: toDept,
-        progressDone: 0,
-        progressToday: 0,
-        transferred: 0,
-        received: 0,
-        transferredToday: 0,
-        history: [],
-      },
-    },
-    { new: true, upsert: true }
-  );
-
-  // ---------- FROM updates
-  const frOldTransferred = round4(fr.transferred || 0);
-  const frOldTransferredToday = round4(fr.transferredToday || 0);
-  const frOldReq = round4(fr.requirement || 0);
-  const frOldBal = round4(fr.balance || 0);
-
-  fr.transferred = round4(frOldTransferred + give);
-  fr.transferredToday = round4(frOldTransferredToday + give);
-  fr.requirement = round4(Math.max(0, frOldReq - give));
-  fr.balance = round4(Math.max(0, frOldBal - give));
-
-  fr.history.push({
-    date: new Date(),
-    updatedBy,
-    changes: [
-      { field: "transferred", from: frOldTransferred, to: fr.transferred },
-      {
-        field: "transferredToday",
-        from: frOldTransferredToday,
-        to: fr.transferredToday,
-      },
-      { field: "requirement", from: frOldReq, to: fr.requirement },
-      { field: "balance", from: frOldBal, to: fr.balance },
-      { field: "toDepartment", from: fromDept, to: toDept },
-    ],
-  });
-
-  // ---------- TO updates
-  const trOldReceived = round4(tr.received || 0);
-  const trOldReq = round4(tr.requirement || 0);
-  const trOldBal = round4(tr.balance || 0);
-
-  tr.received = round4(trOldReceived + give);
-  tr.requirement = round4(trOldReq + give);
-  tr.balance = round4(trOldBal + give);
-
-  tr.history.push({
-    date: new Date(),
-    updatedBy,
-    changes: [
-      { field: "received", from: trOldReceived, to: tr.received },
-      { field: "requirement", from: trOldReq, to: tr.requirement },
-      { field: "balance", from: trOldBal, to: tr.balance },
-      { field: "fromDepartment", from: fromDept, to: toDept },
-    ],
-  });
-
-  await fr.save();
-  await tr.save();
-
-  return {
-    fromRowId: String(fr._id),
-    toRowId: String(tr._id),
-    fromDepartment: fromDept,
-    toDepartment: toDept,
-    transferredToday: give,
-  };
-}
-
-export async function bulkTodayProcessService(actions, updatedBy = "system") {
-  const results = [];
-  const errors = [];
-
-  for (const a of actions) {
-    try {
-      const { rowId, progressToday, fromDepartment, toDepartment } = a;
-
-      if (!rowId || progressToday === undefined || !fromDepartment) {
-        throw new Error("rowId, progressToday, fromDepartment required");
-      }
-
-      // 1) update today work (always)
-      const updatedRow = await updateProgressTodayService(
-        rowId,
-        progressToday,
-        updatedBy
-      );
-
-      // 2) transfer only if valid and different
-      let transfer = null;
-
-      if (toDepartment && fromDepartment !== toDepartment) {
-        transfer = await transferTodayWorkByRowService(
-          rowId,
-          fromDepartment,
-          toDepartment,
-          updatedBy
-        );
-      } else {
-        transfer = {
-          skipped: true,
-          reason: "No transfer needed (same dept or missing toDepartment)",
-          fromDepartment,
-          toDepartment,
-        };
-      }
-
-      results.push({
-        rowId,
-        updatedRowId: updatedRow?._id,
-        progressAdded: Number(progressToday),
-        transfer,
-      });
-    } catch (e) {
-      errors.push({ rowId: a?.rowId, error: e.message });
-    }
-  }
-
-  return { results, errors };
-}
-
-
-
-
-
-
-function mapStageToDept(stg) {
-  if (!stg) return null;
-  if (stg === "upper-rej") return "upper_rej";
-  return stg;
-}
-
-function num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-export async function getTrackingHistoryService(projectId, stage, cardId) {
-  if (!mongoose.Types.ObjectId.isValid(projectId)) {
-    throw new Error("Invalid projectId");
-  }
-
-  const filter = { projectId: new mongoose.Types.ObjectId(projectId) };
-
-  // ✅ optional cardId filter
-  if (cardId) {
-    if (!mongoose.Types.ObjectId.isValid(cardId)) throw new Error("Invalid cardId");
-    filter.cardId = new mongoose.Types.ObjectId(cardId);
-  }
-
-  // ✅ optional stage filter
-  // NOTE: tumhare data me category="upper" but department="assembly" ho sakta hai
-  // isliye OR match use karo
-  const dept = mapStageToDept(stage);
-  if (dept) {
-    filter.$or = [{ department: dept }, { category: dept }];
-  }
-
-  const rows = await MicroTracking.find(filter)
-    .select("name unit department category history")
-    .lean();
-
-  const flat = [];
-
-  for (const r of rows) {
-    const itemName = r?.name || "Unnamed";
-    const unit = r?.unit || "unit";
-    const rowStage = r?.department || r?.category || "";
-
-    for (const h of r.history || []) {
-      const timestamp = h.date || new Date();
-
-      // ✅ Case A: Today-progress history (addedToday, previousDone, newDone)
-      if (h.addedToday !== undefined) {
-        flat.push({
-          itemName,
-          unit,
-          stage: rowStage,
-          timestamp,
-
-          type: num(h.addedToday) > 0 ? "added" : "updated",
-          quantity: num(h.addedToday),
-          previousTotal: num(h.previousDone),
-          newTotal: num(h.newDone),
-
-          updatedBy: h.updatedBy || "system",
-          notes: "",
-        });
-        continue;
-      }
-
-      // ✅ Case B: Transfer / update history (changes array)
-      const changes = Array.isArray(h.changes) ? h.changes : [];
-      const notes =
-        changes.length > 0
-          ? changes.map((c) => `${c.field}: ${c.from} → ${c.to}`).join(", ")
-          : "";
-
-      // quantity yaha fixed nahi hoti, but UI wants it
-      // so we keep it 0 and show notes
-      flat.push({
-        itemName,
-        unit,
-        stage: rowStage,
-        timestamp,
-
-        type: "updated",
-        quantity: 0,
-        previousTotal: 0,
-        newTotal: 0,
-
-        updatedBy: h.updatedBy || "system",
-        notes,
       });
     }
   }
 
-  // ✅ latest first
-  flat.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-  return flat;
+  doc.markModified("rows");
+  await doc.save();
+  return doc.toObject();
 }
-// services/microTracking.service.js
 
-
-/**
- * ✅ Card-wise Summary for a Department
- * Required:
- * - If FIRST department (decided from DB card.stage) => card.cardQuantity
- * - Else => SUM(received)  (flow based)
- */
-export async function getDeptCardSummaryService(
-  projectId,
-  cardId,
-  department,
-  updatedBy = "system"
-) {
-  // ✅ validations
-  if (!mongoose.Types.ObjectId.isValid(projectId)) {
-    throw new Error("Invalid projectId");
-  }
-  if (!mongoose.Types.ObjectId.isValid(cardId)) {
-    throw new Error("Invalid cardId");
-  }
-
-  const dept = mapStageToDept(department);
-  if (!dept) throw new Error("Invalid department");
-
-  // ✅ fetch card (to detect first dept)
-  const card = await PCProductionCard.findById(cardId)
-    .select("cardQuantity stage")
-    .lean();
-
-  if (!card) throw new Error("Card not found");
-
-  const firstDept = mapStageToDept(card.stage) || "cutting";
-  const isFirstDept = String(firstDept) === String(dept);
-
-  // ✅ fetch rows
-  const rows = await MicroTracking.find({
-    projectId: new mongoose.Types.ObjectId(projectId),
-    cardId: new mongoose.Types.ObjectId(cardId),
-    department: dept,
-  }).lean();
-
-  // ✅ compute
-  const today = rows.reduce((s, r) => s + num(getTodayDone(r)), 0);
-  const receivedSum = rows.reduce((s, r) => s + num(r.received), 0);
-  const completed = rows.reduce((s, r) => s + num(r.progressDone), 0);
-
-  // ✅ required logic
-  const required = isFirstDept ? num(card.cardQuantity) : num(receivedSum);
-
-  return {
-    projectId,
-    cardId,
-    department: dept,
-
-    firstDept,
-    isFirstDept,
-
-    required,
-    completed,
-    today,
-    need: Math.max(required - completed, 0),
-
-    rowsCount: rows.length,
-    updatedBy, // optional
-  };
-}
 

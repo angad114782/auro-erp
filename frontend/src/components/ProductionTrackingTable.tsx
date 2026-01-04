@@ -118,7 +118,7 @@ interface APITrackingData {
   }>;
   department: string;
   summary: {
-    daily: Record<string, number>;
+   daily: Record<number, number>;
     weekly: {
       W1: number;
       W2: number;
@@ -185,7 +185,7 @@ interface ProductionRecord {
   projectId: string;
   cards: any[];
   summary: {
-    daily: Record<string, number>;
+   daily: Record<number, number>;
     weekly: Record<string, number>;
     monthTotal: number;
   };
@@ -344,6 +344,7 @@ export function ProductionTrackingTable() {
     setLoading(true);
     setError(null);
     try {
+      selectedDepartment === "upperREJ" ? "upper_rej" : selectedDepartment;
       const res = await api.get(
         `/tracking/dashboard/department?dept=${selectedDepartment}&month=${parseInt(
           selectedMonth
@@ -592,92 +593,94 @@ export function ProductionTrackingTable() {
   };
 
   // Function to generate stage-specific daily production data from API summary
-  const generateStageProductionData = (
-    record: ProductionRecord,
-    stage: ProductionStage,
-    year: number,
-    month: number
-  ): DailyProduction => {
-    const daysInMonth = getDaysInMonth(year, month);
-    const dailyData: DailyProduction = {};
+ const generateStageProductionData = (
+  record: ProductionRecord,
+  stage: ProductionStage,
+  year: number,
+  month: number
+): DailyProduction => {
+  const daysInMonth = getDaysInMonth(year, month);
+  const dailyData: DailyProduction = {};
 
-    // Get daily data from API summary
-    const apiDailyData = record.summary?.daily || {};
+  // ✅ Backend now gives: { "1": 10, "2": 5 ... } OR { 1:10, 2:5 }
+  const apiDailyData: any = record.summary?.daily || {};
 
-    // If API has daily data, use it
-    if (Object.keys(apiDailyData).length > 0) {
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dayOfWeek = date.getDay();
-        const dateKey = `${year}-${month.toString().padStart(2, "0")}-${day
-          .toString()
-          .padStart(2, "0")}`;
+  // If API has daily data, use it
+  if (apiDailyData && Object.keys(apiDailyData).length > 0) {
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month - 1, day);
+      const dayOfWeek = date.getDay();
 
-        // Use API data if available, otherwise 0
-        dailyData[dateKey] = apiDailyData[dateKey] || 0;
+      const dateKey = `${year}-${month.toString().padStart(2, "0")}-${day
+        .toString()
+        .padStart(2, "0")}`;
 
-        // Set weekend days to 0 if no production
-        if ((dayOfWeek === 0 || dayOfWeek === 6) && !apiDailyData[dateKey]) {
-          dailyData[dateKey] = 0;
-        }
-      }
-    } else {
-      // Generate fallback data if no API data
-      const stageData = record[stage];
-      const stagePlanned = stageData.planned;
-      const stageCompleted = stageData.quantity;
+      // ✅ FIX: read by day number key, not dateKey
+      const val = Number(apiDailyData[day] || apiDailyData[String(day)] || 0);
+      dailyData[dateKey] = val;
 
-      const baseDailyRate = Math.floor(stagePlanned / 25);
-      const variance = Math.floor(baseDailyRate * 0.4);
-
-      let cumulativeProduction = 0;
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dayOfWeek = date.getDay();
-        const dateKey = `${year}-${month.toString().padStart(2, "0")}-${day
-          .toString()
-          .padStart(2, "0")}`;
-
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          dailyData[dateKey] = 0;
-        } else {
-          const seed =
-            parseInt(record.id.slice(-3)) *
-            day *
-            month *
-            (stages.findIndex((s) => s.key === stage) + 1);
-          const randomFactor = (seed % 100) / 100;
-
-          let dailyProduction = 0;
-
-          if (stageData.status === "Completed") {
-            const targetDaily = Math.floor(stageCompleted / 20);
-            dailyProduction = Math.floor(targetDaily + variance * randomFactor);
-          } else if (stageData.status === "In Progress") {
-            const targetDaily = Math.floor(stageCompleted / 15);
-            dailyProduction = Math.floor(
-              targetDaily + variance * randomFactor * 0.7
-            );
-          } else {
-            dailyProduction = Math.floor(baseDailyRate * 0.1 * randomFactor);
-          }
-
-          if (cumulativeProduction + dailyProduction > stageCompleted) {
-            dailyProduction = Math.max(
-              0,
-              stageCompleted - cumulativeProduction
-            );
-          }
-
-          dailyData[dateKey] = Math.max(0, dailyProduction);
-          cumulativeProduction += dailyProduction;
-        }
+      // Weekend handling (optional, but keep)
+      if ((dayOfWeek === 0 || dayOfWeek === 6) && !val) {
+        dailyData[dateKey] = 0;
       }
     }
 
     return dailyData;
-  };
+  }
+
+  // ✅ fallback (unchanged)
+  const stageData = record[stage];
+  const stagePlanned = stageData.planned;
+  const stageCompleted = stageData.quantity;
+
+  const baseDailyRate = Math.floor(stagePlanned / 25);
+  const variance = Math.floor(baseDailyRate * 0.4);
+
+  let cumulativeProduction = 0;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month - 1, day);
+    const dayOfWeek = date.getDay();
+    const dateKey = `${year}-${month.toString().padStart(2, "0")}-${day
+      .toString()
+      .padStart(2, "0")}`;
+
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      dailyData[dateKey] = 0;
+    } else {
+      const seed =
+        parseInt(record.id.slice(-3)) *
+        day *
+        month *
+        (stages.findIndex((s) => s.key === stage) + 1);
+      const randomFactor = (seed % 100) / 100;
+
+      let dailyProduction = 0;
+
+      if (stageData.status === "Completed") {
+        const targetDaily = Math.floor(stageCompleted / 20);
+        dailyProduction = Math.floor(targetDaily + variance * randomFactor);
+      } else if (stageData.status === "In Progress") {
+        const targetDaily = Math.floor(stageCompleted / 15);
+        dailyProduction = Math.floor(
+          targetDaily + variance * randomFactor * 0.7
+        );
+      } else {
+        dailyProduction = Math.floor(baseDailyRate * 0.1 * randomFactor);
+      }
+
+      if (cumulativeProduction + dailyProduction > stageCompleted) {
+        dailyProduction = Math.max(0, stageCompleted - cumulativeProduction);
+      }
+
+      dailyData[dateKey] = Math.max(0, dailyProduction);
+      cumulativeProduction += dailyProduction;
+    }
+  }
+
+  return dailyData;
+};
+
 
   // Function to generate week data for selected month/year
   const generateWeekData = () => {
@@ -886,9 +889,20 @@ export function ProductionTrackingTable() {
     // Aggregate daily totals from all records
     filteredData.forEach(({ record }) => {
       const apiDailyData = record.summary?.daily || {};
-      Object.entries(apiDailyData).forEach(([date, production]) => {
-        dailyTotals[date] = (dailyTotals[date] || 0) + production;
-      });
+const year = parseInt(selectedYear);
+const month = parseInt(selectedMonth);
+
+Object.entries(apiDailyData).forEach(([dayStr, production]) => {
+  const day = Number(dayStr);
+  if (!day) return;
+
+  const dateKey = `${year}-${month.toString().padStart(2, "0")}-${day
+    .toString()
+    .padStart(2, "0")}`;
+
+  dailyTotals[dateKey] = (dailyTotals[dateKey] || 0) + Number(production || 0);
+});
+
     });
 
     return dailyTotals;
@@ -2629,7 +2643,7 @@ export function ProductionTrackingTable() {
                             const stageData =
                               selectedProductionRecord[stage.key];
 
-                            console.log(stageData, "stagedata");
+                            // console.log(stageData, "stagedata");
                             const progress =
                               (stageData.quantity / stageData.planned) * 100;
                             const isCompleted =
@@ -2976,7 +2990,7 @@ export function ProductionTrackingTable() {
                                 </div>
                                 <div>
                                   <div className="text-gray-600 group-hover:text-gray-800">
-                                    Planned
+                                    Receiving
                                   </div>
                                   <div className="font-medium group-hover:text-[#0c9dcb]">
                                     {plannedQty}

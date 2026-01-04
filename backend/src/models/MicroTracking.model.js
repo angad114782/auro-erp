@@ -1,65 +1,175 @@
 import mongoose from "mongoose";
+const { Schema } = mongoose;
 
-const MicroTrackingSchema = new mongoose.Schema(
+const DEPARTMENTS = [
+  "cutting",
+  "printing",
+  "upper",
+  "upper_rej",
+  "assembly",
+  "packing",
+  "rfd",
+];
+
+/* ---------------- Helpers ---------------- */
+function normDept(v) {
+  const d = String(v || "").trim().toLowerCase();
+  return DEPARTMENTS.includes(d) ? d : "cutting";
+}
+function normStr(v) {
+  return String(v ?? "").trim();
+}
+
+/* ---------------- Activity Log (Full History) ---------------- */
+const RowHistorySchema = new Schema(
   {
-    projectId: mongoose.Schema.Types.ObjectId,
+    ts: { type: Date, default: Date.now },
 
-    cardId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PCProductionCard",
+    // ✅ what happened
+    type: {
+      type: String,
+      enum: ["WORK_ADDED", "TRANSFER", "RECEIVE", "ISSUE", "EDIT"],
       required: true,
     },
 
-    cardNumber: String,
-    cardQuantity: Number,
+    qty: { type: Number, default: 0 },
 
-    category: String,
-    itemId: mongoose.Schema.Types.Mixed,
-    name: String,
-    specification: String,
-    unit: String,
-    requirement: Number,
-    issued: Number,
-    balance: Number,
+    fromDept: { type: String, default: "" },
+    toDept: { type: String, default: "" },
 
-    department: String,
+    // any extra info (mrId, note, etc.)
+    meta: { type: Schema.Types.Mixed, default: {} },
 
-    progressDone: { type: Number, default: 0 },
+    updatedBy: { type: String, default: "system" },
+  },
+  { _id: false }
+);
 
-    // UI helper (today input total)
-    progressToday: { type: Number, default: 0 },
+/* ---------------- Row (Item) ---------------- */
+const TrackingRowSchema = new Schema(
+  {
+    // 🔹 identity
+    itemId: { type: Schema.Types.Mixed, default: null },
+    name: { type: String, required: true },
+    specification: { type: String, default: "" },
+    unit: { type: String, default: "unit" },
 
-    // ✅ Transfer tracking (overall)
-    transferred: { type: Number, default: 0 },
+    // 🔹 first working department for this item
+    department: { type: String, required: true },
 
-    // ✅ Received from previous department
-    received: { type: Number, default: 0 },
+    // ✅ totals only (DB me today fields store nahi honge)
+    receivedQty: { type: Number, default: 0 },
+    issuedQty: { type: Number, default: 0 },
+    completedQty: { type: Number, default: 0 },
+    transferredQty: { type: Number, default: 0 },
 
-    // ✅ NEW: Today's transferred qty (sirf aaj ka work next dept me bhejna ho)
-    transferredToday: { type: Number, default: 0 },
+    // ✅ full activity log for this row
+    history: { type: [RowHistorySchema], default: [] },
 
-    history: [
-      {
-        date: { type: Date, default: Date.now },
+    // ✅ optional: row active (soft delete items)
+    isActive: { type: Boolean, default: true },
+  },
+  { _id: false }
+);
 
-        // "Aaj kitna add hua" (dashboard ke liye)
-        addedToday: Number,
-        previousDone: Number,
-        newDone: Number,
+/* ---------------- Main ---------------- */
+const MicroTrackingSchema = new Schema(
+  {
+    projectId: {
+      type: Schema.Types.ObjectId,
+      ref: "Project",
+      required: true,
+      index: true,
+    },
 
-        changes: [
-          {
-            field: String,
-            from: mongoose.Schema.Types.Mixed,
-            to: mongoose.Schema.Types.Mixed,
-          },
-        ],
+    cardId: {
+      type: Schema.Types.ObjectId,
+      ref: "PCProductionCard",
+      required: true,
+      index: true,
+    },
 
-        updatedBy: { type: String, default: "system" },
-      },
-    ],
+    cardNumber: { type: String, default: "" },
+    cardQuantity: { type: Number, default: 0 },
+
+    // 🔹 IMPORTANT: first dept of the CARD flow (not stage)
+    firstDept: { type: String, required: true, index: true },
+
+    // 🔹 ALL ITEMS HERE
+    rows: { type: [TrackingRowSchema], default: [] },
+
+    isActive: { type: Boolean, default: true, index: true },
   },
   { timestamps: true }
 );
+
+/* ---------------- Virtuals (Today computed) ----------------
+   NOTE: DB me todayQty store nahi hoga.
+   API response me virtual values chahiye to use lean(false) or toObject({virtuals:true})
+----------------------------------------------------------- */
+function isSameDay(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+// todayAdded (WORK_ADDED)
+TrackingRowSchema.virtual("todayQty").get(function () {
+  const now = new Date();
+  let sum = 0;
+  for (const h of this.history || []) {
+    const ts = new Date(h.ts || Date.now());
+    if (!isSameDay(ts, now)) continue;
+    if (h.type === "WORK_ADDED") sum += Number(h.qty || 0);
+  }
+  return sum;
+});
+
+// todayTransferred (TRANSFER)
+TrackingRowSchema.virtual("transferredTodayQty").get(function () {
+  const now = new Date();
+  let sum = 0;
+  for (const h of this.history || []) {
+    const ts = new Date(h.ts || Date.now());
+    if (!isSameDay(ts, now)) continue;
+    if (h.type === "TRANSFER") sum += Number(h.qty || 0);
+  }
+  return sum;
+});
+
+/* ---------------- Pre-validate normalize ---------------- */
+MicroTrackingSchema.pre("validate", function (next) {
+  try {
+    this.firstDept = normDept(this.firstDept);
+
+    this.cardNumber = normStr(this.cardNumber);
+    this.cardQuantity = Number(this.cardQuantity || 0);
+
+    // normalize rows
+    this.rows = (this.rows || []).map((r) => ({
+      ...r,
+      name: normStr(r.name),
+      specification: normStr(r.specification),
+      unit: normStr(r.unit || "unit"),
+      department: normDept(r.department),
+      receivedQty: Number(r.receivedQty || 0),
+      issuedQty: Number(r.issuedQty || 0),
+      completedQty: Number(r.completedQty || 0),
+      transferredQty: Number(r.transferredQty || 0),
+      history: Array.isArray(r.history) ? r.history : [],
+      isActive: r.isActive !== false,
+    }));
+
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
+
+/* ---------------- Indexes ---------------- */
+// ✅ ONE document per card
+MicroTrackingSchema.index({ projectId: 1, cardId: 1 }, { unique: true });
 
 export default mongoose.model("MicroTracking", MicroTrackingSchema);
