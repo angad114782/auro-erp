@@ -120,13 +120,13 @@ const STAGES = [
     color: "text-purple-600",
     bgColor: "bg-purple-100",
   },
-  {
-    value: "printing",
-    label: "Printing",
-    icon: Printer,
-    color: "text-blue-600",
-    bgColor: "bg-blue-100",
-  },
+  // {
+  //   value: "printing",
+  //   label: "Printing",
+  //   icon: Printer,
+  //   color: "text-blue-600",
+  //   bgColor: "bg-blue-100",
+  // },
   {
     value: "upper",
     label: "Upper",
@@ -134,34 +134,34 @@ const STAGES = [
     color: "text-indigo-600",
     bgColor: "bg-indigo-100",
   },
-  {
-    value: "upperREJ",
-    label: "Upper Reject",
-    icon: X,
-    color: "text-orange-600",
-    bgColor: "bg-orange-100",
-  },
-  {
-    value: "assembly",
-    label: "Assembly",
-    icon: Wrench,
-    color: "text-orange-600",
-    bgColor: "bg-orange-100",
-  },
-  {
-    value: "packing",
-    label: "Packing",
-    icon: Package,
-    color: "text-green-600",
-    bgColor: "bg-green-100",
-  },
-  {
-    value: "rfd",
-    label: "Ready for Dispatch",
-    icon: Send,
-    color: "text-emerald-600",
-    bgColor: "bg-emerald-100",
-  },
+  // {
+  //   value: "upperREJ",
+  //   label: "Upper Reject",
+  //   icon: X,
+  //   color: "text-orange-600",
+  //   bgColor: "bg-orange-100",
+  // },
+  // {
+  //   value: "assembly",
+  //   label: "Assembly",
+  //   icon: Wrench,
+  //   color: "text-orange-600",
+  //   bgColor: "bg-orange-100",
+  // },
+  // {
+  //   value: "packing",
+  //   label: "Packing",
+  //   icon: Package,
+  //   color: "text-green-600",
+  //   bgColor: "bg-green-100",
+  // },
+  // {
+  //   value: "rfd",
+  //   label: "Ready for Dispatch",
+  //   icon: Send,
+  //   color: "text-emerald-600",
+  //   bgColor: "bg-emerald-100",
+  // },
 ] as const;
 
 const INITIAL_DUMMY_ROWS = 5; // Show 5 empty rows initially

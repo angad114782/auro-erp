@@ -526,7 +526,7 @@ export function POTargetDialog({
                       htmlFor="unitPrice"
                       className="text-xs md:text-sm font-medium text-gray-700 mb-2 block"
                     >
-                      Unit Price for PO
+                      Brand Final Cost
                     </Label>
                     <Input
                       id="unitPrice"

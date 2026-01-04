@@ -1,6 +1,6 @@
 import MicroTrackingCard from "../models/MicroTracking.model.js";
 import { PCProductionCard } from "../models/pc_productionCard.model.js";
-import { Project } from "../models/Project.model.js"; 
+import { Project } from "../models/Project.model.js";
 import mongoose from "mongoose";
 // ✅ TODO: Replace with your actual MR model path/name
 import { PCMaterialRequest } from "../models/pc_materialRequest.model.js";
@@ -15,11 +15,8 @@ const DEPARTMENTS = [
   "rfd",
 ];
 
-
-const AGG_DEPTS = new Set(["assembly","packing","rfd"]);
-const ITEM_DEPTS = new Set(["cutting","printing","upper","upper_rej"]);
-
-
+const AGG_DEPTS = new Set(["assembly", "packing", "rfd"]);
+const ITEM_DEPTS = new Set(["cutting", "printing", "upper", "upper_rej"]);
 
 function aggregateDeptForCard(doc, dept) {
   const deptRows = (doc.rows || []).filter(
@@ -69,9 +66,10 @@ function hasDeptActivityInMonth(doc, dept, start, end) {
   return false;
 }
 
-
 function normDeptOrNull(v) {
-  const d = String(v || "").trim().toLowerCase();
+  const d = String(v || "")
+    .trim()
+    .toLowerCase();
   return DEPARTMENTS.includes(d) ? d : null;
 }
 
@@ -81,9 +79,7 @@ function normDept(v) {
 
 function pickFirstDeptFromCard(card) {
   const pick = (arr) =>
-    (arr || [])
-      .map((x) => normDeptOrNull(x?.department))
-      .find(Boolean);
+    (arr || []).map((x) => normDeptOrNull(x?.department)).find(Boolean);
 
   return (
     pick(card.upper) ||
@@ -99,9 +95,15 @@ function buildItemKey(it) {
   const iid = it?.itemId != null ? String(it.itemId).trim() : "";
   if (iid) return `iid:${iid}`;
 
-  const n = String(it?.name || "").trim().toLowerCase();
-  const s = String(it?.specification || "").trim().toLowerCase();
-  const u = String(it?.unit || "").trim().toLowerCase();
+  const n = String(it?.name || "")
+    .trim()
+    .toLowerCase();
+  const s = String(it?.specification || "")
+    .trim()
+    .toLowerCase();
+  const u = String(it?.unit || "")
+    .trim()
+    .toLowerCase();
   return `n:${n}|s:${s}|u:${u}`;
 }
 
@@ -115,7 +117,15 @@ function toNum(v) {
  * - If same itemKey already exists -> merge snapshot issuedQty (max)
  * - RECEIVE history only for firstDept rows (tracking start)
  */
-function pushRows(rows, arr = [], category, firstDept, cardQty, updatedBy, seen) {
+function pushRows(
+  rows,
+  arr = [],
+  category,
+  firstDept,
+  cardQty,
+  updatedBy,
+  seen
+) {
   for (const it of arr || []) {
     const name = String(it?.name || "").trim();
     if (!name) continue;
@@ -213,7 +223,10 @@ function buildIssuedByItemIdFromMR(mr) {
 /**
  * ✅ Sync issuedQty from latest MR into MicroTracking rows
  */
-export async function syncMicroTrackingIssuedFromMR(cardId, updatedBy = "system") {
+export async function syncMicroTrackingIssuedFromMR(
+  cardId,
+  updatedBy = "system"
+) {
   const card = await PCProductionCard.findById(cardId).lean();
   if (!card) throw new Error("Production Card not found");
 
@@ -233,17 +246,17 @@ export async function syncMicroTrackingIssuedFromMR(cardId, updatedBy = "system"
   })
     .sort({ createdAt: -1 })
     .lean();
-console.log("✅ MR FOUND:", {
-  mrId: mr?._id,
-  status: mr?.status,
-  isDeleted: mr?.isDeleted,
-  upperCount: mr?.upper?.length,
-});
-console.log("📦 MR ITEM SAMPLE:", {
-  itemId: mr?.upper?.[0]?.itemId,
-  issued: mr?.upper?.[0]?.issued,
-  department: mr?.upper?.[0]?.department,
-});
+  console.log("✅ MR FOUND:", {
+    mrId: mr?._id,
+    status: mr?.status,
+    isDeleted: mr?.isDeleted,
+    upperCount: mr?.upper?.length,
+  });
+  console.log("📦 MR ITEM SAMPLE:", {
+    itemId: mr?.upper?.[0]?.itemId,
+    issued: mr?.upper?.[0]?.issued,
+    department: mr?.upper?.[0]?.department,
+  });
 
   if (!mr) return doc.toObject();
 
@@ -283,7 +296,6 @@ console.log("📦 MR ITEM SAMPLE:", {
   return doc.toObject();
 }
 
-
 export async function createMicroTrackingForCard(cardId, updatedBy = "system") {
   const card = await PCProductionCard.findById(cardId).lean();
   if (!card) throw new Error("Production Card not found");
@@ -305,7 +317,15 @@ export async function createMicroTrackingForCard(cardId, updatedBy = "system") {
 
   pushRows(rows, card.upper, "upper", firstDept, qty, updatedBy, seen);
   pushRows(rows, card.materials, "materials", firstDept, qty, updatedBy, seen);
-  pushRows(rows, card.components, "components", firstDept, qty, updatedBy, seen);
+  pushRows(
+    rows,
+    card.components,
+    "components",
+    firstDept,
+    qty,
+    updatedBy,
+    seen
+  );
   pushRows(rows, card.packaging, "packaging", firstDept, qty, updatedBy, seen);
   pushRows(rows, card.misc, "misc", firstDept, qty, updatedBy, seen);
 
@@ -322,11 +342,11 @@ export async function createMicroTrackingForCard(cardId, updatedBy = "system") {
   return doc.toObject();
 }
 
-
-
 export async function getTrackingDashboardByDepartment(dept, month, year) {
-  const dRaw = String(dept || "").trim().toLowerCase();
-  const d = (dRaw === "upperrej" || dRaw === "upper_rej") ? "upper_rej" : dRaw;
+  const dRaw = String(dept || "")
+    .trim()
+    .toLowerCase();
+  const d = dRaw === "upperrej" || dRaw === "upper_rej" ? "upper_rej" : dRaw;
 
   const m = Number(month);
   const y = Number(year);
@@ -346,14 +366,19 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
     .lean();
 
   // ✅ Step-2: apply month filter safely in JS
-  const trackingDocs = rawDocs.filter((doc) => hasDeptActivityInMonth(doc, d, start, end));
+  const trackingDocs = rawDocs.filter((doc) =>
+    hasDeptActivityInMonth(doc, d, start, end)
+  );
   if (!trackingDocs.length) return [];
 
   const projectIds = [
     ...new Set(trackingDocs.map((t) => String(t.projectId)).filter(Boolean)),
   ].map((id) => new mongoose.Types.ObjectId(id));
 
-  const projects = await Project.find({ _id: { $in: projectIds }, isActive: true })
+  const projects = await Project.find({
+    _id: { $in: projectIds },
+    isActive: true,
+  })
     .populate("brand", "name")
     .populate("country", "name")
     .populate("assignPerson", "name email mobile")
@@ -361,7 +386,11 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
 
   let PoDetailsModel = mongoose.models.PoDetails;
   if (!PoDetailsModel) {
-    try { PoDetailsModel = mongoose.model("PoDetails"); } catch { PoDetailsModel = null; }
+    try {
+      PoDetailsModel = mongoose.model("PoDetails");
+    } catch {
+      PoDetailsModel = null;
+    }
   }
 
   const poList = PoDetailsModel
@@ -433,7 +462,15 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
 
             const day = dt.getDate();
             const week =
-              day <= 7 ? "W1" : day <= 14 ? "W2" : day <= 21 ? "W3" : day <= 28 ? "W4" : "W5";
+              day <= 7
+                ? "W1"
+                : day <= 14
+                ? "W2"
+                : day <= 21
+                ? "W3"
+                : day <= 28
+                ? "W4"
+                : "W5";
 
             summary.weekly[week] += toNum(h.qty);
             summary.monthTotal += toNum(h.qty);
@@ -464,7 +501,15 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
           const added = toNum(h.qty);
           const day = dt.getDate();
           const week =
-            day <= 7 ? "W1" : day <= 14 ? "W2" : day <= 21 ? "W3" : day <= 28 ? "W4" : "W5";
+            day <= 7
+              ? "W1"
+              : day <= 14
+              ? "W2"
+              : day <= 21
+              ? "W3"
+              : day <= 28
+              ? "W4"
+              : "W5";
 
           summary.daily[dateKey] = (summary.daily[dateKey] || 0) + added;
           summary.weekly[week] += added;
@@ -498,8 +543,6 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
   return response;
 }
 
-
-
 /* ----------------------------------------------------
    GET ONLY TRACKING-ENABLED CARDS OF A PROJECT
 ---------------------------------------------------- */
@@ -528,12 +571,13 @@ export async function getTrackingCardsByProject(projectId) {
   return cards;
 }
 
-
 export async function getMicroTrackingByCard(cardId, dept = "") {
   if (!cardId) throw new Error("cardId required");
 
-  const d = String(dept || "").trim().toLowerCase();
-  const deptNorm = (d === "upperrej" || d === "upper_rej") ? "upper_rej" : d;
+  const d = String(dept || "")
+    .trim()
+    .toLowerCase();
+  const deptNorm = d === "upperrej" || d === "upper_rej" ? "upper_rej" : d;
 
   const doc = await MicroTrackingCard.findOne({ cardId, isActive: true })
     .populate([
@@ -555,7 +599,10 @@ export async function getMicroTrackingByCard(cardId, dept = "") {
           { path: "assignPerson", select: "name" },
         ],
       },
-      { path: "cardId", select: "cardNumber cardQuantity status stage startDate" },
+      {
+        path: "cardId",
+        select: "cardNumber cardQuantity status stage startDate",
+      },
     ])
     .lean();
 
@@ -578,12 +625,15 @@ export async function getMicroTrackingByCard(cardId, dept = "") {
   // ✅ ITEM_DEPTS => return rows
   if (ITEM_DEPTS.has(deptNorm)) {
     const rows = (doc.rows || []).filter(
-      (r) => r.isActive !== false && String(r.department || "").toLowerCase() === deptNorm
+      (r) =>
+        r.isActive !== false &&
+        String(r.department || "").toLowerCase() === deptNorm
     );
 
     return {
       ...doc,
       rows,
+
       agg: null,
       poDetails: poDetails || null,
     };
@@ -603,11 +653,6 @@ export async function getMicroTrackingByCard(cardId, dept = "") {
   // ✅ fallback: unknown dept -> full rows
   return { ...doc, poDetails: poDetails || null, agg: null };
 }
-
-
-
-
-
 
 export async function addWorkAndTransfer({
   cardId,
@@ -633,7 +678,8 @@ export async function addWorkAndTransfer({
   const transferQty = toNum(qtyTransfer);
 
   if (workQty < 0 || transferQty < 0) throw new Error("qty cannot be negative");
-  if (workQty === 0 && transferQty === 0) throw new Error("qtyWork or qtyTransfer required");
+  if (workQty === 0 && transferQty === 0)
+    throw new Error("qtyWork or qtyTransfer required");
 
   const doc = await MicroTrackingCard.findOne({ cardId, isActive: true });
   if (!doc) throw new Error("MicroTracking doc not found");
@@ -657,8 +703,12 @@ export async function addWorkAndTransfer({
     const maxAllowed = Math.min(receivedQty, issuedQty);
     const availableToWork = maxAllowed - completedQty;
 
-    if (availableToWork <= 0) throw new Error(`No available qty to work. maxAllowed=${maxAllowed}, completed=${completedQty}`);
-    if (workQty > availableToWork) throw new Error(`Work qty exceeds limit. Allowed=${availableToWork}`);
+    if (availableToWork <= 0)
+      throw new Error(
+        `No available qty to work. maxAllowed=${maxAllowed}, completed=${completedQty}`
+      );
+    if (workQty > availableToWork)
+      throw new Error(`Work qty exceeds limit. Allowed=${availableToWork}`);
 
     src.completedQty = completedQty + workQty;
 
@@ -679,8 +729,12 @@ export async function addWorkAndTransfer({
     const transferredQty = toNum(src.transferredQty);
 
     const canTransfer = completedQty - transferredQty;
-    if (canTransfer <= 0) throw new Error(`Nothing to transfer. completed=${completedQty}, transferred=${transferredQty}`);
-    if (transferQty > canTransfer) throw new Error(`Transfer qty exceeds limit. Allowed=${canTransfer}`);
+    if (canTransfer <= 0)
+      throw new Error(
+        `Nothing to transfer. completed=${completedQty}, transferred=${transferredQty}`
+      );
+    if (transferQty > canTransfer)
+      throw new Error(`Transfer qty exceeds limit. Allowed=${canTransfer}`);
 
     src.transferredQty = transferredQty + transferQty;
 
@@ -712,8 +766,8 @@ export async function addWorkAndTransfer({
         category: src.category,
         department: targetDept,
 
-        receivedQty: transferQty,     // ✅ IMPORTANT
-        issuedQty: 0,                 // ✅ keep 0 (issue happens in that dept if needed)
+        receivedQty: transferQty, // ✅ IMPORTANT
+        issuedQty: 0, // ✅ keep 0 (issue happens in that dept if needed)
         completedQty: 0,
         transferredQty: 0,
 
@@ -750,5 +804,3 @@ export async function addWorkAndTransfer({
   await doc.save();
   return doc.toObject();
 }
-
-

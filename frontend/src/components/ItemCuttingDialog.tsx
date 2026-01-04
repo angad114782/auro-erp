@@ -664,26 +664,62 @@ export function ItemCuttingDialog({
   const stageDetails = getStageDetails();
   const [cuttingItems, setCuttingItems] = useState<CuttingItem[]>([]);
 
+  // const fetchnewData = () => {
+  // http://localhost:5002/api/card/693956c2689ac79a3effa4b9?dept=assembly
+  //   const res = api.get(`/card/${productData.projectId}/items`, {
+
+  // useEffect(() => {
+  //   if (!rows || rows.length === 0) {
+  //     setCuttingItems([]);
+  //     return;
+  //   }
+  //   const mapped: CuttingItem[] = rows.map((row) => {
+  //     const required = Number(
+  //       row.cardQuantity ?? row.cardId?.cardQuantity ?? 0
+  //     );
+  //     const completed = Number(row.progressDone ?? 0);
+
+  //     return {
+  //       id: row._id,
+  //       itemName: row.name || "Unnamed Item",
+  //       cardQuantity: required, // ✅ required total = cardQuantity
+  //       alreadyCut: completed,
+  //       cuttingToday: 0,
+  //       unit: row.unit || "unit",
+  //       department: row.department,
+  //       specification: row.specification,
+  //       status:
+  //         completed >= required
+  //           ? "completed"
+  //           : completed > 0
+  //           ? "in-progress"
+  //           : "pending",
+  //     };
+  //   });
+
+  //   setCuttingItems(mapped);
+  //   setExpandedItems(new Set());
+  // }, [rows, open]);
   useEffect(() => {
     if (!rows || rows.length === 0) {
       setCuttingItems([]);
       return;
     }
-    const mapped: CuttingItem[] = rows.map((row) => {
-      const required = Number(
-        row.cardQuantity ?? row.cardId?.cardQuantity ?? 0
-      );
-      const completed = Number(row.progressDone ?? 0);
+
+    const mapped: CuttingItem[] = rows.map((row, index) => {
+      const required = Number(row.receivedQty ?? 0);
+      const completed = Number(row.completedQty ?? 0);
 
       return {
-        id: row._id,
+        id: row._id ?? `row-${index}`, // fallback safe ID
         itemName: row.name || "Unnamed Item",
-        cardQuantity: required, // ✅ required total = cardQuantity
-        alreadyCut: completed,
-        cuttingToday: 0,
+        cardQuantity: required, // ✅ REQUIRED TOTAL
+        alreadyCut: completed, // ✅ ALREADY DONE
+        cuttingToday: "", // keep string for decimal UX
         unit: row.unit || "unit",
-        department: row.department,
-        specification: row.specification,
+        department: row.department || "cutting",
+        specification: row.specification || "",
+        issuedQty: row.issuedQty || "",
         status:
           completed >= required
             ? "completed"
@@ -884,21 +920,20 @@ export function ItemCuttingDialog({
     setExpandedItems(newExpanded);
   };
 
-const handleDeliverItem = async (projectId: string) => {
-  try {
-    const res = await api.put(`/projects/${projectId}/send-to-delivery`);
-    toast.success(res.data?.message || "Sent to delivery!");
-  } catch (err: any) {
-    const msg =
-      err?.response?.data?.error ||
-      err?.message ||
-      "Failed to send to delivery";
+  const handleDeliverItem = async (projectId: string) => {
+    try {
+      const res = await api.put(`/projects/${projectId}/send-to-delivery`);
+      toast.success(res.data?.message || "Sent to delivery!");
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to send to delivery";
 
-    // ✅ this is normal case (no new qty)
-    toast.info(msg);
-  }
-};
-
+      // ✅ this is normal case (no new qty)
+      toast.info(msg);
+    }
+  };
 
   const clampOnBlur = (item: CuttingItem, value: string) => {
     const alreadyCutNum = parseToNumber(item.alreadyCut);
@@ -1251,7 +1286,7 @@ const handleDeliverItem = async (projectId: string) => {
                             if (item.cuttingToday === 0) return "";
                             return item.cuttingToday.toString();
                           };
-
+                          console.log("Rendering item:", item);
                           return (
                             <div
                               key={item.id}
@@ -1295,10 +1330,21 @@ const handleDeliverItem = async (projectId: string) => {
                                 {/* Required Quantity */}
                                 <div className="col-span-4 sm:col-span-2">
                                   <div className="text-xs font-medium text-gray-600 mb-1">
-                                    Required
+                                    Receiving
                                   </div>
                                   <div className="text-sm sm:text-base font-bold text-gray-900">
                                     {Number(item.cardQuantity || 0).toFixed(4)}{" "}
+                                    {item.unit}
+                                  </div>
+                                </div>
+
+                                {/* Material Issued */}
+                                <div className="col-span-4 sm:col-span-2">
+                                  <div className="text-xs font-medium text-gray-600 mb-1">
+                                    Mtrl Issued
+                                  </div>
+                                  <div className="text-sm sm:text-base font-bold text-gray-900">
+                                    {Number(item?.issuedQty || 0).toFixed(4)}{" "}
                                     {item.unit}
                                   </div>
                                 </div>
@@ -1408,7 +1454,7 @@ const handleDeliverItem = async (projectId: string) => {
                                 {/* Remaining */}
                                 <div className="col-span-4 sm:col-span-1 text-right">
                                   <div className="text-xs font-medium text-gray-600 mb-1">
-                                    Need
+                                    Pending
                                   </div>
                                   <div className="text-sm sm:text-base font-semibold text-orange-600">
                                     {Math.max(
