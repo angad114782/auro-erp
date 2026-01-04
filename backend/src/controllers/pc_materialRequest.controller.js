@@ -19,20 +19,31 @@ export async function createMR(req, res) {
       notes: payload.notes,
     };
 
-    const { mr, card } = await trackingService.syncMicroTrackingIssuedFromMR(
-    String(mr?.productionCardId || card?._id || cardId),
-    req.user?.name || "system"
-  );
+    // ✅ 1) first create MR properly
+    const { mr, card } = await service.createMaterialRequestForCard(
+      cardId,
+      formattedPayload,
+      userName
+    );
 
-    // ✅ sync issued (safe)
+    // ✅ 2) then sync using created mr/card
     try {
-      await trackingService.syncMicroTrackingIssuedFromCard(
-        String(mr?.productionCardId || card?._id || cardId),
-        req.user?.name || "system"
-      );
+      const cid = String(mr?.productionCardId || card?._id || cardId);
+      if (cid) {
+        await trackingService.syncMicroTrackingIssuedFromMR(
+          cid,
+          req.user?.name || "system"
+        );
+      }
     } catch (e) {
       console.warn("MicroTracking issued sync skipped:", e.message);
     }
+
+    // (Optional) agar fromMR hi enough hai to ye wala sync hata sakte ho
+    // try {
+    //   const cid = String(mr?.productionCardId || card?._id || cardId);
+    //   if (cid) await trackingService.syncMicroTrackingIssuedFromCard(cid, req.user?.name || "system");
+    // } catch (e) {}
 
     return res.status(201).json({ success: true, mr, card });
   } catch (err) {
