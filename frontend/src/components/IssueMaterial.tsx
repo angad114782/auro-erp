@@ -70,6 +70,7 @@ import { Skeleton } from "./ui/skeleton";
 import api from "../lib/api";
 import { toast } from "sonner";
 import { ConfirmActionDialog } from "./ConfirmActionDialog";
+import { normalizeToFixed, sanitizeDecimalInput } from "../utils/sanitizeInput";
 
 // Types
 interface MaterialItem {
@@ -291,7 +292,6 @@ const MobileCardSkeleton = () => (
     </CardHeader>
   </Card>
 );
-
 // IssueRow Component (optimized for mobile)
 const IssueRow = ({
   item,
@@ -312,39 +312,19 @@ const IssueRow = ({
       ? parseFloat(issuedValue) || 0
       : issuedValue || 0;
   const maxIssuable = Math.max(0, req - avail);
-  const balanceAfter = Math.max(0, req - (avail + newIssuedAmount));
+  const balanceAfterRaw = Math.max(0, req - (avail + newIssuedAmount));
+
+  const balanceAfter = Number(balanceAfterRaw.toFixed(4));
 
   const handleInputChange = (value: string) => {
-    // allow empty, decimals, and typing states
-    if (value === "" || /^\d*\.?\d*$/.test(value)) {
-      // block multiple dots
-      if ((value.match(/\./g) || []).length > 1) return;
+    const sanitized = sanitizeDecimalInput(value, 4);
+    if (sanitized === null) return;
 
-      // allow typing states: "", ".", "0."
-      if (value === "" || value === ".") {
-        onIssueChange(itemId, value);
-        return;
-      }
-
-      if (value.endsWith(".")) {
-        onIssueChange(itemId, value);
-        return;
-      }
-
-      const numValue = parseFloat(value);
-      if (isNaN(numValue)) {
-        onIssueChange(itemId, "0");
-        return;
-      }
-
-      if (numValue < 0) {
-        onIssueChange(itemId, "0");
-      } else if (numValue > maxIssuable) {
-        onIssueChange(itemId, maxIssuable.toString());
-      } else {
-        // ✅ KEEP STRING
-        onIssueChange(itemId, value);
-      }
+    const numValue = Number(sanitized);
+    if (!isNaN(numValue) && numValue > maxIssuable) {
+      onIssueChange(itemId, maxIssuable.toFixed(4));
+    } else {
+      onIssueChange(itemId, sanitized);
     }
   };
 
@@ -395,17 +375,11 @@ const IssueRow = ({
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder="0"
             onBlur={(e) => {
-              const value = e.target.value;
-              if (value === "" || value === ".") {
-                handleInputChange("0");
-              } else if (value.endsWith(".")) {
-                // Remove trailing dot and update
-                const cleanedValue = value.slice(0, -1);
-                if (cleanedValue === "" || cleanedValue === "-") {
-                  handleInputChange("0");
-                } else {
-                  handleInputChange(cleanedValue);
-                }
+              const v = e.target.value;
+              if (v === "" || v === ".") {
+                onIssueChange(itemId, "0.0000");
+              } else {
+                onIssueChange(itemId, normalizeToFixed(v, 4));
               }
             }}
             className={`
@@ -463,46 +437,19 @@ const MobileIssueItem = ({
       ? parseFloat(issuedValue) || 0
       : issuedValue || 0;
   const maxIssuable = Math.max(0, req - avail);
-  const balanceAfter = Math.max(0, req - (avail + newIssuedAmount));
+  const balanceAfterRaw = Math.max(0, req - (avail + newIssuedAmount));
+
+  const balanceAfter = Number(balanceAfterRaw.toFixed(4));
 
   const handleInputChange = (value: string) => {
-    // normalize mobile "." → "0."
-    if (value === ".") {
-      onIssueChange(itemId, "0.");
-      return;
-    }
+    const sanitized = sanitizeDecimalInput(value, 4);
+    if (sanitized === null) return;
 
-    // allow empty
-    if (value === "") {
-      onIssueChange(itemId, "");
-      return;
-    }
-
-    // allow only valid decimal typing
-    if (!/^\d*\.?\d*$/.test(value)) return;
-
-    // prevent multiple dots
-    if ((value.match(/\./g) || []).length > 1) return;
-
-    // keep raw typing state (IMPORTANT)
-    if (value.endsWith(".")) {
-      onIssueChange(itemId, value);
-      return;
-    }
-
-    const numValue = parseFloat(value);
-    if (isNaN(numValue)) {
-      onIssueChange(itemId, "0");
-      return;
-    }
-
-    if (numValue < 0) {
-      onIssueChange(itemId, "0");
-    } else if (numValue > maxIssuable) {
-      onIssueChange(itemId, maxIssuable.toString());
+    const numValue = Number(sanitized);
+    if (!isNaN(numValue) && numValue > maxIssuable) {
+      onIssueChange(itemId, maxIssuable.toFixed(4));
     } else {
-      // ✅ KEEP STRING
-      onIssueChange(itemId, value);
+      onIssueChange(itemId, sanitized);
     }
   };
 
@@ -569,9 +516,9 @@ const MobileIssueItem = ({
             onBlur={(e) => {
               const v = e.target.value;
               if (v === "" || v === ".") {
-                onIssueChange(itemId, "0");
-              } else if (v.endsWith(".")) {
-                onIssueChange(itemId, v.slice(0, -1));
+                onIssueChange(itemId, "0.0000");
+              } else {
+                onIssueChange(itemId, normalizeToFixed(v, 4));
               }
             }}
           />
@@ -1149,7 +1096,10 @@ const MobileRequisitionCard = ({
     (sum, item) => sum + Number(item.issued || 0),
     0
   );
-  const progress = totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
+  const progressRaw =
+    totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
+
+  const progress = Number(progressRaw.toFixed(2)); // UI %
 
   return (
     <Card
@@ -1801,8 +1751,10 @@ export function IssueMaterial({
                     (sum, item) => sum + Number(item.issued || 0),
                     0
                   );
-                  const progress =
+                  const progressRaw =
                     totalRequired > 0 ? (totalIssued / totalRequired) * 100 : 0;
+
+                  const progress = Number(progressRaw.toFixed(2)); // UI %
 
                   return (
                     <tr
@@ -2023,7 +1975,8 @@ export function IssueMaterial({
                               isItemDeleting ? "text-gray-400" : "text-gray-500"
                             }`}
                           >
-                            {totalIssued} / {totalRequired} issued
+                            {totalIssued.toFixed(4)} /{" "}
+                            {totalRequired.toFixed(4)} issued
                           </div>
                         </div>
                       </td>

@@ -103,6 +103,69 @@ interface ProductionCardFormDialogProps {
   onCardCreated?: () => void;
 }
 
+// Helper function to format numbers to 4 decimal places
+const formatToFourDecimals = (
+  value: number | string | null | undefined
+): string => {
+  if (value === null || value === undefined || value === "") return "0.0000";
+
+  const num = typeof value === "string" ? parseFloat(value) : value;
+
+  if (isNaN(num as number)) return "0.0000";
+
+  // Format to 4 decimal places, remove trailing zeros if needed
+  const formatted = Number(num).toFixed(4);
+  // Return as string with exactly 4 decimal places
+  return formatted;
+};
+
+// Helper function to parse and limit decimal input
+const parseAndLimitDecimal = (
+  value: string,
+  maxDecimals: number = 4
+): string => {
+  // Remove any non-numeric characters except decimal point and minus sign
+  let cleaned = value.replace(/[^\d.-]/g, "");
+
+  // Ensure only one decimal point
+  const parts = cleaned.split(".");
+  if (parts.length > 2) {
+    cleaned = parts[0] + "." + parts.slice(1).join("");
+  }
+
+  // Handle negative numbers properly
+  if (cleaned.startsWith("-")) {
+    cleaned = "-" + cleaned.substring(1).replace(/-/g, "");
+  }
+
+  // Ensure only one minus sign at the beginning
+  const minusCount = (cleaned.match(/-/g) || []).length;
+  if (minusCount > 1) {
+    cleaned = cleaned.replace(/-/g, "");
+    cleaned = "-" + cleaned;
+  }
+
+  // Limit to maxDecimals decimal places
+  if (parts.length === 2 && parts[1].length > maxDecimals) {
+    cleaned = parts[0] + "." + parts[1].substring(0, maxDecimals);
+  }
+
+  // Don't allow starting with decimal point
+  if (cleaned.startsWith(".") || cleaned.startsWith("-.")) {
+    cleaned = cleaned.replace(".", "0.");
+  }
+
+  // Don't allow multiple zeros at the beginning
+  if (cleaned.startsWith("00") && !cleaned.startsWith("0.")) {
+    cleaned = "0" + cleaned.substring(2);
+  }
+
+  // If value is just "-", return empty string
+  if (cleaned === "-") return "";
+
+  return cleaned;
+};
+
 export function ProductionCardFormDialog({
   open,
   onClose,
@@ -462,13 +525,56 @@ export function ProductionCardFormDialog({
     field: "available" | "issued",
     value: string
   ) => {
+    // Parse and limit the decimal input to 4 places
+    const cleanedValue = parseAndLimitDecimal(value, 4);
+
     setMaterialData((prev) => ({
       ...prev,
       [itemName]: {
         ...prev[itemName],
-        [field]: value,
+        [field]: cleanedValue,
       },
     }));
+  };
+
+  // Helper function for key down validation on decimal inputs
+  const handleDecimalKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    currentValue: string
+  ) => {
+    const allowedKeys = [
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      ".",
+      "Backspace",
+      "Delete",
+      "ArrowLeft",
+      "ArrowRight",
+      "Tab",
+      "Home",
+      "End",
+    ];
+
+    // Allow only numeric keys, decimal point, and navigation keys
+    if (
+      !allowedKeys.includes(e.key) &&
+      !(e.ctrlKey && ["a", "c", "v", "x"].includes(e.key.toLowerCase()))
+    ) {
+      e.preventDefault();
+    }
+
+    // Prevent multiple decimal points
+    if (e.key === "." && currentValue.includes(".")) {
+      e.preventDefault();
+    }
   };
 
   const getProductName = () => {
@@ -538,11 +644,11 @@ export function ProductionCardFormDialog({
       itemId, // ✅ always included
       name: row.item || row.name || row.description || "",
       specification: row.description || row.spec || "",
-      requirement: Number(actualReq.toFixed(6)), // precision-safe
+      requirement: Number(Number(actualReq).toFixed(4)), // precision-safe with 4 decimals
       unit: row.unit || "unit",
-      available: Number(safeAvailable.toFixed(6)),
-      issued: issuedNum,
-      balance: Number(balance.toFixed(6)),
+      available: Number(Number(safeAvailable).toFixed(4)),
+      issued: Number(Number(issuedNum).toFixed(4)),
+      balance: Number(Number(balance).toFixed(4)),
       department, // ✅ department preserved
     };
   };
@@ -566,7 +672,7 @@ export function ProductionCardFormDialog({
         ...(mr.misc || []),
       ].forEach((item: any) => {
         issuedMap[item.name] = {
-          available: Number(item.available || 0),
+          available: formatToFourDecimals(item.available || 0),
           issued: Number(item.issued || 0),
         };
       });
@@ -680,11 +786,19 @@ export function ProductionCardFormDialog({
         name: item.name,
         department: item.department,
         itemId: item.itemId,
+        requirement: item.requirement,
+        available: item.available,
+        issued: item.issued,
+        balance: item.balance,
       })),
       components: components.map((item) => ({
         name: item.name,
         department: item.department,
         itemId: item.itemId,
+        requirement: item.requirement,
+        available: item.available,
+        issued: item.issued,
+        balance: item.balance,
       })),
     });
 
@@ -892,6 +1006,7 @@ export function ProductionCardFormDialog({
             name: upper[0].name,
             department: upper[0].department,
             itemId: upper[0].itemId,
+            requirement: upper[0].requirement,
           }
         : null,
       componentsSample: components[0]
@@ -899,6 +1014,7 @@ export function ProductionCardFormDialog({
             name: components[0].name,
             department: components[0].department,
             itemId: components[0].itemId,
+            requirement: components[0].requirement,
           }
         : null,
       totalUpper: upper.length,
@@ -1112,7 +1228,9 @@ export function ProductionCardFormDialog({
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Total Order:</span>
-                      <span className="font-semibold">{orderQty || "N/A"}</span>
+                      <span className="font-semibold">
+                        {formatToFourDecimals(orderQty) || "N/A"}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">
@@ -1121,7 +1239,9 @@ export function ProductionCardFormDialog({
                           : "Already Allocated:"}
                       </span>
                       <span className="font-semibold">
-                        {editingCard ? allocatedWithoutCurrent : allocated}
+                        {formatToFourDecimals(
+                          editingCard ? allocatedWithoutCurrent : allocated
+                        )}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -1129,7 +1249,9 @@ export function ProductionCardFormDialog({
                         {editingCard ? "This Card Currently:" : "Available:"}
                       </span>
                       <span className="font-semibold">
-                        {editingCard ? currentCardQuantity : remaining}
+                        {formatToFourDecimals(
+                          editingCard ? currentCardQuantity : remaining
+                        )}
                       </span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-gray-200">
@@ -1141,7 +1263,7 @@ export function ProductionCardFormDialog({
                             : "text-green-600"
                         }`}
                       >
-                        {maxAllocation}
+                        {formatToFourDecimals(maxAllocation)}
                       </span>
                     </div>
                   </div>
@@ -1169,7 +1291,9 @@ export function ProductionCardFormDialog({
                     ?.slice(0, 3)
                     .map((row: any) => {
                       const itemName = row.item;
-                      const available = materialData[itemName]?.available || 0;
+                      const available = parseFloat(
+                        materialData[itemName]?.available || "0"
+                      );
                       const consumptionNum = extractConsumptionValue(row);
                       const allocationQty = Number(formData.cardQuantity || 0);
 
@@ -1211,7 +1335,7 @@ export function ProductionCardFormDialog({
                               <div className="flex flex-col items-center justify-center bg-blue-50 rounded-lg py-2">
                                 <span className="text-gray-500">Required</span>
                                 <span className="font-bold text-blue-700">
-                                  {requirement.toFixed(2)}
+                                  {formatToFourDecimals(requirement)}
                                 </span>
                               </div>
 
@@ -1220,8 +1344,8 @@ export function ProductionCardFormDialog({
                                   Available
                                 </span>
                                 <Input
-                                  type="text" // 👈 change from number → text
-                                  inputMode="decimal" // 👈 numeric keyboard on mobile
+                                  type="text"
+                                  inputMode="decimal"
                                   value={
                                     materialData[itemName]?.available ?? ""
                                   }
@@ -1232,6 +1356,12 @@ export function ProductionCardFormDialog({
                                       e.target.value
                                     )
                                   }
+                                  onKeyDown={(e) =>
+                                    handleDecimalKeyDown(
+                                      e,
+                                      materialData[itemName]?.available || ""
+                                    )
+                                  }
                                   className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs"
                                 />
                               </div>
@@ -1239,7 +1369,9 @@ export function ProductionCardFormDialog({
                               <div className="flex flex-col items-center justify-center bg-purple-50 rounded-lg py-2">
                                 <span className="text-gray-500">Issued</span>
                                 <span className="font-bold text-purple-700">
-                                  {materialData[itemName]?.issued || 0}
+                                  {formatToFourDecimals(
+                                    materialData[itemName]?.issued || 0
+                                  )}
                                 </span>
                               </div>
                             </div>
@@ -1252,18 +1384,24 @@ export function ProductionCardFormDialog({
                                     0,
                                     requirement -
                                       available -
-                                      (materialData[itemName]?.issued || 0)
+                                      parseFloat(
+                                        materialData[itemName]?.issued || "0"
+                                      )
                                   ) === 0
                                     ? "text-green-600"
                                     : "text-red-600"
                                 }`}
                               >
-                                {Math.max(
-                                  0,
-                                  requirement -
-                                    available -
-                                    (materialData[itemName]?.issued || 0)
-                                ).toFixed(2)}
+                                {formatToFourDecimals(
+                                  Math.max(
+                                    0,
+                                    requirement -
+                                      available -
+                                      parseFloat(
+                                        materialData[itemName]?.issued || "0"
+                                      )
+                                  )
+                                )}
                               </span>
                             </div>
                           </CardContent>
@@ -1574,7 +1712,7 @@ export function ProductionCardFormDialog({
                         <div className="flex justify-between">
                           <span>Total Order:</span>
                           <span className="font-semibold">
-                            {orderQty || "N/A"}
+                            {formatToFourDecimals(orderQty) || "N/A"}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -1582,7 +1720,9 @@ export function ProductionCardFormDialog({
                             {editingCard ? "Other Cards:" : "Allocated:"}
                           </span>
                           <span className="font-semibold">
-                            {editingCard ? allocatedWithoutCurrent : allocated}
+                            {formatToFourDecimals(
+                              editingCard ? allocatedWithoutCurrent : allocated
+                            )}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -1598,7 +1738,9 @@ export function ProductionCardFormDialog({
                                 : "text-green-600"
                             }`}
                           >
-                            {editingCard ? currentCardQuantity : remaining}
+                            {formatToFourDecimals(
+                              editingCard ? currentCardQuantity : remaining
+                            )}
                           </span>
                         </div>
                         <div className="flex justify-between pt-1 border-t border-gray-200">
@@ -1610,7 +1752,7 @@ export function ProductionCardFormDialog({
                                 : "text-green-600"
                             }`}
                           >
-                            {maxAllocation}
+                            {formatToFourDecimals(maxAllocation)}
                           </span>
                         </div>
                       </div>
@@ -1649,7 +1791,7 @@ export function ProductionCardFormDialog({
                           max={maxAllocation}
                         />
                         <span className="text-sm text-gray-600">
-                          / {maxAllocation || "N/A"} max
+                          / {formatToFourDecimals(maxAllocation) || "N/A"} max
                         </span>
                       </div>
                     </div>
@@ -1758,10 +1900,12 @@ export function ProductionCardFormDialog({
                                 section.key as keyof typeof costData
                               ]?.map((row: any) => {
                                 const itemName = row.item;
-                                const available =
-                                  materialData[itemName]?.available || 0;
-                                const issued =
-                                  materialData[itemName]?.issued || 0;
+                                const available = parseFloat(
+                                  materialData[itemName]?.available || "0"
+                                );
+                                const issued = parseFloat(
+                                  materialData[itemName]?.issued || "0"
+                                );
                                 const consumptionNum =
                                   extractConsumptionValue(row);
                                 const allocationQty = Number(
@@ -1805,12 +1949,12 @@ export function ProductionCardFormDialog({
                                       </span>
                                     </td>
                                     <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-medium bg-blue-50 border-l-2 border-r-2 border-yellow-300">
-                                      {requirement.toFixed(2)}
+                                      {formatToFourDecimals(requirement)}
                                     </td>
                                     <td className="px-3 sm:px-4 py-2 sm:py-3 text-center bg-blue-50 border-l-2 border-r-2 border-blue-300">
                                       <Input
-                                        type="text" // 👈 change from number → text
-                                        inputMode="decimal" // 👈 numeric keyboard on mobile
+                                        type="text"
+                                        inputMode="decimal"
                                         value={
                                           materialData[itemName]?.available ??
                                           ""
@@ -1822,15 +1966,22 @@ export function ProductionCardFormDialog({
                                             e.target.value
                                           )
                                         }
-                                        className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs border border-blue-400 bg-whitefocus:ring-2 focus:ring-blue-300 "
+                                        onKeyDown={(e) =>
+                                          handleDecimalKeyDown(
+                                            e,
+                                            materialData[itemName]?.available ||
+                                              ""
+                                          )
+                                        }
+                                        className="w-16 sm:w-20 h-7 sm:h-8 text-center text-xs border border-blue-400 bg-white focus:ring-2 focus:ring-blue-300 "
                                       />
                                     </td>
 
                                     <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm bg-blue-50 border-l-2 border-r-2 border-green-300">
-                                      {issued}
+                                      {formatToFourDecimals(issued)}
                                     </td>
                                     <td className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm bg-red-50 border-l-2 border-r-2 border-red-300">
-                                      {balance.toFixed(2)}
+                                      {formatToFourDecimals(balance)}
                                     </td>
                                   </tr>
                                 );
