@@ -44,6 +44,30 @@ import {
 import { Separator } from "./ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
+interface DepartmentRow {
+  _id: string;
+  name: string;
+  receivedQty: number;
+  completedQty: number;
+  transferredQty?: number;
+  unit?: string;
+  specification?: string;
+  department?: string;
+  issuedQty?: number;
+  // Add agg data for assembly, packing, rfd
+  agg?: {
+    bottleneckItem?: {
+      itemId: string;
+      name: string;
+      receivedQty: number;
+    };
+    completedQty: number;
+    dept: string;
+    itemsCount: number;
+    receivedQty: number;
+    transferredQty: number;
+  };
+}
 // Types for API response
 interface APITrackingData {
   projectId: string;
@@ -271,9 +295,24 @@ export function ProductionTrackingTable() {
       setLoadingRows(true);
 
       const res = await api.get(`/card/${cardId}?dept=${department}`);
-      console.log(res, "New data request");
+      console.log("Department rows response:", res.data);
+
       if (res.data?.success) {
-        setDepartmentRows(res?.data?.item?.rows || []);
+        const itemData = res.data.item;
+
+        // For assembly, packing, rfd - use agg data
+        const isAggDepartment = ["assembly", "packing", "rfd"].includes(
+          department
+        );
+
+        if (isAggDepartment && itemData?.agg) {
+          // Format agg data into rows-like structure
+          const aggRows = formatAggData(itemData.agg, department);
+          setDepartmentRows(aggRows);
+        } else {
+          // For other departments, use rows
+          setDepartmentRows(itemData?.rows || []);
+        }
       } else {
         setDepartmentRows([]);
       }
@@ -284,6 +323,43 @@ export function ProductionTrackingTable() {
     } finally {
       setLoadingRows(false);
     }
+  };
+
+  // Helper function to format agg data
+  const formatAggData = (agg: any, department: string) => {
+    if (!agg) return [];
+
+    // Create a single "aggregated" item representing the whole department
+    const aggregatedItem = {
+      _id: `agg-${department}`,
+      name: `${
+        department.charAt(0).toUpperCase() + department.slice(1)
+      } Department`,
+      receivedQty: agg.receivedQty || 0,
+      completedQty: agg.completedQty || 0,
+      transferredQty: agg.transferredQty || 0,
+      unit: "units",
+      department: department,
+      specification: `Total Items: ${agg.itemsCount || 0}`,
+
+      // Add bottleneck item info if available
+      ...(agg.bottleneckItem && {
+        bottleneckInfo: {
+          name: agg.bottleneckItem.name,
+          receivedQty: agg.bottleneckItem.receivedQty,
+        },
+      }),
+
+      // Add agg metadata
+      aggMetadata: {
+        itemsCount: agg.itemsCount || 0,
+        completedQty: agg.completedQty || 0,
+        receivedQty: agg.receivedQty || 0,
+        transferredQty: agg.transferredQty || 0,
+      },
+    };
+
+    return [aggregatedItem];
   };
 
   const ensureSelectedCard = () => {
@@ -348,7 +424,6 @@ export function ProductionTrackingTable() {
           selectedMonth
         )}&year=${selectedYear}`
       );
-      console.log(res.data.data, "Res for imgage");
       if (res.data?.success) {
         setTrackingData(res.data.data || []);
       } else {
@@ -2640,10 +2715,6 @@ export function ProductionTrackingTable() {
                             const stageData =
                               selectedProductionRecord[stage.key];
 
-                            console.log(
-                              selectedProductionRecord,
-                              "dfdfdfdfdfdfdfdfdfdf"
-                            );
                             const progress =
                               (stageData.quantity / stageData.planned) * 100;
                             const isCompleted =

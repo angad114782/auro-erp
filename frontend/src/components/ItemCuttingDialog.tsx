@@ -15,8 +15,14 @@ import {
   ShirtIcon,
   Wrench,
   FileCheck,
+  Shirt,
+  AlertTriangle,
+  Cog,
+  CheckCircle2,
   History,
+  Plus,
 } from "lucide-react";
+
 import {
   Dialog,
   DialogContent,
@@ -62,6 +68,7 @@ interface CuttingItem {
   status: "pending" | "in-progress" | "completed";
   department: string;
   specification: string;
+  issuedQty?: number | string;
 }
 
 interface ItemCuttingDialogProps {
@@ -220,12 +227,12 @@ const MobileItemCard = React.memo(
               <Scissors className="w-4 h-4 text-gray-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-semibold text-gray-900 text-sm mb-1 truncate">
+              <div className="font-semibold text-gray-900 text-sm  truncate">
                 {item.itemName}
               </div>
               {/* SPECIFICATION ADDED HERE */}
               {item.specification && (
-                <div className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded mb-2 truncate border border-blue-100">
+                <div className="text-xs text-black/80  mb-2 truncate">
                   {item.specification}
                 </div>
               )}
@@ -254,21 +261,27 @@ const MobileItemCard = React.memo(
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="grid grid-cols-4 gap-2 mb-3">
           <div className="bg-gray-50 rounded p-2 text-center">
-            <div className="text-xs text-gray-500">Required</div>
+            <div className="text-xs text-gray-500">Received</div>
             <div className="text-sm font-bold text-gray-900">
               {item.cardQuantity}
             </div>
           </div>
           <div className="bg-gray-50 rounded p-2 text-center">
-            <div className="text-xs text-gray-500">Already Cut</div>
+            <div className="text-xs text-gray-500">Mtrl Issued</div>
+            <div className="text-sm font-semibold text-blue-600">
+              {item?.issuedQty || 0}
+            </div>
+          </div>
+          <div className="bg-gray-50 rounded p-2 text-center">
+            <div className="text-xs text-gray-500">Completed</div>
             <div className="text-sm font-semibold text-blue-600">
               {alreadyCutNum}
             </div>
           </div>
           <div className="bg-gray-50 rounded p-2 text-center">
-            <div className="text-xs text-gray-500">Remaining</div>
+            <div className="text-xs text-gray-500">Pending</div>
             <div className="text-sm font-semibold text-orange-600">
               {remaining.toFixed(4)}
             </div>
@@ -298,12 +311,13 @@ const MobileItemCard = React.memo(
         {/* Expanded Content */}
         {isExpanded && (
           <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              {/* Today Input */}
+            <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+              {/* ================= INPUT ================= */}
               <div>
                 <Label className="text-xs font-medium text-gray-600 mb-1 block">
                   {stageDetails.title} Today
                 </Label>
+
                 <Input
                   type="text"
                   inputMode="decimal"
@@ -315,50 +329,101 @@ const MobileItemCard = React.memo(
                     const finalValue = clampOnBlur(item, e.target.value);
                     updateCuttingQuantity(item.id, finalValue);
                   }}
-                  className="h-9 text-sm font-semibold border-2 focus:border-purple-500"
+                  className="h-9 w-full text-sm font-semibold border-2 focus:border-purple-500"
                   placeholder="0"
                 />
               </div>
 
-              {/* Delivery Button for RFD OR Next Stage dropdown */}
-              <div>
+              {/* ================= ACTION ================= */}
+              <div className="flex flex-col items-center">
                 <Label className="text-xs font-medium text-gray-600 mb-1 block">
-                  {item.department === "rfd" ? "Delivery" : "Next Stage"}
+                  {item.department === "rfd" ? "Delivery" : "Next"}
                 </Label>
+
                 {item.department === "rfd" ? (
                   <Button
-                    className="w-full h-9 text-xs bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
+                    className="h-9 px-3 text-xs bg-emerald-600 hover:bg-emerald-700"
                     onClick={() =>
                       productData?.projectId &&
                       handleDeliverItem(productData.projectId)
                     }
                   >
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Deliver
+                    <CheckCircle className="w-4 h-4" />
                   </Button>
                 ) : (
                   <Select
-                    value={stage ? undefined : undefined}
                     onValueChange={(value) => onAdvanceToChange(item.id, value)}
                   >
-                    <SelectTrigger className="h-9 text-xs border-2 border-emerald-300">
-                      <SelectValue placeholder="Next stage" />
+                    <SelectTrigger
+                      chevronShow={false}
+                      className="h-9 w-9 p-0 flex items-center justify-center border-2 border-emerald-300"
+                    >
+                      <Plus className="w-4 h-4 text-emerald-700" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cutting">Cutting</SelectItem>
-                      <SelectItem value="printing">Printing</SelectItem>
-                      <SelectItem value="upper">Upper</SelectItem>
-                      <SelectItem value="upper-rej">Upper REJ</SelectItem>
-                      <SelectItem value="assembly">Assembly</SelectItem>
-                      <SelectItem value="packing">Packing</SelectItem>
-                      <SelectItem value="rfd">RFD</SelectItem>
+
+                    <SelectContent align="end" className="min-w-[180px]">
+                      <SelectItem
+                        value="cutting"
+                        className="flex items-center gap-2"
+                      >
+                        <Scissors className="w-4 h-4 text-slate-600" />
+                        <span>Cutting</span>
+                      </SelectItem>
+
+                      <SelectItem
+                        value="printing"
+                        className="flex items-center gap-2"
+                      >
+                        <Printer className="w-4 h-4 text-indigo-600" />
+                        <span>Printing</span>
+                      </SelectItem>
+
+                      <SelectItem
+                        value="upper"
+                        className="flex items-center gap-2"
+                      >
+                        <Shirt className="w-4 h-4 text-blue-600" />
+                        <span>Upper</span>
+                      </SelectItem>
+
+                      <SelectItem
+                        value="upper-rej"
+                        className="flex items-center gap-2"
+                      >
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        <span>Upper REJ</span>
+                      </SelectItem>
+
+                      <SelectItem
+                        value="assembly"
+                        className="flex items-center gap-2"
+                      >
+                        <Cog className="w-4 h-4 text-emerald-600" />
+                        <span>Assembly</span>
+                      </SelectItem>
+
+                      <SelectItem
+                        value="packing"
+                        className="flex items-center gap-2"
+                      >
+                        <Package className="w-4 h-4 text-purple-600" />
+                        <span>Packing</span>
+                      </SelectItem>
+
+                      <SelectItem
+                        value="rfd"
+                        className="flex items-center gap-2"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                        <span>RFD</span>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 )}
               </div>
             </div>
 
-            {/* Today's Update Indicator */}
+            {/* ================= TODAY INDICATOR ================= */}
             {cuttingTodayNum > 0 && (
               <div className="p-2 bg-purple-100 rounded-lg border border-purple-200">
                 <div className="flex items-center gap-2 text-xs text-purple-800">
@@ -379,7 +444,7 @@ const MobileItemCard = React.memo(
 MobileItemCard.displayName = "MobileItemCard";
 
 const saveBulkToday = async (actions: any[]) => {
-  const res = await api.post("/micro-tracking/bulk/today", {
+  const res = await api.post("/tracking/bulk/today", {
     actions,
   });
   return res.data;
@@ -700,6 +765,8 @@ export function ItemCuttingDialog({
   //   setCuttingItems(mapped);
   //   setExpandedItems(new Set());
   // }, [rows, open]);
+  // In ItemCuttingDialog component, update the useEffect that maps rows:
+
   useEffect(() => {
     if (!rows || rows.length === 0) {
       setCuttingItems([]);
@@ -707,32 +774,80 @@ export function ItemCuttingDialog({
     }
 
     const mapped: CuttingItem[] = rows.map((row, index) => {
-      const required = Number(row.receivedQty ?? 0);
-      const completed = Number(row.completedQty ?? 0);
+      // Check if this is an aggregated department row
+      const isAggRow = row._id?.startsWith("agg-") || row.aggMetadata;
+      console.log(row, "Row testing");
+      if (isAggRow) {
+        // Handle aggregated department data
+        const required = Number(
+          row.receivedQty ?? row.aggMetadata?.receivedQty ?? 0
+        );
+        const completed = Number(
+          row.completedQty ?? row.aggMetadata?.completedQty ?? 0
+        );
+        const itemsCount = row.aggMetadata?.itemsCount || 1;
 
-      return {
-        id: row._id ?? `row-${index}`, // fallback safe ID
-        itemName: row.name || "Unnamed Item",
-        cardQuantity: required, // ✅ REQUIRED TOTAL
-        alreadyCut: completed, // ✅ ALREADY DONE
-        cuttingToday: "", // keep string for decimal UX
-        unit: row.unit || "unit",
-        department: row.department || "cutting",
-        specification: row.specification || "",
-        issuedQty: row.issuedQty || "",
-        status:
-          completed >= required
-            ? "completed"
-            : completed > 0
-            ? "in-progress"
-            : "pending",
-      };
+        return {
+          id: row.itemId ?? `agg-${row.department}-${index}`,
+          itemName:
+            row.name ||
+            `${
+              row.department.charAt(0).toUpperCase() + row.department.slice(1)
+            } Department`,
+          cardQuantity: required, // Total received for department
+          alreadyCut: completed, // Total completed for department
+          cuttingToday: "", // keep string for decimal UX
+          unit: row.unit || "units",
+          department: row.department,
+          specification: row.specification || `Aggregated: ${itemsCount} items`,
+          issuedQty: row.issuedQty || row.aggMetadata?.transferredQty || "",
+
+          // Add bottleneck info for display
+          ...(row.bottleneckInfo && {
+            bottleneckName: row.bottleneckInfo.name,
+            bottleneckReceivedQty: row.bottleneckInfo.receivedQty,
+          }),
+
+          // Mark as aggregated for special handling
+          isAggregated: true,
+          itemsCount: itemsCount,
+
+          status:
+            completed >= required
+              ? "completed"
+              : completed > 0
+              ? "in-progress"
+              : "pending",
+        };
+      } else {
+        // Handle regular row data (for cutting, printing, upper)
+        const required = Number(row.receivedQty ?? 0);
+        const completed = Number(row.completedQty ?? 0);
+
+        return {
+          id: row.itemId ?? `row-${index}`,
+          itemName: row.name || "Unnamed Item",
+          cardQuantity: required,
+          alreadyCut: completed,
+          cuttingToday: "",
+          unit: row.unit || "unit",
+          department: row.department || "cutting",
+          specification: row.specification || "",
+          issuedQty: row.issuedQty || "",
+          isAggregated: false,
+          status:
+            completed >= required
+              ? "completed"
+              : completed > 0
+              ? "in-progress"
+              : "pending",
+        };
+      }
     });
 
     setCuttingItems(mapped);
     setExpandedItems(new Set());
   }, [rows, open]);
-
   const calculateTotalRemaining = () => {
     return cuttingItems.reduce((sum, item) => {
       const totalAfter =
@@ -814,14 +929,22 @@ export function ItemCuttingDialog({
       );
     } else {
       return (
-        <Badge className="bg-orange-100 text-orange-800 border-orange-200 text-xs">
+        <Badge className="bg-orange-100 text-orange-800  border-orange-200 text-xs">
           {isMobile ? "⋯" : "Pending"}
         </Badge>
       );
     }
   };
 
+  // Update the handleSaveCutting function to use the work-transfer endpoint
   const handleSaveCutting = async () => {
+    // Check if we have productData with cardId
+    if (!productData?.cardId) {
+      toast.error("Card ID is required for saving progress");
+      return;
+    }
+
+    // Prepare batch of actions
     const actions = cuttingItems
       .map((item) => {
         const progressToday = parseToNumber(item.cuttingToday);
@@ -832,25 +955,26 @@ export function ItemCuttingDialog({
         // For RFD items, no department selection needed
         if (item.department === "rfd") {
           return {
-            rowId: item.id,
-            progressToday,
-            fromDepartment,
-            toDepartment: fromDepartment, // or "rfd" as needed
+            itemId: item.id,
+            qtyWork: progressToday,
+            fromDept: fromDepartment,
+            toDept: "rfd", // RFD is the final destination
+            qtyTransfer: progressToday,
           };
         }
 
         // For non-RFD items, check if department is selected
         const nextDept = nextDeptMap[item.id];
         if (!nextDept) {
-          // Don't include in actions if no department selected
           return null;
         }
 
         return {
-          rowId: item.id,
-          progressToday,
-          fromDepartment,
-          toDepartment: nextDept,
+          itemId: item.id,
+          qtyWork: progressToday,
+          fromDept: fromDepartment,
+          toDept: nextDept,
+          qtyTransfer: progressToday, // Assuming same quantity is transferred
         };
       })
       .filter(Boolean);
@@ -862,24 +986,54 @@ export function ItemCuttingDialog({
       return;
     }
 
-    // ... rest of the function remains the same
     try {
-      const res = await saveBulkToday(actions);
+      // Process each action individually using the work-transfer endpoint
+      const results = [];
+      const errors = [];
 
-      if (res.errors?.length) {
-        toast.error(`Saved with ${res.errors.length} error(s). Check console.`);
-        console.error("Bulk save errors:", res.errors);
-      } else {
-        toast.success("Today's progress saved successfully");
+      for (const action of actions) {
+        try {
+          const response = await api.post(
+            `/tracking/${productData.cardId}/work-transfer`,
+            {
+              fromDept: action.fromDept,
+              toDept: action.toDept,
+              itemId: action.itemId,
+              qtyWork: action.qtyWork,
+              qtyTransfer: action.qtyTransfer,
+            }
+          );
+
+          results.push({
+            itemId: action.itemId,
+            success: true,
+            data: response.data,
+          });
+        } catch (error: any) {
+          errors.push({
+            itemId: action.itemId,
+            error: error.response?.data?.error || error.message,
+          });
+          console.error(`Failed to save item ${action.itemId}:`, error);
+        }
       }
 
-      // Only update items that were actually saved
+      // Show success/error summary
+      if (errors.length > 0) {
+        toast.error(
+          `Saved ${results.length} items, ${errors.length} failed. Check console.`
+        );
+        console.error("Failed items:", errors);
+      } else {
+        toast.success(`Successfully saved ${results.length} item(s)`);
+      }
+
+      // Update local state for successfully saved items
+      const successfulItemIds = results.map((r) => r.itemId);
+
       setCuttingItems((prev) =>
         prev.map((item) => {
-          const wasSaved = actions.some(
-            (action: any) => action.rowId === item.id
-          );
-          if (wasSaved) {
+          if (successfulItemIds.includes(item.id)) {
             return {
               ...item,
               alreadyCut:
@@ -892,21 +1046,22 @@ export function ItemCuttingDialog({
         })
       );
 
-      // Clear department selection only for saved items
+      // Clear department selection for successful items
       setNextDeptMap((prev) => {
         const newMap = { ...prev };
-        actions.forEach((action: any) => {
-          delete newMap[action.rowId];
+        successfulItemIds.forEach((itemId) => {
+          delete newMap[itemId];
         });
         return newMap;
       });
 
-      setActiveTab("history");
+      // Switch to history tab if any were successful
+      if (results.length > 0) {
+        setActiveTab("history");
+      }
     } catch (err: any) {
-      console.error(err);
-      toast.error(
-        err?.response?.data?.error || "Failed to save today progress"
-      );
+      console.error("Batch save error:", err);
+      toast.error(err?.response?.data?.error || "Failed to save progress");
     }
   };
 
@@ -962,65 +1117,6 @@ export function ItemCuttingDialog({
         </div>
       );
     }
-
-    // return (
-    //   <div className="col-span-12 sm:col-span-4">
-    //     <Label className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 block">
-    //       Advance To Next Stage
-    //     </Label>
-    //     <Select
-    //       onValueChange={(value: any) => updateNextDepartment(item.id, value)}
-    //     >
-    //       <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm border-2 border-emerald-300 bg-linear-to-r from-emerald-50 to-emerald-100 hover:from-emerald-100 hover:to-emerald-200 focus:border-emerald-500 transition-all">
-    //         <SelectValue placeholder="Select next stage..." />
-    //       </SelectTrigger>
-    //       <SelectContent>
-    //         <SelectItem value="cutting">
-    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
-    //             <Scissors className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600" />
-    //             <span>Cutting</span>
-    //           </div>
-    //         </SelectItem>
-    //         <SelectItem value="printing">
-    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
-    //             <Printer className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
-    //             <span>Printing</span>
-    //           </div>
-    //         </SelectItem>
-    //         <SelectItem value="upper">
-    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
-    //             <ShirtIcon className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
-    //             <span>Upper</span>
-    //           </div>
-    //         </SelectItem>
-    //         <SelectItem value="upper-rej">
-    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
-    //             <Wrench className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
-    //             <span>Upper REJ</span>
-    //           </div>
-    //         </SelectItem>
-    //         <SelectItem value="assembly">
-    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
-    //             <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
-    //             <span>Assembly</span>
-    //           </div>
-    //         </SelectItem>
-    //         <SelectItem value="packing">
-    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
-    //             <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-    //             <span>Packing</span>
-    //           </div>
-    //         </SelectItem>
-    //         <SelectItem value="rfd">
-    //           <div className="flex items-center gap-2 text-xs sm:text-sm">
-    //             <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600" />
-    //             <span>RFD</span>
-    //           </div>
-    //         </SelectItem>
-    //       </SelectContent>
-    //     </Select>
-    //   </div>
-    // );
   };
 
   const minimumAvailable = calculateMinimumAvailable();
@@ -1035,9 +1131,10 @@ export function ItemCuttingDialog({
     // For non-RFD items, need BOTH cuttingToday > 0 AND next department selected
     return cuttingTodayNum > 0 && !!nextDeptMap[item.id];
   });
+  console.log("Rendering ItemCuttingDialog with cuttingItems:", rows);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[95vw] !w-[95vw] sm:!max-w-[90vw] sm:!w-[90vw] lg:!max-w-[85vw] lg:!w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
+      <DialogContent className="!max-w-[95vw] !w-[95vw] sm:!max-w-[90vw] sm:w-[90vw]! lg:!max-w-[85vw] lg:!w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">
         {/* Main Tabs Container - MOVE THIS TO THE TOP */}
         <Tabs
           value={activeTab}
@@ -1286,7 +1383,6 @@ export function ItemCuttingDialog({
                             if (item.cuttingToday === 0) return "";
                             return item.cuttingToday.toString();
                           };
-                          console.log("Rendering item:", item);
                           return (
                             <div
                               key={item.id}
@@ -1300,7 +1396,7 @@ export function ItemCuttingDialog({
                             >
                               <div className="grid grid-cols-12 gap-4 sm:gap-6 items-center">
                                 {/* Item Name & Status */}
-                                <div className="col-span-12 sm:col-span-3">
+                                <div className="col-span-12 sm:col-span-2">
                                   <div className="flex items-start gap-3">
                                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-linear-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center shrink-0 border-2 border-gray-300">
                                       <Scissors className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
@@ -1310,14 +1406,14 @@ export function ItemCuttingDialog({
                                         {item.itemName}
                                       </div>
                                       {item.specification && (
-                                        <div className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded mb-2 truncate border border-blue-100">
+                                        <div className="text-xs text-black/80  mb-2 truncate ">
                                           {item.specification}
                                         </div>
                                       )}
                                       <div className="flex items-center gap-2 flex-wrap">
                                         {getItemStatusBadge(item)}
                                         {isBottleneck && (
-                                          <Badge className="bg-red-100 text-red-800 border-red-200 text-xs flex items-center gap-1">
+                                          <Badge className="bg-red-100 text-red-800 border-red-200 rounde-full text-xs flex items-center gap-1">
                                             <TrendingDown className="w-3 h-3" />
                                             {isMobile ? "BN" : "Bottleneck"}
                                           </Badge>
@@ -1400,9 +1496,10 @@ export function ItemCuttingDialog({
                                           ? "Delivery"
                                           : "Next Stage"}
                                       </div>
+
                                       {item.department === "rfd" ? (
                                         <Button
-                                          className="w-full h-9 text-xs bg-linear-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-medium border-2 border-emerald-700 transition-all"
+                                          className="w-full h-9 text-xs bg-linear-to-r from-emerald-600 to-emerald-700"
                                           onClick={() =>
                                             handleDeliverItem(
                                               productData.projectId
@@ -1419,30 +1516,71 @@ export function ItemCuttingDialog({
                                             updateNextDepartment(item.id, value)
                                           }
                                         >
-                                          <SelectTrigger className="h-9 text-sm border-2 border-emerald-300">
-                                            <SelectValue placeholder="Select" />
+                                          <SelectTrigger
+                                            chevronShow={false}
+                                            className="h-9 w-9 p-0 flex items-center justify-center border-2 border-emerald-300"
+                                          >
+                                            <Plus className="w-4 h-4 text-emerald-700" />
                                           </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="cutting">
-                                              Cutting
+
+                                          <SelectContent
+                                            align="start"
+                                            className="min-w-[180px]"
+                                          >
+                                            <SelectItem
+                                              value="cutting"
+                                              className="flex items-center gap-2"
+                                            >
+                                              <Scissors className="w-4 h-4 text-slate-600" />
+                                              <span>Cutting</span>
                                             </SelectItem>
-                                            <SelectItem value="printing">
-                                              Printing
+
+                                            <SelectItem
+                                              value="printing"
+                                              className="flex items-center gap-2"
+                                            >
+                                              <Printer className="w-4 h-4 text-indigo-600" />
+                                              <span>Printing</span>
                                             </SelectItem>
-                                            <SelectItem value="upper">
-                                              Upper
+
+                                            <SelectItem
+                                              value="upper"
+                                              className="flex items-center gap-2"
+                                            >
+                                              <Shirt className="w-4 h-4 text-blue-600" />
+                                              <span>Upper</span>
                                             </SelectItem>
-                                            <SelectItem value="upper-rej">
-                                              Upper REJ
+
+                                            <SelectItem
+                                              value="upper-rej"
+                                              className="flex items-center gap-2"
+                                            >
+                                              <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                              <span>Upper REJ</span>
                                             </SelectItem>
-                                            <SelectItem value="assembly">
-                                              Assembly
+
+                                            <SelectItem
+                                              value="assembly"
+                                              className="flex items-center gap-2"
+                                            >
+                                              <Cog className="w-4 h-4 text-emerald-600" />
+                                              <span>Assembly</span>
                                             </SelectItem>
-                                            <SelectItem value="packing">
-                                              Packing
+
+                                            <SelectItem
+                                              value="packing"
+                                              className="flex items-center gap-2"
+                                            >
+                                              <Package className="w-4 h-4 text-purple-600" />
+                                              <span>Packing</span>
                                             </SelectItem>
-                                            <SelectItem value="rfd">
-                                              RFD
+
+                                            <SelectItem
+                                              value="rfd"
+                                              className="flex items-center gap-2"
+                                            >
+                                              <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                              <span>RFD</span>
                                             </SelectItem>
                                           </SelectContent>
                                         </Select>
