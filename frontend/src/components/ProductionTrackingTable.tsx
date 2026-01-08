@@ -606,14 +606,14 @@ export function ProductionTrackingTable() {
       icon: <ShirtIcon className="w-4 h-4" />,
       department: "upper" as Department,
     },
-    {
-      key: "upperREJ" as ProductionStage,
-      name: "Upper REJ",
-      color: "text-orange-600",
-      shortName: "REJ",
-      icon: <X className="w-4 h-4" />,
-      department: "upperREJ" as Department,
-    },
+    // {
+    //   key: "upperREJ" as ProductionStage,
+    //   name: "Upper REJ",
+    //   color: "text-orange-600",
+    //   shortName: "REJ",
+    //   icon: <X className="w-4 h-4" />,
+    //   department: "upperREJ" as Department,
+    // },
     {
       key: "assembly" as ProductionStage,
       name: "Assembly",
