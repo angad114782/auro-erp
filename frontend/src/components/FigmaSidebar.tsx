@@ -169,11 +169,11 @@ export function FigmaSidebar({
       icon: <Factory className="w-5 h-5" />,
       description: "Manufacturing process tracking",
       subModules: [
-        {
-          id: "production-dashboard",
-          name: "Production Dashboard",
-          icon: <LayoutDashboard className="w-4 h-4" />,
-        },
+        // {
+        //   id: "production-dashboard",
+        //   name: "Production Dashboard",
+        //   icon: <LayoutDashboard className="w-4 h-4" />,
+        // },
         {
           id: "production-planning",
           name: "Production Planning",
