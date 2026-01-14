@@ -872,7 +872,8 @@ export async function getTrackingHistoryService(projectId, stage, cardId) {
       if (!r || r.isActive === false) continue;
 
       const cat = String(r.category || "").trim().toLowerCase();
-      if (!TRACK_CATEGORIES.has(cat)) continue; // ✅ only tracked categories
+     if (cat && !TRACK_CATEGORIES.has(cat)) continue; // ✅ only tracked categories (allow legacy empty)
+
 
       const rowStage = String(r.department || "");
       if (dept && rowStage !== dept) continue;
