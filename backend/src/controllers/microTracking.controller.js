@@ -70,32 +70,71 @@ export async function getMicroTrackingCard(req, res) {
 }
 
 
+// export async function addWorkAndTransferController(req, res) {
+//   try {
+//     const { cardId } = req.params;
+
+//     const fromDept = req.body?.fromDept || req.body?.dept; // ✅ accept both
+//     const toDept = req.body?.toDept;
+
+//     const itemId = req.body?.itemId;
+//     const qtyWork = req.body?.qtyWork;
+//     const qtyTransfer = req.body?.qtyTransfer;
+
+//     if (!cardId)
+//       return res.status(400).json({ success: false, error: "cardId required" });
+//     if (!fromDept)
+//       return res
+//         .status(400)
+//         .json({ success: false, error: "fromDept (or dept) required" });
+//     if (!itemId)
+//       return res.status(400).json({ success: false, error: "itemId required" });
+
+//     const updatedBy = req.user?.name || "system";
+
+//     const item = await service.addWorkAndTransfer({
+//       cardId,
+//       fromDept,
+//       itemId,
+//       qtyWork,
+//       qtyTransfer,
+//       toDept,
+//       updatedBy,
+//     });
+
+//     return res.json({ success: true, item });
+//   } catch (err) {
+//     console.error("addWorkAndTransferController error:", err);
+//     return res.status(400).json({ success: false, error: err.message });
+//   }
+// }
+
 export async function addWorkAndTransferController(req, res) {
   try {
     const { cardId } = req.params;
-
-    const fromDept = req.body?.fromDept || req.body?.dept; // ✅ accept both
+    const fromDept = req.body?.fromDept || req.body?.dept;
     const toDept = req.body?.toDept;
 
     const itemId = req.body?.itemId;
     const qtyWork = req.body?.qtyWork;
     const qtyTransfer = req.body?.qtyTransfer;
 
-    if (!cardId)
-      return res.status(400).json({ success: false, error: "cardId required" });
-    if (!fromDept)
-      return res
-        .status(400)
-        .json({ success: false, error: "fromDept (or dept) required" });
-    if (!itemId)
-      return res.status(400).json({ success: false, error: "itemId required" });
+    if (!cardId) return res.status(400).json({ success: false, error: "cardId required" });
+    if (!fromDept) return res.status(400).json({ success: false, error: "fromDept (or dept) required" });
+
+    const d = String(fromDept).toLowerCase();
+    const isAgg = ["assembly", "packing", "rfd"].includes(d);
+
+    // ✅ ITEM depts only require itemId
+    if (!isAgg && !itemId)
+      return res.status(400).json({ success: false, error: "itemId required for item stages" });
 
     const updatedBy = req.user?.name || "system";
 
     const item = await service.addWorkAndTransfer({
       cardId,
       fromDept,
-      itemId,
+      itemId: isAgg ? null : itemId,
       qtyWork,
       qtyTransfer,
       toDept,
@@ -108,7 +147,6 @@ export async function addWorkAndTransferController(req, res) {
     return res.status(400).json({ success: false, error: err.message });
   }
 }
-
 
 
 export async function getTrackingHistory(req, res) {

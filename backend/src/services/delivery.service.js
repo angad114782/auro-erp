@@ -9,25 +9,46 @@ import mongoose from "mongoose";
 async function getProjectRfdReadyQty(projectId) {
   const pid = new mongoose.Types.ObjectId(projectId);
 
-  // Per card: min(progressDone) across rfd rows
+  /**
+   * Logic:
+   * - MicroTrackingCard → rows[]
+   * - sirf rows jinka department === "rfd"
+   * - per card → MIN(completedQty)
+   * - totalReady = sum of per-card ready
+   */
+
   const perCard = await MicroTracking.aggregate([
-    { $match: { projectId: pid, department: "rfd" } },
+    { $match: { projectId: pid, isActive: true } },
+
+    { $unwind: "$rows" },
+
+    {
+      $match: {
+        "rows.isActive": true,
+        "rows.department": "rfd",
+      },
+    },
+
     {
       $group: {
         _id: "$cardId",
-        ready: { $min: { $ifNull: ["$progressDone", 0] } },
+        ready: { $min: { $ifNull: ["$rows.completedQty", 0] } },
         rowsCount: { $sum: 1 },
       },
     },
   ]);
 
-  const totalReady = perCard.reduce((s, c) => s + Number(c.ready || 0), 0);
+  const totalReady = perCard.reduce(
+    (sum, c) => sum + Number(c.ready || 0),
+    0
+  );
 
   return {
     totalReady,
-    perCard, // optional debug
+    perCard, // debug ke liye
   };
 }
+
 
 async function addDeliveryHistory(deliveryId, changes, updatedBy = "system") {
   await Delivery.findByIdAndUpdate(deliveryId, {
