@@ -386,13 +386,13 @@ const MobileItemCard = React.memo(
                         <span>Upper</span>
                       </SelectItem>
 
-                      <SelectItem
+                      {/* <SelectItem
                         value="upper-rej"
                         className="flex items-center gap-2"
                       >
                         <AlertTriangle className="w-4 h-4 text-amber-600" />
                         <span>Upper REJ</span>
-                      </SelectItem>
+                      </SelectItem> */}
 
                       <SelectItem
                         value="assembly"
@@ -467,9 +467,10 @@ const HistoryTabContent = ({
     setLoading(true);
     try {
       const res = await api.get(
-        `/projects/${productData.projectId}/tracking-history`,
-        { params: { stage } }
-      );
+  `/projects/${productData.projectId}/tracking-history`,
+  { params: { stage: mapStageToDept(stage) } }
+);
+
 
       // ✅ handle all common shapes
       const raw = res.data;
@@ -1551,13 +1552,13 @@ export function ItemCuttingDialog({
                                               <span>Upper</span>
                                             </SelectItem>
 
-                                            <SelectItem
+                                            {/* <SelectItem
                                               value="upper-rej"
                                               className="flex items-center gap-2"
                                             >
                                               <AlertTriangle className="w-4 h-4 text-amber-600" />
                                               <span>Upper REJ</span>
-                                            </SelectItem>
+                                            </SelectItem> */}
 
                                             <SelectItem
                                               value="assembly"

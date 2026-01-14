@@ -109,3 +109,22 @@ export async function addWorkAndTransferController(req, res) {
   }
 }
 
+
+
+export async function getTrackingHistory(req, res) {
+  try {
+    const { projectId } = req.params;
+    const { stage, cardId } = req.query; // stage optional, cardId optional
+
+    const data = await service.getTrackingHistoryService(
+      projectId,
+      stage,
+      cardId
+    );
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error("getTrackingHistory error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+}

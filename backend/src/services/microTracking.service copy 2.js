@@ -1,5 +1,4 @@
 import MicroTrackingCard from "../models/MicroTracking.model.js";
-import MicroTracking from "../models/MicroTracking.model.js";
 import { PCProductionCard } from "../models/pc_productionCard.model.js";
 import { Project } from "../models/Project.model.js";
 import mongoose from "mongoose";
@@ -478,7 +477,9 @@ export async function createMicroTrackingForCard(cardId, updatedBy = "system") {
 }
 
 export async function getTrackingDashboardByDepartment(dept, month, year) {
-  const dRaw = String(dept || "").trim().toLowerCase();
+  const dRaw = String(dept || "")
+    .trim()
+    .toLowerCase();
   const d = dRaw === "upperrej" || dRaw === "upper_rej" ? "upper_rej" : dRaw;
 
   const m = Number(month);
@@ -490,7 +491,7 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
   const start = new Date(y, m - 1, 1, 0, 0, 0);
   const end = new Date(y, m, 0, 23, 59, 59);
 
-  // ✅ Step-1: fetch docs that have dept rows
+  // ✅ Step-1: fetch docs that have dept rows (no month filter here)
   const rawDocs = await MicroTrackingCard.find({
     isActive: true,
     rows: { $elemMatch: { department: d, isActive: true } },
@@ -517,7 +518,6 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
     .populate("assignPerson", "name email mobile")
     .lean();
 
-  // ✅ PO
   let PoDetailsModel = mongoose.models.PoDetails;
   if (!PoDetailsModel) {
     try {
@@ -532,7 +532,6 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
     : [];
   const poMap = new Map(poList.map((po) => [String(po.project), po]));
 
-  // ✅ Cards
   const trackedCardIds = [
     ...new Set(trackingDocs.map((t) => String(t.cardId)).filter(Boolean)),
   ].map((id) => new mongoose.Types.ObjectId(id));
@@ -559,9 +558,9 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
     const pid = String(p._id);
     const docsForProject = byProject.get(pid) || [];
 
+    // ✅ summary (optional)
     const summary = {
-      daily: {}, // YYYY-MM-DD
-      dailyByDay: {}, // "1".."31"
+      daily: {},
       weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 },
       monthTotal: 0,
     };
@@ -570,23 +569,57 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
 
     for (const doc of docsForProject) {
       const card = cardMap.get(String(doc.cardId));
-      if (card) deptCards.push(card);
 
-      // ✅ select dept rows for this doc (THIS fixes your error)
-      const deptRows = (doc.rows || []).filter(
-        (r) => r.isActive !== false && normDept(r.department) === d
-      );
-
-      if (!deptRows.length) continue;
-
-      // ✅ for AGG depts you may still want agg payload (optional)
+      // ✅ AGG view (assembly/packing/rfd)
       if (AGG_DEPTS.has(d)) {
         const agg = aggregateDeptForCard(doc, d);
-        if (agg) {
-          // attach agg info once per card
-          // (optional; remove if you don't need)
+        if (!agg) continue;
+
+        deptCards.push({
+          cardId: doc.cardId,
+          cardNumber: doc.cardNumber,
+          cardQuantity: doc.cardQuantity,
+          assignedPlant: card?.assignedPlant || null,
+          startDate: card?.startDate || null,
+          agg,
+        });
+
+        // ✅ summary (if you want WORK_ADDED only)
+        const deptRows = (doc.rows || []).filter(
+          (r) => r.isActive !== false && normDept(r.department) === d
+        );
+        for (const row of deptRows) {
+          for (const h of row.history || []) {
+            const dt = new Date(h.ts || 0);
+            if (dt < start || dt > end) continue;
+            if (String(h.type || "") !== "WORK_ADDED") continue;
+
+            const day = dt.getDate();
+            const week =
+              day <= 7
+                ? "W1"
+                : day <= 14
+                ? "W2"
+                : day <= 21
+                ? "W3"
+                : day <= 28
+                ? "W4"
+                : "W5";
+
+            summary.weekly[week] += toNum(h.qty);
+            summary.monthTotal += toNum(h.qty);
+          }
         }
+
+        continue;
       }
+
+      // ✅ ITEM view (cutting/printing/upper/upper_rej)
+      if (card) deptCards.push(card);
+
+      const deptRows = (doc.rows || []).filter(
+        (r) => normDept(r.department) === d && r.isActive !== false
+      );
 
       for (const row of deptRows) {
         for (const h of row.history || []) {
@@ -594,24 +627,25 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
           if (dt < start || dt > end) continue;
           if (String(h.type || "") !== "WORK_ADDED") continue;
 
-          const added = toNum(h.qty);
-          const dayNum = dt.getDate();
-
-          const week =
-            dayNum <= 7 ? "W1" :
-            dayNum <= 14 ? "W2" :
-            dayNum <= 21 ? "W3" :
-            dayNum <= 28 ? "W4" : "W5";
-
           const yyyy = dt.getFullYear();
           const mm = String(dt.getMonth() + 1).padStart(2, "0");
-          const dd = String(dayNum).padStart(2, "0");
+          const dd = String(dt.getDate()).padStart(2, "0");
           const dateKey = `${yyyy}-${mm}-${dd}`;
 
-          summary.daily[dateKey] = (summary.daily[dateKey] || 0) + added;
-          summary.dailyByDay[String(dayNum)] =
-            (summary.dailyByDay[String(dayNum)] || 0) + added;
+          const added = toNum(h.qty);
+          const day = dt.getDate();
+          const week =
+            day <= 7
+              ? "W1"
+              : day <= 14
+              ? "W2"
+              : day <= 21
+              ? "W3"
+              : day <= 28
+              ? "W4"
+              : "W5";
 
+          summary.daily[dateKey] = (summary.daily[dateKey] || 0) + added;
           summary.weekly[week] += added;
           summary.monthTotal += added;
         }
@@ -633,13 +667,15 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
       department: d,
       summary,
 
-      cards: [...new Map(deptCards.map((c) => [String(c._id), c])).values()],
+      // ✅ cards structure differs for agg vs item
+      cards: AGG_DEPTS.has(d)
+        ? deptCards // [{cardId, cardNumber, agg...}]
+        : [...new Map(deptCards.map((c) => [String(c._id), c])).values()],
     });
   }
 
   return response;
 }
-
 
 /* ----------------------------------------------------
    GET ONLY TRACKING-ENABLED CARDS OF A PROJECT
@@ -752,19 +788,13 @@ export async function getMicroTrackingByCard(cardId, dept = "") {
   return { ...doc, poDetails: poDetails || null, agg: null };
 }
 
-// ✅ FINAL: Auto Work + Auto Transfer (ITEM stages) + AGG logic (assembly/packing/rfd)
-// - User only sends qtyWork (Today). Transfer auto = qtyWork.
-// - ITEM stages: received + issued(material) + consumption check
-// - AGG stages: ONLY received check (no issued/material check) but internally updates ALL item-rows of that dept
-// - Works even if UI sends itemId like "agg-assembly-0" (we ignore itemId for AGG depts)
-
 export async function addWorkAndTransfer({
   cardId,
   fromDept,
   dept, // backward compatible
   itemId,
   qtyWork = 0,
-  qtyTransfer = 0, // ignored mostly (kept for legacy callers)
+  qtyTransfer = 0,
   toDept,
   updatedBy = "system",
 }) {
@@ -777,101 +807,131 @@ export async function addWorkAndTransfer({
   const targetDept = toDept ? normDept(toDept) : nextDeptOf(d);
   if (!targetDept) throw new Error(`Next department not found from ${d}`);
 
-  const workPairs = toNum(qtyWork);
-  const legacyTransferPairs = toNum(qtyTransfer);
+  const workQty = toNum(qtyWork); // ✅ pairs
+  const transferQty = toNum(qtyTransfer); // ✅ pairs
 
-  if (workPairs < 0 || legacyTransferPairs < 0) throw new Error("qty cannot be negative");
-  if (workPairs === 0 && legacyTransferPairs === 0)
-    throw new Error("qtyWork required"); // ✅ now we prefer only qtyWork
-
-  // ✅ AUTO transfer = workPairs (if workPairs given)
-  const transferPairs = workPairs > 0 ? workPairs : legacyTransferPairs;
+  if (workQty < 0 || transferQty < 0) throw new Error("qty cannot be negative");
+  if (workQty === 0 && transferQty === 0)
+    throw new Error("qtyWork or qtyTransfer required");
 
   const doc = await MicroTrackingCard.findOne({ cardId, isActive: true });
   if (!doc) throw new Error("MicroTracking doc not found");
 
-  // =========================================================
-  // ✅ AGG DEPTS (assembly/packing/rfd) : project-wise
-  // - ignore itemId (UI can send agg-assembly-0 etc.)
-  // - validate only by received
-  // - update ALL item rows of that dept so aggregate(min) stays correct
-  // - auto receive into next dept for ALL items
-  // =========================================================
+  // ============================================================
+  // ✅ AGG DEPTS (assembly/packing/rfd) -> IGNORE itemId
+  // ============================================================
   if (AGG_DEPTS.has(d)) {
-    const rowsInDept = (doc.rows || []).filter(
+    const deptRows = (doc.rows || []).filter(
       (r) => r.isActive !== false && normDept(r.department) === d
     );
 
-    if (!rowsInDept.length) {
-      throw new Error(`No rows found in AGG dept ${d}. Transfer something into it first.`);
+    if (!deptRows.length) {
+      throw new Error(`No rows found for dept ${d} in this card`);
     }
 
-    // ✅ TRUE available in AGG = min( received - completed ) across items
-    const availableByItem = rowsInDept.map((r) => toNum(r.receivedQty) - toNum(r.completedQty));
-    const availableToWork = Math.min(...availableByItem);
+    // ✅ WORK (AGG): ONLY received check
+    if (workQty > 0) {
+      const availableToWork = Math.min(
+        ...deptRows.map((r) => toNum(r.receivedQty) - toNum(r.completedQty))
+      );
 
-    console.log("🛠️ [AGG_WORK_DEBUG]", {
-      cardId: String(cardId),
-      dept: d,
-      itemsCount: rowsInDept.length,
-      availableToWorkPairs: availableToWork,
-      requestedWorkPairs: workPairs,
-      autoTransferPairs: transferPairs,
-      note: "AGG dept: issued/material check skipped; using MIN(received-completed) across items",
-    });
+      console.log("🛠️ [WORK_LIMIT_DEBUG_AGG]", {
+        cardId: String(cardId),
+        projectId: String(doc.projectId?._id || doc.projectId || ""),
+        dept: d,
+        deptRowsCount: deptRows.length,
+        availableToWorkPairs: availableToWork,
+        requestedWorkPairs: workQty,
+        note: "AGG dept: material check skipped",
+      });
 
-    if (workPairs > 0) {
-      if (availableToWork <= 0)
-        throw new Error(`No available qty to work in ${d}. available=${availableToWork}`);
-      if (workPairs > availableToWork)
-        throw new Error(`Work qty exceeds limit in ${d}. Allowed=${availableToWork}`);
+      if (availableToWork <= 0) {
+        throw new Error(
+          `No available qty to work in ${d}. available=${availableToWork}`
+        );
+      }
+      if (workQty > availableToWork) {
+        throw new Error(`Work qty exceeds limit. Allowed=${availableToWork}`);
+      }
 
-      // ✅ apply WORK to ALL rows in dept
-      for (const r of rowsInDept) {
-        r.completedQty = toNum(r.completedQty) + workPairs;
+      // ✅ apply work to bottleneck-first rows
+      let remaining = workQty;
+      const sorted = [...deptRows].sort(
+        (a, b) =>
+          (toNum(a.receivedQty) - toNum(a.completedQty)) -
+          (toNum(b.receivedQty) - toNum(b.completedQty))
+      );
+
+      for (const r of sorted) {
+        if (remaining <= 0) break;
+        const cap = toNum(r.receivedQty) - toNum(r.completedQty);
+        if (cap <= 0) continue;
+
+        const add = Math.min(cap, remaining);
+        r.completedQty = toNum(r.completedQty) + add;
+
         r.history = r.history || [];
         r.history.push({
           ts: new Date(),
           type: "WORK_ADDED",
-          qty: workPairs,
+          qty: add,
           fromDept: d,
           toDept: d,
-          meta: { reason: "AGG_WORK_AUTO", mode: "AGG_ONLY_RECEIVED_CHECK" },
+          meta: { reason: "MANUAL_WORK_AGG_ONLY_RECEIVED_CHECK" },
           updatedBy,
         });
+
+        remaining -= add;
       }
     }
 
-    if (transferPairs > 0) {
-      // ✅ transfer allowed = min( completed - transferred ) across items
-      const canTransferByItem = rowsInDept.map(
-        (r) => toNum(r.completedQty) - toNum(r.transferredQty)
+    // ✅ TRANSFER (AGG): based on bottleneck transferable
+    if (transferQty > 0) {
+      const canTransfer = Math.min(
+        ...deptRows.map((r) => toNum(r.completedQty) - toNum(r.transferredQty))
       );
-      const canTransfer = Math.min(...canTransferByItem);
 
-      if (canTransfer <= 0)
-        throw new Error(`Nothing to transfer from ${d}. canTransfer=${canTransfer}`);
-      if (transferPairs > canTransfer)
-        throw new Error(`Transfer qty exceeds limit in ${d}. Allowed=${canTransfer}`);
+      if (canTransfer <= 0) {
+        throw new Error(`Nothing to transfer in ${d}. canTransfer=${canTransfer}`);
+      }
+      if (transferQty > canTransfer) {
+        throw new Error(`Transfer qty exceeds limit. Allowed=${canTransfer}`);
+      }
 
-      for (const r of rowsInDept) {
-        r.transferredQty = toNum(r.transferredQty) + transferPairs;
+      let remainingT = transferQty;
+
+      // sort by transferable (smallest first)
+      const sortedT = [...deptRows].sort(
+        (a, b) =>
+          (toNum(a.completedQty) - toNum(a.transferredQty)) -
+          (toNum(b.completedQty) - toNum(b.transferredQty))
+      );
+
+      for (const r of sortedT) {
+        if (remainingT <= 0) break;
+        const capT = toNum(r.completedQty) - toNum(r.transferredQty);
+        if (capT <= 0) continue;
+
+        const move = Math.min(capT, remainingT);
+
+        r.transferredQty = toNum(r.transferredQty) + move;
+
         r.history = r.history || [];
         r.history.push({
           ts: new Date(),
           type: "TRANSFER",
-          qty: transferPairs,
+          qty: move,
           fromDept: d,
           toDept: targetDept,
-          meta: { reason: "AGG_MOVE_NEXT_AUTO" },
+          meta: { reason: "MOVE_NEXT_DEPT_AGG" },
           updatedBy,
         });
 
-        // ✅ receive into next dept for SAME itemId (internal tracking)
-        let tgt = (doc.rows || []).find(
+        // ✅ receive in targetDept for SAME real itemId
+        const tgt = (doc.rows || []).find(
           (x) =>
             x.isActive !== false &&
-            String(x.itemId || "") === String(r.itemId) &&
+            String(x.itemId || "") === String(r.itemId || "") &&
             normDept(x.department) === targetDept
         );
 
@@ -885,51 +945,45 @@ export async function addWorkAndTransfer({
             category: r.category,
             department: targetDept,
 
-            receivedQty: transferPairs,
+            receivedQty: move,
             completedQty: 0,
             transferredQty: 0,
 
-            // ✅ in AGG chain, ignore material checks anyway
-            issuedMaterialQty: toNum(r.issuedMaterialQty || r.issuedQty || 0),
-            issuedQty: toNum(r.issuedMaterialQty || r.issuedQty || 0),
+            // ✅ for AGG: keep these but 0 (no material logic)
+            issuedMaterialQty: 0,
+            issuedQty: 0,
             consumptionPerPair: toNum(r.consumptionPerPair || 0),
-            issuedPairsPossible: toNum(r.issuedPairsPossible || 0),
+            issuedPairsPossible: 0,
 
             history: [
               {
                 ts: new Date(),
                 type: "RECEIVE",
-                qty: transferPairs,
+                qty: move,
                 fromDept: d,
                 toDept: targetDept,
-                meta: { reason: "AGG_RECEIVE_FROM_PREV" },
+                meta: { reason: "FROM_PREV_DEPT_AGG" },
                 updatedBy,
               },
             ],
             isActive: true,
           });
         } else {
-          tgt.receivedQty = toNum(tgt.receivedQty) + transferPairs;
+          tgt.receivedQty = toNum(tgt.receivedQty) + move;
           tgt.history = tgt.history || [];
           tgt.history.push({
             ts: new Date(),
             type: "RECEIVE",
-            qty: transferPairs,
+            qty: move,
             fromDept: d,
             toDept: targetDept,
-            meta: { reason: "AGG_RECEIVE_FROM_PREV" },
+            meta: { reason: "FROM_PREV_DEPT_AGG" },
             updatedBy,
           });
         }
-      }
 
-      console.log("📦 [AGG_TRANSFER_DEBUG]", {
-        cardId: String(cardId),
-        fromDept: d,
-        toDept: targetDept,
-        transferPairs,
-        itemsAffected: rowsInDept.length,
-      });
+        remainingT -= move;
+      }
     }
 
     doc.markModified("rows");
@@ -937,14 +991,9 @@ export async function addWorkAndTransfer({
     return doc.toObject();
   }
 
-  // =========================================================
-  // ✅ ITEM DEPTS (cutting/printing/upper/upper_rej) : item-wise
-  // - requires itemId
-  // - received check + issued(material) check + consumption conversion
-  // - auto transfer = workPairs
-  // - carries material to next stage proportional to pairs moved
-  // =========================================================
-
+  // ============================================================
+  // ✅ ITEM DEPTS (cutting/printing/upper/upper_rej) -> itemId REQUIRED
+  // ============================================================
   if (!itemId) throw new Error("itemId required");
 
   const src = (doc.rows || []).find(
@@ -957,12 +1006,11 @@ export async function addWorkAndTransfer({
 
   src.history = src.history || [];
 
-  // ✅ WORK (ITEM) — received + issued check
-  if (workPairs > 0) {
+  // ✅ WORK (ITEM): material + consumption restrictions apply
+  if (workQty > 0) {
     const receivedPairs = toNum(src.receivedQty);
     const completedPairs = toNum(src.completedQty);
 
-    // ensure consumption exists
     let cons = toNum(src.consumptionPerPair || 0);
     if (cons <= 0) {
       const pid = String(doc.projectId?._id || doc.projectId || "");
@@ -970,7 +1018,7 @@ export async function addWorkAndTransfer({
       cons = toNum(c?.consumption);
       if (cons > 0) src.consumptionPerPair = cons;
 
-      console.log("🧪 [ITEM_WORK] CONSUMPTION_LOOKUP:", {
+      console.log("🧪 [WORK] CONSUMPTION_LOOKUP:", {
         cardId: String(cardId),
         dept: d,
         itemId: String(src.itemId),
@@ -983,25 +1031,29 @@ export async function addWorkAndTransfer({
 
     let maxAllowedPairs = receivedPairs;
 
-    // backward compatible issued field
     const issuedMaterial = toNum(
       src.issuedMaterialQty != null ? src.issuedMaterialQty : src.issuedQty
     );
+
     const issuedPairsPossible =
       cons > 0 ? calcIssuedPairsPossible(issuedMaterial, cons) : 0;
 
+    if (cons > 0) src.issuedPairsPossible = issuedPairsPossible;
+
     if (cons > 0) {
-      src.issuedPairsPossible = issuedPairsPossible;
       maxAllowedPairs = Math.min(receivedPairs, issuedPairsPossible);
     }
 
-    const availableToWork = maxAllowedPairs - completedPairs;
+    // const availableToWork = maxAllowedPairs - completedPairs;
+    const availableToWork = completedPairs;
 
-    console.log("🛠️ [ITEM_WORK_LIMIT_DEBUG]", {
+    console.log("🛠️ [WORK_LIMIT_DEBUG]", {
       cardId: String(cardId),
+      projectId: String(doc.projectId?._id || doc.projectId || ""),
       dept: d,
       itemId: String(src.itemId),
       itemName: src.name,
+      materialUnit: src.unit,
       receivedPairs,
       completedPairs,
       issuedMaterialQty: issuedMaterial,
@@ -1009,27 +1061,28 @@ export async function addWorkAndTransfer({
       issuedPairsPossible: cons > 0 ? issuedPairsPossible : "NO_CONSUMPTION_FOUND",
       maxAllowedPairs,
       availableToWorkPairs: availableToWork,
-      requestedWorkPairs: workPairs,
-      autoTransferPairs: transferPairs,
+      requestedWorkPairs: workQty,
     });
 
-    if (availableToWork <= 0)
+    if (availableToWork <= 0) {
       throw new Error(
         `No available qty to work. maxAllowedPairs=${maxAllowedPairs}, completed=${completedPairs}`
       );
-    if (workPairs > availableToWork)
+    }
+    if (workQty > availableToWork) {
       throw new Error(`Work qty exceeds limit. Allowed=${availableToWork}`);
+    }
 
-    src.completedQty = completedPairs + workPairs;
+    src.completedQty = completedPairs + workQty;
 
     src.history.push({
       ts: new Date(),
       type: "WORK_ADDED",
-      qty: workPairs,
+      qty: workQty,
       fromDept: d,
       toDept: d,
       meta: {
-        reason: "ITEM_WORK_AUTO",
+        reason: "MANUAL_WORK",
         maxAllowedPairs,
         issuedMaterialQty: issuedMaterial,
         consumptionPerPair: cons,
@@ -1039,8 +1092,8 @@ export async function addWorkAndTransfer({
     });
   }
 
-  // ✅ AUTO TRANSFER (ITEM)
-  if (transferPairs > 0) {
+  // ✅ TRANSFER (ITEM): carry forward issued material in next stage
+  if (transferQty > 0) {
     const completedQty = toNum(src.completedQty);
     const transferredQty = toNum(src.transferredQty);
 
@@ -1049,10 +1102,9 @@ export async function addWorkAndTransfer({
       throw new Error(
         `Nothing to transfer. completed=${completedQty}, transferred=${transferredQty}`
       );
-    if (transferPairs > canTransfer)
+    if (transferQty > canTransfer)
       throw new Error(`Transfer qty exceeds limit. Allowed=${canTransfer}`);
 
-    // ensure consumption
     let cons = toNum(src.consumptionPerPair || 0);
     if (cons <= 0) {
       const pid = String(doc.projectId?._id || doc.projectId || "");
@@ -1061,26 +1113,41 @@ export async function addWorkAndTransfer({
       if (cons > 0) src.consumptionPerPair = cons;
     }
 
-    // material to carry forward based on pairs
-    const materialForTransfer = cons > 0 ? transferPairs * cons : 0;
+    const issuedMaterial = toNum(
+      src.issuedMaterialQty != null ? src.issuedMaterialQty : src.issuedQty
+    );
 
-    src.transferredQty = transferredQty + transferPairs;
+    const materialForTransfer = cons > 0 ? transferQty * cons : 0;
+
+    console.log("🧾 [TRANSFER_MATERIAL_CARRY]", {
+      cardId: String(cardId),
+      itemId: String(src.itemId),
+      itemName: src.name,
+      fromDept: d,
+      toDept: targetDept,
+      transferPairs: transferQty,
+      consumptionPerPair: cons,
+      sourceIssuedMaterialQty: issuedMaterial,
+      materialForTransfer,
+    });
+
+    src.transferredQty = transferredQty + transferQty;
 
     src.history.push({
       ts: new Date(),
       type: "TRANSFER",
-      qty: transferPairs,
+      qty: transferQty,
       fromDept: d,
       toDept: targetDept,
       meta: {
-        reason: "ITEM_MOVE_NEXT_AUTO",
+        reason: "MOVE_NEXT_DEPT",
         consumptionPerPair: cons,
         materialForTransfer,
       },
       updatedBy,
     });
 
-    let tgt = (doc.rows || []).find(
+    const tgt = (doc.rows || []).find(
       (r) =>
         r.isActive !== false &&
         String(r.itemId || "") === String(itemId) &&
@@ -1100,7 +1167,7 @@ export async function addWorkAndTransfer({
         category: src.category,
         department: targetDept,
 
-        receivedQty: transferPairs,
+        receivedQty: transferQty,
         completedQty: 0,
         transferredQty: 0,
 
@@ -1113,11 +1180,11 @@ export async function addWorkAndTransfer({
           {
             ts: new Date(),
             type: "RECEIVE",
-            qty: transferPairs,
+            qty: transferQty,
             fromDept: d,
             toDept: targetDept,
             meta: {
-              reason: "ITEM_RECEIVE_FROM_PREV",
+              reason: "FROM_PREV_DEPT",
               materialForTransfer,
               consumptionPerPair: cons,
               issuedPairsPossible: issuedPairsPossibleNew,
@@ -1128,16 +1195,19 @@ export async function addWorkAndTransfer({
         isActive: true,
       });
     } else {
-      tgt.receivedQty = toNum(tgt.receivedQty) + transferPairs;
+      tgt.receivedQty = toNum(tgt.receivedQty) + transferQty;
 
-      // ✅ carry material forward (latest snapshot style)
       if (materialForTransfer > 0) {
-        tgt.issuedMaterialQty = toNum(tgt.issuedMaterialQty || tgt.issuedQty || 0) + materialForTransfer;
-        tgt.issuedQty = tgt.issuedMaterialQty; // legacy
-        tgt.consumptionPerPair = toNum(tgt.consumptionPerPair || cons);
+        tgt.issuedMaterialQty =
+          toNum(tgt.issuedMaterialQty || 0) + materialForTransfer;
+        tgt.issuedQty = tgt.issuedMaterialQty;
+
+        const tCons = toNum(tgt.consumptionPerPair || cons);
+        tgt.consumptionPerPair = tCons;
+
         tgt.issuedPairsPossible =
-          tgt.consumptionPerPair > 0
-            ? calcIssuedPairsPossible(toNum(tgt.issuedMaterialQty || 0), toNum(tgt.consumptionPerPair))
+          tCons > 0
+            ? calcIssuedPairsPossible(toNum(tgt.issuedMaterialQty || 0), tCons)
             : 0;
       }
 
@@ -1145,11 +1215,11 @@ export async function addWorkAndTransfer({
       tgt.history.push({
         ts: new Date(),
         type: "RECEIVE",
-        qty: transferPairs,
+        qty: transferQty,
         fromDept: d,
         toDept: targetDept,
         meta: {
-          reason: "ITEM_RECEIVE_FROM_PREV",
+          reason: "FROM_PREV_DEPT",
           materialForTransfer,
           consumptionPerPair: cons,
           issuedPairsPossible: toNum(tgt.issuedPairsPossible || 0),
@@ -1157,123 +1227,9 @@ export async function addWorkAndTransfer({
         updatedBy,
       });
     }
-
-    console.log("📦 [ITEM_TRANSFER_DEBUG]", {
-      cardId: String(cardId),
-      itemId: String(src.itemId),
-      itemName: src.name,
-      fromDept: d,
-      toDept: targetDept,
-      transferPairs,
-      consumptionPerPair: cons,
-      materialForTransfer,
-      targetRowExists: !!tgt,
-    });
   }
 
   doc.markModified("rows");
   await doc.save();
   return doc.toObject();
-}
-
-
-
-
-
-
-function mapStageToDept(stg) {
-  if (!stg) return null;
-  if (stg === "upper-rej") return "upper_rej";
-  return stg;
-}
-
-function num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-export async function getTrackingHistoryService(projectId, stage, cardId) {
-  if (!mongoose.Types.ObjectId.isValid(projectId)) {
-    throw new Error("Invalid projectId");
-  }
-
-  const filter = { projectId: new mongoose.Types.ObjectId(projectId) };
-
-  // ✅ optional cardId filter
-  if (cardId) {
-    if (!mongoose.Types.ObjectId.isValid(cardId)) throw new Error("Invalid cardId");
-    filter.cardId = new mongoose.Types.ObjectId(cardId);
-  }
-
-  // ✅ optional stage filter
-  // NOTE: tumhare data me category="upper" but department="assembly" ho sakta hai
-  // isliye OR match use karo
-  const dept = mapStageToDept(stage);
-  if (dept) {
-    filter.$or = [{ department: dept }, { category: dept }];
-  }
-
-  const rows = await MicroTracking.find(filter)
-    .select("name unit department category history")
-    .lean();
-
-  const flat = [];
-
-  for (const r of rows) {
-    const itemName = r?.name || "Unnamed";
-    const unit = r?.unit || "unit";
-    const rowStage = r?.department || r?.category || "";
-
-    for (const h of r.history || []) {
-      const timestamp = h.date || new Date();
-
-      // ✅ Case A: Today-progress history (addedToday, previousDone, newDone)
-      if (h.addedToday !== undefined) {
-        flat.push({
-          itemName,
-          unit,
-          stage: rowStage,
-          timestamp,
-
-          type: num(h.addedToday) > 0 ? "added" : "updated",
-          quantity: num(h.addedToday),
-          previousTotal: num(h.previousDone),
-          newTotal: num(h.newDone),
-
-          updatedBy: h.updatedBy || "system",
-          notes: "",
-        });
-        continue;
-      }
-
-      // ✅ Case B: Transfer / update history (changes array)
-      const changes = Array.isArray(h.changes) ? h.changes : [];
-      const notes =
-        changes.length > 0
-          ? changes.map((c) => `${c.field}: ${c.from} → ${c.to}`).join(", ")
-          : "";
-
-      // quantity yaha fixed nahi hoti, but UI wants it
-      // so we keep it 0 and show notes
-      flat.push({
-        itemName,
-        unit,
-        stage: rowStage,
-        timestamp,
-
-        type: "updated",
-        quantity: 0,
-        previousTotal: 0,
-        newTotal: 0,
-
-        updatedBy: h.updatedBy || "system",
-        notes,
-      });
-    }
-  }
-
-  // ✅ latest first
-  flat.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-  return flat;
 }

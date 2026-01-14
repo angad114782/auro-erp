@@ -142,16 +142,12 @@ interface APITrackingData {
   }>;
   department: string;
   summary: {
-    daily: Record<number, number>;
-    weekly: {
-      W1: number;
-      W2: number;
-      W3: number;
-      W4: number;
-      W5: number;
-    };
-    monthTotal: number;
-  };
+  daily: Record<string, number>;        // YYYY-MM-DD
+  dailyByDay?: Record<string, number>;  // "1".."31"
+  weekly: { W1:number; W2:number; W3:number; W4:number; W5:number; };
+  monthTotal: number;
+};
+
 }
 
 interface ProductionRecord {
@@ -676,7 +672,8 @@ export function ProductionTrackingTable() {
     const dailyData: DailyProduction = {};
 
     // ✅ Backend now gives: { "1": 10, "2": 5 ... } OR { 1:10, 2:5 }
-    const apiDailyData: any = record.summary?.daily || {};
+    const apiDailyData: any = record.summary?.dailyByDay || record.summary?.daily || {};
+
 
     // If API has daily data, use it
     if (apiDailyData && Object.keys(apiDailyData).length > 0) {

@@ -184,11 +184,11 @@ export function FigmaSidebar({
           name: "Production Tracking",
           icon: <ClipboardList className="w-4 h-4" />,
         },
-        {
-          id: "production-analytics",
-          name: "Analytics & Reports",
-          icon: <PieChart className="w-4 h-4" />,
-        },
+        // {
+        //   id: "production-analytics",
+        //   name: "Analytics & Reports",
+        //   icon: <PieChart className="w-4 h-4" />,
+        // },
       ],
     },
     {

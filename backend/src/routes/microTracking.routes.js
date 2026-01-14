@@ -44,6 +44,8 @@ router.get("/projects/:projectId/cards", ctrl.getProjectTrackingCards);
 router.get("/card/:cardId", ctrl.getMicroTrackingCard);
 router.post("/tracking/:cardId/work-transfer", ctrl.addWorkAndTransferController);
 
+router.get("/projects/:projectId/tracking-history", ctrl.getTrackingHistory);
+
 
 
 

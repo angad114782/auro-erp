@@ -55,104 +55,107 @@ export async function sendToDeliveryService(projectId, user = "system") {
 
   const po = await PoDetails.findOne({ project: projectId }).lean();
 
-  // ✅ RFD ready qty (total till now)
   const { totalReady } = await getProjectRfdReadyQty(projectId);
 
   if (totalReady <= 0) {
     throw new Error("No finished quantity in RFD. Nothing to send for delivery.");
   }
 
-  // ✅ find existing pending delivery for same project+po
-  const existing = await Delivery.findOne({
+  // ✅ ONE DOC per project+po (no status filter)
+  let existing = await Delivery.findOne({
     project: projectId,
     poDetails: po?._id || null,
-    status: "pending",
   });
 
-  const alreadyQty = Number(existing?.orderQuantity || 0);
+  // ✅ if already delivered, don't allow sending again for same PO
+  if (existing && existing.status === "delivered") {
+    throw new Error("This PO is already fully delivered. Create a new PO to send again.");
+  }
 
-  // ✅ how much NEW qty to add today
-  let delta = totalReady - alreadyQty;
+  const alreadySent = Number(existing?.orderQuantity || 0); // (your 'sent so far')
+  let delta = totalReady - alreadySent;
 
-  // ✅ respect PO orderQuantity cap (optional)
   const poQty = Number(po?.orderQuantity || 0);
   if (poQty > 0) {
-    const maxAllowedNow = poQty - alreadyQty;
+    const maxAllowedNow = poQty - alreadySent;
     delta = Math.min(delta, maxAllowedNow);
   }
 
   if (delta <= 0) {
     throw new Error(
-      `No new finished quantity since last send. Ready=${totalReady}, alreadySent=${alreadyQty}`
+      `No new finished quantity since last send. Ready=${totalReady}, alreadySent=${alreadySent}`
     );
   }
 
-  // ✅ project status
+  // ✅ update project status
   await Project.findByIdAndUpdate(projectId, { status: "delivery_pending" });
 
   const today = new Date();
   const poReceived = po?.issuedAt || today;
   const agingDays = Math.ceil((today - poReceived) / (1000 * 60 * 60 * 24));
 
-  // ✅ update existing OR create new
-  let deliveryDoc;
-
   if (existing) {
-    const newQty = alreadyQty + delta;
+    const newQty = alreadySent + delta;
 
-    deliveryDoc = await Delivery.findByIdAndUpdate(
+    const updated = await Delivery.findByIdAndUpdate(
       existing._id,
       {
         orderQuantity: newQty,
         agingDays,
+        status: "pending", // ✅ force back to pending if new dispatch happens
         $push: {
           history: {
             date: new Date(),
             updatedBy: user,
             changes: [
-              { field: "orderQuantity", from: alreadyQty, to: newQty },
-              { field: "rfdReadyQuantity", from: alreadyQty, to: totalReady },
+              { field: "orderQuantity", from: alreadySent, to: newQty },
+              { field: "rfdReadyQuantity", from: alreadySent, to: totalReady },
+              { field: "status", from: existing.status, to: "pending" },
             ],
           },
         },
       },
       { new: true }
     );
-  } else {
-    deliveryDoc = await Delivery.create({
-      project: projectId,
-      poDetails: po?._id || null,
 
-      projectCode: project.autoCode,
-      productName: project.artName,
-      category: project.category?.name || "",
-      brand: project.brand?.name || "",
-      gender: project.gender || "",
-
-      poNumber: po?.poNumber || "",
-      poReceivedDate: po?.issuedAt || null,
-      deliveryDateExpected: po?.deliveryDate || null,
-
-      orderQuantity: delta, // ✅ FIRST send qty
-      status: "pending",
-      agingDays,
-
-      history: [
-        {
-          date: new Date(),
-          updatedBy: user,
-          changes: [
-            { field: "status", from: "planning/tracking", to: "pending" },
-            { field: "orderQuantity", from: 0, to: delta },
-            { field: "rfdReadyQuantity", from: 0, to: totalReady },
-          ],
-        },
-      ],
-    });
+    return updated;
   }
 
-  return deliveryDoc;
+  // ✅ create first time
+  const created = await Delivery.create({
+    project: projectId,
+    poDetails: po?._id || null,
+
+    projectCode: project.autoCode,
+    productName: project.artName,
+    category: project.category?.name || "",
+    brand: project.brand?.name || "",
+    gender: project.gender || "",
+
+    poNumber: po?.poNumber || "",
+    poReceivedDate: po?.issuedAt || null,
+    deliveryDateExpected: po?.deliveryDate || null,
+
+    orderQuantity: delta,
+    status: "pending",
+    agingDays,
+
+    history: [
+      {
+        date: new Date(),
+        updatedBy: user,
+        changes: [
+          { field: "status", from: "planning/tracking", to: "pending" },
+          { field: "orderQuantity", from: 0, to: delta },
+          { field: "rfdReadyQuantity", from: 0, to: totalReady },
+        ],
+      },
+    ],
+  });
+
+  return created;
 }
+
 
 
 
