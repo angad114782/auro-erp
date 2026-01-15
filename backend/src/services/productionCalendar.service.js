@@ -158,6 +158,8 @@ export const createCalendarEntryService = async (
   soleReceivedDate: scheduling.soleReceivedDate
     ? new Date(scheduling.soleReceivedDate)
     : null,
+
+  footbed: scheduling.footbed || "",
 },
 
     productionDetails: {
@@ -274,6 +276,9 @@ export const updateCalendarEntryService = async (
     setObj["scheduling.soleReceivedDate"] = payload.scheduling.soleReceivedDate
       ? new Date(payload.scheduling.soleReceivedDate)
       : null;
+
+  if (payload.scheduling.footbed !== undefined)
+    setObj["scheduling.footbed"] = payload.scheduling.footbed;
 }
 
 

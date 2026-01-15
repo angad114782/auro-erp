@@ -90,6 +90,7 @@ export function AddProductionCardDialog({
     soleFrom: "",
     soleColor: "",
     soleExpectedDate: "",
+    footbed: "",
   });
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -202,6 +203,7 @@ export function AddProductionCardDialog({
           soleFrom: "",
           soleColor: "",
           soleExpectedDate: "",
+          footbed: "",
         }));
         setIsLocked(false);
       }
@@ -316,6 +318,7 @@ export function AddProductionCardDialog({
         soleFrom: formData.soleFrom || "",
         soleColor: formData.soleColor || "",
         soleExpectedDate: formData.soleExpectedDate || null,
+        footbed: formData.footbed || "",
       },
       productionDetails: {
         quantity: Number(formData.productionQuantity),
@@ -418,17 +421,34 @@ export function AddProductionCardDialog({
                     Searching...
                   </div>
                 ) : searchResults.length > 0 ? (
-                  searchResults.slice(0, 5).map((item) => (
+                  searchResults.slice(0, 10).map((item) => (
                     <div
                       key={item._id ?? item.id}
                       onClick={() => handleSelectProduct(item)}
-                      className="p-3 border-b hover:bg-blue-50 cursor-pointer"
+                      className="p-3 border-b last:border-0 hover:bg-blue-50 cursor-pointer transition-colors duration-200"
                     >
-                      <div className="font-medium text-sm sm:text-base truncate">
-                        {item.artName ?? item.productName}
-                      </div>
-                      <div className="text-xs sm:text-sm text-gray-600 truncate">
-                        {item.autoCode ?? item.projectCode}
+                      <div className="flex flex-col gap-1">
+                        <div className="font-bold text-sm sm:text-base text-gray-900 flex items-center gap-2">
+                          {item.artName ?? item.productName}
+                          {item.color && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+                              {item.color}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600">
+                          <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-800 font-mono">
+                            {item.autoCode ?? item.projectCode}
+                          </span>
+                          <span className="text-gray-400">|</span>
+                          <span className="truncate max-w-[120px]">
+                            {item.company?.name || "No Company"}
+                          </span>
+                          <span className="text-gray-400">•</span>
+                          <span className="truncate max-w-[120px]">
+                            {item.brand?.name || "No Brand"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))
@@ -679,6 +699,20 @@ export function AddProductionCardDialog({
                       soleExpectedDate: e.target.value,
                     })
                   }
+                  className="h-10 sm:h-12 text-sm sm:text-base"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm sm:text-base font-semibold text-gray-700">
+                  Footbed
+                </Label>
+                <Input
+                  value={formData.footbed}
+                  onChange={(e) =>
+                    setFormData({ ...formData, footbed: e.target.value })
+                  }
+                  placeholder="Enter footbed details..."
                   className="h-10 sm:h-12 text-sm sm:text-base"
                 />
               </div>

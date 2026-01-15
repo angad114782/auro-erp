@@ -13,6 +13,8 @@ import {
   setProjectPO,
 } from "../services/project.service.js";
 import { Project } from "../models/Project.model.js";
+import Company from "../models/Company.model.js";
+import Brand from "../models/Brand.model.js";
 import { createProductionFromProject } from "../services/productionProject.service.js";
 import { assignReservedCodeOrNew } from "../services/sequence.service.js";
 /** CREATE */
@@ -433,11 +435,27 @@ export const searchProjects = async (req, res) => {
       return res.json({ success: true, data: [] });
     }
 
+    // 1. Find matching company IDs
+    const companies = await Company.find({
+      name: { $regex: query, $options: "i" },
+      isActive: true,
+    }).select("_id");
+    const companyIds = companies.map((c) => c._id);
+
+    // 2. Find matching brand IDs
+    const brands = await Brand.find({
+      name: { $regex: query, $options: "i" },
+      isActive: true,
+    }).select("_id");
+    const brandIds = brands.map((b) => b._id);
+
     const projects = await Project.find({
       isActive: true,
       $or: [
         { artName: { $regex: query, $options: "i" } },
         { autoCode: { $regex: query, $options: "i" } },
+        { company: { $in: companyIds } },
+        { brand: { $in: brandIds } },
       ],
     })
       .limit(25)

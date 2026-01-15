@@ -106,6 +106,7 @@ const MobileItemCard = React.memo(
     expandedItems,
     stage,
     onAdvanceToChange,
+    handleDeliverItem,
   }: {
     item: CuttingItem;
     isMobile: boolean;
@@ -117,6 +118,7 @@ const MobileItemCard = React.memo(
     expandedItems: Set<string>;
     stage: string;
     onAdvanceToChange: (rowId: string, dept: string) => void;
+    handleDeliverItem: (projectId: string) => void;
   }) => {
     const alreadyCutNum = parseToNumber(item.alreadyCut);
     const cuttingTodayNum = parseToNumber(item.cuttingToday);
@@ -130,6 +132,10 @@ const MobileItemCard = React.memo(
       totalAfter === minimumAvailable &&
       minimumAvailable < productData.targetQuantity;
     const isExpanded = expandedItems.has(item.id);
+
+    const showMtrlIssued = ["cutting", "printing", "upper"].includes(
+      stage.toLowerCase()
+    );
 
     const getDisplayValue = (): string => {
       if (typeof item.cuttingToday === "string") {
@@ -192,13 +198,6 @@ const MobileItemCard = React.memo(
       }
     };
 
-    const handleDeliverItem = (projectId: string) => {
-      try {
-        api.post(`/projects/${projectId}/send-to-delivery`);
-      } catch (error) {
-        toast.success(`Delivered ${item.itemName} to customer successfully!`);
-      }
-    };
 
     const clampOnBlur = (item: CuttingItem, value: string) => {
       const alreadyCutNum = parseToNumber(item.alreadyCut);
@@ -261,19 +260,25 @@ const MobileItemCard = React.memo(
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-4 gap-2 mb-3">
+        <div
+          className={`grid ${
+            showMtrlIssued ? "grid-cols-4" : "grid-cols-3"
+          } gap-2 mb-3`}
+        >
           <div className="bg-gray-50 rounded p-2 text-center">
             <div className="text-xs text-gray-500">Received</div>
             <div className="text-sm font-bold text-gray-900">
               {item.cardQuantity}
             </div>
           </div>
-          <div className="bg-gray-50 rounded p-2 text-center">
-            <div className="text-xs text-gray-500">Mtrl Issued</div>
-            <div className="text-sm font-semibold text-blue-600">
-              {item?.issuedQty || 0}
+          {showMtrlIssued && (
+            <div className="bg-gray-50 rounded p-2 text-center">
+              <div className="text-xs text-gray-500">Mtrl Issued</div>
+              <div className="text-sm font-semibold text-blue-600">
+                {item?.issuedQty || 0}
+              </div>
             </div>
-          </div>
+          )}
           <div className="bg-gray-50 rounded p-2 text-center">
             <div className="text-xs text-gray-500">Completed</div>
             <div className="text-sm font-semibold text-blue-600">
@@ -619,6 +624,9 @@ export function ItemCuttingDialog({
   const [activeTab, setActiveTab] = useState("update");
 
   const fromDepartment = mapStageToDept(stage);
+  const showMtrlIssued = ["cutting", "printing", "upper"].includes(
+    stage.toLowerCase()
+  );
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -1077,16 +1085,78 @@ export function ItemCuttingDialog({
   };
 
   const handleDeliverItem = async (projectId: string) => {
+    // 1. Check for RFD items with quantity entered
+    const rfdActions = cuttingItems
+      .filter(
+        (item) =>
+          item.department === "rfd" && parseToNumber(item.cuttingToday) > 0
+      )
+      .map((item) => ({
+        itemId: item.id,
+        qtyWork: parseToNumber(item.cuttingToday),
+        fromDept: fromDepartment,
+        toDept: "rfd",
+        qtyTransfer: parseToNumber(item.cuttingToday),
+      }));
+
+    if (rfdActions.length > 0) {
+      if (!productData?.cardId) {
+        toast.error("Card ID is required for saving progress");
+        return;
+      }
+
+      try {
+        toast.loading("Saving quantities before delivery...", {
+          id: "delivery-save",
+        });
+        for (const action of rfdActions) {
+          await api.post(`/tracking/${productData.cardId}/work-transfer`, {
+            fromDept: action.fromDept,
+            toDept: action.toDept,
+            itemId: action.itemId,
+            qtyWork: action.qtyWork,
+            qtyTransfer: action.qtyTransfer,
+          });
+        }
+
+        // Update local state
+        const savedItemIds = rfdActions.map((a) => a.itemId);
+        setCuttingItems((prev) =>
+          prev.map((item) => {
+            if (savedItemIds.includes(item.id)) {
+              return {
+                ...item,
+                alreadyCut:
+                  parseToNumber(item.alreadyCut) +
+                  parseToNumber(item.cuttingToday),
+                cuttingToday: 0,
+              };
+            }
+            return item;
+          })
+        );
+
+        toast.success("Quantities saved!", { id: "delivery-save" });
+      } catch (saveError: any) {
+        toast.error("Failed to save quantities before delivery", {
+          id: "delivery-save",
+        });
+        return; // Don't proceed to delivery if save failed
+      }
+    }
+
     try {
       const res = await api.put(`/projects/${projectId}/send-to-delivery`);
       toast.success(res.data?.message || "Sent to delivery!");
+      // Switch to history tab if we saved something
+      if (rfdActions.length > 0) {
+        setActiveTab("history");
+      }
     } catch (err: any) {
       const msg =
         err?.response?.data?.error ||
         err?.message ||
         "Failed to send to delivery";
-
-      // ✅ this is normal case (no new qty)
       toast.info(msg);
     }
   };
@@ -1435,27 +1505,37 @@ export function ItemCuttingDialog({
                                   </div>
                                 </div>
 
-                                {/* Material Issued */}
-                                <div className="col-span-4 sm:col-span-2">
-                                  <div className="text-xs font-medium text-gray-600 mb-1">
-                                    Mtrl Issued
-                                  </div>
-                                  <div className="text-sm sm:text-base font-bold text-gray-900">
-                                    {Number(item?.issuedQty || 0).toFixed(4)}{" "}
-                                    {item.unit}
-                                  </div>
-                                </div>
+                                  {/* Material Issued */}
+                                  {showMtrlIssued && (
+                                    <div className="col-span-4 sm:col-span-2">
+                                      <div className="text-xs font-medium text-gray-600 mb-1">
+                                        Mtrl Issued
+                                      </div>
+                                      <div className="text-sm sm:text-base font-bold text-gray-900">
+                                        {Number(item?.issuedQty || 0).toFixed(
+                                          4
+                                        )}{" "}
+                                        {item.unit}
+                                      </div>
+                                    </div>
+                                  )}
 
-                                {/* Completed */}
-                                <div className="col-span-4 sm:col-span-2">
-                                  <div className="text-xs font-medium text-gray-600 mb-1">
-                                    Completed
+                                  {/* Completed */}
+                                  <div
+                                    className={`col-span-4 ${
+                                      showMtrlIssued
+                                        ? "sm:col-span-2"
+                                        : "sm:col-span-4"
+                                    }`}
+                                  >
+                                    <div className="text-xs font-medium text-gray-600 mb-1">
+                                      Completed
+                                    </div>
+                                    <div className="text-sm sm:text-base font-semibold text-blue-600">
+                                      {Number(item.alreadyCut || 0).toFixed(4)}{" "}
+                                      {item.unit}
+                                    </div>
                                   </div>
-                                  <div className="text-sm sm:text-base font-semibold text-blue-600">
-                                    {Number(item.alreadyCut || 0).toFixed(4)}{" "}
-                                    {item.unit}
-                                  </div>
-                                </div>
 
                                 {/* Cutting Today Input */}
                                 <div className="col-span-12 sm:col-span-3">
@@ -1667,6 +1747,7 @@ export function ItemCuttingDialog({
                             expandedItems={expandedItems}
                             stage={stage}
                             onAdvanceToChange={updateNextDepartment}
+                            handleDeliverItem={handleDeliverItem}
                           />
                         ))}
                   </div>

@@ -11,6 +11,7 @@ const schedulingSchema = new mongoose.Schema({
   soleFrom: { type: String, default: "" },       // e.g., supplier / mold name
   soleColor: { type: String, default: "" },
   soleExpectedDate: { type: Date, default: null },
+  footbed: { type: String, default: "" },
 }, { _id: false });
 
 const productionDetailsSchema = new mongoose.Schema({
