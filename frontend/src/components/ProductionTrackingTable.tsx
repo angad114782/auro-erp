@@ -23,11 +23,13 @@ import {
   Workflow,
   Wrench,
   X,
+  Image as ImageIcon,
 } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import api from "../lib/api";
 import { ItemCuttingDialog } from "./ItemCuttingDialog";
+import { getFullImageUrl } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
@@ -142,12 +144,12 @@ interface APITrackingData {
   }>;
   department: string;
   summary: {
-  daily: Record<string, number>;        // YYYY-MM-DD
-  dailyByDay?: Record<string, number>;  // "1".."31"
-  weekly: { W1:number; W2:number; W3:number; W4:number; W5:number; };
-  monthTotal: number;
-};
-
+    daily: Record<string, number>;        // YYYY-MM-DD
+    dailyByDay?: Record<string, number>;  // "1".."31"
+    weekly: { W1:number; W2:number; W3:number; W4:number; W5:number; };
+    monthTotal: number;
+  };
+  coverImage?: string;
 }
 
 interface ProductionRecord {
@@ -160,6 +162,7 @@ interface ProductionRecord {
   articleName: string;
   poNumber: string;
   poItems: number;
+  poQuantity?: number;
   monthPlan: number;
   manufacturingCompany: string;
   country: string;
@@ -205,10 +208,12 @@ interface ProductionRecord {
   projectId: string;
   cards: any[];
   summary: {
-    daily: Record<number, number>;
+    daily: Record<string, number>;
+    dailyByDay?: Record<string, number>;
     weekly: Record<string, number>;
     monthTotal: number;
   };
+  coverImage?: string;
 }
 
 interface DailyProduction {
@@ -237,6 +242,56 @@ type Department =
   | "assembly"
   | "packing"
   | "rfd";
+
+const ProductImage = ({
+  src,
+  alt,
+  className,
+  size = "md",
+}: {
+  src?: string;
+  alt: string;
+  className?: string;
+  size?: "sm" | "md" | "lg";
+}) => {
+  const [error, setError] = useState(false);
+
+  if (!src || error) {
+    return (
+      <div
+        className={`bg-linear-to-br from-gray-50 to-slate-100 border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center p-2 text-center transition-all hover:border-gray-300 ${className}`}
+      >
+        <div
+          className={`${
+            size === "sm" ? "p-1" : size === "md" ? "p-2" : "p-3"
+          } bg-white rounded-full shadow-sm mb-1`}
+        >
+          {size === "lg" ? (
+            <ImageIcon className="w-8 h-8 text-slate-300" />
+          ) : (
+            <Package className="w-5 h-5 text-slate-300" />
+          )}
+        </div>
+        {size !== "sm" && (
+          <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+            No Image
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`overflow-hidden rounded-lg bg-gray-50 ${className}`}>
+      <img
+        src={getFullImageUrl(src)}
+        alt={alt}
+        className="w-full h-full object-cover"
+        onError={() => setError(true)}
+      />
+    </div>
+  );
+};
 
 export function ProductionTrackingTable() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -527,6 +582,7 @@ export function ProductionTrackingTable() {
         projectId: item.projectId,
         cards: item.cards || [],
         summary: item.summary,
+        coverImage: item.coverImage,
         rfdRemarks: "",
       };
 
@@ -2358,13 +2414,12 @@ export function ProductionTrackingTable() {
                               {/* Product Info */}
                               <div className="lg:col-span-4">
                                 <div className="flex items-center gap-3 sm:gap-4">
-                                  <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden shrink-0">
-                                    <img
-                                      src="https://images.unsplash.com/photo-1648501570189-0359dab185e6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBzbmVha2VyJTIwc2hvZSUyMHByb2R1Y3R8ZW58MXx8fHwxNzU2NzM1OTMwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
+                                    <ProductImage
+                                      src={record.coverImage}
                                       alt={record.articleName}
-                                      className="w-full h-full object-cover"
+                                      size="md"
+                                      className="w-12 h-12 sm:w-16 sm:h-16 shrink-0"
                                     />
-                                  </div>
                                   <div className="min-w-0 flex-1">
                                     <div className="font-semibold text-gray-900 text-sm sm:text-base truncate">
                                       {record.articleName}
@@ -2776,13 +2831,12 @@ export function ProductionTrackingTable() {
                         {/* Product Image Preview */}
                         <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
                           <div className="flex items-center gap-3 sm:gap-4">
-                            <div className="w-16 h-16 sm:w-24 sm:h-24 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm shrink-0">
-                              <img
-                                src="https://images.unsplash.com/photo-1648501570189-0359dab185e6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBzbmVha2VyJTIwc2hvZSUyMHByb2R1Y3R8ZW58MXx8fHwxNzU2NzM1OTMwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-                                alt={selectedProductionRecord.articleName}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
+                            <ProductImage
+                              src={selectedProductionRecord.coverImage}
+                              alt={selectedProductionRecord.articleName}
+                              size="lg"
+                              className="w-16 h-16 sm:w-24 sm:h-24 shadow-sm shrink-0"
+                            />
                             <div className="flex-1 min-w-0">
                               <div className="text-sm sm:text-base font-medium text-gray-900 truncate">
                                 {selectedProductionRecord.articleName}
@@ -3108,6 +3162,8 @@ export function ProductionTrackingTable() {
       <ItemCuttingDialog
         open={itemCuttingDialogOpen}
         onOpenChange={setItemCuttingDialogOpen}
+        projectId={selectedProductForCutting?.projectId || ""}
+        cardId={selectedProductForCutting?.cardId || ""}
         productData={selectedProductForCutting}
         stage={selectedProductForCutting?.stage || selectedDepartment}
         // stage={selectedDepartment as ProductionStage}

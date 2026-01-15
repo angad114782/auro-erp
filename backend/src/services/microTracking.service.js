@@ -1047,6 +1047,7 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
       assignPerson: p.assignPerson,
       brand: p.brand,
       country: p.country,
+      coverImage: p.coverImage,
       poDetails: poMap.get(pid) || null,
 
       department: d,
