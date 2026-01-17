@@ -159,6 +159,7 @@ type CalendarEntry = {
   quantity: number;
   startDate: string;
   endDate: string;
+  footbed?: string;
   remarks?: string;
   raw?: any;
 };
@@ -295,118 +296,118 @@ export function ProductionPlanning() {
 
   const [productionPlans, setProductionPlans] = useState<ProductionPlan[]>([]);
 
-  React.useEffect(() => {
-    // inside ProductionPlanning component:
-    const fetchProductionPlans = async () => {
-      try {
-        const res = await api.get("/projects/production");
-        // axios returns response in res.data
-        const raw = res.data;
-        // console.log("raw fetchProductionPlans response:", raw);
+  // Move fetchProductionPlans outside useEffect to make it reusable
+  const fetchProductionPlans = async () => {
+    try {
+      const res = await api.get("/projects/production");
+      // axios returns response in res.data
+      const raw = res.data;
+      // console.log("raw fetchProductionPlans response:", raw);
 
-        // Normalize to array
-        let rawItems: any[] = [];
+      // Normalize to array
+      let rawItems: any[] = [];
 
-        if (Array.isArray(raw)) {
-          rawItems = raw;
-        } else if (Array.isArray(raw.data?.items)) {
-          rawItems = raw.data.items;
-        } else if (Array.isArray(raw.items)) {
-          rawItems = raw.items;
-        } else if (Array.isArray(raw.data)) {
-          rawItems = raw.data;
-        } else if (Array.isArray(raw.items?.data)) {
-          // defensive
-          rawItems = raw.items.data;
-        } else {
-          console.warn("fetchProductionPlans unexpected response shape:", raw);
-          toast.error(
-            "Unexpected response from production API — check console."
-          );
-          rawItems = [];
-        }
-
-        // Map to ProductionPlan[] — ensure all required fields exist
-        const mapped: ProductionPlan[] = rawItems.map((doc: any) => {
-          const proj = doc.project || {};
-          const po = doc.po || {};
-
-          const safeDate = (d: any) =>
-            d ? new Date(d).toISOString().split("T")[0] : "";
-
-          return {
-            id: doc._id,
-            rdProjectId: proj._id || "",
-            projectCode: proj.autoCode || doc.autoCodeSnapshot || "-",
-            poNumber: po.poNumber || "-",
-            poValue: po.totalAmount || 0,
-
-            // Name fields
-            planName: proj.artName || doc.artNameSnapshot || "Untitled",
-            productName: proj.artName || doc.artNameSnapshot || "Untitled",
-
-            // brand/category/type not available → fallback to "-"
-            brand: proj.brand || "-",
-            category: proj.category || "-",
-            type: proj.type || "-",
-
-            // color / art colour
-            artColour: proj.color || doc.colorSnapshot || "",
-            assignPerson: proj.assignPerson || "",
-            color: proj.color || doc.colorSnapshot || "",
-
-            // quantity from PO
-            quantity: po.orderQuantity || 0,
-
-            // dates
-            startDate: safeDate(doc.startDate),
-            endDate: safeDate(doc.targetCompletionDate),
-            deliveryDate: safeDate(doc.targetCompletionDate),
-
-            priority: normalizePriority(
-              doc.priority ??
-                proj.priority ??
-                doc.projectSnapshot?.priority ??
-                doc.productionDetails?.priority ??
-                doc.priorityLevel ?? // possible alternate field name
-                "Medium"
-            ),
-            status: doc.status || "Planning",
-
-            assignedPlant: doc.assignedPlant || "",
-            assignedTeam: (doc.assignedTeam || []).join(", ") || "",
-
-            targetCost: doc.targetCost || 0,
-            finalCost: doc.finalCost || 0,
-            estimatedCost: doc.estimatedCost || 0,
-
-            costVariance: {
-              amount: 0,
-              isOverBudget: false,
-              percentage: "0",
-            },
-
-            materials: doc.materials || [],
-            progress: 0,
-
-            remarks: doc.notes || "",
-            createdDate: safeDate(doc.createdAt),
-            updatedDate: safeDate(doc.updatedAt),
-
-            profileImage: doc.coverImageSnapshot || "",
-
-            raw: doc,
-          };
-        });
-
-        // Set state (replace whole array)
-        setProductionPlans(mapped);
-      } catch (err) {
-        console.error("Error loading production plans:", err);
-        toast.error("Failed to load production plans");
+      if (Array.isArray(raw)) {
+        rawItems = raw;
+      } else if (Array.isArray(raw.data?.items)) {
+        rawItems = raw.data.items;
+      } else if (Array.isArray(raw.items)) {
+        rawItems = raw.items;
+      } else if (Array.isArray(raw.data)) {
+        rawItems = raw.data;
+      } else if (Array.isArray(raw.items?.data)) {
+        // defensive
+        rawItems = raw.items.data;
+      } else {
+        console.warn("fetchProductionPlans unexpected response shape:", raw);
+        toast.error(
+          "Unexpected response from production API — check console."
+        );
+        rawItems = [];
       }
-    };
 
+      // Map to ProductionPlan[] — ensure all required fields exist
+      const mapped: ProductionPlan[] = rawItems.map((doc: any) => {
+        const proj = doc.project || {};
+        const po = doc.po || {};
+
+        const safeDate = (d: any) =>
+          d ? new Date(d).toISOString().split("T")[0] : "";
+
+        return {
+          id: doc._id,
+          rdProjectId: proj._id || "",
+          projectCode: proj.autoCode || doc.autoCodeSnapshot || "-",
+          poNumber: po.poNumber || "-",
+          poValue: po.totalAmount || 0,
+
+          // Name fields
+          planName: proj.artName || doc.artNameSnapshot || "Untitled",
+          productName: proj.artName || doc.artNameSnapshot || "Untitled",
+
+          // brand/category/type not available → fallback to "-"
+          brand: proj.brand || "-",
+          category: proj.category || "-",
+          type: proj.type || "-",
+
+          // color / art colour
+          artColour: proj.color || doc.colorSnapshot || "",
+          assignPerson: proj.assignPerson || "",
+          color: proj.color || doc.colorSnapshot || "",
+
+          // quantity from PO
+          quantity: po.orderQuantity || 0,
+
+          // dates
+          startDate: safeDate(doc.startDate),
+          endDate: safeDate(doc.targetCompletionDate),
+          deliveryDate: safeDate(doc.targetCompletionDate),
+
+          priority: normalizePriority(
+            doc.priority ??
+              proj.priority ??
+              doc.projectSnapshot?.priority ??
+              doc.productionDetails?.priority ??
+              doc.priorityLevel ?? // possible alternate field name
+              "Medium"
+          ),
+          status: doc.status || "Planning",
+
+          assignedPlant: doc.assignedPlant || "",
+          assignedTeam: (doc.assignedTeam || []).join(", ") || "",
+
+          targetCost: doc.targetCost || 0,
+          finalCost: doc.finalCost || 0,
+          estimatedCost: doc.estimatedCost || 0,
+
+          costVariance: {
+            amount: 0,
+            isOverBudget: false,
+            percentage: "0",
+          },
+
+          materials: doc.materials || [],
+          progress: 0,
+
+          remarks: doc.notes || "",
+          createdDate: safeDate(doc.createdAt),
+          updatedDate: safeDate(doc.updatedAt),
+
+          profileImage: doc.coverImageSnapshot || "",
+
+          raw: doc,
+        };
+      });
+
+      // Set state (replace whole array)
+      setProductionPlans(mapped);
+    } catch (err) {
+      console.error("Error loading production plans:", err);
+      toast.error("Failed to load production plans");
+    }
+  };
+
+  React.useEffect(() => {
     fetchProductionPlans();
   }, []);
 
@@ -415,14 +416,114 @@ export function ProductionPlanning() {
     []
   );
 
-  // ---------------------- fetch function (calendar) ----------------------
+  // Helper to convert date to Local YYYY-MM-DD (no UTC shift)
+  const toLocalYMD = (input: string | Date | undefined | null): string => {
+    if (!input) return "";
+    const d = typeof input === "string" ? new Date(input) : input;
+    const local = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const y = local.getFullYear();
+    const m = String(local.getMonth() + 1).padStart(2, "0");
+    const day = String(local.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  // Central mapping logic for CalendarEntry
+  const mapCalendarDocToEntry = (doc: any): CalendarEntry => {
+    const scheduling = doc.scheduling ?? {};
+    const prod = doc.productionDetails ?? {};
+    const snapshot = doc.projectSnapshot ?? {};
+    const project = doc.project ?? {};
+
+    const start = scheduling.scheduleDate;
+    const end = scheduling.soleExpectedDate;
+
+    const quantity =
+      Number(
+        prod.quantity ?? doc.quantity ?? doc.qty ?? scheduling.quantity ?? 0
+      ) || 0;
+
+    const s = toLocalYMD(start);
+    const e = toLocalYMD(end);
+
+    // Plant extraction
+    const assignedPlantObj = scheduling.assignedPlant;
+    let assignedPlantName: string | null = null;
+    if (assignedPlantObj) {
+      if (typeof assignedPlantObj === "string") {
+        assignedPlantName = assignedPlantObj;
+      } else if (typeof assignedPlantObj === "object") {
+        assignedPlantName =
+          assignedPlantObj.name ||
+          assignedPlantObj.plantName ||
+          assignedPlantObj.plant ||
+          assignedPlantObj.title;
+
+        if (!assignedPlantName && assignedPlantObj._id) {
+          assignedPlantName = "Assigned Plant";
+        }
+      }
+    }
+    if (!assignedPlantName) {
+      assignedPlantName = prod.assignedPlant || doc.assignedPlant || null;
+    }
+
+    // Name helpers
+    const getBrandName = (brandObj: any): string => {
+      if (!brandObj) return "-";
+      if (typeof brandObj === "string") return brandObj;
+      return brandObj.name || brandObj.brandName || brandObj.brand || String(brandObj);
+    };
+    const getCategoryName = (categoryObj: any): string => {
+      if (!categoryObj) return "-";
+      if (typeof categoryObj === "string") return categoryObj;
+      return categoryObj.name || categoryObj.categoryName || categoryObj.category || String(categoryObj);
+    };
+    const getTypeName = (typeObj: any): string => {
+      if (!typeObj) return "-";
+      if (typeof typeObj === "string") return typeObj;
+      return typeObj.name || typeObj.typeName || typeObj.type || String(typeObj);
+    };
+    const getCompanyName = (companyObj: any): string => {
+      if (!companyObj) return "-";
+      if (typeof companyObj === "string") return companyObj;
+      return companyObj.name || companyObj.companyName || companyObj.company || String(companyObj);
+    };
+    const getCountryName = (countryObj: any): string => {
+      if (!countryObj) return "-";
+      if (typeof countryObj === "string") return countryObj;
+      return countryObj.name || countryObj.countryName || countryObj.country || String(countryObj);
+    };
+
+    return {
+      id: doc._id ?? doc.id ?? `cal-${Math.random().toString(36).slice(2, 8)}`,
+      projectId: project._id ?? project.id ?? snapshot.projectId ?? null,
+      projectCode: snapshot.autoCode ?? project.autoCode ?? snapshot.projectCode ?? doc.projectCode ?? "-",
+      artName: snapshot.artName ?? project.artName ?? snapshot.productName ?? prod.productName ?? doc.productName ?? project.name ?? "Untitled",
+      productName: snapshot.artName ?? project.artName ?? snapshot.productName ?? prod.productName ?? doc.productName ?? project.name ?? "Untitled",
+      color: snapshot.color ?? project.color ?? prod.color ?? doc.color ?? "",
+      size: snapshot.size ?? prod.size ?? doc.size ?? "-",
+      brand: getBrandName(snapshot.brand ?? snapshot.brandName ?? project.brand ?? project.brandName),
+      category: getCategoryName(snapshot.category ?? snapshot.categoryName ?? project.category ?? project.categoryName),
+      type: getTypeName(snapshot.type ?? snapshot.typeName ?? project.type ?? project.typeName),
+      company: getCompanyName(snapshot.companyName ?? project.companyName ?? project.company),
+      country: getCountryName(snapshot.countryName ?? project.countryName ?? project.country),
+      gender: snapshot.gender ?? project.gender ?? prod.gender ?? doc.gender ?? "-",
+      assignedPlant: assignedPlantName,
+      quantity,
+      startDate: s,
+      endDate: e || s,
+      footbed: scheduling.footbed || "",
+      remarks: doc.remarks ?? doc.notes ?? doc.additional?.remarks ?? "" ?? "",
+      raw: doc,
+    } as CalendarEntry;
+  };
+
   // ---------------------- fetch function (calendar) ----------------------
   const fetchCalendarEntries = async () => {
     try {
       console.log("Fetching calendar entries...");
-      const res = await api.get("/calendar"); // -> /api/calendar
+      const res = await api.get("/calendar");
       const raw = res.data;
-      console.log("raw calendar response:", raw);
 
       let docs: any[] = [];
       if (Array.isArray(raw)) docs = raw;
@@ -430,246 +531,18 @@ export function ProductionPlanning() {
       else if (Array.isArray(raw.items)) docs = raw.items;
       else if (Array.isArray(raw.data)) docs = raw.data;
       else {
-        console.warn("Unexpected calendar response shape, see raw:", raw);
-        toast.error("Calendar: unexpected response shape (check console).");
+        console.warn("Unexpected calendar response shape:", raw);
         docs = [];
       }
 
-      console.log("Normalized docs length:", docs.length, docs);
+      const mapped: CalendarEntry[] = docs.map((doc: any) => mapCalendarDocToEntry(doc));
 
-      // Replace existing toYMD / dateToYMD_Utc with these (use inside the component)
-      const toLocalYMD = (input: string | Date | undefined | null): string => {
-        if (!input) return "";
-        const d = typeof input === "string" ? new Date(input) : input;
-        // convert to local date (avoid UTC shift)
-        const local = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-        const y = local.getFullYear();
-        const m = String(local.getMonth() + 1).padStart(2, "0");
-        const day = String(local.getDate()).padStart(2, "0");
-        return `${y}-${m}-${day}`;
-      };
-
-      const mapped: CalendarEntry[] = docs.map((doc: any) => {
-        const scheduling = doc.scheduling ?? {};
-        const prod = doc.productionDetails ?? {};
-        const snapshot = doc.projectSnapshot ?? {};
-        const project = doc.project ?? {};
-
-        // prefer scheduleDate (your API) and fallback to other fields
-        const start = scheduling.scheduleDate; // THIS IS THE MAIN DATE
-        const end = scheduling.soleExpectedDate; // only for details view
-
-        const quantity =
-          Number(
-            prod.quantity ?? doc.quantity ?? doc.qty ?? scheduling.quantity ?? 0
-          ) || 0;
-
-        const s = toLocalYMD(start);
-        const e = toLocalYMD(end);
-
-        // FIXED: Properly extract plant name from object
-        const assignedPlantObj = scheduling.assignedPlant;
-        let assignedPlantName: string | null = null;
-
-        if (assignedPlantObj) {
-          if (typeof assignedPlantObj === "string") {
-            assignedPlantName = assignedPlantObj;
-          } else if (typeof assignedPlantObj === "object") {
-            // Try common name properties
-            assignedPlantName =
-              assignedPlantObj.name ||
-              assignedPlantObj.plantName ||
-              assignedPlantObj.plant ||
-              assignedPlantObj.title;
-
-            // If still no name found but it's an object with _id, use a fallback
-            if (!assignedPlantName && assignedPlantObj._id) {
-              assignedPlantName = "Assigned Plant";
-            }
-          }
-        }
-
-        // Fallback to other possible sources
-        if (!assignedPlantName) {
-          assignedPlantName = prod.assignedPlant || doc.assignedPlant || null;
-        }
-
-        // FIXED: Extract brand name properly from nested objects
-        const getBrandName = (brandObj: any): string => {
-          if (!brandObj) return "-";
-          if (typeof brandObj === "string") return brandObj;
-          if (typeof brandObj === "object") {
-            return (
-              brandObj.name ||
-              brandObj.brandName ||
-              brandObj.brand ||
-              String(brandObj)
-            );
-          }
-          return String(brandObj);
-        };
-
-        // FIXED: Extract category name properly
-        const getCategoryName = (categoryObj: any): string => {
-          if (!categoryObj) return "-";
-          if (typeof categoryObj === "string") return categoryObj;
-          if (typeof categoryObj === "object") {
-            return (
-              categoryObj.name ||
-              categoryObj.categoryName ||
-              categoryObj.category ||
-              String(categoryObj)
-            );
-          }
-          return String(categoryObj);
-        };
-
-        // FIXED: Extract type name properly
-        const getTypeName = (typeObj: any): string => {
-          if (!typeObj) return "-";
-          if (typeof typeObj === "string") return typeObj;
-          if (typeof typeObj === "object") {
-            return (
-              typeObj.name ||
-              typeObj.typeName ||
-              typeObj.type ||
-              String(typeObj)
-            );
-          }
-          return String(typeObj);
-        };
-
-        // FIXED: Extract company name properly
-        const getCompanyName = (companyObj: any): string => {
-          if (!companyObj) return "-";
-          if (typeof companyObj === "string") return companyObj;
-          if (typeof companyObj === "object") {
-            return (
-              companyObj.name ||
-              companyObj.companyName ||
-              companyObj.company ||
-              String(companyObj)
-            );
-          }
-          return String(companyObj);
-        };
-
-        // FIXED: Extract country name properly
-        const getCountryName = (countryObj: any): string => {
-          if (!countryObj) return "-";
-          if (typeof countryObj === "string") return countryObj;
-          if (typeof countryObj === "object") {
-            return (
-              countryObj.name ||
-              countryObj.countryName ||
-              countryObj.country ||
-              String(countryObj)
-            );
-          }
-          return String(countryObj);
-        };
-
-        return {
-          id:
-            doc._id ??
-            doc.id ??
-            `cal-${Math.random().toString(36).slice(2, 8)}`,
-          projectId: project._id ?? project.id ?? snapshot.projectId ?? null,
-
-          // projectCode / product
-          projectCode:
-            snapshot.autoCode ??
-            project.autoCode ??
-            snapshot.projectCode ??
-            doc.projectCode ??
-            "-",
-
-          // product / art / display name (priority order)
-          artName:
-            snapshot.artName ??
-            project.artName ??
-            snapshot.productName ??
-            prod.productName ??
-            doc.productName ??
-            project.name ??
-            "Untitled",
-
-          // make productName the human-friendly name (same as artName)
-          productName:
-            // prefer explicit artName from snapshot, then project.artName, then snapshot.productName, then prod.productName, then doc.productName, then project.name
-            snapshot.artName ??
-            project.artName ??
-            snapshot.productName ??
-            prod.productName ??
-            doc.productName ??
-            project.name ??
-            "Untitled",
-          // color & size
-          color:
-            snapshot.color ?? project.color ?? prod.color ?? doc.color ?? "",
-
-          size: snapshot.size ?? prod.size ?? doc.size ?? "-",
-
-          // brand / category / type / company / country / gender
-          // FIXED: Use helper functions to extract names properly
-          brand: getBrandName(
-            snapshot.brand ??
-              snapshot.brandName ??
-              project.brand ??
-              project.brandName
-          ),
-
-          category: getCategoryName(
-            snapshot.category ??
-              snapshot.categoryName ??
-              project.category ??
-              project.categoryName
-          ),
-
-          type: getTypeName(
-            snapshot.type ??
-              snapshot.typeName ??
-              project.type ??
-              project.typeName
-          ),
-
-          company: getCompanyName(
-            snapshot.companyName ?? project.companyName ?? project.company
-          ),
-
-          country: getCountryName(
-            snapshot.countryName ?? project.countryName ?? project.country
-          ),
-
-          gender:
-            snapshot.gender ??
-            project.gender ??
-            prod.gender ??
-            doc.gender ??
-            "-",
-
-          // scheduling / production specifics
-          // FIXED: Use the extracted plant name instead of the object
-          assignedPlant: assignedPlantName,
-          quantity,
-
-          // Use scheduleDate as primary (s) and keep end for details
-          startDate: s, // always scheduleDate (toLocalYMD result)
-          endDate: e || s, // used for details, fallback to start
-
-          remarks:
-            doc.remarks ?? doc.notes ?? doc.additional?.remarks ?? "" ?? "",
-          raw: doc,
-        } as CalendarEntry;
-      });
-
-      // dedupe by id (keep first occurrence) and set state
+      // dedupe by id
       const uniqueEntries: CalendarEntry[] = mapped.filter(
         (v, i, a) => a.findIndex((x) => x.id === v.id) === i
       );
 
       setCalendarEntries(uniqueEntries);
-      console.log("Mapped calendar entries:", uniqueEntries);
     } catch (err) {
       console.error("fetchCalendarEntries error:", err);
       toast.error("Failed to load calendar entries");
@@ -731,6 +604,7 @@ export function ProductionPlanning() {
           remarks: e.remarks,
           startDate: e.startDate,
           endDate: e.endDate,
+          footbed: e.footbed,
           id: e.id,
           raw: e.raw,
         }));
@@ -1191,13 +1065,33 @@ export function ProductionPlanning() {
 
   // Handle updating existing production card
   const handleUpdateProductionCard = (updatedData: any) => {
-    // Find and update the production plan
-    const updatedPlans = productionPlans.map((plan) =>
-      plan.id === updatedData.id ? updatedData : plan
+    // 1) Update calendarEntries state locally for immediate feedback
+    const entry = mapCalendarDocToEntry(updatedData);
+    setCalendarEntries((prev) =>
+      prev.map((e) => (e.id === entry.id ? entry : e))
     );
 
-    // Update state
-    setProductionPlans(updatedPlans);
+    // 2) Update productionPlans state locally (if matching)
+    // Note: updatedData is raw calendar doc, which might not match ProductionPlan shape perfectly,
+    // but the ID check helps.
+    setProductionPlans((prev) =>
+      prev.map((p) =>
+        p.id === (updatedData._id ?? updatedData.id) ||
+        p.rdProjectId === updatedData.project
+          ? {
+              ...p,
+              startDate: entry.startDate,
+              endDate: entry.endDate,
+              // we don't have full ProductionPlan fields in updatedData, 
+              // but we can at least sync dates.
+            }
+          : p
+      )
+    );
+
+    // 3) Trigger re-fetch in background to ensure everything is perfect
+    fetchCalendarEntries();
+    fetchProductionPlans();
   };
 
   const handleProductionDateChange = async () => {
@@ -2790,10 +2684,9 @@ export function ProductionPlanning() {
         selectedDate={selectedCalendarDate}
         onSave={(newCard) => {
           console.log("New calendar card created:", newCard);
-          // Immediately refresh the calendar view
-          if (selectedView === "calendar") {
-            fetchCalendarEntries();
-          }
+          // Refresh both to ensure UI is in sync
+          fetchCalendarEntries();
+          fetchProductionPlans();
         }}
       />
 

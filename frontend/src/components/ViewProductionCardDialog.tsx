@@ -258,6 +258,7 @@ useEffect(() => {
         soleExpectedDate: formData.soleExpectedDate
           ? formData.soleExpectedDate
           : null,
+        footbed: formData.footbed || "",
       },
       productionDetails: { quantity: Number(formData.quantity) },
       additional: { remarks: formData.remarks ?? "" },

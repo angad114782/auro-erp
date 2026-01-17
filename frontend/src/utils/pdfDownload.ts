@@ -478,7 +478,8 @@ const renderPODetails = (doc: jsPDF, p: any, y: number) => {
    Section: Materials & Components
 ------------------------------------------------------ */
 const renderMaterialsComponents = (doc: jsPDF, p: any, y: number) => {
-  y = checkPageBreak(doc, y);
+  doc.addPage();
+  y = 20;
   y = drawSectionHeader(doc, "Detailed Cost Breakdown", y, COLORS.primary);
 
   const costData = p.costData;
@@ -745,6 +746,8 @@ const renderColorVariants = (doc: jsPDF, p: any, y: number) => {
   if (colorKeys.length === 0) return y;
 
   y = checkPageBreak(doc, y);
+  doc.addPage();
+  y = 20;
   y = drawSectionHeader(
     doc,
     "Color Variants Costing Analysis",
