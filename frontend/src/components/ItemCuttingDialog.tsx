@@ -785,7 +785,6 @@ export function ItemCuttingDialog({
     const mapped: CuttingItem[] = rows.map((row, index) => {
       // Check if this is an aggregated department row
       const isAggRow = row._id?.startsWith("agg-") || row.aggMetadata;
-      console.log(row, "Row testing");
       if (isAggRow) {
         // Handle aggregated department data
         const required = Number(
@@ -1202,7 +1201,6 @@ export function ItemCuttingDialog({
     // For non-RFD items, need BOTH cuttingToday > 0 AND next department selected
     return cuttingTodayNum > 0 && !!nextDeptMap[item.id];
   });
-  console.log("Rendering ItemCuttingDialog with cuttingItems:", rows);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-[95vw] !w-[95vw] sm:!max-w-[90vw] sm:w-[90vw]! lg:!max-w-[85vw] lg:!w-[85vw] max-h-[90vh] overflow-hidden p-0 m-0 top-[5vh] translate-y-0 flex flex-col">

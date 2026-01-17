@@ -270,6 +270,10 @@ export const updateCalendarEntryService = async (
     setObj["scheduling.soleExpectedDate"] = payload.scheduling.soleExpectedDate
       ? new Date(payload.scheduling.soleExpectedDate)
       : null;
+if (payload.scheduling.assignedPlant !== undefined)
+  setObj["scheduling.assignedPlant"] = payload.scheduling.assignedPlant
+    ? new mongoose.Types.ObjectId(payload.scheduling.assignedPlant)
+    : null;
 
   // ✅ OPTIONAL: Sole Received Date
   if (payload.scheduling.soleReceivedDate !== undefined)
@@ -341,7 +345,7 @@ export const getScheduleByProjectService = async (
     isActive: true,
     project: projectId,
   })
-    .sort({ "scheduling.scheduleDate": 1 })
+    .sort({ "scheduling.scheduleDate": -1 })
     .skip(skip)
     .limit(limit)
     .lean();

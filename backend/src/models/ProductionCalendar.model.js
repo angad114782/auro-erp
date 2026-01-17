@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const schedulingSchema = new mongoose.Schema({
   scheduleDate: { type: Date, required: true },
   receivedDate: { type: Date, default: null }, 
+  soleReceivedDate: { type: Date, default: null },
   assignedPlant: { 
   type: mongoose.Schema.Types.ObjectId, 
   ref: "AssignPlant", 

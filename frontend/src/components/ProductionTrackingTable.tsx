@@ -692,6 +692,46 @@ export function ProductionTrackingTable() {
     },
   ];
 
+
+
+
+  const clamp = (n: number, a = 0, b = 100) => Math.min(b, Math.max(a, n));
+
+const isMinDept = (dept: string) =>
+  ["cutting", "printing", "upper", "upperREJ"].includes(dept);
+
+const calcMinMetrics = (rows: any[]) => {
+  const active = (rows || []).filter((r) => r?.isActive !== false);
+
+  if (!active.length)
+    return { receiving: 0, completed: 0, transferred: 0, remaining: 0, progress: 0, bottleneck: null };
+
+  const minOf = (key: string) =>
+    Math.min(...active.map((r) => Number(r?.[key] ?? 0)));
+
+  const receiving = minOf("receivedQty");
+  const completed = minOf("completedQty");
+  const transferred = minOf("transferredQty");
+
+  const remaining = Math.max(receiving - completed, 0);
+  const progress = receiving > 0 ? clamp((completed / receiving) * 100) : 0;
+
+  const bottleneckRow = active.reduce((minR, r) =>
+    Number(r?.completedQty ?? 0) < Number(minR?.completedQty ?? 0) ? r : minR
+  , active[0]);
+
+  return {
+    receiving,
+    completed,
+    transferred,
+    remaining,
+    progress,
+    bottleneck: bottleneckRow
+      ? { name: bottleneckRow.name, completedQty: Number(bottleneckRow.completedQty ?? 0) }
+      : null,
+  };
+};
+
   // Function to get number of days in a month
   const getDaysInMonth = (year: number, month: number) => {
     return new Date(year, month, 0).getDate();
@@ -3007,149 +3047,173 @@ export function ProductionTrackingTable() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-                      {stages.map((stage) => {
-                        const stageData = selectedProductionRecord[stage.key];
+  {stages.map((stage) => {
+    const stageData = selectedProductionRecord[stage.key];
 
-                        const plannedQty = selectedCard
-                          ? selectedCard.cardQuantity
-                          : stageData.planned;
-                        const progress =
-                          plannedQty > 0
-                            ? (stageData.quantity / plannedQty) * 100
-                            : 0;
+    // ✅ default fallback values (card level / stage summary)
+    let receiving = selectedCard ? selectedCard.cardQuantity : stageData.planned;
+    let completed = stageData.quantity;
+    let remaining = Math.max(receiving - completed, 0);
+    let progress = receiving > 0 ? (completed / receiving) * 100 : 0;
 
-                        const remaining = plannedQty - stageData.quantity;
+    // ✅ apply MIN bottleneck logic (only for item-based depts)
+    // IMPORTANT: departmentRows currently holds last fetched dept rows only.
+    // so MIN will apply after rows fetched for this stage
+    const stageDept = stage.department; // e.g. "cutting"
+    const selectedStageDept =
+      selectedProductForCutting?.stage || selectedProductForCutting?.department;
 
-                        return (
-                          <div
-                            key={stage.key}
-                            className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5 hover:border-[#0c9dcb] hover:shadow-md transition-all duration-200 cursor-pointer group"
-                            onClick={async () => {
-                              if (!selectedCard) {
-                                toast.error(
-                                  "Please select a tracking card first"
-                                );
-                                return;
-                              }
+   const canApplyMin =
+  isMinDept(stageDept) &&
+  stageDept === selectedStageDept &&
+  Array.isArray(departmentRows) &&
+  departmentRows.length > 1; // ✅ important: MIN needs multiple rows
 
-                              // 1️⃣ Fetch rows
-                              await fetchDepartmentRows(
-                                selectedProductionRecord.projectId,
-                                selectedCard._id,
-                                stage.department
-                              );
+if (canApplyMin) {
+  const m = calcMinMetrics(departmentRows);
+  receiving = m.receiving;
+  completed = m.completed;
+  remaining = m.remaining;
+  progress = m.progress;
+}
 
-                              // 2️⃣ Prepare dialog payload
-                              setSelectedProductForCutting({
-                                projectId: selectedProductionRecord.projectId,
-                                cardId: selectedCard._id,
-                                cardNumber: selectedCard.cardNumber,
-                                cardQuantity: selectedCard.cardQuantity,
-                                productName:
-                                  selectedProductionRecord.articleName,
-                                stage: stage.key,
-                                stageName: stage.name,
-                              });
 
-                              // 3️⃣ Open dialog
-                              setItemCuttingDialogOpen(true);
-                            }}
-                          >
-                            <div className="flex items-center justify-between mb-3 sm:mb-4">
-                              <div className="flex items-center gap-2 sm:gap-3">
-                                <div
-                                  className={`w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg flex items-center justify-center group-hover:bg-[#0c9dcb] group-hover:text-white transition-colors ${
-                                    stageData.status === "Completed"
-                                      ? "bg-green-100 text-green-600"
-                                      : stageData.status === "In Progress"
-                                      ? "bg-blue-100 text-blue-600"
-                                      : "bg-gray-100 text-gray-600"
-                                  }`}
-                                >
-                                  {stage.icon}
-                                </div>
-                                <div>
-                                  <div className="font-semibold text-gray-900 text-sm sm:text-base group-hover:text-[#0c9dcb]">
-                                    {isMobile ? stage.shortName : stage.name}
-                                  </div>
-                                  <div className="text-xs text-gray-500 group-hover:text-[#0a87a5]">
-                                    {stageData.status}
-                                  </div>
-                                </div>
-                              </div>
-                              {getStatusBadge(
-                                stageData.status,
-                                stage.key === "upperREJ"
-                                  ? "upperREJ"
-                                  : stage.key === "rfd"
-                                  ? "rfd"
-                                  : "production"
-                              )}
-                            </div>
+    progress = clamp(progress);
 
-                            <div className="space-y-2 sm:space-y-3">
-                              <div className="flex justify-between text-xs sm:text-sm">
-                                <span className="text-gray-600 group-hover:text-gray-800">
-                                  Progress
-                                </span>
-                                <span className="font-medium group-hover:text-[#0c9dcb]">
-                                  {Math.round(progress)}%
-                                </span>
-                              </div>
-                              <Progress
-                                value={progress}
-                                className="h-1.5 sm:h-2 group-hover:h-2.5 transition-all"
-                              />
+    return (
+      <div
+        key={stage.key}
+        className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5 hover:border-[#0c9dcb] hover:shadow-md transition-all duration-200 cursor-pointer group"
+        onClick={async () => {
+          if (!selectedCard) {
+            toast.error("Please select a tracking card first");
+            return;
+          }
 
-                              <div className="grid grid-cols-2 gap-2 sm:gap-4 text-xs sm:text-sm">
-                                <div>
-                                  <div className="text-gray-600 group-hover:text-gray-800">
-                                    Completed
-                                  </div>
-                                  <div className="font-medium text-green-600 group-hover:text-green-700">
-                                    {stageData.quantity}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-gray-600 group-hover:text-gray-800">
-                                    Receiving
-                                  </div>
-                                  <div className="font-medium group-hover:text-[#0c9dcb]">
-                                    {plannedQty}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-gray-600 group-hover:text-gray-800">
-                                    Remaining
-                                  </div>
-                                  <div className="font-medium text-orange-600 group-hover:text-orange-700">
-                                    {remaining}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-gray-600 group-hover:text-gray-800">
-                                    Rate
-                                  </div>
-                                  <div className="font-medium group-hover:text-[#0c9dcb]">
-                                    {Math.round(progress)}%
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
+          // 1️⃣ Fetch rows for this department (for MIN calc + dialog)
+          await fetchDepartmentRows(
+            selectedProductionRecord.projectId,
+            selectedCard._id,
+            stageDept
+          );
 
-                            {/* Click hint */}
-                            <div className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-gray-100 group-hover:border-[#0c9dcb]/30">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-500 group-hover:text-[#0c9dcb]">
-                                  Click to update {stage.name.toLowerCase()}
-                                </span>
-                                <Edit className="w-3 h-3 text-gray-400 group-hover:text-[#0c9dcb]" />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+          // 2️⃣ Save selection (so MIN logic knows which dept rows are loaded)
+          setSelectedProductForCutting({
+            projectId: selectedProductionRecord.projectId,
+            cardId: selectedCard._id,
+            cardNumber: selectedCard.cardNumber,
+            cardQuantity: selectedCard.cardQuantity,
+            productName: selectedProductionRecord.articleName,
+            stage: stageDept,          // ✅ store department here
+            stageKey: stage.key,       // optional
+            stageName: stage.name,
+          });
+
+          // 3️⃣ Open dialog
+          setItemCuttingDialogOpen(true);
+        }}
+      >
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div
+              className={`w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg flex items-center justify-center group-hover:bg-[#0c9dcb] group-hover:text-white transition-colors ${
+                stageData.status === "Completed"
+                  ? "bg-green-100 text-green-600"
+                  : stageData.status === "In Progress"
+                  ? "bg-blue-100 text-blue-600"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {stage.icon}
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900 text-sm sm:text-base group-hover:text-[#0c9dcb]">
+                {isMobile ? stage.shortName : stage.name}
+              </div>
+              <div className="text-xs text-gray-500 group-hover:text-[#0a87a5]">
+                {stageData.status}
+              </div>
+            </div>
+          </div>
+
+          {getStatusBadge(
+            stageData.status,
+            stage.key === "upperREJ"
+              ? "upperREJ"
+              : stage.key === "rfd"
+              ? "rfd"
+              : "production"
+          )}
+        </div>
+
+        <div className="space-y-2 sm:space-y-3">
+          <div className="flex justify-between text-xs sm:text-sm">
+            <span className="text-gray-600 group-hover:text-gray-800">
+              Progress
+            </span>
+            <span className="font-medium group-hover:text-[#0c9dcb]">
+              {Math.round(progress)}%
+            </span>
+          </div>
+
+          <Progress
+            value={progress}
+            className="h-1.5 sm:h-2 group-hover:h-2.5 transition-all"
+          />
+
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 text-xs sm:text-sm">
+            <div>
+              <div className="text-gray-600 group-hover:text-gray-800">
+                Completed
+              </div>
+              <div className="font-medium text-green-600 group-hover:text-green-700">
+                {completed}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-gray-600 group-hover:text-gray-800">
+                Receiving
+              </div>
+              <div className="font-medium group-hover:text-[#0c9dcb]">
+                {receiving}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-gray-600 group-hover:text-gray-800">
+                Remaining
+              </div>
+              <div className="font-medium text-orange-600 group-hover:text-orange-700">
+                {remaining}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-gray-600 group-hover:text-gray-800">
+                Rate
+              </div>
+              <div className="font-medium group-hover:text-[#0c9dcb]">
+                {Math.round(progress)}%
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Click hint */}
+        <div className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-gray-100 group-hover:border-[#0c9dcb]/30">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-500 group-hover:text-[#0c9dcb]">
+              Click to update {stage.name.toLowerCase()}
+            </span>
+            <Edit className="w-3 h-3 text-gray-400 group-hover:text-[#0c9dcb]" />
+          </div>
+        </div>
+      </div>
+    );
+  })}
+</div>
+
                   </div>
                 </div>
               </div>

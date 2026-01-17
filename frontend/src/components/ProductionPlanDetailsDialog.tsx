@@ -190,6 +190,7 @@ interface ProductionPlan {
   country: string;
   quantity: number;
   assignedPlant: string;
+  footbed: string;
   assignedTeam: string;
   assignPerson: string;
   taskInc: string;
@@ -282,6 +283,7 @@ export function ProductionPlanDetailsDialog({
     sendDate: "Na",
     receivedDate: "Na",
     soleVendor: "Na",
+    footbed: "Na",
     soleColor: "Na",
     soleReceivedDate: "Na",
   });
@@ -305,6 +307,7 @@ export function ProductionPlanDetailsDialog({
         },
         scheduling: {
           assignedPlant: productionPlanningData.assignedPlant,
+          footbed: productionPlanningData.footbed,     // ✅ add
           scheduleDate: productionPlanningData.sendDate,
           receivedDate: productionPlanningData.receivedDate,
           soleFrom: productionPlanningData.soleVendor,
@@ -322,7 +325,6 @@ export function ProductionPlanDetailsDialog({
       // 🟢 CASE 2: No schedule exists → CREATE NEW
       else {
         const res = await api.post("/calendar", payload);
-        console.log(res.data.data, "fffffffffffffffffffffffff");
         setCalendarId(res.data?.data?._id || null);
         toast.success("Production schedule created");
       }
@@ -405,33 +407,28 @@ export function ProductionPlanDetailsDialog({
         setIsScheduleLoading(true);
         const res = await api.get(`/projects/${plan.project._id}/schedule`);
         const payload = res.data?.data ?? res.data;
+       const latest =
+  Array.isArray(payload.items) && payload.items.length > 0
+    ? payload.items[0]
+    : null;
 
-        console.log(payload, "fffffeeeeeeeeeeeeeeeeeeeeeee");
-        const first =
-          Array.isArray(payload.items) && payload.items.length > 0
-            ? payload.items[0]
-            : null;
 
-        if (first) {
-          setCalendarId(first._id); // 🔴 VERY IMPORTANT
+if (latest) {
+  setCalendarId(latest._id);
 
-          const sched = first.scheduling ?? {};
-          setProductionPlanningData((prev) => ({
-            ...prev,
-            assignedPlant: sched.assignedPlant || prev.assignedPlant,
-            sendDate: sched.scheduleDate
-              ? new Date(sched.scheduleDate).toISOString().slice(0, 10)
-              : prev.sendDate,
-            receivedDate: sched.receivedDate
-              ? new Date(sched.receivedDate).toISOString().slice(0, 10)
-              : prev.receivedDate,
-            soleVendor: sched.soleFrom || prev.soleVendor,
-            soleColor: sched.soleColor || prev.soleColor,
-            soleReceivedDate: sched.soleExpectedDate
-              ? new Date(sched.soleExpectedDate).toISOString().slice(0, 10)
-              : prev.soleReceivedDate,
-          }));
-        }
+  const sched = latest.scheduling ?? {};
+ setProductionPlanningData((prev) => ({
+  ...prev,
+  assignedPlant: sched.assignedPlant ?? prev.assignedPlant,
+  footbed: sched.footbed ?? prev.footbed,
+  sendDate: sched.scheduleDate ? new Date(sched.scheduleDate).toISOString().slice(0, 10) : prev.sendDate,
+  receivedDate: sched.receivedDate ? new Date(sched.receivedDate).toISOString().slice(0, 10) : prev.receivedDate,
+  soleVendor: sched.soleFrom ?? prev.soleVendor,
+  soleColor: sched.soleColor ?? prev.soleColor,
+  soleReceivedDate: sched.soleExpectedDate ? new Date(sched.soleExpectedDate).toISOString().slice(0, 10) : prev.soleReceivedDate,
+}));
+}
+
       } catch (err) {
         console.error("Failed to load project schedule:", err);
         toast.error("Failed to load production schedule");
@@ -876,6 +873,20 @@ export function ProductionPlanDetailsDialog({
                       setProductionPlanningData((p) => ({
                         ...p,
                         soleVendor: e.target.value,
+                      }))
+                    }
+                    className="h-8 sm:h-9 text-sm border-blue-200 bg-white"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-blue-600 mb-1">Foot Bed</p>
+                  <Input
+                    value={productionPlanningData.footbed}
+                    readOnly={!isEditingSchedule}
+                    onChange={(e) =>
+                      setProductionPlanningData((p) => ({
+                        ...p,
+                        footbed: e.target.value,
                       }))
                     }
                     className="h-8 sm:h-9 text-sm border-blue-200 bg-white"
