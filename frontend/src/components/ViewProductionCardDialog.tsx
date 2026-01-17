@@ -78,6 +78,8 @@ interface ProductionPlan {
   remarks?: string;
   status?: string;
   priority?: string;
+  color?: string;
+  footbed?: string;
   raw?: any;
 }
 
@@ -105,6 +107,7 @@ export function ViewProductionCardDialog({
     soleFrom: "",
     soleColor: "",
     soleExpectedDate: "",
+    footbed: "",
   });
 
   const [plants, setPlants] = useState<PlantType[]>([]);
@@ -222,6 +225,7 @@ useEffect(() => {
       soleExpectedDate: scheduling.soleExpectedDate
         ? new Date(scheduling.soleExpectedDate).toISOString().split("T")[0]
         : "",
+      footbed: scheduling.footbed || "",
     });
   }
 }, [open, productionData]);
@@ -531,6 +535,19 @@ useEffect(() => {
                   className="h-10 sm:h-12 text-sm sm:text-base"
                 />
               </div>
+                {/* Foot Bed */}
+              <div className="space-y-2">
+                <Label className="text-sm sm:text-base font-semibold text-gray-700">
+                  Foot Bed
+                </Label>
+                <Input
+                  value={formData.footbed}
+                  onChange={(e) =>
+                    setFormData({ ...formData, footbed: e.target.value })
+                  }
+                  className="h-10 sm:h-12 text-sm sm:text-base"
+                />
+              </div>
             </div>
           </div>
 
@@ -557,7 +574,7 @@ useEffect(() => {
                 },
                 { label: "Colour", value: productionData.color || "-" },
                 { label: "Brand", value: productionData.brand || "-" },
-                { label: "Category", value: productionData.category || "-" },
+                { label: "Category", value: productionData.category || "-" }
                 // { label: "Type", value: productionData.type || "-" },
               ].map((item, index) => (
                 <div key={index} className="space-y-2">
