@@ -183,7 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
- const logout = async () => {
+const logout = async () => {
   try {
     await api.post("/auth/logout");
   } catch (error) {
@@ -193,12 +193,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.clear();
     dispatch({ type: "LOGOUT" });
 
+    // ✅ notify Android BEFORE redirect
     const w = window as any;
-    if (w.AndroidApp && typeof w.AndroidApp.onLogout === "function") {
-      w.AndroidApp.onLogout();
-    }
+    try {
+      if (w.AndroidApp && typeof w.AndroidApp.onLogout === "function") {
+        w.AndroidApp.onLogout();
+      }
+    } catch (e) {}
 
-    window.location.href = "/login";
+    // ✅ small delay so Android gets signal before page changes
+    setTimeout(() => {
+      window.location.href = "/login?loggedOut=1";
+    }, 150);
   }
 };
 
