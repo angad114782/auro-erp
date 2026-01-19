@@ -183,17 +183,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = async () => {
-    try {
-      await api.post("/auth/logout");
-    } catch (error) {
-      // Logout even if API call fails
-      console.error("Logout API error:", error);
-    } finally {
-      localStorage.removeItem("erp_user");
-      dispatch({ type: "LOGOUT" });
+ const logout = async () => {
+  try {
+    await api.post("/auth/logout");
+  } catch (error) {
+    console.error("Logout API error:", error);
+  } finally {
+    localStorage.removeItem("erp_user");
+    sessionStorage.clear();
+    dispatch({ type: "LOGOUT" });
+
+    const w = window as any;
+    if (w.AndroidApp && typeof w.AndroidApp.onLogout === "function") {
+      w.AndroidApp.onLogout();
     }
-  };
+
+    window.location.href = "/login";
+  }
+};
+
 
   const clearError = () => dispatch({ type: "CLEAR_ERROR" });
 
