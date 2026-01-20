@@ -142,24 +142,35 @@ export const exportDeliveryListToExcel = (data: any[], subModule: string) => {
 
 export const exportDeliveryListToPDF = (data: any[], subModule: string) => {
   const doc = new jsPDF({ orientation: "landscape" });
-  const title = subModule.replace("-", " ").toUpperCase() + " REPORT";
-  
-  // Header
-  doc.setFontSize(18);
-  doc.setTextColor(COLORS.primary);
+  /* =========================================================
+     HEADER
+  ========================================================= */
   doc.setFont("helvetica", "bold");
-  doc.text(title, LAYOUT.marginX, 20);
-  
-  doc.setFontSize(10);
-  doc.setTextColor(COLORS.textLight);
+  doc.setFontSize(18);
+  doc.setTextColor(30, 41, 59); // slate-800
+  doc.text("AURA INTERNATIONAL", LAYOUT.marginX, 18);
+
   doc.setFont("helvetica", "normal");
-  doc.text(`Generated on: ${format(new Date(), "dd MMM yyyy, hh:mm a")}`, LAYOUT.marginX, 28);
-  doc.text(`Total Records: ${data.length}`, LAYOUT.marginX, 33);
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139); // slate-500
+  doc.text(`${subModule.replace("-", " ").toUpperCase()} REPORT`, LAYOUT.marginX, 24);
+
+  const dateStr = format(new Date(), "dd MMMM yyyy");
+  doc.text(dateStr, doc.internal.pageSize.width - LAYOUT.marginX, 24, { align: "right" });
+
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.line(LAYOUT.marginX, 28, doc.internal.pageSize.width - LAYOUT.marginX, 28);
+
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Total Records: ${data.length}`, LAYOUT.marginX, 34);
 
   const tableColumn = [
     "S.No",
     "Project",
     "Product",
+    "Company",
     "Brand",
     "Category",
     "PO Number",
@@ -175,6 +186,7 @@ export const exportDeliveryListToPDF = (data: any[], subModule: string) => {
     index + 1,
     item.projectCode,
     item.productName,
+    item.companyName || "—",
     item.brandName,
     item.categoryName,
     item.poNumber,
@@ -192,11 +204,15 @@ export const exportDeliveryListToPDF = (data: any[], subModule: string) => {
     body: tableRows,
     theme: "grid",
     headStyles: {
-      fillColor: [30, 58, 138],
+      fillColor: [30, 41, 59], // slate-800
       textColor: 255,
       fontSize: 8,
       halign: "center",
       valign: "middle",
+      fontStyle: "bold",
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252], // slate-50
     },
     styles: {
       fontSize: 7,
@@ -259,28 +275,37 @@ export const exportDeliveryDetailsToPDF = (item: any) => {
   const doc = new jsPDF();
   let y = 20;
 
-  // Header
-  doc.setFontSize(22);
-  doc.setTextColor(COLORS.primary);
+  /* =========================================================
+     HEADER
+  ========================================================= */
   doc.setFont("helvetica", "bold");
-  doc.text("DELIVERY DETAILS", LAYOUT.marginX, y);
-  y += 8;
+  doc.setFontSize(18);
+  doc.setTextColor(30, 41, 59); // slate-800
+  doc.text("AURA INTERNATIONAL", LAYOUT.marginX, 18);
 
-  doc.setFontSize(10);
-  doc.setTextColor(COLORS.textLight);
   doc.setFont("helvetica", "normal");
-  doc.text(`Generated on: ${format(new Date(), "dd MMM yyyy, hh:mm a")}`, LAYOUT.marginX, y);
-  y += 10;
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139); // slate-500
+  doc.text("DELIVERY DETAILS REPORT", LAYOUT.marginX, 24);
+
+  const dateStr = format(new Date(), "dd MMMM yyyy");
+  doc.text(dateStr, doc.internal.pageSize.width - LAYOUT.marginX, 24, { align: "right" });
+
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.line(LAYOUT.marginX, 28, doc.internal.pageSize.width - LAYOUT.marginX, 28);
+
+  y = 35;
 
   // Project Info Section
   y = drawSectionHeader(doc, "Project Information", y);
-  drawInfoCell(doc, "Project Code", item.projectCode, LAYOUT.marginX, y, 60, LAYOUT.rowH + 2);
-  drawInfoCell(doc, "PO Number", item.poNumber, LAYOUT.marginX + 60, y, 60, LAYOUT.rowH + 2);
-  drawInfoCell(doc, "Product Name", item.productName, LAYOUT.marginX + 120, y, 62, LAYOUT.rowH + 2);
+  drawInfoCell(doc, "Project Code", item.projectCode, LAYOUT.marginX, y, 45, LAYOUT.rowH + 2);
+  drawInfoCell(doc, "Company", item.companyName, LAYOUT.marginX + 45, y, 45, LAYOUT.rowH + 2);
+  drawInfoCell(doc, "Brand", item.brandName, LAYOUT.marginX + 90, y, 45, LAYOUT.rowH + 2);
+  drawInfoCell(doc, "Category", item.categoryName, LAYOUT.marginX + 135, y, 47, LAYOUT.rowH + 2);
   y += LAYOUT.rowH + 2;
   
-  drawInfoCell(doc, "Brand", item.brandName, LAYOUT.marginX, y, 60, LAYOUT.rowH + 2);
-  drawInfoCell(doc, "Category", item.categoryName, LAYOUT.marginX + 60, y, 60, LAYOUT.rowH + 2);
+  drawInfoCell(doc, "Product Name", item.productName, LAYOUT.marginX, y, 120, LAYOUT.rowH + 2);
   drawInfoCell(doc, "Order Quantity", formatNumber(item.quantity), LAYOUT.marginX + 120, y, 62, LAYOUT.rowH + 2);
   y += LAYOUT.rowH + 10;
 

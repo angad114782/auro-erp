@@ -67,6 +67,7 @@ async function addDeliveryHistory(deliveryId, changes, updatedBy = "system") {
 ---------------------------------------------------- */
 export async function sendToDeliveryService(projectId, user = "system") {
   const project = await Project.findById(projectId)
+    .populate("company", "name")
     .populate("brand", "name")
     .populate("category", "name")
     .populate("country", "name")
@@ -151,6 +152,7 @@ export async function sendToDeliveryService(projectId, user = "system") {
     productName: project.artName,
     category: project.category?.name || "",
     brand: project.brand?.name || "",
+    company: project.company?.name || "",
     gender: project.gender || "",
 
     poNumber: po?.poNumber || "",
@@ -256,21 +258,21 @@ export async function markDelivered(deliveryId, user = "system") {
 
 export async function getPendingDeliveries() {
   return await Delivery.find({ status: "pending" })
-    .populate("project", "autoCode artName brand category country gender")
+    .populate("project", "autoCode artName brand category company country gender")
     .populate("poDetails", "poNumber deliveryDate")
     .lean();
 }
 
 export async function getParcelDelivered() {
   return await Delivery.find({ status: "parcel_delivered" })
-    .populate("project", "autoCode artName brand category country gender")
+    .populate("project", "autoCode artName brand category company country gender")
     .populate("poDetails", "poNumber deliveryDate")
     .lean();
 }
 
 export async function getDelivered() {
   return await Delivery.find({ status: "delivered" })
-    .populate("project", "autoCode artName brand category country gender")
+    .populate("project", "autoCode artName brand category company country gender")
     .populate("poDetails", "poNumber deliveryDate")
     .lean();
 }

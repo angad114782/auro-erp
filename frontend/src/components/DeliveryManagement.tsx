@@ -76,6 +76,7 @@ interface DeliveryItem {
   productName: string;
   category: string;
   brand: string;
+  company: string;
   gender: string;
   poNumber: string;
   poReceivedDate: string;
@@ -93,6 +94,7 @@ interface DeliveryItem {
     artName: string;
     brand: { name: string };
     category: { name: string };
+    company?: { name: string };
     country: { name: string };
     gender: string;
   };
@@ -111,6 +113,7 @@ interface DisplayDeliveryItem {
   productName: string;
   brandName: string;
   categoryName: string;
+  companyName: string;
   gender: string;
   poNumber: string;
   poReceivedDate: string;
@@ -215,20 +218,20 @@ export function DeliveryManagement({
       id: item._id,
       projectCode: item.projectCode || "N/A",
       productName: item.productName || "N/A",
-      brandName: item.brand || "N/A",
-      categoryName: item.category || "N/A",
-      gender: item.gender || "N/A",
+      brandName: item.brand || item.project?.brand?.name || "N/A",
+      categoryName: item.category || item.project?.category?.name || "N/A",
+      companyName: item.company || item.project?.company?.name || "N/A",
+      gender: item.gender || item.project?.gender || "N/A",
       poNumber: item.poNumber || "N/A",
       poReceivedDate:
         item.poReceivedDate || new Date().toISOString().split("T")[0],
       quantity: item.orderQuantity || 0,
       sendQuantity: item.sendQuantity || 0,
-      deliveryStatus:
-        item.status === "pending"
-          ? "Pending"
-          : item.status === "parcel_delivered"
-          ? "Parcel Delivered"
-          : "Delivered",
+      deliveryStatus: (item.status === "pending"
+        ? "Pending"
+        : item.status === "parcel_delivered"
+        ? "Parcel Delivered"
+        : "Delivered") as "Pending" | "Parcel Delivered" | "Delivered",
       deliveryDate: item.deliveryDate || "",
       expectedDeliveryDate: item.deliveryDateExpected || "",
       billNumber: item.billNumber || "",
@@ -454,7 +457,7 @@ export function DeliveryManagement({
       };
 
       // Convert frontend status to backend format
-      const statusMap = {
+      const statusMap: Record<string, string> = {
         Pending: "pending",
         "Parcel Delivered": "parcel_delivered",
         Delivered: "delivered",
@@ -907,7 +910,7 @@ export function DeliveryManagement({
                     <CalendarComponent
                       mode="single"
                       selected={dateFrom}
-                      onSelect={(date) => {
+                      onSelect={(date: Date | undefined) => {
                         setDateFrom(date);
                         setIsDateFromOpen(false);
                       }}
@@ -933,7 +936,7 @@ export function DeliveryManagement({
                     <CalendarComponent
                       mode="single"
                       selected={dateTo}
-                      onSelect={(date) => {
+                      onSelect={(date: Date | undefined) => {
                         setDateTo(date);
                         setIsDateToOpen(false);
                       }}
@@ -1064,7 +1067,7 @@ export function DeliveryManagement({
                 </p>
               </div>
             ) : (
-              paginatedDeliveries.map((delivery, index) =>
+              paginatedDeliveries.map((delivery: DisplayDeliveryItem, index: number) =>
                 renderMobileCard(delivery, index)
               )
             )}
@@ -1080,6 +1083,9 @@ export function DeliveryManagement({
                   </th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Product Details
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Company
                   </th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     PO Number
@@ -1131,7 +1137,7 @@ export function DeliveryManagement({
                     </td>
                   </tr>
                 ) : (
-                  paginatedDeliveries.map((delivery, index) => (
+                  paginatedDeliveries.map((delivery: DisplayDeliveryItem, index: number) => (
                     <tr
                       key={delivery.id}
                       className="hover:bg-gray-50 cursor-pointer transition-colors"
@@ -1158,6 +1164,9 @@ export function DeliveryManagement({
                             {delivery.brandName} • {delivery.categoryName}
                           </div>
                         </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {delivery.companyName}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
@@ -1591,7 +1600,7 @@ export function DeliveryManagement({
                         {isEditing ? (
                           <Select
                             value={editFormData.status}
-                            onValueChange={(value) =>
+                            onValueChange={(value: "Pending" | "Parcel Delivered" | "Delivered") =>
                               handleInputChange("status", value)
                             }
                           >

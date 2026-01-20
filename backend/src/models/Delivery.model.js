@@ -35,6 +35,7 @@ const deliverySchema = new mongoose.Schema(
     productName: String,
     category: String,
     brand: String,
+    company: String,
     gender: String,
     sendQuantity: Number,
 

@@ -300,6 +300,7 @@ export function ProductionPlanning() {
   const fetchProductionPlans = async () => {
     try {
       const res = await api.get("/projects/production");
+      
       // axios returns response in res.data
       const raw = res.data;
       // console.log("raw fetchProductionPlans response:", raw);
