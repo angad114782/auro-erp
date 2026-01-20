@@ -59,6 +59,12 @@ import { useERPStore } from "../lib/data-store";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import api from "../lib/api";
+import {
+  exportDeliveryListToExcel,
+  exportDeliveryListToPDF,
+  exportDeliveryDetailsToExcel,
+  exportDeliveryDetailsToPDF,
+} from "../utils/deliveryExportUtils";
 
 interface DeliveryManagementProps {
   currentSubModule: string;
@@ -1002,12 +1008,42 @@ export function DeliveryManagement({
                 </p>
               </div>
             </div>
-            {loading && (
-              <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
-                <div className="animate-spin rounded-full h-3 w-3 md:h-4 md:w-4 border-b-2 border-blue-600"></div>
-                Loading...
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  exportDeliveryListToExcel(
+                    filteredDeliveries,
+                    currentSubModule || "all"
+                  )
+                }
+                className="flex text-[10px] md:text-xs h-7 md:h-8 bg-green-50 text-green-700 border-green-200 hover:bg-green-100 px-2 md:px-3"
+              >
+                <FileText className="w-3 h-3 md:w-3.5 md:h-3.5 md:mr-1.5" />
+                <span className="hidden xs:inline md:inline">Excel</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  exportDeliveryListToPDF(
+                    filteredDeliveries,
+                    currentSubModule || "all"
+                  )
+                }
+                className="flex text-[10px] md:text-xs h-7 md:h-8 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 px-2 md:px-3"
+              >
+                <FileText className="w-3 h-3 md:w-3.5 md:h-3.5 md:mr-1.5" />
+                <span className="hidden xs:inline md:inline">PDF</span>
+              </Button>
+              {loading && (
+                <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
+                  <div className="animate-spin rounded-full h-3 w-3 md:h-4 md:w-4 border-b-2 border-blue-600"></div>
+                  Loading...
+                </div>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -1278,6 +1314,32 @@ export function DeliveryManagement({
               <div className="flex items-center gap-2">
                 {!isEditing ? (
                   <>
+                    <div className="flex items-center gap-1 md:gap-1.5 mr-1 md:mr-2 pr-1 md:pr-2 border-r border-gray-200">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          selectedDelivery &&
+                          exportDeliveryDetailsToExcel(selectedDelivery)
+                        }
+                        className="text-[10px] md:text-xs h-7 md:h-8 bg-green-50 text-green-700 border-green-200 hover:bg-green-100 px-2 md:px-3"
+                      >
+                        <FileText className="w-3 h-3 md:w-3.5 md:h-3.5 md:mr-1.5" />
+                        <span className="hidden xs:inline md:inline">Excel</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          selectedDelivery &&
+                          exportDeliveryDetailsToPDF(selectedDelivery)
+                        }
+                        className="text-[10px] md:text-xs h-7 md:h-8 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 px-2 md:px-3"
+                      >
+                        <FileText className="w-3 h-3 md:w-3.5 md:h-3.5 md:mr-1.5" />
+                        <span className="hidden xs:inline md:inline">PDF</span>
+                      </Button>
+                    </div>
                     <Button
                       onClick={handleEditClick}
                       className="bg-blue-500 hover:bg-blue-600 text-xs md:text-sm h-8 md:h-9"
