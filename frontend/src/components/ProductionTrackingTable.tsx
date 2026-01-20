@@ -149,6 +149,12 @@ interface APITrackingData {
     weekly: { W1:number; W2:number; W3:number; W4:number; W5:number; };
     monthTotal: number;
   };
+  progress?: {
+    targetQty: number;
+    completedQty: number;
+    minCompletedQty: number;
+    percent: number;
+  };
   coverImage?: string;
 }
 
@@ -212,6 +218,12 @@ interface ProductionRecord {
     dailyByDay?: Record<string, number>;
     weekly: Record<string, number>;
     monthTotal: number;
+  };
+  progress: {
+    targetQty: number;
+    completedQty: number;
+    minCompletedQty: number;
+    percent: number;
   };
   coverImage?: string;
 }
@@ -582,6 +594,12 @@ export function ProductionTrackingTable() {
         projectId: item.projectId,
         cards: item.cards || [],
         summary: item.summary,
+        progress: item.progress || {
+          targetQty: 0,
+          completedQty: 0,
+          minCompletedQty: 0,
+          percent: 0,
+        },
         coverImage: item.coverImage,
         rfdRemarks: "",
       };
@@ -1230,10 +1248,7 @@ const calcMinMetrics = (rows: any[]) => {
     const monthlyTotal = record.summary?.monthTotal || 0;
 
     // Calculate stage progress
-    const stageProgress = Math.min(
-      100,
-      (stageData.quantity / stageData.planned) * 100
-    );
+    const stageProgress = record.progress?.percent || 0;
 
     return (
       <Card className="mb-4 overflow-hidden border border-gray-200 shadow-sm">
@@ -1295,7 +1310,7 @@ const calcMinMetrics = (rows: any[]) => {
             </div> */}
             <div className="bg-gray-50 rounded p-2 text-center">
               <div className="text-sm font-semibold text-gray-900">
-                {stageData.quantity}/{record.poItems}
+                {record.progress?.completedQty || 0}/{record.progress?.targetQty || 0}
               </div>
               <div className="text-xs text-gray-500">Completed</div>
             </div>
@@ -2133,17 +2148,14 @@ const calcMinMetrics = (rows: any[]) => {
                                 )}
                               </div>
                               <div className="text-xs text-gray-600">
-                                {stageData.quantity}/{record.poItems} Qty
+                                {record.progress?.completedQty || 0}/
+                                {record.progress?.targetQty || 0} Qty
                               </div>
                               <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                                 <div
                                   className="bg-[#0c9dcb] h-1.5 rounded-full"
                                   style={{
-                                    width: `${Math.min(
-                                      100,
-                                      (stageData.quantity / record.poItems) *
-                                        100
-                                    )}%`,
+                                    width: `${record.progress?.percent || 0}%`,
                                   }}
                                 ></div>
                               </div>
