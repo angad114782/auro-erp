@@ -945,12 +945,14 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
     .select("projectId cardId rows cardNumber cardQuantity createdAt")
     .lean();
 
-  const trackingDocs = rawDocs.filter((doc) => hasDeptActivityInMonth(doc, d, start, end));
+  const trackingDocs = rawDocs.filter((doc) =>
+    hasDeptActivityInMonth(doc, d, start, end)
+  );
   if (!trackingDocs.length) return [];
 
-  const projectIds = [...new Set(trackingDocs.map((t) => String(t.projectId)).filter(Boolean))].map(
-    (id) => new mongoose.Types.ObjectId(id)
-  );
+  const projectIds = [
+    ...new Set(trackingDocs.map((t) => String(t.projectId)).filter(Boolean)),
+  ].map((id) => new mongoose.Types.ObjectId(id));
 
   const projects = await Project.find({
     _id: { $in: projectIds },
@@ -970,16 +972,22 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
     }
   }
 
-  const poList = PoDetailsModel ? await PoDetailsModel.find({ project: { $in: projectIds } }).lean() : [];
+  const poList = PoDetailsModel
+    ? await PoDetailsModel.find({ project: { $in: projectIds } }).lean()
+    : [];
+
   const poMap = new Map(poList.map((po) => [String(po.project), po]));
 
-  const trackedCardIds = [...new Set(trackingDocs.map((t) => String(t.cardId)).filter(Boolean))].map(
-    (id) => new mongoose.Types.ObjectId(id)
-  );
+  const trackedCardIds = [
+    ...new Set(trackingDocs.map((t) => String(t.cardId)).filter(Boolean)),
+  ].map((id) => new mongoose.Types.ObjectId(id));
 
   const cards = trackedCardIds.length
-    ? await PCProductionCard.find({ _id: { $in: trackedCardIds } }).populate("assignedPlant", "name").lean()
+    ? await PCProductionCard.find({ _id: { $in: trackedCardIds } })
+        .populate("assignedPlant", "name")
+        .lean()
     : [];
+
   const cardMap = new Map(cards.map((c) => [String(c._id), c]));
 
   const byProject = new Map();
@@ -1004,13 +1012,29 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
 
     const deptCards = [];
 
+    // ✅ NEW: project cutting completion = MIN completedQty across cards (MIN system)
+    // - first: per card -> min(completedQty among dept rows)
+    // - then: project -> min(of all cards)
+    let projectMinCompleted = null;
+
     for (const doc of docsForProject) {
       const card = cardMap.get(String(doc.cardId));
       if (card) deptCards.push(card);
 
-      const deptRows = (doc.rows || []).filter((r) => r.isActive !== false && normDept(r.department) === d);
+      const deptRows = (doc.rows || []).filter(
+        (r) => r.isActive !== false && normDept(r.department) === d
+      );
       if (!deptRows.length) continue;
 
+      // ✅ per-card min completedQty
+      const cardMinCompleted = Math.min(
+        ...deptRows.map((r) => toNum(r.completedQty))
+      );
+
+      if (projectMinCompleted === null) projectMinCompleted = cardMinCompleted;
+      else projectMinCompleted = Math.min(projectMinCompleted, cardMinCompleted);
+
+      // existing: month summary from history WORK_ADDED
       for (const row of deptRows) {
         for (const h of row.history || []) {
           const dt = new Date(h.ts || 0);
@@ -1021,7 +1045,15 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
           const dayNum = dt.getDate();
 
           const week =
-            dayNum <= 7 ? "W1" : dayNum <= 14 ? "W2" : dayNum <= 21 ? "W3" : dayNum <= 28 ? "W4" : "W5";
+            dayNum <= 7
+              ? "W1"
+              : dayNum <= 14
+              ? "W2"
+              : dayNum <= 21
+              ? "W3"
+              : dayNum <= 28
+              ? "W4"
+              : "W5";
 
           const yyyy = dt.getFullYear();
           const mm = String(dt.getMonth() + 1).padStart(2, "0");
@@ -1029,13 +1061,31 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
           const dateKey = `${yyyy}-${mm}-${dd}`;
 
           summary.daily[dateKey] = (summary.daily[dateKey] || 0) + added;
-          summary.dailyByDay[String(dayNum)] = (summary.dailyByDay[String(dayNum)] || 0) + added;
+          summary.dailyByDay[String(dayNum)] =
+            (summary.dailyByDay[String(dayNum)] || 0) + added;
 
           summary.weekly[week] += added;
           summary.monthTotal += added;
         }
       }
     }
+
+    if (projectMinCompleted === null) projectMinCompleted = 0;
+
+    const po = poMap.get(pid) || null;
+    const poQty = toNum(po?.orderQuantity);
+
+    // ✅ status/progress should be PO based
+    const targetQty = poQty > 0 ? poQty : 0;
+
+    // ✅ cap completed to targetQty (so 568/540 -> 540/540)
+    const completedQty =
+      targetQty > 0
+        ? Math.min(toNum(projectMinCompleted), targetQty)
+        : toNum(projectMinCompleted);
+
+    const progressPercent =
+      targetQty > 0 ? (completedQty / targetQty) * 100 : 0;
 
     response.push({
       projectId: p._id,
@@ -1048,10 +1098,18 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
       brand: p.brand,
       country: p.country,
       coverImage: p.coverImage,
-      poDetails: poMap.get(pid) || null,
+      poDetails: po,
 
       department: d,
       summary,
+
+      // ✅ NEW: frontend "Cutting Status" ko isse render karo
+      progress: {
+        targetQty,            // PO qty
+        completedQty,         // MIN system completion (capped)
+        minCompletedQty: toNum(projectMinCompleted), // raw min (debug)
+        percent: Number(progressPercent.toFixed(2)),
+      },
 
       cards: [...new Map(deptCards.map((c) => [String(c._id), c])).values()],
     });
@@ -1059,6 +1117,7 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
 
   return response;
 }
+
 
 /* ----------------------------------------------------
   GET TRACKING CARDS BY PROJECT
