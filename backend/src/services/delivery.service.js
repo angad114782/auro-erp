@@ -1,4 +1,4 @@
-// src/services/delivery.service.js
+// src/services/delevery.service.js
 
 import { Project } from "../models/Project.model.js";
 import { PoDetails } from "../models/PoDetails.model.js";
@@ -6,29 +6,21 @@ import { Delivery } from "../models/Delivery.model.js";
 import MicroTracking from "../models/MicroTracking.model.js";
 import mongoose from "mongoose";
 
+/* ----------------------------------------------------
+   RFD READY QTY (MIN SYSTEM)
+---------------------------------------------------- */
 async function getProjectRfdReadyQty(projectId) {
   const pid = new mongoose.Types.ObjectId(projectId);
 
-  /**
-   * Logic:
-   * - MicroTrackingCard → rows[]
-   * - sirf rows jinka department === "rfd"
-   * - per card → MIN(completedQty)
-   * - totalReady = sum of per-card ready
-   */
-
   const perCard = await MicroTracking.aggregate([
     { $match: { projectId: pid, isActive: true } },
-
     { $unwind: "$rows" },
-
     {
       $match: {
         "rows.isActive": true,
         "rows.department": "rfd",
       },
     },
-
     {
       $group: {
         _id: "$cardId",
@@ -43,13 +35,12 @@ async function getProjectRfdReadyQty(projectId) {
     0
   );
 
-  return {
-    totalReady,
-    perCard, // debug ke liye
-  };
+  return { totalReady, perCard };
 }
 
-
+/* ----------------------------------------------------
+   HISTORY PUSH HELPER
+---------------------------------------------------- */
 async function addDeliveryHistory(deliveryId, changes, updatedBy = "system") {
   await Delivery.findByIdAndUpdate(deliveryId, {
     $push: {
@@ -63,7 +54,60 @@ async function addDeliveryHistory(deliveryId, changes, updatedBy = "system") {
 }
 
 /* ----------------------------------------------------
-   SEND PROJECT TO DELIVERY PENDING
+   AUTO STATUS CALC (NO MANUAL STATUS)
+---------------------------------------------------- */
+export async function recalcDeliveryStatusAndSyncProject(
+  deliveryId,
+  user = "system"
+) {
+  const delivery = await Delivery.findById(deliveryId).lean();
+  if (!delivery) return null;
+
+  const po = delivery.poDetails
+    ? await PoDetails.findById(delivery.poDetails).lean()
+    : await PoDetails.findOne({ project: delivery.project }).lean();
+
+  const poQty = Number(po?.orderQuantity || 0);
+  const fallbackQty = Number(delivery.orderQuantity || 0);
+  const targetQty = poQty > 0 ? poQty : fallbackQty;
+
+  const sent = Number(delivery.sendQuantity || 0);
+
+  let newStatus = "pending";
+  if (sent > 0 && sent < targetQty) newStatus = "parcel_delivered";
+  if (targetQty > 0 && sent >= targetQty) newStatus = "delivered";
+
+  if (newStatus !== delivery.status) {
+    await Delivery.findByIdAndUpdate(deliveryId, {
+      status: newStatus,
+      updatedAt: new Date(),
+      $push: {
+        history: {
+          date: new Date(),
+          updatedBy: user,
+          changes: [
+            { field: "status", from: delivery.status, to: newStatus },
+          ],
+        },
+      },
+    });
+  }
+
+  const projectStatusMap = {
+    pending: "delivery_pending",
+    parcel_delivered: "parcel_delivered",
+    delivered: "delivered",
+  };
+
+  await Project.findByIdAndUpdate(delivery.project, {
+    status: projectStatusMap[newStatus],
+  });
+
+  return newStatus;
+}
+
+/* ----------------------------------------------------
+   SEND PROJECT TO DELIVERY (AUTO)
 ---------------------------------------------------- */
 export async function sendToDeliveryService(projectId, user = "system") {
   const project = await Project.findById(projectId)
@@ -76,45 +120,48 @@ export async function sendToDeliveryService(projectId, user = "system") {
   if (!project) throw new Error("Project not found");
 
   const po = await PoDetails.findOne({ project: projectId }).lean();
-
   const { totalReady } = await getProjectRfdReadyQty(projectId);
 
   if (totalReady <= 0) {
-    throw new Error("No finished quantity in RFD. Nothing to send for delivery.");
+    throw new Error(
+      "No finished quantity in RFD. Nothing to send for delivery."
+    );
   }
 
-  // ✅ ONE DOC per project+po (no status filter)
   let existing = await Delivery.findOne({
     project: projectId,
     poDetails: po?._id || null,
   });
 
-  // ✅ if already delivered, don't allow sending again for same PO
-  if (existing && existing.status === "delivered") {
-    throw new Error("This PO is already fully delivered. Create a new PO to send again.");
+  if (existing) {
+    await recalcDeliveryStatusAndSyncProject(existing._id, user);
+    const fresh = await Delivery.findById(existing._id).lean();
+    if (fresh?.status === "delivered") {
+      throw new Error(
+        "This PO is already fully delivered. Create a new PO to send again."
+      );
+    }
   }
 
-  const alreadySent = Number(existing?.orderQuantity || 0); // (your 'sent so far')
+  const alreadySent = Number(existing?.orderQuantity || 0);
   let delta = totalReady - alreadySent;
 
   const poQty = Number(po?.orderQuantity || 0);
   if (poQty > 0) {
-    const maxAllowedNow = poQty - alreadySent;
-    delta = Math.min(delta, maxAllowedNow);
+    delta = Math.min(delta, poQty - alreadySent);
   }
 
   if (delta <= 0) {
-    throw new Error(
-      `No new finished quantity since last send. Ready=${totalReady}, alreadySent=${alreadySent}`
-    );
+    throw new Error("No new finished quantity since last send.");
   }
 
-  // ✅ update project status
   await Project.findByIdAndUpdate(projectId, { status: "delivery_pending" });
 
   const today = new Date();
   const poReceived = po?.issuedAt || today;
-  const agingDays = Math.ceil((today - poReceived) / (1000 * 60 * 60 * 24));
+  const agingDays = Math.ceil(
+    (today - poReceived) / (1000 * 60 * 60 * 24)
+  );
 
   if (existing) {
     const newQty = alreadySent + delta;
@@ -124,7 +171,6 @@ export async function sendToDeliveryService(projectId, user = "system") {
       {
         orderQuantity: newQty,
         agingDays,
-        status: "pending", // ✅ force back to pending if new dispatch happens
         $push: {
           history: {
             date: new Date(),
@@ -132,7 +178,6 @@ export async function sendToDeliveryService(projectId, user = "system") {
             changes: [
               { field: "orderQuantity", from: alreadySent, to: newQty },
               { field: "rfdReadyQuantity", from: alreadySent, to: totalReady },
-              { field: "status", from: existing.status, to: "pending" },
             ],
           },
         },
@@ -140,10 +185,14 @@ export async function sendToDeliveryService(projectId, user = "system") {
       { new: true }
     );
 
-    return updated;
+    await recalcDeliveryStatusAndSyncProject(updated._id, user);
+
+    return await Delivery.findById(updated._id)
+      .populate("project", "autoCode artName brand category country gender")
+      .populate("poDetails", "poNumber deliveryDate")
+      .lean();
   }
 
-  // ✅ create first time
   const created = await Delivery.create({
     project: projectId,
     poDetails: po?._id || null,
@@ -168,7 +217,6 @@ export async function sendToDeliveryService(projectId, user = "system") {
         date: new Date(),
         updatedBy: user,
         changes: [
-          { field: "status", from: "planning/tracking", to: "pending" },
           { field: "orderQuantity", from: 0, to: delta },
           { field: "rfdReadyQuantity", from: 0, to: totalReady },
         ],
@@ -176,103 +224,72 @@ export async function sendToDeliveryService(projectId, user = "system") {
     ],
   });
 
-  return created;
+  await recalcDeliveryStatusAndSyncProject(created._id, user);
+
+  return await Delivery.findById(created._id)
+    .populate("project", "autoCode artName brand category country gender")
+    .populate("poDetails", "poNumber deliveryDate")
+    .lean();
 }
 
-
-
-
-// export async function markParcelDelivered(deliveryId, user = "system") {
-//   const old = await Delivery.findById(deliveryId);
-
-//   await Delivery.findByIdAndUpdate(deliveryId, {
-//     status: "parcel_delivered",
-//     updatedAt: new Date()
-//   });
-
-//   await addDeliveryHistory(deliveryId, [
-//     { field: "status", from: old.status, to: "parcel_delivered" }
-//   ], user);
-
-//   return true;
-// }
-export async function markParcelDelivered(deliveryId, user = "system") {
-  const delivery = await Delivery.findById(deliveryId);
-  if (!delivery) throw new Error("Delivery not found");
-
-  // 1️⃣ Update Delivery
-  await Delivery.findByIdAndUpdate(deliveryId, {
-    status: "parcel_delivered",
-    updatedAt: new Date(),
-  });
-
-  // 2️⃣ Update Project
-  await Project.findByIdAndUpdate(delivery.project, {
-    status: "parcel_delivered",
-  });
-
-  // 3️⃣ History
-  await addDeliveryHistory(
-    deliveryId,
-    [{ field: "status", from: delivery.status, to: "parcel_delivered" }],
-    user
-  );
+/* ----------------------------------------------------
+   ❌ MANUAL STATUS DISABLED
+---------------------------------------------------- */
+export async function markParcelDelivered() {
+  throw new Error("Manual status update disabled. Status is automatic now.");
 }
 
-// export async function markDelivered(deliveryId, user = "system") {
-//   const old = await Delivery.findById(deliveryId);
+export async function markDelivered() {
+  throw new Error("Manual status update disabled. Status is automatic now.");
+}
 
-//   await Delivery.findByIdAndUpdate(deliveryId, {
-//     status: "delivered",
-//     updatedAt: new Date(),
-//   });
+/* ----------------------------------------------------
+   LIST APIs
+---------------------------------------------------- */
+export async function getParcelDelivered() {
+  const items = await Delivery.find({ status: "parcel_delivered" })
+    .populate("project", "autoCode artName brand category country gender")
+    .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
+    .lean();
 
-//   await addDeliveryHistory(
-//     deliveryId,
-//     [{ field: "status", from: old.status, to: "delivered" }],
-//     user
-//   );
-
-//   return true;
-// }
-
-export async function markDelivered(deliveryId, user = "system") {
-  const delivery = await Delivery.findById(deliveryId);
-  if (!delivery) throw new Error("Delivery not found");
-
-  await Delivery.findByIdAndUpdate(deliveryId, {
-    status: "delivered",
-    updatedAt: new Date(),
+  return items.map((d) => {
+    const poQty = Number(d?.poDetails?.orderQuantity || 0);
+    return {
+      ...d,
+      orderQuantity: poQty > 0 ? poQty : Number(d.orderQuantity || 0),
+      rfdReadyQuantity: Number(d.orderQuantity || 0),
+    };
   });
-
-  await Project.findByIdAndUpdate(delivery.project, {
-    status: "delivered",
-  });
-
-  await addDeliveryHistory(
-    deliveryId,
-    [{ field: "status", from: delivery.status, to: "delivered" }],
-    user
-  );
 }
 
 export async function getPendingDeliveries() {
-  return await Delivery.find({ status: "pending" })
-    .populate("project", "autoCode artName brand category company country gender")
-    .populate("poDetails", "poNumber deliveryDate")
+  const items = await Delivery.find({ status: "pending" })
+    .populate("project", "autoCode artName brand category country gender")
+    .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
     .lean();
-}
 
-export async function getParcelDelivered() {
-  return await Delivery.find({ status: "parcel_delivered" })
-    .populate("project", "autoCode artName brand category company country gender")
-    .populate("poDetails", "poNumber deliveryDate")
-    .lean();
+  return items.map((d) => {
+    const poQty = Number(d?.poDetails?.orderQuantity || 0);
+    return {
+      ...d,
+      orderQuantity: poQty > 0 ? poQty : Number(d.orderQuantity || 0),
+      rfdReadyQuantity: Number(d.orderQuantity || 0),
+    };
+  });
 }
 
 export async function getDelivered() {
-  return await Delivery.find({ status: "delivered" })
-    .populate("project", "autoCode artName brand category company country gender")
-    .populate("poDetails", "poNumber deliveryDate")
+  const items = await Delivery.find({ status: "delivered" })
+    .populate("project", "autoCode artName brand category country gender")
+    .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
     .lean();
+
+  return items.map((d) => {
+    const poQty = Number(d?.poDetails?.orderQuantity || 0);
+    return {
+      ...d,
+      orderQuantity: poQty > 0 ? poQty : Number(d.orderQuantity || 0),
+      rfdReadyQuantity: Number(d.orderQuantity || 0),
+    };
+  });
 }
