@@ -51,6 +51,12 @@ import { useRedirect } from "../hooks/useRedirect";
 import api from "../lib/api";
 import { generateProjectPDF } from "../utils/pdfDownload";
 import { useImagePreview } from "../lib/stores/useImagePreview";
+import {
+  formatLabel,
+  getFullImageUrl,
+  dataUrlToFile,
+  formatDateDisplay,
+} from "../lib/utils";
 
 export default function ProjectDetailsDialog(props: any) {
   const {
@@ -136,21 +142,6 @@ export default function ProjectDetailsDialog(props: any) {
   const getStage = (id?: string) =>
     workflowStages.find((s) => s.id === id) || workflowStages[0];
 
-  // utilities
-  const getFullImageUrl = (img?: string | null) => {
-    if (!img) return "";
-    if (img.startsWith("http") || img.startsWith("data:")) return img;
-    return `${import.meta.env.VITE_BACKEND_URL}/${img}`;
-  };
-
-  const formatDateDisplay = (d?: string | null) => {
-    if (!d) return "TBD";
-    try {
-      return new Date(d).toLocaleDateString("en-GB");
-    } catch {
-      return d;
-    }
-  };
 
   useEffect(() => {
     if (!project || !open) return;
@@ -242,16 +233,6 @@ export default function ProjectDetailsDialog(props: any) {
 
   const addSampleSlot = useCallback(() => setSamples((s) => [...s, ""]), []);
 
-  const dataUrlToFile = (dataUrl: string, filename: string) => {
-    const arr = dataUrl.split(",");
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    const mime = mimeMatch ? mimeMatch[1] : "image/png";
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8 = new Uint8Array(n);
-    while (n--) u8[n] = bstr.charCodeAt(n);
-    return new File([u8], filename, { type: mime });
-  };
 
   const handleSave = useCallback(async () => {
     if (!edited) return;
@@ -1126,7 +1107,7 @@ export default function ProjectDetailsDialog(props: any) {
                             }
                           `}
                         >
-                          {project.priority || "N/A"}
+                          {formatLabel(project.priority) || "N/A"}
                         </Badge>
                       )}
                     </div>

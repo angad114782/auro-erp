@@ -56,35 +56,12 @@ import CostTable from "./CostTable";
 import LabourTable from "./LabourTable";
 import { useImagePreview } from "../lib/stores/useImagePreview";
 
-function dataUrlToFile(dataUrl: string, filename: string) {
-  const arr = dataUrl.split(",");
-  const mime = arr[0].match(/:(.*?);/)?.[1] || "image/png";
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) u8arr[n] = bstr.charCodeAt(n);
-  return new File([u8arr], filename, { type: mime });
-}
-
-function formatDateDisplay(d?: string | null) {
-  if (!d) return "-";
-  try {
-    return new Date(d).toLocaleDateString("en-IN");
-  } catch {
-    return String(d);
-  }
-}
-
-function getFullImageUrl(path?: string | null) {
-  if (!path) return "";
-  try {
-    if (path.startsWith("http")) return path;
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
-    return `${BACKEND_URL}/${path}`;
-  } catch {
-    return String(path);
-  }
-}
+import {
+  dataUrlToFile,
+  getFullImageUrl,
+  formatDateDisplay,
+  formatLabel,
+} from "../lib/utils";
 
 function getStage(status?: string | null) {
   const s = workflowStages.find((w) => w.id === status) || workflowStages[2];
@@ -1715,7 +1692,7 @@ export function POPendingProjectDetailsDialog(props: Props) {
                                 : "bg-green-500 text-white text-xs"
                             }
                           >
-                            {(project as any)?.priority || "N/A"}
+                            {formatLabel((project as any)?.priority) || "N/A"}
                           </Badge>
                         </div>
                       )}

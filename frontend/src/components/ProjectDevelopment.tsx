@@ -25,7 +25,7 @@ import ProjectDetailsDialog from "./ProjectDetailsDialog";
 import { ProjectFilters } from "./ProjectFilters";
 import Pagination from "./Pagination";
 import { useImagePreview } from "../lib/stores/useImagePreview";
-import { getFullImageUrl } from "../lib/utils";
+import { getFullImageUrl, formatLabel } from "../lib/utils";
 
 export default function ProjectDevelopment() {
   const {
@@ -412,14 +412,14 @@ export default function ProjectDevelopment() {
                                   project.status
                                 )}`}
                               >
-                                {project.status || "N/A"}
+                                {formatLabel(project.status) || "N/A"}
                               </Badge>
                               <Badge
                                 className={`text-xs px-2 py-0.5 ${getPriorityColor(
                                   project.priority
                                 )}`}
                               >
-                                {project.priority || "Low"}
+                                {formatLabel(project.priority) || "Low"}
                               </Badge>
                             </div>
                           </div>
@@ -743,7 +743,7 @@ export default function ProjectDevelopment() {
                                 project.status
                               )}`}
                             >
-                              {project.status || "N/A"}
+                               {formatLabel(project.status) || "N/A"}
                             </span>
                           </td>
 
@@ -753,7 +753,7 @@ export default function ProjectDevelopment() {
                                 project.priority
                               )}`}
                             >
-                              {project.priority || "Low"}
+                               {formatLabel(project.priority) || "Low"}
                             </span>
                           </td>
 

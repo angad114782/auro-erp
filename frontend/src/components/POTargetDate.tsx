@@ -34,7 +34,7 @@ import { MobileSkeleton, TableSkeleton } from "./Skeletons";
 import { ProjectFilters } from "./ProjectFilters";
 import Pagination from "./Pagination";
 import { useImagePreview } from "../lib/stores/useImagePreview";
-import { getFullImageUrl } from "../lib/utils";
+import { getFullImageUrl, formatLabel } from "../lib/utils";
 
 export function POTargetDate() {
   const {

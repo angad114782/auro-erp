@@ -27,7 +27,7 @@ import { useDebounce } from "./NewHooks/useDebounce";
 import { TableSkeleton, MobileSkeleton } from "./Skeletons";
 import { ProjectFilters } from "./ProjectFilters";
 import Pagination from "./Pagination";
-import { getFullImageUrl } from "../lib/utils";
+import { getFullImageUrl, formatLabel } from "../lib/utils";
 import { useImagePreview } from "../lib/stores/useImagePreview";
 
 export function RedSeal() {
@@ -254,14 +254,14 @@ export function RedSeal() {
                                   p.status
                                 )}`}
                               >
-                                {p.status || "N/A"}
+                                {formatLabel(p.status) || "N/A"}
                               </Badge>
                               <Badge
                                 className={`text-xs px-2 py-0.5 ${getPriorityColor(
                                   p.priority
                                 )}`}
                               >
-                                {p.priority || "Low"}
+                                {formatLabel(p.priority) || "Low"}
                               </Badge>
                             </div>
                           </div>
@@ -578,7 +578,7 @@ export function RedSeal() {
                                 p.status
                               )}`}
                             >
-                              {p.status}
+                              {formatLabel(p.status)}
                             </span>
                           </td>
 
@@ -589,7 +589,7 @@ export function RedSeal() {
                                 p.priority
                               )}`}
                             >
-                              {p.priority || "Low"}
+                              {formatLabel(p.priority) || "Low"}
                             </span>
                           </td>
 

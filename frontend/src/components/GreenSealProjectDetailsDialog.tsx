@@ -59,6 +59,7 @@ import {
   getFullImageUrl,
   dataUrlToFile,
   formatDateDisplay,
+  formatLabel,
   getStage,
 } from "../lib/utils";
 import api from "../lib/api";
@@ -1585,7 +1586,7 @@ export function GreenSealProjectDetailsDialog(props: Props) {
                                 }
                               `}
                             >
-                              {project.priority || "N/A"}
+                              {formatLabel(project.priority) || "N/A"}
                             </Badge>
                           </div>
                         )}

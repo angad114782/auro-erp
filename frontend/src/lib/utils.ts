@@ -114,3 +114,14 @@ export const formatDateDisplay = (d?: string | null) => {
     return d;
   }
 };
+
+/** ---------------------------------------------------
+ *  Format label (underscore to space + Title Case)
+ * --------------------------------------------------*/
+export function formatLabel(str?: string): string {
+  if (!str) return "";
+  return str
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}

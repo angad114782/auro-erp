@@ -39,28 +39,11 @@ import { generateProjectPDF } from "../utils/pdfDownload";
 import { useProjectQuery } from "./NewHooks/useProjectQuery";
 import { useDebounce } from "./NewHooks/useDebounce";
 import { generateProjectsListPDF } from "../components/projectsListPDF";
+import { getFullImageUrl, formatDateDisplay, formatLabel } from "../lib/utils";
 import { useImagePreview } from "../lib/stores/useImagePreview";
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "";
 
-const getFullImageUrl = (path?: string | null) => {
-  if (!path) return "";
-  try {
-    if (path.startsWith("http")) return path;
-    return `${BACKEND_URL}/${path}`;
-  } catch {
-    return String(path);
-  }
-};
-
-const formatDateDisplay = (d?: string | null) => {
-  if (!d) return "-";
-  try {
-    return new Date(d).toLocaleDateString("en-IN");
-  } catch {
-    return String(d);
-  }
-};
 
 function getEmptySummary() {
   return {
@@ -1087,14 +1070,14 @@ export default function ProjectListCard() {
 
                           <td className="p-2">
                             <Badge className={getStatusColor(project.status)}>
-                              {project.status}
+                              {formatLabel(project.status)}
                             </Badge>
                           </td>
                           <td className="p-2">
                             <Badge
                               className={getPriorityColor(project.priority)}
                             >
-                              {project.priority}
+                              {formatLabel(project.priority)}
                             </Badge>
                           </td>
 
@@ -1176,14 +1159,14 @@ export default function ProjectListCard() {
                         <div className="flex justify-between">
                           <span className="text-gray-500">Priority</span>
                           <Badge className={getPriorityColor(project.priority)}>
-                            {project.priority}
+                            {formatLabel(project.priority)}
                           </Badge>
                         </div>
 
                         <div className="flex justify-between">
                           <span className="text-gray-500">Status</span>
                           <Badge className={getStatusColor(project.status)}>
-                            {project.status}
+                            {formatLabel(project.status)}
                           </Badge>
                         </div>
 
@@ -1311,7 +1294,7 @@ export default function ProjectListCard() {
                     </Button>
 
                     <Badge className={getStatusColor(selectedProject.status)}>
-                      {selectedProject.status}
+                      {formatLabel(selectedProject.status)}
                     </Badge>
                     <Button
                       variant="ghost"
@@ -1411,8 +1394,14 @@ export default function ProjectListCard() {
                       value={selectedProject.country?.name}
                     />
 
-                    <Info label="Status" value={selectedProject.status} />
-                    <Info label="Priority" value={selectedProject.priority} />
+                    <Info
+                      label="Status"
+                      value={formatLabel(selectedProject.status)}
+                    />
+                    <Info
+                      label="Priority"
+                      value={formatLabel(selectedProject.priority)}
+                    />
                     <Info label="Gender" value={selectedProject.gender} />
                     <Info label="Size" value={selectedProject.size} />
                     <Info label="Color" value={selectedProject.color} />

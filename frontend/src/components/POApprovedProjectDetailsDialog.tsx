@@ -30,6 +30,7 @@ import {
   getFullImageUrl,
   formatDateDisplay,
   getStage,
+  formatLabel,
 } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -623,7 +624,7 @@ export function POApprovedProjectDetailsDialog({
                         : "bg-green-600 text-white"
                     } text-xs px-2 py-1`}
                   >
-                    {project.priority}
+                    {formatLabel(project.priority)}
                   </Badge>
                 </div>
               </div>

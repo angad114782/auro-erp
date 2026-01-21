@@ -54,6 +54,7 @@ import {
   getStage,
   getFullImageUrl,
   formatDateDisplay,
+  formatLabel,
   dataUrlToFile,
 } from "../lib/utils";
 
@@ -1452,7 +1453,7 @@ export function RedSealProjectDetailsDialog(props: any) {
                             }
                           `}
                         >
-                          {project.priority || "N/A"}
+                          {formatLabel(project.priority) || "N/A"}
                         </Badge>
                       )}
                     </div>

@@ -29,7 +29,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import api from "../lib/api";
 import { ItemCuttingDialog } from "./ItemCuttingDialog";
-import { getFullImageUrl } from "../lib/utils";
+import { getFullImageUrl, formatLabel } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
@@ -553,7 +553,8 @@ export function ProductionTrackingTable() {
         item.cards?.reduce((sum, card) => sum + (card.cardQuantity || 0), 0) ||
         0;
 
-      // Determine status based on progress
+      // Determine status based on overall progress percentage
+      const percent = item.progress?.percent || 0;
       let status:
         | "Pending"
         | "In Progress"
@@ -562,15 +563,16 @@ export function ProductionTrackingTable() {
         | "Dispatched"
         | "Rejected"
         | "Approved" = "Pending";
-      if (currentQuantity === 0) {
+
+      if (percent === 0) {
         status = "Pending";
-      } else if (currentQuantity < plannedQuantity) {
+      } else if (percent < 100) {
         status = "In Progress";
       } else {
         if (selectedDepartment === "upperREJ") {
-          status = "Approved"; // Default for upperREJ when completed
+          status = "Approved";
         } else if (selectedDepartment === "rfd") {
-          status = "Ready"; // Default for RFD when completed
+          status = "Dispatched";
         } else {
           status = "Completed";
         }
@@ -579,16 +581,16 @@ export function ProductionTrackingTable() {
       // Special handling for upperREJ and rfd statuses
       if (selectedDepartment === "upperREJ") {
         status =
-          currentQuantity === 0
+          percent === 0
             ? "Pending"
-            : currentQuantity < plannedQuantity * 0.1
+            : percent < 10
             ? "Rejected"
             : "Approved";
       } else if (selectedDepartment === "rfd") {
         status =
-          currentQuantity === 0
+          percent === 0
             ? "Pending"
-            : currentQuantity < plannedQuantity
+            : percent < 100
             ? "Ready"
             : "Dispatched";
       }
@@ -981,7 +983,7 @@ const calcMinMetrics = (rows: any[]) => {
         default:
           return (
             <Badge className="bg-gray-100 text-gray-800 text-xs px-2 py-0.5">
-              {status}
+            {formatLabel(status)}
             </Badge>
           );
       }
@@ -1013,7 +1015,7 @@ const calcMinMetrics = (rows: any[]) => {
         default:
           return (
             <Badge className="bg-gray-100 text-gray-800 text-xs px-2 py-0.5">
-              {status}
+            {formatLabel(status)}
             </Badge>
           );
       }
@@ -1044,7 +1046,7 @@ const calcMinMetrics = (rows: any[]) => {
       default:
         return (
           <Badge className="bg-gray-100 text-gray-800 text-xs px-2 py-0.5">
-            {status}
+            {formatLabel(status)}
           </Badge>
         );
     }
@@ -3099,6 +3101,25 @@ const calcMinMetrics = (rows: any[]) => {
 
     progress = clamp(progress);
 
+    // ✅ Calculate status locally based on progress
+    let currentStatus = stageData.status;
+    if (progress === 0) {
+      currentStatus = "Pending";
+    } else if (progress < 100) {
+      currentStatus = "In Progress";
+    } else {
+      currentStatus = "Completed";
+      if (stage.key === "upperREJ") currentStatus = "Approved";
+      if (stage.key === "rfd") currentStatus = "Dispatched";
+    }
+
+    // Special handling for upperREJ and rfd
+    if (stage.key === "upperREJ") {
+      currentStatus = progress === 0 ? "Pending" : progress < 10 ? "Rejected" : "Approved";
+    } else if (stage.key === "rfd") {
+      currentStatus = progress === 0 ? "Pending" : progress < 100 ? "Ready" : "Dispatched";
+    }
+
     return (
       <div
         key={stage.key}
@@ -3136,9 +3157,9 @@ const calcMinMetrics = (rows: any[]) => {
           <div className="flex items-center gap-2 sm:gap-3">
             <div
               className={`w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg flex items-center justify-center group-hover:bg-[#0c9dcb] group-hover:text-white transition-colors ${
-                stageData.status === "Completed"
+                currentStatus === "Completed" || currentStatus === "Approved" || currentStatus === "Dispatched"
                   ? "bg-green-100 text-green-600"
-                  : stageData.status === "In Progress"
+                  : currentStatus === "In Progress" || currentStatus === "Ready"
                   ? "bg-blue-100 text-blue-600"
                   : "bg-gray-100 text-gray-600"
               }`}
@@ -3150,13 +3171,13 @@ const calcMinMetrics = (rows: any[]) => {
                 {isMobile ? stage.shortName : stage.name}
               </div>
               <div className="text-xs text-gray-500 group-hover:text-[#0a87a5]">
-                {stageData.status}
+                {currentStatus}
               </div>
             </div>
           </div>
 
           {getStatusBadge(
-            stageData.status,
+            currentStatus,
             stage.key === "upperREJ"
               ? "upperREJ"
               : stage.key === "rfd"
