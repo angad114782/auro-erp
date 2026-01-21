@@ -345,6 +345,7 @@ export function ProductionTrackingTable() {
 
   const [departmentRows, setDepartmentRows] = useState<any[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
+  const [cardSummaries, setCardSummaries] = useState<Record<string, any>>({});
   const selectedCard = trackingCards.find(
     (card) => card._id === selectedCardId
   );
@@ -375,6 +376,11 @@ export function ProductionTrackingTable() {
         } else {
           // For other departments, use rows
           setDepartmentRows(itemData?.rows || []);
+        }
+
+        // ✅ Store full card summaries if available
+        if (itemData?.summaries) {
+          setCardSummaries(itemData.summaries);
         }
       } else {
         setDepartmentRows([]);
@@ -467,6 +473,20 @@ export function ProductionTrackingTable() {
       fetchTrackingCards(selectedProductionRecord.projectId);
     }
   }, [selectedProductionRecord]);
+
+  // ✅ AUTO FETCH card data when card changes
+  useEffect(() => {
+    if (selectedProductionRecord?.projectId && selectedCardId) {
+      fetchDepartmentRows(
+        selectedProductionRecord.projectId,
+        selectedCardId,
+        selectedDepartment
+      );
+    } else {
+      setCardSummaries({});
+      setDepartmentRows([]);
+    }
+  }, [selectedCardId, selectedProductionRecord?.projectId]);
 
   // Check for mobile on mount and resize
   React.useEffect(() => {
@@ -3061,34 +3081,21 @@ const calcMinMetrics = (rows: any[]) => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
   {stages.map((stage) => {
     const stageData = selectedProductionRecord[stage.key];
+    const stageDept = stage.department;
 
-    // ✅ default fallback values (card level / stage summary)
+    // ✅ Try to get from cardSummaries first
+    const summary = cardSummaries[stageDept];
+
     let receiving = selectedCard ? selectedCard.cardQuantity : stageData.planned;
     let completed = stageData.quantity;
+
+    if (summary) {
+      receiving = summary.received;
+      completed = summary.completed;
+    }
+
     let remaining = Math.max(receiving - completed, 0);
     let progress = receiving > 0 ? (completed / receiving) * 100 : 0;
-
-    // ✅ apply MIN bottleneck logic (only for item-based depts)
-    // IMPORTANT: departmentRows currently holds last fetched dept rows only.
-    // so MIN will apply after rows fetched for this stage
-    const stageDept = stage.department; // e.g. "cutting"
-    const selectedStageDept =
-      selectedProductForCutting?.stage || selectedProductForCutting?.department;
-
-   const canApplyMin =
-  isMinDept(stageDept) &&
-  stageDept === selectedStageDept &&
-  Array.isArray(departmentRows) &&
-  departmentRows.length > 1; // ✅ important: MIN needs multiple rows
-
-if (canApplyMin) {
-  const m = calcMinMetrics(departmentRows);
-  receiving = m.receiving;
-  completed = m.completed;
-  remaining = m.remaining;
-  progress = m.progress;
-}
-
 
     progress = clamp(progress);
 

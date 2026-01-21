@@ -534,19 +534,85 @@ export async function getMicroTrackingByCard(cardId, dept = "") {
     return TRACK_CATEGORIES.has(cat) || !cat;
   });
 
-  if (!deptNorm) return { ...doc, rows: trackedRows, agg: null };
+  if (!deptNorm) {
+    // Calculate summaries for all departments if no specific dept requested
+    const allSummaries = {};
+    for (const dKey of FLOW) {
+      if (ITEM_DEPTS.has(dKey)) {
+        const rowsInDept = trackedRows.filter((r) => String(r.department) === dKey);
+        if (rowsInDept.length > 0) {
+          const completed = Math.min(...rowsInDept.map((r) => toNum(r.completedQty)));
+          const received = Math.min(...rowsInDept.map((r) => toNum(r.receivedQty)));
+          const remaining = Math.max(received - completed, 0);
+          allSummaries[dKey] = {
+            completed,
+            received,
+            remaining,
+            progress: received > 0 ? (completed / received) * 100 : 0,
+          };
+        } else {
+          allSummaries[dKey] = { completed: 0, received: 0, remaining: 0, progress: 0 };
+        }
+      } else if (AGG_DEPTS.has(dKey)) {
+        const agg = aggregateDeptForCard({ ...doc, rows: trackedRows }, dKey);
+        if (agg) {
+          allSummaries[dKey] = {
+            completed: agg.completedQty,
+            received: agg.receivedQty,
+            remaining: Math.max(agg.receivedQty - agg.completedQty, 0),
+            progress: agg.receivedQty > 0 ? (agg.completedQty / agg.receivedQty) * 100 : 0,
+          };
+        } else {
+          allSummaries[dKey] = { completed: 0, received: 0, remaining: 0, progress: 0 };
+        }
+      }
+    }
+    return { ...doc, rows: trackedRows, agg: null, summaries: allSummaries };
+  }
+
+  const allSummaries = {};
+  for (const dKey of FLOW) {
+    if (ITEM_DEPTS.has(dKey)) {
+      const rowsInDept = trackedRows.filter((r) => String(r.department) === dKey);
+      if (rowsInDept.length > 0) {
+        const completed = Math.min(...rowsInDept.map((r) => toNum(r.completedQty)));
+        const received = Math.min(...rowsInDept.map((r) => toNum(r.receivedQty)));
+        const remaining = Math.max(received - completed, 0);
+        allSummaries[dKey] = {
+          completed,
+          received,
+          remaining,
+          progress: received > 0 ? (completed / received) * 100 : 0,
+        };
+      } else {
+        allSummaries[dKey] = { completed: 0, received: 0, remaining: 0, progress: 0 };
+      }
+    } else if (AGG_DEPTS.has(dKey)) {
+      const agg = aggregateDeptForCard({ ...doc, rows: trackedRows }, dKey);
+      if (agg) {
+        allSummaries[dKey] = {
+          completed: agg.completedQty,
+          received: agg.receivedQty,
+          remaining: Math.max(agg.receivedQty - agg.completedQty, 0),
+          progress: agg.receivedQty > 0 ? (agg.completedQty / agg.receivedQty) * 100 : 0,
+        };
+      } else {
+        allSummaries[dKey] = { completed: 0, received: 0, remaining: 0, progress: 0 };
+      }
+    }
+  }
 
   if (ITEM_DEPTS.has(deptNorm)) {
     const rows = trackedRows.filter((r) => String(r.department) === deptNorm);
-    return { ...doc, rows, agg: null };
+    return { ...doc, rows, agg: null, summaries: allSummaries };
   }
 
   if (AGG_DEPTS.has(deptNorm)) {
     const agg = aggregateDeptForCard({ ...doc, rows: trackedRows }, deptNorm);
-    return { ...doc, rows: [], agg };
+    return { ...doc, rows: [], agg, summaries: allSummaries };
   }
 
-  return { ...doc, rows: trackedRows, agg: null };
+  return { ...doc, rows: trackedRows, agg: null, summaries: allSummaries };
 }
 
 /* ----------------------------------------------------
