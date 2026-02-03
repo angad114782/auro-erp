@@ -658,7 +658,6 @@ export function ItemCuttingDialog({
       case "printing":
         return {
           title: "Printing",
-          
           actionName: "Printing",
           headerBg: "bg-gradient-to-r from-blue-50 via-white to-blue-50",
           headerBorder: "border-blue-200",

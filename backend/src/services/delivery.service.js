@@ -73,7 +73,7 @@ export async function recalcDeliveryStatusAndSyncProject(
 
   const sent = Number(delivery.sendQuantity || 0);
 
-  let newStatus = "pending";
+  let newStatus = "parcel_delivered";
   if (sent > 0 && sent < targetQty) newStatus = "parcel_delivered";
   if (targetQty > 0 && sent >= targetQty) newStatus = "delivered";
 
