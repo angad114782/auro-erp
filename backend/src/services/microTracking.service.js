@@ -636,15 +636,16 @@ export async function addWorkAndTransfer({
   const d = normDeptOrFallback(sourceDeptRaw);
   if (!d) throw new Error("Invalid fromDept");
 
-  const targetDept = toDept ? normDeptOrFallback(toDept) : nextDeptOf(d);
-  if (!targetDept) throw new Error(`Next department not found from ${d}`);
+  const isRfd = d === "rfd";
 
+  // ✅ qty normalize
   const workPairs = toNum(qtyWork);
   const legacyTransferPairs = toNum(qtyTransfer);
 
   if (workPairs < 0 || legacyTransferPairs < 0) throw new Error("qty cannot be negative");
   if (workPairs === 0 && legacyTransferPairs === 0) throw new Error("qtyWork required");
 
+  // ✅ legacy behavior 유지: workPairs > 0 => transferPairs = workPairs
   const transferPairs = workPairs > 0 ? workPairs : legacyTransferPairs;
 
   const doc = await MicroTrackingCard.findOne({ cardId, isActive: true });
@@ -664,10 +665,14 @@ export async function addWorkAndTransfer({
     const rowsInDept = rowsTracked.filter((r) => String(r.department) === d);
     if (!rowsInDept.length) throw new Error(`No rows found in AGG dept ${d}`);
 
-    const availableToWork = Math.min(...rowsInDept.map((r) => toNum(r.receivedQty) - toNum(r.completedQty)));
+    const availableToWork = Math.min(
+      ...rowsInDept.map((r) => toNum(r.receivedQty) - toNum(r.completedQty))
+    );
 
+    // ✅ WORK
     if (workPairs > 0) {
-      if (workPairs > availableToWork) throw new Error(`Work qty exceeds limit in ${d}. Allowed=${availableToWork}`);
+      if (workPairs > availableToWork)
+        throw new Error(`Work qty exceeds limit in ${d}. Allowed=${availableToWork}`);
 
       for (const r of rowsInDept) {
         r.completedQty = toNum(r.completedQty) + workPairs;
@@ -684,9 +689,51 @@ export async function addWorkAndTransfer({
       }
     }
 
+    // ✅ TRANSFER / READY_FOR_DELIVERY
     if (transferPairs > 0) {
-      const canTransfer = Math.min(...rowsInDept.map((r) => toNum(r.completedQty) - toNum(r.transferredQty)));
-      if (transferPairs > canTransfer) throw new Error(`Transfer qty exceeds limit in ${d}. Allowed=${canTransfer}`);
+      const canTransfer = Math.min(
+        ...rowsInDept.map((r) => toNum(r.completedQty) - toNum(r.transferredQty))
+      );
+
+      if (transferPairs > canTransfer)
+        throw new Error(`Transfer qty exceeds limit in ${d}. Allowed=${canTransfer}`);
+
+      // ✅ RFD special: NO next dept row creation
+      if (isRfd) {
+        for (const r of rowsInDept) {
+          // optional: keep transferredQty in sync
+          r.transferredQty = toNum(r.transferredQty) + transferPairs;
+
+          r.history = r.history || [];
+          r.history.push({
+            ts: new Date(),
+            type: "READY_FOR_DELIVERY",
+            qty: transferPairs,
+            fromDept: d,
+            toDept: "delivery",
+            meta: { reason: "RFD_TO_DELIVERY" },
+            updatedBy,
+          });
+        }
+
+        // ✅ card-level delivery readiness snapshot
+        doc.deliveryReadyQty = toNum(doc.deliveryReadyQty) + transferPairs;
+        doc.deliveryReadyAt = new Date();
+        doc.deliveryStatus = "READY"; // optional
+
+        doc.rows = (doc.rows || []).filter(isValidRow);
+        doc.markModified("rows");
+        doc.markModified("deliveryReadyQty");
+        doc.markModified("deliveryReadyAt");
+        doc.markModified("deliveryStatus");
+
+        await doc.save();
+        return doc.toObject();
+      }
+
+      // ✅ Non-RFD: normal next dept transfer
+      const targetDept = toDept ? normDeptOrFallback(toDept) : nextDeptOf(d);
+      if (!targetDept) throw new Error(`Next department not found from ${d}`);
 
       for (const r of rowsInDept) {
         r.transferredQty = toNum(r.transferredQty) + transferPairs;
@@ -753,7 +800,13 @@ export async function addWorkAndTransfer({
   }
 
   /* ---------------- ITEM ---------------- */
+  // ✅ ITEM stages should not accept RFD
+  if (isRfd) throw new Error("RFD is an AGG department; itemId not applicable");
+
   if (!itemId) throw new Error("itemId required for ITEM depts");
+
+  const targetDept = toDept ? normDeptOrFallback(toDept) : nextDeptOf(d);
+  if (!targetDept) throw new Error(`Next department not found from ${d}`);
 
   const src = (doc.rows || []).find((r) =>
     r.isActive !== false &&
@@ -832,7 +885,6 @@ export async function addWorkAndTransfer({
       updatedBy,
     });
 
-    // ✅ FIND target row (legacy allowed)
     let tgt = (doc.rows || []).find(
       (r) =>
         r.isActive !== false &&
@@ -842,7 +894,6 @@ export async function addWorkAndTransfer({
     );
 
     if (!tgt) {
-      // ✅ SAFE create (NO spreading src)
       const base = cloneRowBase(src);
 
       doc.rows.push({
@@ -851,15 +902,12 @@ export async function addWorkAndTransfer({
         receivedQty: transferPairs,
         completedQty: 0,
         transferredQty: 0,
-
-        // material snapshot forward
         issuedMaterialQty: toNum(base.issuedMaterialQty) + materialForTransfer,
         issuedQty: toNum(base.issuedMaterialQty) + materialForTransfer,
         consumptionPerPair: cons,
         issuedPairsPossible: cons > 0
           ? calcIssuedPairsPossible(toNum(base.issuedMaterialQty) + materialForTransfer, cons)
           : 0,
-
         history: [
           {
             ts: new Date(),
@@ -893,11 +941,12 @@ export async function addWorkAndTransfer({
     }
   }
 
-  doc.rows = (doc.rows || []).filter(isValidRow); // ✅ hard clean
+  doc.rows = (doc.rows || []).filter(isValidRow);
   doc.markModified("rows");
   await doc.save();
   return doc.toObject();
 }
+
 
 /* ----------------------------------------------------
   HISTORY SERVICE (fixed to read from doc.rows properly)
