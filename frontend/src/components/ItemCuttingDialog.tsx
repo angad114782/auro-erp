@@ -945,133 +945,140 @@ export function ItemCuttingDialog({
   };
 
   // Update the handleSaveCutting function to use the work-transfer endpoint
-  const handleSaveCutting = async () => {
-    // Check if we have productData with cardId
-    if (!productData?.cardId) {
-      toast.error("Card ID is required for saving progress");
-      return;
+ const handleSaveCutting = async () => {
+  if (!productData?.cardId) {
+    toast.error("Card ID is required for saving progress");
+    return;
+  }
+
+  const cardId = productData.cardId;
+
+  // --- split actions ---
+  const transferActions = []; // non-rfd
+  let rfdTotalWork = 0;       // rfd aggregate
+
+  for (const item of cuttingItems) {
+    const today = parseToNumber(item.cuttingToday);
+    if (today <= 0) continue;
+
+    const dept = String(item.department || "").toLowerCase();
+
+    if (dept === "rfd") {
+      rfdTotalWork += today; // ✅ aggregate sum (because backend is dept-level)
+      continue;
     }
 
-    // Prepare batch of actions
-    const actions = cuttingItems
-      .map((item) => {
-        const progressToday = parseToNumber(item.cuttingToday);
+    const nextDept = nextDeptMap[item.id];
+    if (!nextDept) continue; // must select next stage for non-rfd
 
-        // Skip if no progress today
-        if (progressToday <= 0) return null;
+    transferActions.push({
+      itemId: item.id,
+      fromDept: fromDepartment,
+      toDept: nextDept,
+      qtyWork: today,
+      qtyTransfer: today,
+    });
+  }
 
-        // For RFD items, no department selection needed
-        if (item.department === "rfd") {
+  if (transferActions.length === 0 && rfdTotalWork <= 0) {
+    toast.error("Enter quantity today. For non-RFD items also select next stage.");
+    return;
+  }
+
+  const results: any[] = [];
+  const errors: any[] = [];
+
+  try {
+    // ✅ 1) Save non-rfd via work-transfer (one-by-one like your current system)
+    for (const action of transferActions) {
+      try {
+        const res = await api.post(`/tracking/${cardId}/work-transfer`, action);
+        results.push({ kind: "WORK_TRANSFER", itemId: action.itemId, data: res.data });
+      } catch (e: any) {
+        errors.push({
+          kind: "WORK_TRANSFER",
+          itemId: action.itemId,
+          error: e?.response?.data?.error || e.message,
+        });
+      }
+    }
+
+    // ✅ 2) Save RFD via PATCH (only completedQty)
+    if (rfdTotalWork > 0) {
+      try {
+        const res = await api.patch(`/tracking/${cardId}/rfd`, { qtyWork: rfdTotalWork });
+        results.push({ kind: "RFD_ONLY", data: res.data });
+      } catch (e: any) {
+        errors.push({
+          kind: "RFD_ONLY",
+          error: e?.response?.data?.error || e.message,
+        });
+      }
+    }
+
+    // ----- Toast summary -----
+    if (errors.length) {
+      toast.error(`Saved ${results.length} action(s), ${errors.length} failed. Check console.`);
+      console.error("Save errors:", errors);
+    } else {
+      toast.success(`Successfully saved ${results.length} action(s)`);
+    }
+
+    // ----- Update local UI -----
+    const savedTransferIds = results
+      .filter((r) => r.kind === "WORK_TRANSFER")
+      .map((r) => r.itemId);
+
+    // if RFD saved, update only those RFD items which had qty entered today
+    const rfdHadQtyIds = cuttingItems
+      .filter((i) => String(i.department).toLowerCase() === "rfd" && parseToNumber(i.cuttingToday) > 0)
+      .map((i) => i.id);
+
+    const rfdSaved = results.some((r) => r.kind === "RFD_ONLY");
+
+    setCuttingItems((prev) =>
+      prev.map((item) => {
+        const today = parseToNumber(item.cuttingToday);
+        if (today <= 0) return item;
+
+        const dept = String(item.department || "").toLowerCase();
+
+        // ✅ non-rfd saved by id
+        if (savedTransferIds.includes(item.id)) {
           return {
-            itemId: item.id,
-            qtyWork: progressToday,
-            fromDept: fromDepartment,
-            toDept: "rfd", // RFD is the final destination
-            qtyTransfer: progressToday,
+            ...item,
+            alreadyCut: parseToNumber(item.alreadyCut) + today,
+            cuttingToday: "",
           };
         }
 
-        // For non-RFD items, check if department is selected
-        const nextDept = nextDeptMap[item.id];
-        if (!nextDept) {
-          return null;
+        // ✅ rfd saved (aggregate) but clear only those with qty entered
+        if (rfdSaved && dept === "rfd" && rfdHadQtyIds.includes(item.id)) {
+          return {
+            ...item,
+            alreadyCut: parseToNumber(item.alreadyCut) + today,
+            cuttingToday: "",
+          };
         }
 
-        return {
-          itemId: item.id,
-          qtyWork: progressToday,
-          fromDept: fromDepartment,
-          toDept: nextDept,
-          qtyTransfer: progressToday, // Assuming same quantity is transferred
-        };
+        return item;
       })
-      .filter(Boolean);
+    );
 
-    if (actions.length === 0) {
-      toast.error(
-        "Please enter today's quantity AND select next stage for at least one item"
-      );
-      return;
-    }
+    // Clear nextDeptMap for saved transfers
+    setNextDeptMap((prev) => {
+      const copy = { ...prev };
+      savedTransferIds.forEach((id: string) => delete copy[id]);
+      return copy;
+    });
 
-    try {
-      // Process each action individually using the work-transfer endpoint
-      const results = [];
-      const errors = [];
+    if (results.length) setActiveTab("history");
+  } catch (err: any) {
+    console.error("handleSaveCutting fatal:", err);
+    toast.error(err?.response?.data?.error || "Failed to save progress");
+  }
+};
 
-      for (const action of actions) {
-        try {
-          const response = await api.post(
-            `/tracking/${productData.cardId}/work-transfer`,
-            {
-              fromDept: action.fromDept,
-              toDept: action.toDept,
-              itemId: action.itemId,
-              qtyWork: action.qtyWork,
-              qtyTransfer: action.qtyTransfer,
-            }
-          );
-
-          results.push({
-            itemId: action.itemId,
-            success: true,
-            data: response.data,
-          });
-        } catch (error: any) {
-          errors.push({
-            itemId: action.itemId,
-            error: error.response?.data?.error || error.message,
-          });
-          console.error(`Failed to save item ${action.itemId}:`, error);
-        }
-      }
-
-      // Show success/error summary
-      if (errors.length > 0) {
-        toast.error(
-          `Saved ${results.length} items, ${errors.length} failed. Check console.`
-        );
-        console.error("Failed items:", errors);
-      } else {
-        toast.success(`Successfully saved ${results.length} item(s)`);
-      }
-
-      // Update local state for successfully saved items
-      const successfulItemIds = results.map((r) => r.itemId);
-
-      setCuttingItems((prev) =>
-        prev.map((item) => {
-          if (successfulItemIds.includes(item.id)) {
-            return {
-              ...item,
-              alreadyCut:
-                parseToNumber(item.alreadyCut) +
-                parseToNumber(item.cuttingToday),
-              cuttingToday: 0,
-            };
-          }
-          return item;
-        })
-      );
-
-      // Clear department selection for successful items
-      setNextDeptMap((prev) => {
-        const newMap = { ...prev };
-        successfulItemIds.forEach((itemId) => {
-          delete newMap[itemId];
-        });
-        return newMap;
-      });
-
-      // Switch to history tab if any were successful
-      if (results.length > 0) {
-        setActiveTab("history");
-      }
-    } catch (err: any) {
-      console.error("Batch save error:", err);
-      toast.error(err?.response?.data?.error || "Failed to save progress");
-    }
-  };
 
   const toggleItemExpanded = (itemId: string) => {
     const newExpanded = new Set(expandedItems);
@@ -1083,82 +1090,68 @@ export function ItemCuttingDialog({
     setExpandedItems(newExpanded);
   };
 
-  const handleDeliverItem = async (projectId: string) => {
-    // 1. Check for RFD items with quantity entered
-    const rfdActions = cuttingItems
-      .filter(
-        (item) =>
-          item.department === "rfd" && parseToNumber(item.cuttingToday) > 0
-      )
-      .map((item) => ({
-        itemId: item.id,
-        qtyWork: parseToNumber(item.cuttingToday),
-        fromDept: fromDepartment,
-        toDept: "rfd",
-        qtyTransfer: parseToNumber(item.cuttingToday),
-      }));
+ const handleDeliverItem = async (projectId: string) => {
+  if (!productData?.cardId) {
+    toast.error("Card ID is required");
+    return;
+  }
 
-    if (rfdActions.length > 0) {
-      if (!productData?.cardId) {
-        toast.error("Card ID is required for saving progress");
-        return;
-      }
+  const cardId = productData.cardId;
 
-      try {
-        toast.loading("Saving quantities before delivery...", {
-          id: "delivery-save",
-        });
-        for (const action of rfdActions) {
-          await api.post(`/tracking/${productData.cardId}/work-transfer`, {
-            fromDept: action.fromDept,
-            toDept: action.toDept,
-            itemId: action.itemId,
-            qtyWork: action.qtyWork,
-            qtyTransfer: action.qtyTransfer,
-          });
-        }
+  // ✅ total rfd qty entered today
+  const rfdTotalWork = cuttingItems
+    .filter((i) => String(i.department).toLowerCase() === "rfd")
+    .reduce((sum, i) => sum + parseToNumber(i.cuttingToday), 0);
 
-        // Update local state
-        const savedItemIds = rfdActions.map((a) => a.itemId);
-        setCuttingItems((prev) =>
-          prev.map((item) => {
-            if (savedItemIds.includes(item.id)) {
-              return {
-                ...item,
-                alreadyCut:
-                  parseToNumber(item.alreadyCut) +
-                  parseToNumber(item.cuttingToday),
-                cuttingToday: 0,
-              };
-            }
-            return item;
-          })
-        );
+  // ✅ ids that had qty entered (for UI update)
+  const rfdHadQtyIds = cuttingItems
+    .filter((i) => String(i.department).toLowerCase() === "rfd" && parseToNumber(i.cuttingToday) > 0)
+    .map((i) => i.id);
 
-        toast.success("Quantities saved!", { id: "delivery-save" });
-      } catch (saveError: any) {
-        toast.error("Failed to save quantities before delivery", {
-          id: "delivery-save",
-        });
-        return; // Don't proceed to delivery if save failed
-      }
-    }
-
+  // 1) Save RFD qty first (if any)
+  if (rfdTotalWork > 0) {
     try {
-      const res = await api.put(`/projects/${projectId}/send-to-delivery`);
-      toast.success(res.data?.message || "Sent to delivery!");
-      // Switch to history tab if we saved something
-      if (rfdActions.length > 0) {
-        setActiveTab("history");
-      }
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.error ||
-        err?.message ||
-        "Failed to send to delivery";
-      toast.info(msg);
+      toast.loading("Saving RFD quantities before delivery...", { id: "delivery-save" });
+
+      await api.patch(`/tracking/${cardId}/rfd`, { qtyWork: rfdTotalWork });
+
+      // update local UI for those rfd inputs
+      setCuttingItems((prev) =>
+        prev.map((item) => {
+          const dept = String(item.department || "").toLowerCase();
+          if (dept !== "rfd") return item;
+
+          const today = parseToNumber(item.cuttingToday);
+          if (today <= 0) return item;
+
+          if (!rfdHadQtyIds.includes(item.id)) return item;
+
+          return {
+            ...item,
+            alreadyCut: parseToNumber(item.alreadyCut) + today,
+            cuttingToday: "",
+          };
+        })
+      );
+
+      toast.success("RFD quantities saved!", { id: "delivery-save" });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error || "Failed to save RFD quantities", { id: "delivery-save" });
+      return; // ✅ don't proceed to delivery
     }
-  };
+  }
+
+  // 2) Now send to delivery
+  try {
+    const res = await api.put(`/projects/${projectId}/send-to-delivery`);
+    toast.success(res.data?.message || "Sent to delivery!");
+    setActiveTab("history");
+  } catch (err: any) {
+    const msg = err?.response?.data?.error || err?.message || "Failed to send to delivery";
+    toast.info(msg);
+  }
+};
+
 
   const clampOnBlur = (item: CuttingItem, value: string) => {
     const alreadyCutNum = parseToNumber(item.alreadyCut);
