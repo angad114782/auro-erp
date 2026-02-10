@@ -161,7 +161,7 @@ export const createItem = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
-// LIST ITEMS
+// LIST ITEMS - Optimized with single aggregation using $facet
 export const listItems = async (req, res) => {
   try {
     const {
@@ -169,7 +169,7 @@ export const listItems = async (req, res) => {
       limit = 10,
       search = "",
       category = "",
-      isDraft = false,
+      isDraft,
       sortBy = "updatedAt",
       sortOrder = "desc",
     } = req.query;
@@ -178,63 +178,160 @@ export const listItems = async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build filter
-    const filter = { isDeleted: { $ne: true } };
+    // Base filter (always exclude deleted items)
+    const baseFilter = { isDeleted: { $ne: true } };
+
+    // Build main filter for items query
+    const itemsFilter = { ...baseFilter };
 
     // Handle isDraft filter
     if (isDraft === "true" || isDraft === true) {
-      filter.isDraft = true;
+      itemsFilter.isDraft = true;
     } else if (isDraft === "false" || isDraft === false) {
-      filter.isDraft = false;
+      itemsFilter.isDraft = false;
     }
 
     if (category && category !== "All") {
-      filter.category = category;
+      itemsFilter.category = category;
     }
 
-    // Build search query
-    if (search) {
-      filter.$or = [
-        { itemName: { $regex: search, $options: "i" } },
-        { code: { $regex: search, $options: "i" } },
-        { category: { $regex: search, $options: "i" } },
-        { subCategory: { $regex: search, $options: "i" } },
-        { brand: { $regex: search, $options: "i" } },
-        { color: { $regex: search, $options: "i" } },
-        { "vendorId.vendorName": { $regex: search, $options: "i" } },
-      ];
+    // Build search conditions
+    const searchConditions = search
+      ? [
+          { itemName: { $regex: search, $options: "i" } },
+          { code: { $regex: search, $options: "i" } },
+          { category: { $regex: search, $options: "i" } },
+          { subCategory: { $regex: search, $options: "i" } },
+          { brand: { $regex: search, $options: "i" } },
+          { color: { $regex: search, $options: "i" } },
+        ]
+      : null;
+
+    if (searchConditions) {
+      itemsFilter.$or = searchConditions;
     }
 
-    // Get total count
-    const total = await InventoryItem.countDocuments(filter);
+    // Build category filter (without category constraint for category counts)
+    const categoryFilterBase = { ...baseFilter };
+    if (searchConditions) {
+      categoryFilterBase.$or = searchConditions;
+    }
 
-    // Get items with pagination
-    const items = await InventoryItem.find(filter)
-      .populate("vendorId")
-      .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
-      .skip(skip)
-      .limit(limitNum);
+    // Single aggregation with $facet to get everything in one query
+    const aggregationResult = await InventoryItem.aggregate([
+      // Stage 1: Match base filter for all facets
+      { $match: baseFilter },
 
-    // Get category counts for current filters (excluding category filter)
-    const categoryFilter = { ...filter };
-    delete categoryFilter.category;
+      // Stage 2: Use $facet to run multiple pipelines in parallel
+      {
+        $facet: {
+          // Facet 1: Get paginated items matching all filters
+          items: [
+            {
+              $match: {
+                ...(isDraft === "true" || isDraft === true
+                  ? { isDraft: true }
+                  : isDraft === "false" || isDraft === false
+                  ? { isDraft: false }
+                  : {}),
+                ...(category && category !== "All" ? { category } : {}),
+                ...(searchConditions ? { $or: searchConditions } : {}),
+              },
+            },
+            { $sort: { [sortBy]: sortOrder === "desc" ? -1 : 1 } },
+            { $skip: skip },
+            { $limit: limitNum },
+            // Lookup vendor info
+            {
+              $lookup: {
+                from: "vendors",
+                localField: "vendorId",
+                foreignField: "_id",
+                as: "vendorId",
+              },
+            },
+            {
+              $unwind: {
+                path: "$vendorId",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+          ],
 
-    const categoryCounts = await InventoryItem.aggregate([
-      { $match: categoryFilter },
-      { $group: { _id: "$category", count: { $sum: 1 } } },
-      { $sort: { _id: 1 } },
+          // Facet 2: Get total count for current filter
+          totalCount: [
+            {
+              $match: {
+                ...(isDraft === "true" || isDraft === true
+                  ? { isDraft: true }
+                  : isDraft === "false" || isDraft === false
+                  ? { isDraft: false }
+                  : {}),
+                ...(category && category !== "All" ? { category } : {}),
+                ...(searchConditions ? { $or: searchConditions } : {}),
+              },
+            },
+            { $count: "count" },
+          ],
+
+          // Facet 3: Get category counts (excluding category filter)
+          categoryCounts: [
+            {
+              $match: {
+                ...(isDraft === "true" || isDraft === true
+                  ? { isDraft: true }
+                  : isDraft === "false" || isDraft === false
+                  ? { isDraft: false }
+                  : {}),
+                ...(searchConditions ? { $or: searchConditions } : {}),
+              },
+            },
+            { $group: { _id: "$category", count: { $sum: 1 } } },
+            { $sort: { _id: 1 } },
+          ],
+
+          // Facet 4: Get tab counts (items count - non-drafts)
+          itemsCount: [
+            { $match: { isDraft: false, ...(searchConditions ? { $or: searchConditions } : {}) } },
+            { $count: "count" },
+          ],
+
+          // Facet 5: Get tab counts (drafts count)
+          draftsCount: [
+            { $match: { isDraft: true, ...(searchConditions ? { $or: searchConditions } : {}) } },
+            { $count: "count" },
+          ],
+
+          // Facet 6: Get total all count
+          totalAll: [
+            { $match: searchConditions ? { $or: searchConditions } : {} },
+            { $count: "count" },
+          ],
+        },
+      },
     ]);
 
-    // Convert to object format
-    const categories = categoryCounts.reduce((acc, curr) => {
+    const result = aggregationResult[0];
+
+    // Extract data from facets
+    const items = result.items || [];
+    const total = result.totalCount[0]?.count || 0;
+    const totalPages = Math.ceil(total / limitNum);
+    const hasNextPage = pageNum < totalPages;
+    const hasPrevPage = pageNum > 1;
+
+    // Convert category counts to object format
+    const categories = (result.categoryCounts || []).reduce((acc, curr) => {
       acc[curr._id || "Uncategorized"] = curr.count;
       return acc;
     }, {});
 
-    // Calculate pagination info
-    const totalPages = Math.ceil(total / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
+    // Extract tab counts
+    const tabCounts = {
+      items: result.itemsCount[0]?.count || 0,
+      drafts: result.draftsCount[0]?.count || 0,
+      all: result.totalAll[0]?.count || 0,
+    };
 
     res.json({
       items,
@@ -248,11 +345,10 @@ export const listItems = async (req, res) => {
       },
       filters: {
         categoryCounts: categories,
-        totalAll: await InventoryItem.countDocuments({
-          ...filter,
-          category: { $exists: true },
-        }),
+        totalAll: tabCounts.all,
       },
+      // NEW: Include tab counts to eliminate separate API calls
+      tabCounts,
     });
   } catch (error) {
     console.error("Error fetching items:", error);

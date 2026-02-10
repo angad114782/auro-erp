@@ -7,6 +7,7 @@ import {
   updateRow,
   deleteRow,
   setDepartment,
+  getAllCostData,
 } from "../controllers/costRows.controller.js";
 import { getLabour, patchLabour } from "../controllers/labour.controller.js";
 import {
@@ -56,6 +57,10 @@ r.post("/approve", approveSummary);
 // LABOUR
 r.get("/labour", getLabour);
 r.patch("/labour", patchLabour);
+
+// OPTIMIZED: Consolidated endpoint to get all cost data in one request
+// Replaces 7 parallel API calls on the frontend
+r.get("/all", getAllCostData);
 
 // ROWS (CRUD)
 // List + Create

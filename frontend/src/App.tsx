@@ -52,6 +52,12 @@ function AppContent(): React.JSX.Element {
     if (user?.role === "Supervisor") {
       return <ProductionTrackingTable />;
     }
+
+    // 👇 STORE: FORCE INVENTORY MODULE ONLY
+    if (user?.role === "Store") {
+      return <InventoryManagement currentSubModule={currentSubModule} />;
+    }
+
     if (!hasPermission(currentModule)) {
       return (
         <div className="flex items-center justify-center h-64">

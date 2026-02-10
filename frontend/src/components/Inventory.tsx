@@ -41,7 +41,7 @@ export function Inventory() {
     categoryCounts,
     tabCounts,
     loadItems,
-    loadTabCounts,
+
     refreshTabCounts,
     handlePageChange,
     handlePageSizeChange,
@@ -510,19 +510,18 @@ export function Inventory() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex items-center justify-end space-x-2">
-                        {item.isDraft ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-green-200 text-green-600 hover:bg-green-50"
-                            onClick={(e: any) => {
-                              e.stopPropagation();
-                              handleEditItem(item);
-                            }}
-                          >
-                            <Edit className="w-4 h-4 mr-1" /> Edit Item
-                          </Button>
-                        ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-green-200 text-green-600 hover:bg-green-50"
+                          onClick={(e: any) => {
+                            e.stopPropagation();
+                            handleEditItem(item);
+                          }}
+                        >
+                          <Edit className="w-4 h-4 mr-1" /> Edit
+                        </Button>
+                        {!item.isDraft && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -652,24 +651,23 @@ export function Inventory() {
                   </CardContent>
 
                   <CardFooter className="pt-0 px-3 pb-3 flex gap-2">
-                    {item.isDraft ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 border-green-200 text-green-600 hover:bg-green-50 h-9 text-xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditItem(item);
-                        }}
-                      >
-                        <Edit className="w-3.5 h-3.5 mr-1" /> Edit
-                      </Button>
-                    ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 border-green-200 text-green-600 hover:bg-green-50 h-9 text-xs"
+                      onClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        handleEditItem(item);
+                      }}
+                    >
+                      <Edit className="w-3.5 h-3.5 mr-1" /> Edit
+                    </Button>
+                    {!item.isDraft && (
                       <Button
                         variant="outline"
                         size="sm"
                         className="flex-1 border-blue-200 text-blue-600 hover:bg-blue-50 h-9 text-xs"
-                        onClick={(e) => {
+                        onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
                           setSelectedItemForStock(item);
                           setShowUpdateStockDialog(true);
@@ -687,7 +685,7 @@ export function Inventory() {
                         <Button
                           size="sm"
                           className="flex-1 bg-red-500 hover:bg-red-600 text-white h-9 text-xs"
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
                         >
                           <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
                         </Button>

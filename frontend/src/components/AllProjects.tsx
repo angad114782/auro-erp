@@ -239,46 +239,19 @@ export default function ProjectListCard() {
           activeColorTab === selectedProject.color ||
           !localColorVariants.has(activeColorTab)
         ) {
-          const [
-            summaryRes,
-            upperRes,
-            componentRes,
-            materialRes,
-            packagingRes,
-            miscRes,
-            labourRes,
-          ] = await Promise.all([
-            fetch(
-              `${BACKEND_URL}/api/projects/${selectedProject._id}/costs`
-            ).then((r) => r.json()),
-            fetch(
-              `${BACKEND_URL}/api/projects/${selectedProject._id}/costs/upper`
-            ).then((r) => r.json()),
-            fetch(
-              `${BACKEND_URL}/api/projects/${selectedProject._id}/costs/component`
-            ).then((r) => r.json()),
-            fetch(
-              `${BACKEND_URL}/api/projects/${selectedProject._id}/costs/material`
-            ).then((r) => r.json()),
-            fetch(
-              `${BACKEND_URL}/api/projects/${selectedProject._id}/costs/packaging`
-            ).then((r) => r.json()),
-            fetch(
-              `${BACKEND_URL}/api/projects/${selectedProject._id}/costs/miscellaneous`
-            ).then((r) => r.json()),
-            fetch(
-              `${BACKEND_URL}/api/projects/${selectedProject._id}/costs/labour`
-            ).then((r) => r.json()),
-          ]);
+          // OPTIMIZED: Single consolidated API call instead of 7 parallel calls
+          const allCostData = await fetch(
+            `${BACKEND_URL}/api/projects/${selectedProject._id}/costs/all`
+          ).then((r) => r.json());
 
           setCostData({
-            upper: upperRes.rows || [],
-            component: componentRes.rows || [],
-            material: materialRes.rows || [],
-            packaging: packagingRes.rows || [],
-            misc: miscRes.rows || [],
-            labour: labourRes.labour || { items: [], directTotal: 0 },
-            summary: summaryRes.hasCostData ? summaryRes.summary : null,
+            upper: allCostData.upper || [],
+            component: allCostData.component || [],
+            material: allCostData.material || [],
+            packaging: allCostData.packaging || [],
+            misc: allCostData.miscellaneous || [],
+            labour: allCostData.labour || { items: [], directTotal: 0 },
+            summary: allCostData.hasCostData ? allCostData.summary : null,
           });
         }
       } catch (error) {

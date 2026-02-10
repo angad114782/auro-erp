@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import BrandModel from "../models/Brand.model.js";
 import CompanyModel from "../models/Company.model.js";
 import { PoDetails } from "../models/PoDetails.model.js";
@@ -64,7 +65,7 @@ export const createProject = async (payload, { session } = {}) => {
 };
 
 /** ---------- LIST WITH PO INCLUDED ---------- **/
-// Backend API - Updated getProjects with all filters
+// OPTIMIZED: Single aggregation with $lookup for company/brand search and PO data
 export const getProjects = async (query = {}) => {
   const {
     search,
@@ -74,28 +75,12 @@ export const getProjects = async (query = {}) => {
     sortOrder = "desc",
   } = query;
 
-  const filter = { isActive: true };
+  const skip = (Number(page) - 1) * Number(limit);
 
-  // Text search across important fields
-  // Text search across project + company + brand
-  if (search) {
-    const regex = new RegExp(search, "i");
+  // Build match stage for filtering
+  const matchStage = { isActive: true };
 
-    // Find matching company & brand IDs
-    const [companyIds, brandIds] = await Promise.all([
-      CompanyModel.find({ name: regex }).distinct("_id"),
-      BrandModel.find({ name: regex }).distinct("_id"),
-    ]);
-
-    filter.$or = [
-      { autoCode: regex },
-      { artName: regex },
-      { company: { $in: companyIds } },
-      { brand: { $in: brandIds } },
-    ];
-  }
-
-  // 📅 Date filter dropdown support
+  // Date filters
   if (query.dateFilter) {
     const now = new Date();
     let startDate;
@@ -106,109 +91,217 @@ export const getProjects = async (query = {}) => {
         startDate = new Date();
         startDate.setHours(0, 0, 0, 0);
         break;
-
       case "yesterday":
         startDate = new Date();
         startDate.setDate(startDate.getDate() - 1);
         startDate.setHours(0, 0, 0, 0);
-
         endDate = new Date(startDate);
         endDate.setHours(23, 59, 59, 999);
         break;
-
       case "last_7_days":
         startDate = new Date();
         startDate.setDate(startDate.getDate() - 7);
         break;
-
       case "last_30_days":
         startDate = new Date();
         startDate.setDate(startDate.getDate() - 30);
         break;
-
       default:
         break;
     }
 
     if (startDate) {
-      filter.createdAt = {
-        $gte: startDate,
-        $lte: endDate,
-      };
+      matchStage.createdAt = { $gte: startDate, $lte: endDate };
     }
   }
 
-  // 📅 Custom date or range
+  // Custom date range
   if (query.fromDate || query.toDate) {
-    const from = query.fromDate
-      ? new Date(query.fromDate)
-      : new Date("1970-01-01");
-
+    const from = query.fromDate ? new Date(query.fromDate) : new Date("1970-01-01");
     const to = query.toDate ? new Date(query.toDate) : new Date();
-
     from.setHours(0, 0, 0, 0);
     to.setHours(23, 59, 59, 999);
-
-    filter.createdAt = {
-      $gte: from,
-      $lte: to,
-    };
+    matchStage.createdAt = { $gte: from, $lte: to };
   }
 
   // Master data filters
-  if (query.company) filter.company = query.company;
-  if (query.brand) filter.brand = query.brand;
-  if (query.category) filter.category = query.category;
-  if (query.type) filter.type = query.type;
-  if (query.country) filter.country = query.country;
+  if (query.company) matchStage.company = new mongoose.Types.ObjectId(query.company);
+  if (query.brand) matchStage.brand = new mongoose.Types.ObjectId(query.brand);
+  if (query.category) matchStage.category = new mongoose.Types.ObjectId(query.category);
+  if (query.type) matchStage.type = new mongoose.Types.ObjectId(query.type);
+  if (query.country) matchStage.country = new mongoose.Types.ObjectId(query.country);
 
   // Status filter
-  if (query.status) filter.status = normalizeProjectStatus(query.status);
+  if (query.status) matchStage.status = normalizeProjectStatus(query.status);
 
-  // Priority filter (NEW)
-  if (query.priority) {
-    filter.priority = query.priority.toLowerCase();
-  }
+  // Priority filter
+  if (query.priority) matchStage.priority = query.priority.toLowerCase();
 
   // Client approval filter
   if (query.clientApproval) {
-    filter.clientApproval = normalizeClientApproval(query.clientApproval);
+    matchStage.clientApproval = normalizeClientApproval(query.clientApproval);
   }
 
   // Cost range filter
   if (query.minCost || query.maxCost) {
-    filter.clientFinalCost = {};
-    if (query.minCost) filter.clientFinalCost.$gte = Number(query.minCost);
-    if (query.maxCost) filter.clientFinalCost.$lte = Number(query.maxCost);
+    matchStage.clientFinalCost = {};
+    if (query.minCost) matchStage.clientFinalCost.$gte = Number(query.minCost);
+    if (query.maxCost) matchStage.clientFinalCost.$lte = Number(query.maxCost);
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
+  // Build aggregation pipeline
+  const pipeline = [
+    // Stage 1: Initial match for non-search filters
+    { $match: matchStage },
 
-  // Main query WITH pagination
-  const [projects, total] = await Promise.all([
-    Project.find(filter)
-      .populate("company brand category type country assignPerson", "name")
-      .sort({ [sortBy]: sortOrder === "asc" ? 1 : -1 })
-      .skip(skip)
-      .limit(Number(limit))
-      .lean(),
+    // Stage 2: Lookup company for population AND search
+    {
+      $lookup: {
+        from: "companies",
+        localField: "company",
+        foreignField: "_id",
+        as: "companyDoc",
+      },
+    },
+    { $unwind: { path: "$companyDoc", preserveNullAndEmptyArrays: true } },
 
-    Project.countDocuments(filter),
-  ]);
+    // Stage 3: Lookup brand for population AND search
+    {
+      $lookup: {
+        from: "brands",
+        localField: "brand",
+        foreignField: "_id",
+        as: "brandDoc",
+      },
+    },
+    { $unwind: { path: "$brandDoc", preserveNullAndEmptyArrays: true } },
 
-  // Attach PO info
-  const ids = projects.map((p) => p._id);
-  const poList = await PoDetails.find({ project: { $in: ids } }).lean();
+    // Stage 4: Lookup category
+    {
+      $lookup: {
+        from: "categories",
+        localField: "category",
+        foreignField: "_id",
+        as: "categoryDoc",
+      },
+    },
+    { $unwind: { path: "$categoryDoc", preserveNullAndEmptyArrays: true } },
 
-  const poMap = Object.fromEntries(poList.map((p) => [p.project, p]));
+    // Stage 5: Lookup type
+    {
+      $lookup: {
+        from: "types",
+        localField: "type",
+        foreignField: "_id",
+        as: "typeDoc",
+      },
+    },
+    { $unwind: { path: "$typeDoc", preserveNullAndEmptyArrays: true } },
 
-  const final = projects.map((p) => ({
-    ...p,
-    po: poMap[p._id] || null,
-  }));
+    // Stage 6: Lookup country
+    {
+      $lookup: {
+        from: "countries",
+        localField: "country",
+        foreignField: "_id",
+        as: "countryDoc",
+      },
+    },
+    { $unwind: { path: "$countryDoc", preserveNullAndEmptyArrays: true } },
+
+    // Stage 7: Lookup assignPerson
+    {
+      $lookup: {
+        from: "assignpersons",
+        localField: "assignPerson",
+        foreignField: "_id",
+        as: "assignPersonDoc",
+      },
+    },
+    { $unwind: { path: "$assignPersonDoc", preserveNullAndEmptyArrays: true } },
+
+    // Stage 8: Lookup PO details (consolidated from separate query)
+    {
+      $lookup: {
+        from: "podetails",
+        localField: "_id",
+        foreignField: "project",
+        as: "po",
+      },
+    },
+    { $unwind: { path: "$po", preserveNullAndEmptyArrays: true } },
+  ];
+
+  // Stage 9: Add search filter AFTER lookups (so we can search on populated names)
+  if (search) {
+    const regex = new RegExp(search, "i");
+    pipeline.push({
+      $match: {
+        $or: [
+          { autoCode: regex },
+          { artName: regex },
+          { "companyDoc.name": regex },
+          { "brandDoc.name": regex },
+        ],
+      },
+    });
+  }
+
+  // Use $facet to get both data and count in one query
+  pipeline.push({
+    $facet: {
+      // Paginated results
+      data: [
+        { $sort: { [sortBy]: sortOrder === "asc" ? 1 : -1 } },
+        { $skip: skip },
+        { $limit: Number(limit) },
+        // Project final shape
+        {
+          $project: {
+            _id: 1,
+            autoCode: 1,
+            artName: 1,
+            color: 1,
+            size: 1,
+            gender: 1,
+            priority: 1,
+            status: 1,
+            productDesc: 1,
+            redSealTargetDate: 1,
+            coverImage: 1,
+            sampleImages: 1,
+            clientFinalCost: 1,
+            clientApproval: 1,
+            nextUpdate: 1,
+            statusHistory: 1,
+            clientCostHistory: 1,
+            colorVariants: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            // Populated refs with just name
+            company: { _id: "$companyDoc._id", name: "$companyDoc.name" },
+            brand: { _id: "$brandDoc._id", name: "$brandDoc.name" },
+            category: { _id: "$categoryDoc._id", name: "$categoryDoc.name" },
+            type: { _id: "$typeDoc._id", name: "$typeDoc.name" },
+            country: { _id: "$countryDoc._id", name: "$countryDoc.name" },
+            assignPerson: { _id: "$assignPersonDoc._id", name: "$assignPersonDoc.name" },
+            po: 1,
+          },
+        },
+      ],
+      // Total count
+      totalCount: [{ $count: "count" }],
+    },
+  });
+
+  // Execute single aggregation
+  const [result] = await Project.aggregate(pipeline);
+
+  const projects = result.data || [];
+  const total = result.totalCount[0]?.count || 0;
 
   return {
-    data: final,
+    data: projects,
     total,
     page: Number(page),
     pages: Math.ceil(total / Number(limit)),

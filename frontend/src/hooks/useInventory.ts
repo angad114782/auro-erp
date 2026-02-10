@@ -1,5 +1,6 @@
 // src/hooks/useInventory.ts
-import { useCallback, useState } from "react";
+// OPTIMIZED: Now extracts tabCounts from main API response instead of 3 separate calls
+import { useCallback, useState, useRef } from "react";
 import { inventoryService } from "../services/inventoryService";
 
 export const useInventory = () => {
@@ -30,6 +31,9 @@ export const useInventory = () => {
     all: 0,
   });
 
+  // Performance tracking ref
+  const lastLoadTime = useRef<number>(0);
+
   const loadItems = useCallback(
     async (
       params: {
@@ -43,6 +47,8 @@ export const useInventory = () => {
       } = {}
     ) => {
       setLoading(true);
+      const startTime = performance.now();
+
       try {
         // Merge with existing filters
         const loadParams = { ...filters, ...params };
@@ -109,6 +115,22 @@ export const useInventory = () => {
           });
           setCategoryCounts(categoryArray);
         }
+
+        // OPTIMIZED: Extract tabCounts directly from API response
+        // Backend now returns tabCounts in the main response
+        if (response.tabCounts) {
+          setTabCounts({
+            items: response.tabCounts.items || 0,
+            drafts: response.tabCounts.drafts || 0,
+            all: response.tabCounts.all || 0,
+          });
+        }
+
+        // Performance logging
+        lastLoadTime.current = performance.now() - startTime;
+        if (import.meta.env.DEV) {
+          console.log(`[useInventory] loadItems completed in ${lastLoadTime.current.toFixed(2)}ms`);
+        }
       } catch (err) {
         console.error("loadItems failed:", err);
         setItems([]);
@@ -128,42 +150,11 @@ export const useInventory = () => {
     [filters]
   );
 
-  // Load tab counts separately
-  const loadTabCounts = useCallback(async () => {
-    try {
-      // Load items count (non-drafts)
-      const itemsResponse = await inventoryService.getItems({
-        page: 1,
-        limit: 1,
-        isDraft: false,
-      });
-
-      // Load drafts count
-      const draftsResponse = await inventoryService.getItems({
-        page: 1,
-        limit: 1,
-        isDraft: true,
-      });
-
-      setTabCounts({
-        items: itemsResponse.pagination?.totalItems || 0,
-        drafts: draftsResponse.pagination?.totalItems || 0,
-        all:
-          (itemsResponse.pagination?.totalItems || 0) +
-          (draftsResponse.pagination?.totalItems || 0),
-      });
-    } catch (err) {
-      console.error("loadTabCounts failed:", err);
-    }
-  }, []);
-
-  // Initialize both items and tab counts
+  // OPTIMIZED: Simplified initialization - no separate tab count calls needed
   const initializeItems = useCallback(async () => {
-    await Promise.all([
-      loadItems({ page: 1, limit: 10, isDraft: false }),
-      loadTabCounts(),
-    ]);
-  }, [loadItems, loadTabCounts]);
+    // Single API call now returns everything including tabCounts
+    await loadItems({ page: 1, limit: 10, isDraft: false });
+  }, [loadItems]);
 
   // Handle page change
   const handlePageChange = useCallback(
@@ -198,6 +189,7 @@ export const useInventory = () => {
   );
 
   // Handle tab change (items/drafts)
+  // OPTIMIZED: No need for separate loadTabCounts call - main API returns updated counts
   const handleTabChange = useCallback(
     async (tab: string) => {
       if (tab === "items") {
@@ -205,16 +197,16 @@ export const useInventory = () => {
       } else if (tab === "drafts") {
         await loadItems({ page: 1, isDraft: true });
       }
-      // Also refresh tab counts when switching tabs
-      await loadTabCounts();
+      // Tab counts are automatically updated from the API response
     },
-    [loadItems, loadTabCounts]
+    [loadItems]
   );
 
-  // Refresh tab counts (call this after creating/updating items)
+  // OPTIMIZED: Refresh tab counts by simply reloading current view
+  // The API now returns updated tabCounts with every response
   const refreshTabCounts = useCallback(async () => {
-    await loadTabCounts();
-  }, [loadTabCounts]);
+    await loadItems({ page: pagination.currentPage });
+  }, [loadItems, pagination.currentPage]);
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -230,33 +222,30 @@ export const useInventory = () => {
     async (payload: { formData: FormData }) => {
       try {
         const created = await inventoryService.createItem(payload.formData);
-        // Refresh both items list and tab counts
-        await Promise.all([loadItems({ page: 1 }), loadTabCounts()]);
+        // Single refresh - API returns updated tabCounts
+        await loadItems({ page: 1 });
         return created;
       } catch (err) {
         console.error("createItem failed:", err);
         throw err;
       }
     },
-    [loadItems, loadTabCounts]
+    [loadItems]
   );
 
   const updateItem = useCallback(
     async (itemId: string, formData: FormData) => {
       try {
         const updated = await inventoryService.updateItem(itemId, formData);
-        // Refresh both current items and tab counts
-        await Promise.all([
-          loadItems({ page: pagination.currentPage }),
-          loadTabCounts(),
-        ]);
+        // Single refresh - API returns updated tabCounts
+        await loadItems({ page: pagination.currentPage });
         return updated;
       } catch (err) {
         console.error("updateItem failed:", err);
         throw err;
       }
     },
-    [loadItems, pagination.currentPage, loadTabCounts]
+    [loadItems, pagination.currentPage]
   );
 
   const updateStock = useCallback(
@@ -264,7 +253,6 @@ export const useInventory = () => {
       try {
         const updated = await inventoryService.updateStock(itemId, payload);
         await loadItems({ page: pagination.currentPage });
-        await refreshTabCounts();
         return updated;
       } catch (err) {
         console.error("updateStock failed:", err);
@@ -300,7 +288,6 @@ export const useInventory = () => {
     categoryCounts,
     tabCounts,
     loadItems: initializeItems,
-    loadTabCounts,
     refreshTabCounts,
     handlePageChange,
     handlePageSizeChange,

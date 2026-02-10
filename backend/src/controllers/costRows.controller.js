@@ -34,6 +34,46 @@ export async function listRows(req, res) {
   }
 }
 
+// OPTIMIZED: Consolidated endpoint to fetch ALL cost data in one request
+// Replaces 7 parallel API calls with a single call
+export async function getAllCostData(req, res) {
+  try {
+    const { projectId } = req.params;
+
+    // Parallel fetch all cost sections
+    const [upper, component, material, packaging, misc, labour, summary] =
+      await Promise.all([
+        UpperCostRow.find({ projectId }).sort({ createdAt: 1 }).lean(),
+        ComponentCostRow.find({ projectId }).sort({ createdAt: 1 }).lean(),
+        MaterialCostRow.find({ projectId }).sort({ createdAt: 1 }).lean(),
+        PackagingCostRow.find({ projectId }).sort({ createdAt: 1 }).lean(),
+        MiscCostRow.find({ projectId }).sort({ createdAt: 1 }).lean(),
+        // Labour - need to import Labour model
+        import("../models/labourCost.model.js").then((m) =>
+          m.Labour.findOne({ projectId }).lean()
+        ),
+        // Summary - need to import Summary model
+        import("../models/costSummary.model.js").then((m) =>
+          m.CostSummary.findOne({ projectId }).lean()
+        ),
+      ]);
+
+    return ok(res, {
+      upper: upper || [],
+      component: component || [],
+      material: material || [],
+      packaging: packaging || [],
+      miscellaneous: misc || [],
+      labour: labour || { items: [], directTotal: 0 },
+      summary: summary || null,
+      hasCostData: summary !== null,
+    });
+  } catch (e) {
+    console.error("Error fetching all cost data:", e);
+    return fail(res, e.message, 400);
+  }
+}
+
 export async function createRow(req, res) {
   try {
     const { projectId, section } = req.params;

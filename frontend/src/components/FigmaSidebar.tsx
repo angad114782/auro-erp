@@ -371,6 +371,137 @@ export function FigmaSidebar({
     );
   }
 
+  // Store role sidebar - access to inventory module only
+  if (user?.role === "Store") {
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isInventoryExpanded, setIsInventoryExpanded] = useState(true);
+
+    const handleCollapse = (collapsed: boolean) => {
+      setIsCollapsed(collapsed);
+      onCollapseChange?.(collapsed);
+    };
+
+    const inventorySubModules = [
+      { id: "inventory", name: "Inventory", icon: <Layers className="w-4 h-4" /> },
+      { id: "material-requisition", name: "Issue Material", icon: <ShoppingCart className="w-4 h-4" /> },
+      { id: "vendor-management", name: "Vendor Management", icon: <Users className="w-4 h-4" /> },
+      { id: "reports-analysis", name: "Reports & Analysis", icon: <BarChart4 className="w-4 h-4" /> },
+    ];
+
+    return (
+      <>
+        {/* Sidebar */}
+        <div
+          className={`fixed top-0 left-0 h-full bg-white border-r z-50 transition-all duration-300
+          ${isCollapsed ? "w-16" : "w-72 md:w-80"}
+          ${
+            isMobileOpen
+              ? "translate-x-0"
+              : "-translate-x-full md:translate-x-0"
+          }
+        `}
+        >
+          {/* Header */}
+          <div className="p-4 border-b flex items-center justify-between">
+            {!isCollapsed && (
+              <div>
+                <h2 className="font-bold text-base">ERP System</h2>
+                <p className="text-xs text-gray-500">Store</p>
+              </div>
+            )}
+
+            {/* Desktop collapse button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleCollapse(!isCollapsed)}
+              className="hidden md:flex"
+            >
+              <Minimize2 className="w-4 h-4" />
+            </Button>
+
+            {/* Mobile close */}
+            {isMobileOpen && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onMobileToggle}
+                className="md:hidden"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+
+          {/* Navigation */}
+          <nav className="p-3">
+            {/* Inventory & Storage main module */}
+            <button
+              onClick={() => setIsInventoryExpanded(!isInventoryExpanded)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1
+                ${currentModule === "inventory" ? "bg-[#0c9dcb] text-white" : "text-gray-700 hover:bg-gray-100"}
+                ${isCollapsed ? "justify-center" : ""}
+              `}
+            >
+              <Package className="w-5 h-5" />
+              {!isCollapsed && (
+                <>
+                  <span className="font-medium flex-1 text-left">Inventory & Storage</span>
+                  {isInventoryExpanded ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                </>
+              )}
+            </button>
+
+            {/* Sub-modules */}
+            {!isCollapsed && isInventoryExpanded && (
+              <div className="ml-4 mt-1 space-y-1 border-l border-gray-200 pl-4">
+                {inventorySubModules.map((subModule) => (
+                  <button
+                    key={subModule.id}
+                    onClick={() => {
+                      onModuleChange("inventory", subModule.id);
+                      onMobileToggle?.();
+                    }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-left text-sm transition-colors
+                      ${
+                        currentSubModule === subModule.id && currentModule === "inventory"
+                          ? "bg-[#0c9dcb]/10 text-[#0c9dcb] font-medium"
+                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      }
+                    `}
+                  >
+                    <div
+                      className={`shrink-0 ${
+                        currentSubModule === subModule.id && currentModule === "inventory"
+                          ? "text-[#0c9dcb]"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      {subModule.icon}
+                    </div>
+                    <span className="truncate">{subModule.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </nav>
+        </div>
+
+        {/* Mobile overlay */}
+        {isMobileOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={onMobileToggle}
+          />
+        )}
+      </>
+    );
+  }
+
   // Filter modules based on user permissions
   const filteredModules = modules.filter((module) => hasPermission(module.id));
 

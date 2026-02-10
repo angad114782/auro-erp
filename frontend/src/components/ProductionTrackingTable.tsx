@@ -530,22 +530,11 @@ export function ProductionTrackingTable() {
     fetchTrackingData();
   }, [fetchTrackingData]);
 
-  // Map API data to ProductionRecord format
-  const transformAPIDataToProductionRecords = (
-    apiData: APITrackingData[]
-  ): any[] => {
-    return apiData.map((item, index) => {
+  // OPTIMIZED: Memoized data transformation to prevent re-calculation on every render
+  const baseProductionData = React.useMemo(() => {
+    return trackingData.map((item, index) => {
       // Get department-specific data from summary
       const departmentTotal = item.summary.monthTotal || 0;
-      const dailyData = item.summary.daily || {};
-      const weeklyData = item.summary.weekly || {
-        W1: 0,
-        W2: 0,
-        W3: 0,
-        W4: 0,
-        W5: 0,
-      };
-
       // Calculate current production quantity based on selected department
       const currentQuantity = departmentTotal;
       const plannedQuantity = item.poDetails?.orderQuantity || 0;
@@ -666,11 +655,7 @@ export function ProductionTrackingTable() {
             : { status: "Pending", quantity: 0, planned: plannedQuantity },
       };
     });
-  };
-
-  // Get base production data from API
-  const baseProductionData: ProductionRecord[] =
-    transformAPIDataToProductionRecords(trackingData);
+  }, [trackingData, selectedDepartment]);
 
   // Define stages with proper department mapping
   const stages = [

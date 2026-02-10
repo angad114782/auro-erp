@@ -66,10 +66,12 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   Manager: ["rd-management", "production", "inventory", "delivery", "reports"],
   Supervisor: ["production-tracking"],
+  Store: ["inventory"],
 };
 
 const defaultModuleByRole = (role: string): string => {
   if (role === "Supervisor") return "production-tracking";
+  if (role === "Store") return "inventory";
   return ROLE_PERMISSIONS[role]?.[0] || "all-projects";
 };
 

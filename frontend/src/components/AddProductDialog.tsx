@@ -168,11 +168,17 @@ export function AddItemDialog({
   useEffect(() => {
     if (open) {
       if (isEditMode && editingItem) {
+        // Extract vendor ID from populated object or use string directly
+        const vendorIdValue =
+          typeof editingItem.vendorId === "object" && editingItem.vendorId?._id
+            ? editingItem.vendorId._id
+            : editingItem.vendorId || "";
+
         setNewItem({
           itemName: editingItem.itemName || "",
           category: editingItem.category || "",
           color: editingItem.color || "",
-          vendorId: editingItem.vendorId || "",
+          vendorId: vendorIdValue,
           expiryDate: editingItem.expiryDate || "",
           quantity: (editingItem.quantity || 0).toString(),
           quantityUnit: editingItem.quantityUnit || "piece",
@@ -274,7 +280,7 @@ export function AddItemDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(isOpen) => {
+      onOpenChange={(isOpen: boolean) => {
         if (!isOpen) {
           // Reset reserved code when closing without creating
           if (!isEditMode) {
@@ -286,8 +292,8 @@ export function AddItemDialog({
     >
       <DialogContent
         className="
-          !w-[98vw] md:!w-[90vw] xl:!w-[96vw]
-          !max-w-[98vw] md:!max-w-[90vw] xl:!max-w-[96vw]
+          w-[98vw]! md:w-[90vw]! xl:w-[96vw]!
+          max-w-[98vw]! md:max-w-[90vw]! xl:max-w-[96vw]!
           max-h-[95vh]
           overflow-hidden p-0 m-0
           top-[2.5vh] translate-y-0
@@ -408,7 +414,7 @@ export function AddItemDialog({
                   <FieldWrapper label="Vendor / Supplier" id="vendor">
                     <Select
                       value={newItem.vendorId}
-                      onValueChange={(value) => updateField("vendorId", value)}
+                      onValueChange={(value: string) => updateField("vendorId", value)}
                     >
                       <SelectTrigger className="h-12 text-base">
                         <SelectValue placeholder="Select a vendor..." />
@@ -441,8 +447,12 @@ export function AddItemDialog({
 
                 <div className="xl:col-span-2">
                   <FieldWrapper
-                    label="Initial Stock Quantity"
-                    required
+                    label={
+                      isEditMode && editingItem && !editingItem.isDraft
+                        ? "Stock Quantity (managed via Stock Updates)"
+                        : "Initial Stock Quantity"
+                    }
+                    required={!isEditMode || editingItem?.isDraft}
                     id="quantity"
                   >
                     <div className="relative">
@@ -456,9 +466,21 @@ export function AddItemDialog({
                           updateField("quantity", e.target.value)
                         }
                         placeholder="0"
-                        className="pl-10 h-12 text-base border-2 focus:border-[#0c9dcb]"
+                        className={`pl-10 h-12 text-base border-2 focus:border-[#0c9dcb] ${
+                          isEditMode && editingItem && !editingItem.isDraft
+                            ? "bg-gray-100 cursor-not-allowed"
+                            : ""
+                        }`}
+                        disabled={
+                          isEditMode && editingItem && !editingItem.isDraft
+                        }
                       />
                     </div>
+                    {isEditMode && editingItem && !editingItem.isDraft && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Stock quantity is managed through Stock In/Out. Use "Update Stock" to adjust.
+                      </p>
+                    )}
                   </FieldWrapper>
                 </div>
 
@@ -595,17 +617,20 @@ export function AddItemDialog({
           </div>
 
           <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full md:w-auto px-6 py-3 text-base border-gray-300 text-gray-700 hover:bg-gray-50"
-              onClick={() => handleSubmit(true)}
-              type="button"
-              disabled={isSubmitting}
-            >
-              <Package className="w-4 h-4 md:w-5 md:h-5 mr-2" />
-              {isEditMode ? "Save Changes" : "Save as Draft"}
-            </Button>
+            {/* Only show "Save as Draft" for new items or editing drafts */}
+            {(!isEditMode || editingItem?.isDraft) && (
+              <Button
+                variant="outline"
+                size="lg"
+                className="w-full md:w-auto px-6 py-3 text-base border-gray-300 text-gray-700 hover:bg-gray-50"
+                onClick={() => handleSubmit(true)}
+                type="button"
+                disabled={isSubmitting}
+              >
+                <Package className="w-4 h-4 md:w-5 md:h-5 mr-2" />
+                {isEditMode ? "Save as Draft" : "Save as Draft"}
+              </Button>
+            )}
 
             <Button
               onClick={() => handleSubmit(false)}
