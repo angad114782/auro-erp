@@ -149,6 +149,32 @@ export async function addWorkAndTransferController(req, res) {
 }
 
 
+// controller.js (or microTracking.controller.js)
+
+export async function addWorkOnlyRFDController(req, res) {
+  try {
+    const { cardId } = req.params;
+    const qtyWork = req.body?.qtyWork;
+
+    if (!cardId)
+      return res.status(400).json({ success: false, error: "cardId required" });
+
+    const updatedBy = req.user?.name || "system";
+
+    const item = await service.addWorkOnlyRFD({
+      cardId,
+      qtyWork,
+      updatedBy,
+    });
+
+    return res.json({ success: true, item });
+  } catch (err) {
+    console.error("addWorkOnlyRFDController error:", err);
+    return res.status(400).json({ success: false, error: err.message });
+  }
+}
+
+
 export async function getTrackingHistory(req, res) {
   try {
     const { projectId } = req.params;

@@ -899,6 +899,69 @@ export async function addWorkAndTransfer({
   return doc.toObject();
 }
 
+
+
+// service.js (or microTracking.service.js)
+
+export async function addWorkOnlyRFD({
+  cardId,
+  qtyWork = 0,
+  updatedBy = "system",
+}) {
+  if (!cardId) throw new Error("cardId required");
+
+  const workPairs = toNum(qtyWork);
+  if (workPairs <= 0) throw new Error("qtyWork must be > 0");
+
+  const d = "rfd"; // ✅ hard-fixed
+
+  const doc = await MicroTrackingCard.findOne({ cardId, isActive: true });
+  if (!doc) throw new Error("MicroTracking doc not found");
+
+  // ✅ remove ghost rows
+  sanitizeDocRows(doc);
+
+  const rowsTracked = (doc.rows || []).filter((r) => {
+    if (r.isActive === false) return false;
+    const cat = String(r.category || "").trim().toLowerCase();
+    return TRACK_CATEGORIES.has(cat) || !cat;
+  });
+
+  // ✅ RFD is AGG dept: update ALL rows in RFD
+  const rowsInDept = rowsTracked.filter((r) => String(r.department) === d);
+  if (!rowsInDept.length) throw new Error("No rows found in RFD");
+
+  // available = received - completed  (same as your AGG logic)
+  const availableToWork = Math.min(
+    ...rowsInDept.map((r) => toNum(r.receivedQty) - toNum(r.completedQty))
+  );
+
+  if (workPairs > availableToWork)
+    throw new Error(`Work qty exceeds limit in RFD. Allowed=${availableToWork}`);
+
+  for (const r of rowsInDept) {
+    r.completedQty = toNum(r.completedQty) + workPairs;
+
+    r.history = r.history || [];
+    r.history.push({
+      ts: new Date(),
+      type: "WORK_ADDED",
+      qty: workPairs,
+      fromDept: d,
+      toDept: d,
+      meta: { reason: "RFD_WORK_ONLY" },
+      updatedBy,
+    });
+  }
+
+  // ✅ final hard clean
+  doc.rows = (doc.rows || []).filter(isValidRow);
+  doc.markModified("rows");
+  await doc.save();
+
+  return doc.toObject();
+}
+
 /* ----------------------------------------------------
   HISTORY SERVICE (fixed to read from doc.rows properly)
 ---------------------------------------------------- */

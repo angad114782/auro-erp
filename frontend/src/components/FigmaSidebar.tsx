@@ -197,11 +197,11 @@ export function FigmaSidebar({
       icon: <Truck className="w-5 h-5" />,
       description: "Track deliveries and shipments",
       subModules: [
-        {
-          id: "delivery-pending",
-          name: "Delivery Pending",
-          icon: <Clock className="w-4 h-4" />,
-        },
+        // {
+        //   id: "delivery-pending",
+        //   name: "Delivery Pending",
+        //   icon: <Clock className="w-4 h-4" />,
+        // },
         {
           id: "parcel-delivered",
           name: "Parcel Delivered",

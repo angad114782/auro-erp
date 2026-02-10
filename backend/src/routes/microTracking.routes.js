@@ -40,7 +40,8 @@ router.get("/projects/:projectId/cards", ctrl.getProjectTrackingCards);
 
 
 
-
+router.patch(
+  "/tracking/:cardId/rfd",ctrl.addWorkOnlyRFDController);
 router.get("/card/:cardId", ctrl.getMicroTrackingCard);
 router.post("/tracking/:cardId/work-transfer", ctrl.addWorkAndTransferController);
 
