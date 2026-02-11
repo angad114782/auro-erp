@@ -169,7 +169,7 @@ function AppContent(): React.JSX.Element {
           <div className="max-w-full mx-auto">{renderContent()}</div>
         </div>
       </main>
-      <Toaster />
+      <Toaster position="bottom-left" closeButton />
     </div>
   );
 }

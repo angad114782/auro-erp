@@ -298,10 +298,18 @@ export function AddProductionCardDialog({
   const handleSubmit = async () => {
     if (
       !formData.productName ||
-      !formData.productionQuantity ||
-      !formData.productionDate
+      !formData.productCode ||
+      !formData.artColour ||
+      !formData.company ||
+      !formData.brand ||
+      !formData.category ||
+      !formData.type ||
+      !formData.country ||
+      !formData.assignedPlant ||
+      !formData.productionDate ||
+      !formData.productionQuantity
     ) {
-      toast.error("Please fill required fields: product, date and quantity");
+      toast.error("Please enter all required fields");
       return;
     }
 

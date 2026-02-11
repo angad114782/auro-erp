@@ -3,6 +3,10 @@ import BrandModel from "../models/Brand.model.js";
 import CompanyModel from "../models/Company.model.js";
 import { PoDetails } from "../models/PoDetails.model.js";
 import { Project } from "../models/Project.model.js";
+import CategoryModel from "../models/Category.model.js";
+import TypeModel from "../models/Type.model.js";
+import CountryModel from "../models/Country.model.js";
+import AssignPersonModel from "../models/AssignPerson.model.js";
 import {
   normalizeProjectStatus,
   requireValidProjectStatus,
@@ -61,7 +65,18 @@ export const createProject = async (payload, { session } = {}) => {
   }
 
   const [project] = await Project.create([doc], { session });
-  return project;
+  
+  // Populate reference fields before returning
+  const populatedProject = await Project.findById(project._id)
+    .populate("company", "name")
+    .populate("brand", "name")
+    .populate("category", "name")
+    .populate("type", "name")
+    .populate("country", "name")
+    .populate("assignPerson", "name")
+    .session(session);
+
+  return populatedProject;
 };
 
 /** ---------- LIST WITH PO INCLUDED ---------- **/
@@ -212,7 +227,7 @@ export const getProjects = async (query = {}) => {
     // Stage 7: Lookup assignPerson
     {
       $lookup: {
-        from: "assignpersons",
+        from: "assignpeople",
         localField: "assignPerson",
         foreignField: "_id",
         as: "assignPersonDoc",
@@ -394,7 +409,13 @@ export const updateProjectById = async (id, payload) => {
     };
   }
 
-  return Project.findByIdAndUpdate(id, { $set: set }, { new: true });
+  return Project.findByIdAndUpdate(id, { $set: set }, { new: true })
+    .populate("company", "name")
+    .populate("brand", "name")
+    .populate("category", "name")
+    .populate("type", "name")
+    .populate("country", "name")
+    .populate("assignPerson", "name");
 };
 
 /** ---------- SOFT DELETE ---------- **/
