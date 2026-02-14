@@ -8,6 +8,8 @@ import mongoose from "mongoose";
 
 /* ----------------------------------------------------
    RFD READY QTY (MIN SYSTEM)
+   - Per card: min(completedQty) in RFD rows
+   - Total: sum of per card ready
 ---------------------------------------------------- */
 async function getProjectRfdReadyQty(projectId) {
   const pid = new mongoose.Types.ObjectId(projectId);
@@ -30,11 +32,7 @@ async function getProjectRfdReadyQty(projectId) {
     },
   ]);
 
-  const totalReady = perCard.reduce(
-    (sum, c) => sum + Number(c.ready || 0),
-    0
-  );
-
+  const totalReady = perCard.reduce((sum, c) => sum + Number(c.ready || 0), 0);
   return { totalReady, perCard };
 }
 
@@ -54,9 +52,14 @@ async function addDeliveryHistory(deliveryId, changes, updatedBy = "system") {
 }
 
 /* ----------------------------------------------------
-   AUTO STATUS CALC (NO MANUAL STATUS) ✅ FIXED
+   AUTO STATUS CALC (ONLY 2 STATUS)
+   - parcel_delivered (partial)
+   - delivered (full)
 ---------------------------------------------------- */
-export async function recalcDeliveryStatusAndSyncProject(deliveryId, user = "system") {
+export async function recalcDeliveryStatusAndSyncProject(
+  deliveryId,
+  user = "system"
+) {
   const delivery = await Delivery.findById(deliveryId).lean();
   if (!delivery) return null;
 
@@ -70,16 +73,9 @@ export async function recalcDeliveryStatusAndSyncProject(deliveryId, user = "sys
 
   const sent = Number(delivery.sendQuantity || 0);
 
-  // ✅ Correct status logic
-  let newStatus = "delivery_pending";
-
-  if (sent > 0 && (targetQty <= 0 || sent < targetQty)) {
-    newStatus = "parcel_delivered"; // or "in_transit" if you prefer
-  }
-
-  if (targetQty > 0 && sent >= targetQty) {
-    newStatus = "delivered";
-  }
+  // ✅ Only 2 statuses
+  let newStatus = "parcel_delivered";
+  if (targetQty > 0 && sent >= targetQty) newStatus = "delivered";
 
   if (newStatus !== delivery.status) {
     await Delivery.findByIdAndUpdate(deliveryId, {
@@ -95,17 +91,17 @@ export async function recalcDeliveryStatusAndSyncProject(deliveryId, user = "sys
     });
   }
 
-  // ✅ Sync project status
+  // ✅ Sync project status (only these 2)
   await Project.findByIdAndUpdate(delivery.project, { status: newStatus });
 
   return newStatus;
 }
 
 /* ----------------------------------------------------
-   SEND PROJECT TO DELIVERY (AUTO)  ✅ FIXED:
+   SEND PROJECT TO DELIVERY (AUTO)
    - orderQuantity = PO order qty (fixed)
    - sendQuantity  = sent qty (accumulates)
-   - status on create = delivery_pending (not parcel_delivered)
+   - status on create/update = parcel_delivered
    - PO cap guard (never negative)
 ---------------------------------------------------- */
 export async function sendToDeliveryService(projectId, user = "system") {
@@ -132,7 +128,6 @@ export async function sendToDeliveryService(projectId, user = "system") {
   });
 
   if (existing) {
-    // keep status in sync (optional)
     await recalcDeliveryStatusAndSyncProject(existing._id, user);
     const fresh = await Delivery.findById(existing._id).lean();
 
@@ -141,8 +136,8 @@ export async function sendToDeliveryService(projectId, user = "system") {
     }
   }
 
-  // ✅ Correct fields
-  const alreadySent = Number(existing?.sendQuantity || 0); // ✅ FIX (was orderQuantity)
+  // Already sent qty
+  const alreadySent = Number(existing?.sendQuantity || 0);
 
   // PO order qty (fixed)
   const poQty = Number(po?.orderQuantity || 0);
@@ -150,7 +145,7 @@ export async function sendToDeliveryService(projectId, user = "system") {
   // delta = newly ready since last send
   let delta = totalReady - alreadySent;
 
-  // ✅ cap by remaining PO qty (and guard negative)
+  // cap by remaining PO qty
   if (poQty > 0) {
     const remainingPo = Math.max(poQty - alreadySent, 0);
     delta = Math.min(delta, remainingPo);
@@ -160,7 +155,8 @@ export async function sendToDeliveryService(projectId, user = "system") {
     throw new Error("No new finished quantity since last send.");
   }
 
-  await Project.findByIdAndUpdate(projectId, { status: "delivery_pending" });
+  // Since we're sending now => at least partial delivery
+  await Project.findByIdAndUpdate(projectId, { status: "parcel_delivered" });
 
   const today = new Date();
   const poReceived = po?.issuedAt || today;
@@ -173,22 +169,19 @@ export async function sendToDeliveryService(projectId, user = "system") {
     const newSentQty = alreadySent + delta;
 
     const updatePayload = {
-      // ✅ keep orderQuantity fixed (prefer PO qty if available)
       ...(poQty > 0 ? { orderQuantity: poQty } : {}),
-
-      // ✅ sent qty updates here
       sendQuantity: newSentQty,
-
       agingDays,
-      status: "delivery_pending", // ✅ keep consistent while sending
+
+      // ✅ only 2 statuses allowed
+      status: "parcel_delivered",
+
       $push: {
         history: {
           date: new Date(),
           updatedBy: user,
           changes: [
             { field: "sendQuantity", from: alreadySent, to: newSentQty },
-            // Note: if you don't have rfdReadyQuantity field in schema,
-            // keep it only in history as a snapshot.
             { field: "rfdReadyQuantity", from: Number(existing?.rfdReadyQuantity || 0), to: totalReady },
           ],
         },
@@ -203,7 +196,7 @@ export async function sendToDeliveryService(projectId, user = "system") {
 
     return await Delivery.findById(updated._id)
       .populate("project", "autoCode artName brand category country gender")
-      .populate("poDetails", "poNumber deliveryDate")
+      .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
       .lean();
   }
 
@@ -225,13 +218,15 @@ export async function sendToDeliveryService(projectId, user = "system") {
     poReceivedDate: po?.issuedAt || null,
     deliveryDateExpected: po?.deliveryDate || null,
 
-    // ✅ PO qty fixed; if PO missing, fall back to totalReady/delta
+    // PO qty fixed; if PO missing, fall back to totalReady
     orderQuantity: poQty > 0 ? poQty : totalReady,
 
-    // ✅ sent qty starts with delta
+    // sent qty starts with delta
     sendQuantity: delta,
 
-    status: "delivery_pending", // ✅ FIX (was parcel_delivered)
+    // ✅ only 2 statuses allowed
+    status: "parcel_delivered",
+
     agingDays,
 
     history: [
@@ -241,6 +236,7 @@ export async function sendToDeliveryService(projectId, user = "system") {
         changes: [
           { field: "sendQuantity", from: 0, to: delta },
           { field: "rfdReadyQuantity", from: 0, to: totalReady },
+          { field: "status", from: "parcel_delivered", to: "parcel_delivered" },
         ],
       },
     ],
@@ -250,10 +246,9 @@ export async function sendToDeliveryService(projectId, user = "system") {
 
   return await Delivery.findById(created._id)
     .populate("project", "autoCode artName brand category country gender")
-    .populate("poDetails", "poNumber deliveryDate")
+    .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
     .lean();
 }
-
 
 /* ----------------------------------------------------
    ❌ MANUAL STATUS DISABLED
@@ -268,6 +263,8 @@ export async function markDelivered() {
 
 /* ----------------------------------------------------
    LIST APIs
+   - parcel_delivered: partial/in-progress deliveries
+   - delivered: completed deliveries
 ---------------------------------------------------- */
 export async function getParcelDelivered() {
   const items = await Delivery.find({ status: "parcel_delivered" })
@@ -275,30 +272,23 @@ export async function getParcelDelivered() {
     .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
     .lean();
 
-  return items.map((d) => {
+  // attach current ready qty for UI convenience
+  const mapped = [];
+  for (const d of items) {
     const poQty = Number(d?.poDetails?.orderQuantity || 0);
-    return {
+    const { totalReady } = await getProjectRfdReadyQty(d.project?._id || d.project);
+    mapped.push({
       ...d,
       orderQuantity: poQty > 0 ? poQty : Number(d.orderQuantity || 0),
-      rfdReadyQuantity: Number(d.orderQuantity || 0),
-    };
-  });
+      rfdReadyQuantity: Number(totalReady || 0),
+    });
+  }
+  return mapped;
 }
 
+// ✅ If UI still calls "pending", return parcel_delivered list
 export async function getPendingDeliveries() {
-  const items = await Delivery.find({ status: "pending" })
-    .populate("project", "autoCode artName brand category country gender")
-    .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
-    .lean();
-
-  return items.map((d) => {
-    const poQty = Number(d?.poDetails?.orderQuantity || 0);
-    return {
-      ...d,
-      orderQuantity: poQty > 0 ? poQty : Number(d.orderQuantity || 0),
-      rfdReadyQuantity: Number(d.orderQuantity || 0),
-    };
-  });
+  return await getParcelDelivered();
 }
 
 export async function getDelivered() {
@@ -307,12 +297,15 @@ export async function getDelivered() {
     .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
     .lean();
 
-  return items.map((d) => {
+  const mapped = [];
+  for (const d of items) {
     const poQty = Number(d?.poDetails?.orderQuantity || 0);
-    return {
+    const { totalReady } = await getProjectRfdReadyQty(d.project?._id || d.project);
+    mapped.push({
       ...d,
       orderQuantity: poQty > 0 ? poQty : Number(d.orderQuantity || 0),
-      rfdReadyQuantity: Number(d.orderQuantity || 0),
-    };
-  });
+      rfdReadyQuantity: Number(totalReady || 0),
+    });
+  }
+  return mapped;
 }
