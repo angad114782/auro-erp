@@ -209,6 +209,7 @@ interface ProductionPlan {
     autoCode?: string;
     gender?: string;
     quantity?: number;
+    assignPerson?: string;
 
     po?: {
       quantity?: number;

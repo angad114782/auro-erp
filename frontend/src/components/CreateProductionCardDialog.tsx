@@ -129,14 +129,36 @@ export function CreateProductionCardDialog({
 
   const extractOrderQuantity = (src: any): number | null => {
     if (!src) return null;
-    if (src.po && src.po.orderQuantity != null)
-      return Number(src.po.orderQuantity);
-    if (src.project && src.project.po && src.project.po.orderQuantity != null)
-      return Number(src.project.po.orderQuantity);
-    if (src.orderQuantity != null) return Number(src.orderQuantity);
-    if (src.quantity != null) return Number(src.quantity);
-    if (src.targetQuantity != null) return Number(src.targetQuantity);
-    return null;
+
+    // 1. Try most direct quantity fields first (often most accurate in production plans)
+    const directQty =
+      src.quantity ??
+      src.qty ??
+      src.quantitySnapshot ??
+      src.orderQuantity ??
+      src.targetQuantity;
+    if (directQty != null && Number(directQty) > 0) return Number(directQty);
+
+    // 2. Try nested PO fields
+    if (src.po) {
+      const poQty = src.po.orderQuantity ?? src.po.quantity ?? src.po.qty;
+      if (poQty != null && Number(poQty) > 0) return Number(poQty);
+    }
+
+    // 3. Try project-nested PO fields
+    if (src.project) {
+      const projPoQty =
+        src.project.po?.orderQuantity ??
+        src.project.po?.quantity ??
+        src.project.po?.qty;
+      if (projPoQty != null && Number(projPoQty) > 0) return Number(projPoQty);
+
+      const projQty = src.project.orderQuantity ?? src.project.quantity;
+      if (projQty != null && Number(projQty) > 0) return Number(projQty);
+    }
+
+    // Fallback: Return whatever we found first even if it's 0 (matching original behavior but as a last resort)
+    return Number(directQty ?? (src.po?.orderQuantity || 0));
   };
 
   const fetchProductionCardsForProject = async (projectId: string) => {
