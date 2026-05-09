@@ -48,5 +48,6 @@ const PCMaterialRequestSchema = new mongoose.Schema(
 );
 
 PCMaterialRequestSchema.index({ projectId: 1, status: 1, isDeleted: 1 });
+PCMaterialRequestSchema.index({ productionCardId: 1, isDeleted: 1, createdAt: -1 });
 
 export const PCMaterialRequest = mongoose.model("PCMaterialRequest", PCMaterialRequestSchema);

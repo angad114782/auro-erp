@@ -1,25 +1,37 @@
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import { FigmaSidebar } from "./components/FigmaSidebar";
 import { HeaderBar } from "./components/HeaderBar";
 import { Dashboard } from "./components/Dashboard";
-import { MasterDataManagement } from "./components/MasterDataManagement";
-import { InventoryManagement } from "./components/InventoryManagement";
-import { RDManagement } from "./components/RDManagement";
-import { ProductionManagement } from "./components/ProductionManagement";
-import { UserManagement } from "./components/UserManagement";
-import { NotificationsAlerts } from "./components/NotificationsAlerts";
-import { ReportsAnalytics } from "./components/ReportsAnalytics";
-import { SystemWireframe } from "./components/SystemWireframe";
-import { DeliveryManagement } from "./components/DeliveryManagement";
 import { LoginPage } from "./components/LoginPage";
 import { Toaster } from "./components/ui/sonner";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 import { ERPProvider, useERP } from "./lib/stores/erpContext";
 import { Menu } from "lucide-react";
 import { Button } from "./components/ui/button";
-import ProjectListCard from "./components/AllProjects";
-import { ProductionTrackingTable } from "./components/ProductionTrackingTable";
 import { ImagePreviewDialog } from "./components/ImagePreviewDialog";
+
+// ── Lazy-loaded modules (only downloaded when user navigates to them) ──
+const MasterDataManagement = React.lazy(() => import("./components/MasterDataManagement").then(m => ({ default: m.MasterDataManagement })));
+const InventoryManagement = React.lazy(() => import("./components/InventoryManagement").then(m => ({ default: m.InventoryManagement })));
+const RDManagement = React.lazy(() => import("./components/RDManagement").then(m => ({ default: m.RDManagement })));
+const ProductionManagement = React.lazy(() => import("./components/ProductionManagement").then(m => ({ default: m.ProductionManagement })));
+const UserManagement = React.lazy(() => import("./components/UserManagement").then(m => ({ default: m.UserManagement })));
+const NotificationsAlerts = React.lazy(() => import("./components/NotificationsAlerts").then(m => ({ default: m.NotificationsAlerts })));
+const ReportsAnalytics = React.lazy(() => import("./components/ReportsAnalytics").then(m => ({ default: m.ReportsAnalytics })));
+const SystemWireframe = React.lazy(() => import("./components/SystemWireframe").then(m => ({ default: m.SystemWireframe })));
+const DeliveryManagement = React.lazy(() => import("./components/DeliveryManagement").then(m => ({ default: m.DeliveryManagement })));
+const ProjectListCard = React.lazy(() => import("./components/AllProjects"));
+const ProductionTrackingTable = React.lazy(() => import("./components/ProductionTrackingTable").then(m => ({ default: m.ProductionTrackingTable })));
+
+// ── Loading fallback ──
+const ModuleLoader = () => (
+  <div className="flex items-center justify-center h-64">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      <p className="text-sm text-gray-500">Loading module...</p>
+    </div>
+  </div>
+);
 
 // Main App Content (protected routes)
 function AppContent(): React.JSX.Element {
@@ -166,7 +178,11 @@ function AppContent(): React.JSX.Element {
 
         {/* Main Content - Adjusted height for compact header */}
         <div className="h-[calc(100vh-64px)] p-3 md:p-6 scrollbar-hide overflow-y-auto overflow-x-hidden relative z-10">
-          <div className="max-w-full mx-auto">{renderContent()}</div>
+          <div className="max-w-full mx-auto">
+            <Suspense fallback={<ModuleLoader />}>
+              {renderContent()}
+            </Suspense>
+          </div>
         </div>
       </main>
       <Toaster position="bottom-left" closeButton />

@@ -34,6 +34,12 @@ const inventoryTransactionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// ── Performance indexes ──
+inventoryTransactionSchema.index({ itemId: 1, createdAt: -1 });
+inventoryTransactionSchema.index({ vendorId: 1, createdAt: -1 });
+inventoryTransactionSchema.index({ createdAt: -1 });
+inventoryTransactionSchema.index({ transactionType: 1, createdAt: -1 });
+
 export const InventoryTransaction = mongoose.model(
   "InventoryTransaction",
   inventoryTransactionSchema

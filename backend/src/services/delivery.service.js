@@ -262,28 +262,55 @@ export async function markDelivered() {
 }
 
 /* ----------------------------------------------------
-   LIST APIs
-   - parcel_delivered: partial/in-progress deliveries
-   - delivered: completed deliveries
+   LIST APIs — OPTIMIZED (batch RFD aggregation)
+   Previously ran N separate aggregations (one per delivery).
+   Now batches ALL projectIds into a single aggregation.
 ---------------------------------------------------- */
+
+// Batch helper: get RFD ready qty for multiple projects in ONE aggregation
+async function batchGetProjectRfdReadyQty(projectIds) {
+  if (!projectIds.length) return new Map();
+
+  const results = await MicroTracking.aggregate([
+    { $match: { projectId: { $in: projectIds.map(id => new mongoose.Types.ObjectId(id)) }, isActive: true } },
+    { $unwind: "$rows" },
+    { $match: { "rows.isActive": true, "rows.department": "rfd" } },
+    {
+      $group: {
+        _id: { projectId: "$projectId", cardId: "$cardId" },
+        ready: { $min: { $ifNull: ["$rows.completedQty", 0] } },
+      },
+    },
+    {
+      $group: {
+        _id: "$_id.projectId",
+        totalReady: { $sum: "$ready" },
+      },
+    },
+  ]);
+
+  return new Map(results.map((r) => [String(r._id), r.totalReady]));
+}
+
 export async function getParcelDelivered() {
   const items = await Delivery.find({ status: "parcel_delivered" })
     .populate("project", "autoCode artName brand category country gender")
     .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
     .lean();
 
-  // attach current ready qty for UI convenience
-  const mapped = [];
-  for (const d of items) {
+  // BATCH: one aggregation for ALL projects (replaces N sequential calls)
+  const projectIds = items.map((d) => String(d.project?._id || d.project)).filter(Boolean);
+  const rfdMap = await batchGetProjectRfdReadyQty(projectIds);
+
+  return items.map((d) => {
     const poQty = Number(d?.poDetails?.orderQuantity || 0);
-    const { totalReady } = await getProjectRfdReadyQty(d.project?._id || d.project);
-    mapped.push({
+    const totalReady = rfdMap.get(String(d.project?._id || d.project)) || 0;
+    return {
       ...d,
       orderQuantity: poQty > 0 ? poQty : Number(d.orderQuantity || 0),
       rfdReadyQuantity: Number(totalReady || 0),
-    });
-  }
-  return mapped;
+    };
+  });
 }
 
 // ✅ If UI still calls "pending", return parcel_delivered list
@@ -297,15 +324,18 @@ export async function getDelivered() {
     .populate("poDetails", "poNumber deliveryDate orderQuantity issuedAt")
     .lean();
 
-  const mapped = [];
-  for (const d of items) {
+  // BATCH: one aggregation for ALL projects
+  const projectIds = items.map((d) => String(d.project?._id || d.project)).filter(Boolean);
+  const rfdMap = await batchGetProjectRfdReadyQty(projectIds);
+
+  return items.map((d) => {
     const poQty = Number(d?.poDetails?.orderQuantity || 0);
-    const { totalReady } = await getProjectRfdReadyQty(d.project?._id || d.project);
-    mapped.push({
+    const totalReady = rfdMap.get(String(d.project?._id || d.project)) || 0;
+    return {
       ...d,
       orderQuantity: poQty > 0 ? poQty : Number(d.orderQuantity || 0),
       rfdReadyQuantity: Number(totalReady || 0),
-    });
-  }
-  return mapped;
+    };
+  });
 }
+

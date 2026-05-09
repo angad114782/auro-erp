@@ -55,5 +55,7 @@ const productionCalendarSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
+productionCalendarSchema.index({ project: 1, isActive: 1 });
+
 const ProductionCalendar = mongoose.model("ProductionCalendar", productionCalendarSchema);
 export default ProductionCalendar;

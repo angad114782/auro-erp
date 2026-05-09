@@ -2,7 +2,7 @@ import React from 'react';
 import { FileDown, FileSpreadsheet, FileX } from 'lucide-react';
 import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface ImportTemplateGeneratorProps {
   moduleType?: 'RedSeal' | 'GreenSeal' | 'POTarget';

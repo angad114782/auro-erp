@@ -36,7 +36,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface Notification {
   id: string;

@@ -317,8 +317,11 @@ export function ProductionTrackingTable() {
   );
   const [sortColumn, setSortColumn] = useState("");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [selectedDepartment, setSelectedDepartment] =
-    useState<Department>("cutting");
+  const [selectedDepartment, setSelectedDepartment] = useState<Department>("cutting");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [selectedProductionRecord, setSelectedProductionRecord] =
     useState<ProductionRecord | null>(null);
   const [stageUpdateDialogOpen, setStageUpdateDialogOpen] = useState(false);
@@ -345,11 +348,19 @@ export function ProductionTrackingTable() {
 
   const [departmentRows, setDepartmentRows] = useState<any[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
-  const [cardSummaries, setCardSummaries] = useState<Record<string, any>>({});
+  const [cardSummaries, setCardSummaries] = useState<Record<string, any> | null>(null);
   const selectedCard = trackingCards.find(
     (card) => card._id === selectedCardId
   );
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1); // Reset to first page on new search
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
   const fetchDepartmentRows = async (
     projectId: string,
     cardId: string,
@@ -357,6 +368,7 @@ export function ProductionTrackingTable() {
   ) => {
     try {
       setLoadingRows(true);
+      setDepartmentRows([]);  // Clear old data so dialog shows loading, not stale rows
 
       const res = await api.get(`/card/${cardId}?dept=${department}`);
       console.log("Department rows response:", res.data);
@@ -442,6 +454,7 @@ export function ProductionTrackingTable() {
   const fetchTrackingCards = async (projectId: string) => {
     try {
       setLoadingCards(true);
+      setCardSummaries(null); // Reset summaries so skeletons show for new record
 
       const res = await api.get(`/projects/${projectId}/cards`);
 
@@ -483,7 +496,7 @@ export function ProductionTrackingTable() {
         selectedDepartment
       );
     } else {
-      setCardSummaries({});
+      setCardSummaries(null);
       setDepartmentRows([]);
     }
   }, [selectedCardId, selectedProductionRecord?.projectId]);
@@ -501,14 +514,23 @@ export function ProductionTrackingTable() {
     setLoading(true);
     setError(null);
     try {
-      selectedDepartment === "upperREJ" ? "upper_rej" : selectedDepartment;
       const res = await api.get(
-        `/tracking/dashboard/department?dept=${selectedDepartment}&month=${parseInt(
-          selectedMonth
-        )}&year=${selectedYear}`
+        `/tracking/dashboard/department`, {
+          params: {
+            dept: selectedDepartment,
+            month: parseInt(selectedMonth),
+            year: selectedYear,
+            search: debouncedSearchTerm,
+            page: currentPage,
+            limit: itemsPerPage,
+            sort: sortColumn || "createdAt",
+            order: sortDirection
+          }
+        }
       );
       if (res.data?.success) {
-        setTrackingData(res.data.data || []);
+        setTrackingData(res.data.items || []);
+        setTotalItems(res.data.total || 0);
       } else {
         setError("Failed to load tracking data");
         toast.error("Failed to load tracking data");
@@ -520,7 +542,7 @@ export function ProductionTrackingTable() {
     } finally {
       setLoading(false);
     }
-  }, [selectedDepartment, selectedMonth, selectedYear]);
+  }, [selectedDepartment, selectedMonth, selectedYear, debouncedSearchTerm, currentPage, itemsPerPage, sortColumn, sortDirection]);
 
   // const fetchTrackingCard=async ()=>{
   //   await api.get("micro-tracking/project/693eb8f85f188cf0b8cf8e86/:cardId");
@@ -528,7 +550,7 @@ export function ProductionTrackingTable() {
 
   useEffect(() => {
     fetchTrackingData();
-  }, [fetchTrackingData]);
+  }, [fetchTrackingData, currentPage, itemsPerPage, debouncedSearchTerm, sortColumn, sortDirection]);
 
   // OPTIMIZED: Memoized data transformation to prevent re-calculation on every render
   const baseProductionData = React.useMemo(() => {
@@ -1043,23 +1065,23 @@ const calcMinMetrics = (rows: any[]) => {
     return record?.cards?.length || 0;
   };
 
-  // Filter data based on search term
-  const filteredData = productionData.filter(({ record }) => {
-    const matchesSearch =
-      record.articleName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.color.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.productionId.toLowerCase().includes(searchTerm.toLowerCase());
-
-    return matchesSearch;
-  });
+  // Server-side filtered data - just use the state directly
+  const filteredData = productionData;
 
   const handleSort = (column: string) => {
-    if (sortColumn === column) {
+    // Map frontend column names to backend fields if necessary
+    const fieldMap: Record<string, string> = {
+      "articleName": "artName",
+      "productionId": "autoCode",
+      "brand": "brand",
+      "poNumber": "poNumber"
+    };
+    const field = fieldMap[column] || column;
+
+    if (sortColumn === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
-      setSortColumn(column);
+      setSortColumn(field);
       setSortDirection("asc");
     }
   };
@@ -2230,36 +2252,75 @@ const calcMinMetrics = (rows: any[]) => {
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="text-sm text-gray-700">
                     Showing{" "}
-                    <span className="font-medium">{filteredData.length}</span>{" "}
+                    <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span>{" "}
+                    to{" "}
+                    <span className="font-medium">
+                      {Math.min(currentPage * itemsPerPage, totalItems)}
+                    </span>{" "}
                     of{" "}
-                    <span className="font-medium">{filteredData.length}</span>{" "}
+                    <span className="font-medium">{totalItems}</span>{" "}
                     results for {getCurrentStageName()}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled
-                      className="text-gray-400"
-                    >
-                      Previous
-                    </Button>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        className="bg-[#0c9dcb] text-white hover:bg-[#0a87a5]"
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">Items per page:</span>
+                      <Select
+                        value={itemsPerPage.toString()}
+                        onValueChange={(val) => {
+                          setItemsPerPage(Number(val));
+                          setCurrentPage(1);
+                        }}
                       >
-                        1
+                        <SelectTrigger className="h-8 w-[70px]">
+                          <SelectValue placeholder={itemsPerPage} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[10, 20, 50, 100].map((size) => (
+                            <SelectItem key={size} value={size.toString()}>
+                              {size}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        className={currentPage === 1 ? "text-gray-400" : "text-gray-700"}
+                      >
+                        Previous
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, Math.ceil(totalItems / itemsPerPage)) }, (_, i) => {
+                          const pageNum = i + 1;
+                          // Simple logic to show current page surroundings if many pages exist
+                          return (
+                            <Button
+                              key={pageNum}
+                              size="sm"
+                              variant={currentPage === pageNum ? "default" : "outline"}
+                              className={currentPage === pageNum ? "bg-[#0c9dcb] text-white" : ""}
+                              onClick={() => setCurrentPage(pageNum)}
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                        {Math.ceil(totalItems / itemsPerPage) > 5 && <span className="text-gray-400">...</span>}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage >= Math.ceil(totalItems / itemsPerPage)}
+                        onClick={() => setCurrentPage(prev => prev + 1)}
+                        className={currentPage >= Math.ceil(totalItems / itemsPerPage) ? "text-gray-400" : "text-gray-700"}
+                      >
+                        Next
                       </Button>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled
-                      className="text-gray-400"
-                    >
-                      Next
-                    </Button>
                   </div>
                 </div>
               </div>
@@ -2327,29 +2388,31 @@ const calcMinMetrics = (rows: any[]) => {
               ))}
 
               {/* Mobile Pagination */}
-              <div className="flex justify-center items-center gap-2 pt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled
-                  className="text-gray-400"
-                >
-                  Previous
-                </Button>
-                <Button
-                  size="sm"
-                  className="bg-[#0c9dcb] text-white hover:bg-[#0a87a5]"
-                >
-                  1
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled
-                  className="text-gray-400"
-                >
-                  Next
-                </Button>
+              <div className="flex flex-col items-center gap-4 pt-4 pb-8">
+                <div className="text-xs text-gray-500">
+                  Showing {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} results
+                </div>
+                <div className="flex justify-center items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm font-medium px-4">
+                    Page {currentPage} of {Math.ceil(totalItems / itemsPerPage) || 1}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= Math.ceil(totalItems / itemsPerPage)}
+                    onClick={() => setCurrentPage(prev => prev + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -3066,7 +3129,46 @@ const calcMinMetrics = (rows: any[]) => {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-  {stages.map((stage) => {
+  {cardSummaries === null ? (
+    // ── Loading Skeleton Cards ──
+    stages.map((stage) => (
+      <div
+        key={stage.key}
+        className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5 animate-pulse"
+      >
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-gray-200" />
+            <div>
+              <div className="h-4 w-20 bg-gray-200 rounded mb-1" />
+              <div className="h-3 w-14 bg-gray-100 rounded" />
+            </div>
+          </div>
+          <div className="h-5 w-16 bg-gray-200 rounded-full" />
+        </div>
+        <div className="space-y-2 sm:space-y-3">
+          <div className="flex justify-between">
+            <div className="h-3 w-14 bg-gray-100 rounded" />
+            <div className="h-3 w-8 bg-gray-100 rounded" />
+          </div>
+          <div className="h-2 w-full bg-gray-200 rounded-full" />
+          <div className="grid grid-cols-2 gap-2 sm:gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i}>
+                <div className="h-3 w-14 bg-gray-100 rounded mb-1" />
+                <div className="h-4 w-10 bg-gray-200 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-gray-100">
+          <div className="h-3 w-32 bg-gray-100 rounded" />
+        </div>
+      </div>
+    ))
+  ) : (
+    // ── Real Stage Progress Cards ──
+    stages.map((stage) => {
     const stageData = selectedProductionRecord[stage.key];
     const stageDept = stage.department;
 
@@ -3109,33 +3211,31 @@ const calcMinMetrics = (rows: any[]) => {
       <div
         key={stage.key}
         className="bg-white border-2 border-gray-200 rounded-lg sm:rounded-xl p-4 sm:p-5 hover:border-[#0c9dcb] hover:shadow-md transition-all duration-200 cursor-pointer group"
-        onClick={async () => {
+        onClick={() => {
           if (!selectedCard) {
             toast.error("Please select a tracking card first");
             return;
           }
 
-          // 1️⃣ Fetch rows for this department (for MIN calc + dialog)
-          await fetchDepartmentRows(
-            selectedProductionRecord.projectId,
-            selectedCard._id,
-            stageDept
-          );
-
-          // 2️⃣ Save selection (so MIN logic knows which dept rows are loaded)
+          // 1️⃣ Save selection + open dialog immediately
           setSelectedProductForCutting({
             projectId: selectedProductionRecord.projectId,
             cardId: selectedCard._id,
             cardNumber: selectedCard.cardNumber,
             cardQuantity: selectedCard.cardQuantity,
             productName: selectedProductionRecord.articleName,
-            stage: stageDept,          // ✅ store department here
-            stageKey: stage.key,       // optional
+            stage: stageDept,
+            stageKey: stage.key,
             stageName: stage.name,
           });
-
-          // 3️⃣ Open dialog
           setItemCuttingDialogOpen(true);
+
+          // 2️⃣ Fetch rows in background (dialog shows loading via loadingRows prop)
+          fetchDepartmentRows(
+            selectedProductionRecord.projectId,
+            selectedCard._id,
+            stageDept
+          );
         }}
       >
         <div className="flex items-center justify-between mb-3 sm:mb-4">
@@ -3236,7 +3336,8 @@ const calcMinMetrics = (rows: any[]) => {
         </div>
       </div>
     );
-  })}
+  })
+  )}
 </div>
 
                   </div>

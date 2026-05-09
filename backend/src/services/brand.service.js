@@ -1,6 +1,12 @@
 // services/brand.service.js
 import mongoose from "mongoose";
 import Brand from "../models/Brand.model.js";
+import { cacheWrap, cacheDel } from "../utils/redis.js";
+
+const CACHE_KEY_PREFIX = "master:brands";
+const CACHE_TTL = 300; 
+
+const invalidateBrandCache = () => cacheDel(`${CACHE_KEY_PREFIX}:*`);
 
 export const createOrReactivateBrand = async ({ companyId, name }) => {
   // Reactivate if same (company, name) exists but inactive
@@ -10,7 +16,10 @@ export const createOrReactivateBrand = async ({ companyId, name }) => {
     { new: true, collation: { locale: "en", strength: 2 } }
   ).populate("company", "name").lean();
 
-  if (reactivated) return { action: "reactivated", data: reactivated };
+  if (reactivated) {
+    await invalidateBrandCache();
+    return { action: "reactivated", data: reactivated };
+  }
 
   // If already active, treat as duplicate
   const exists = await Brand.findOne(
@@ -24,33 +33,37 @@ export const createOrReactivateBrand = async ({ companyId, name }) => {
   // Create fresh
   const created = await Brand.create({ company: companyId, name, isActive: true });
   const populated = await Brand.findById(created._id).populate("company", "name").lean();
+  await invalidateBrandCache();
   return { action: "created", data: populated };
 };
 
 export const getBrands = async (query = {}) => {
   const {
-    company,                // companyId
-    includeInactive,        // "true" | "false"
-    q,                      // optional search by name
+    company,
+    includeInactive,
+    q,
     limit = 50,
     page = 1,
   } = query;
 
-  const filter = {};
-  if (company) filter.company = company;
-  if (includeInactive !== "true") filter.isActive = true; // default only active
-  if (q?.trim()) filter.name = { $regex: q.trim(), $options: "i" };
+  const cacheKey = `${CACHE_KEY_PREFIX}:${JSON.stringify({ company, includeInactive, q, limit, page })}`;
 
-  const docs = await Brand.find(filter)
-    .populate("company", "name")
-    .sort({ createdAt: -1 })
-    .skip((Number(page) - 1) * Number(limit))
-    .limit(Number(limit))
-    .lean();
+  return cacheWrap(cacheKey, CACHE_TTL, async () => {
+    const filter = {};
+    if (company) filter.company = company;
+    if (includeInactive !== "true") filter.isActive = true;
+    if (q?.trim()) filter.name = { $regex: q.trim(), $options: "i" };
 
-  const total = await Brand.countDocuments(filter);
+    const docs = await Brand.find(filter)
+      .populate("company", "name")
+      .sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
 
-  return { items: docs, total, page: Number(page), limit: Number(limit) };
+    const total = await Brand.countDocuments(filter);
+    return { items: docs, total, page: Number(page), limit: Number(limit) };
+  });
 };
 
 export const getBrandById = async (id) => {
@@ -72,11 +85,14 @@ export const updateBrandById = async (id, payload) => {
     { new: true, runValidators: true, collation: { locale: "en", strength: 2 } }
   ).populate("company", "name");
 
+  await invalidateBrandCache();
   return updated;
 };
 
 export const deleteBrandById = async (id) => {
   // soft delete
-  return Brand.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true })
+  const doc = await Brand.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true })
     .populate("company", "name");
+  await invalidateBrandCache();
+  return doc;
 };

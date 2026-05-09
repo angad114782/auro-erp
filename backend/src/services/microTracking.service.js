@@ -487,13 +487,24 @@ export async function syncMicroTrackingIssuedFromMR(cardId, updatedBy = "system"
 }
 
 /* ----------------------------------------------------
-  READ BY CARD (dept filter)
+  READ BY CARD (dept filter) — OPTIMIZED
+  Previously did 3 sequential heavy DB operations.
+  Now: ensure+sync only if needed, single final read.
 ---------------------------------------------------- */
 export async function getMicroTrackingByCard(cardId, dept = "") {
   if (!cardId) throw new Error("cardId required");
 
-  await ensureMicroTrackingForCard(cardId);
-  await syncMicroTrackingIssuedFromMR(cardId);
+  // ✅ Single check: does a doc already exist?
+  const existingDoc = await MicroTrackingCard.findOne({ cardId, isActive: true }).lean();
+
+  if (!existingDoc) {
+    // Only create + sync when doc doesn't exist at all
+    await ensureMicroTrackingForCard(cardId);
+    await syncMicroTrackingIssuedFromMR(cardId);
+  }
+  // Skip the expensive ensure+sync when doc already exists.
+  // Those operations rebuild rows & sync MR data — they were already
+  // done when the card was first created or when the user last saved.
 
   const d = String(dept || "").trim().toLowerCase();
   const deptNorm = d === "upperrej" || d === "upper_rej" ? "upper_rej" : d;
@@ -529,47 +540,11 @@ export async function getMicroTrackingByCard(cardId, dept = "") {
 
   const trackedRows = (doc.rows || []).filter((r) => {
     if (r.isActive === false) return false;
-    // ✅ only show tracked + legacy allowed
     const cat = String(r.category || "").trim().toLowerCase();
     return TRACK_CATEGORIES.has(cat) || !cat;
   });
 
-  if (!deptNorm) {
-    // Calculate summaries for all departments if no specific dept requested
-    const allSummaries = {};
-    for (const dKey of FLOW) {
-      if (ITEM_DEPTS.has(dKey)) {
-        const rowsInDept = trackedRows.filter((r) => String(r.department) === dKey);
-        if (rowsInDept.length > 0) {
-          const completed = Math.min(...rowsInDept.map((r) => toNum(r.completedQty)));
-          const received = Math.min(...rowsInDept.map((r) => toNum(r.receivedQty)));
-          const remaining = Math.max(received - completed, 0);
-          allSummaries[dKey] = {
-            completed,
-            received,
-            remaining,
-            progress: received > 0 ? (completed / received) * 100 : 0,
-          };
-        } else {
-          allSummaries[dKey] = { completed: 0, received: 0, remaining: 0, progress: 0 };
-        }
-      } else if (AGG_DEPTS.has(dKey)) {
-        const agg = aggregateDeptForCard({ ...doc, rows: trackedRows }, dKey);
-        if (agg) {
-          allSummaries[dKey] = {
-            completed: agg.completedQty,
-            received: agg.receivedQty,
-            remaining: Math.max(agg.receivedQty - agg.completedQty, 0),
-            progress: agg.receivedQty > 0 ? (agg.completedQty / agg.receivedQty) * 100 : 0,
-          };
-        } else {
-          allSummaries[dKey] = { completed: 0, received: 0, remaining: 0, progress: 0 };
-        }
-      }
-    }
-    return { ...doc, rows: trackedRows, agg: null, summaries: allSummaries };
-  }
-
+  // ✅ Build summaries for all departments (single pass)
   const allSummaries = {};
   for (const dKey of FLOW) {
     if (ITEM_DEPTS.has(dKey)) {
@@ -600,6 +575,10 @@ export async function getMicroTrackingByCard(cardId, dept = "") {
         allSummaries[dKey] = { completed: 0, received: 0, remaining: 0, progress: 0 };
       }
     }
+  }
+
+  if (!deptNorm) {
+    return { ...doc, rows: trackedRows, agg: null, summaries: allSummaries };
   }
 
   if (ITEM_DEPTS.has(deptNorm)) {
@@ -1054,7 +1033,8 @@ export async function getTrackingHistoryService(projectId, stage, cardId) {
 /* ----------------------------------------------------
   DASHBOARD
 ---------------------------------------------------- */
-export async function getTrackingDashboardByDepartment(dept, month, year) {
+export async function getTrackingDashboardByDepartment(dept, month, year, query = {}) {
+  const { search = "", page = 1, limit = 50, sort = "createdAt", order = "desc" } = query;
   const dRaw = String(dept || "").trim().toLowerCase();
   const d = dRaw === "upperrej" || dRaw === "upper_rej" ? "upper_rej" : dRaw;
 
@@ -1067,132 +1047,127 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
   const start = new Date(y, m - 1, 1, 0, 0, 0);
   const end = new Date(y, m, 0, 23, 59, 59);
 
-  const rawDocs = await MicroTrackingCard.find({
+  let PoDetailsModel = mongoose.models.PoDetails;
+  if (!PoDetailsModel) {
+    try { PoDetailsModel = mongoose.model("PoDetails"); } catch { PoDetailsModel = null; }
+  }
+
+  // 1. Find all MicroTrackingCard docs that have activity in the requested department
+  const trackingDocsQuery = {
     isActive: true,
     rows: { $elemMatch: { department: d, isActive: true } },
-  })
+  };
+
+  const allTrackingDocs = await MicroTrackingCard.find(trackingDocsQuery)
     .select("projectId cardId rows cardNumber cardQuantity createdAt")
     .lean();
 
-  const trackingDocs = rawDocs.filter((doc) =>
+  // Filter by activity in the specific month
+  const activeTrackingDocs = allTrackingDocs.filter((doc) =>
     hasDeptActivityInMonth(doc, d, start, end)
   );
-  if (!trackingDocs.length) return [];
 
-  const projectIds = [
-    ...new Set(trackingDocs.map((t) => String(t.projectId)).filter(Boolean)),
-  ].map((id) => new mongoose.Types.ObjectId(id));
+  if (!activeTrackingDocs.length) return { total: 0, items: [], page: Number(page), limit: Number(limit) };
 
-  const projects = await Project.find({
-    _id: { $in: projectIds },
+  const activeProjectIds = [...new Set(activeTrackingDocs.map((t) => String(t.projectId)).filter(Boolean))];
+
+  // 2. Build project filter with search support
+  const projectFilter = {
+    _id: { $in: activeProjectIds },
     isActive: true,
-  })
+  };
+
+  if (search.trim()) {
+    const searchRegex = { $regex: search.trim(), $options: "i" };
+    
+    // Also search in PoDetails for poNumber
+    let matchingPoProjectIds = [];
+    if (PoDetailsModel) {
+      const matchingPos = await PoDetailsModel.find({
+        project: { $in: activeProjectIds },
+        poNumber: searchRegex
+      }).select("project").lean();
+      matchingPoProjectIds = matchingPos.map(po => String(po.project));
+    }
+
+    projectFilter.$or = [
+      { artName: searchRegex },
+      { autoCode: searchRegex },
+      { color: searchRegex },
+      { _id: { $in: matchingPoProjectIds } }
+    ];
+  }
+
+  // 3. Paginate and Sort Projects
+  const total = await Project.countDocuments(projectFilter);
+  const projects = await Project.find(projectFilter)
     .populate("brand", "name")
     .populate("country", "name")
     .populate("assignPerson", "name email mobile")
+    .sort({ [sort]: order === "desc" ? -1 : 1 })
+    .skip((Number(page) - 1) * Number(limit))
+    .limit(Number(limit))
     .lean();
 
-  let PoDetailsModel = mongoose.models.PoDetails;
-  if (!PoDetailsModel) {
-    try {
-      PoDetailsModel = mongoose.model("PoDetails");
-    } catch {
-      PoDetailsModel = null;
-    }
-  }
-
+  const projectIdsForPage = projects.map(p => p._id);
+  
+  // 4. Get related data for this page only
   const poList = PoDetailsModel
-    ? await PoDetailsModel.find({ project: { $in: projectIds } }).lean()
+    ? await PoDetailsModel.find({ project: { $in: projectIdsForPage } }).lean()
     : [];
-
   const poMap = new Map(poList.map((po) => [String(po.project), po]));
 
-  const trackedCardIds = [
-    ...new Set(trackingDocs.map((t) => String(t.cardId)).filter(Boolean)),
-  ].map((id) => new mongoose.Types.ObjectId(id));
+  const trackingDocsForPage = activeTrackingDocs.filter(t => 
+    projectIdsForPage.some(pid => String(pid) === String(t.projectId))
+  );
 
+  const trackedCardIds = [...new Set(trackingDocsForPage.map((t) => String(t.cardId)).filter(Boolean))];
   const cards = trackedCardIds.length
     ? await PCProductionCard.find({ _id: { $in: trackedCardIds } })
         .populate("assignedPlant", "name")
         .lean()
     : [];
-
   const cardMap = new Map(cards.map((c) => [String(c._id), c]));
 
   const byProject = new Map();
-  for (const t of trackingDocs) {
+  for (const t of trackingDocsForPage) {
     const pid = String(t.projectId);
     if (!byProject.has(pid)) byProject.set(pid, []);
     byProject.get(pid).push(t);
   }
 
-  const response = [];
-
+  const items = [];
   for (const p of projects) {
     const pid = String(p._id);
     const docsForProject = byProject.get(pid) || [];
-
-    const summary = {
-      daily: {},
-      dailyByDay: {},
-      weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 },
-      monthTotal: 0,
-    };
-
+    const summary = { daily: {}, dailyByDay: {}, weekly: { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 }, monthTotal: 0 };
     const deptCards = [];
-
-    // ✅ NEW: project cutting completion = MIN completedQty across cards (MIN system)
-    // - first: per card -> min(completedQty among dept rows)
-    // - then: project -> min(of all cards)
     let projectMinCompleted = null;
 
     for (const doc of docsForProject) {
       const card = cardMap.get(String(doc.cardId));
       if (card) deptCards.push(card);
 
-      const deptRows = (doc.rows || []).filter(
-        (r) => r.isActive !== false && normDept(r.department) === d
-      );
+      const deptRows = (doc.rows || []).filter(r => r.isActive !== false && normDept(r.department) === d);
       if (!deptRows.length) continue;
 
-      // ✅ per-card min completedQty
-      const cardMinCompleted = Math.min(
-        ...deptRows.map((r) => toNum(r.completedQty))
-      );
-
+      const cardMinCompleted = Math.min(...deptRows.map((r) => toNum(r.completedQty)));
       if (projectMinCompleted === null) projectMinCompleted = cardMinCompleted;
       else projectMinCompleted = Math.min(projectMinCompleted, cardMinCompleted);
 
-      // existing: month summary from history WORK_ADDED
       for (const row of deptRows) {
         for (const h of row.history || []) {
           const dt = new Date(h.ts || 0);
-          if (dt < start || dt > end) continue;
-          if (String(h.type || "") !== "WORK_ADDED") continue;
-
+          if (dt < start || dt > end || String(h.type || "") !== "WORK_ADDED") continue;
           const added = toNum(h.qty);
           const dayNum = dt.getDate();
-
-          const week =
-            dayNum <= 7
-              ? "W1"
-              : dayNum <= 14
-              ? "W2"
-              : dayNum <= 21
-              ? "W3"
-              : dayNum <= 28
-              ? "W4"
-              : "W5";
-
+          const week = dayNum <= 7 ? "W1" : dayNum <= 14 ? "W2" : dayNum <= 21 ? "W3" : dayNum <= 28 ? "W4" : "W5";
           const yyyy = dt.getFullYear();
           const mm = String(dt.getMonth() + 1).padStart(2, "0");
           const dd = String(dayNum).padStart(2, "0");
           const dateKey = `${yyyy}-${mm}-${dd}`;
-
           summary.daily[dateKey] = (summary.daily[dateKey] || 0) + added;
-          summary.dailyByDay[String(dayNum)] =
-            (summary.dailyByDay[String(dayNum)] || 0) + added;
-
+          summary.dailyByDay[String(dayNum)] = (summary.dailyByDay[String(dayNum)] || 0) + added;
           summary.weekly[week] += added;
           summary.monthTotal += added;
         }
@@ -1200,23 +1175,12 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
     }
 
     if (projectMinCompleted === null) projectMinCompleted = 0;
-
     const po = poMap.get(pid) || null;
-    const poQty = toNum(po?.orderQuantity);
+    const targetQty = toNum(po?.orderQuantity) || 0;
+    const completedQty = targetQty > 0 ? Math.min(toNum(projectMinCompleted), targetQty) : toNum(projectMinCompleted);
+    const progressPercent = targetQty > 0 ? (completedQty / targetQty) * 100 : 0;
 
-    // ✅ status/progress should be PO based
-    const targetQty = poQty > 0 ? poQty : 0;
-
-    // ✅ cap completed to targetQty (so 568/540 -> 540/540)
-    const completedQty =
-      targetQty > 0
-        ? Math.min(toNum(projectMinCompleted), targetQty)
-        : toNum(projectMinCompleted);
-
-    const progressPercent =
-      targetQty > 0 ? (completedQty / targetQty) * 100 : 0;
-
-    response.push({
+    items.push({
       projectId: p._id,
       autoCode: p.autoCode,
       artName: p.artName,
@@ -1228,23 +1192,19 @@ export async function getTrackingDashboardByDepartment(dept, month, year) {
       country: p.country,
       coverImage: p.coverImage,
       poDetails: po,
-
       department: d,
       summary,
-
-      // ✅ NEW: frontend "Cutting Status" ko isse render karo
       progress: {
-        targetQty,            // PO qty
-        completedQty,         // MIN system completion (capped)
-        minCompletedQty: toNum(projectMinCompleted), // raw min (debug)
+        targetQty,
+        completedQty,
+        minCompletedQty: toNum(projectMinCompleted),
         percent: Number(progressPercent.toFixed(2)),
       },
-
       cards: [...new Map(deptCards.map((c) => [String(c._id), c])).values()],
     });
   }
 
-  return response;
+  return { total, items, page: Number(page), limit: Number(limit) };
 }
 
 

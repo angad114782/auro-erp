@@ -1310,6 +1310,60 @@ export function ItemCuttingDialog({
                 value="update"
                 className="mt-0 space-y-4 sm:space-y-6 lg:space-y-8"
               >
+                {loadingRows ? (
+                  /* ── Loading Skeleton ── */
+                  <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-pulse">
+                    {/* Summary Card Skeleton */}
+                    <div className="mt-4 bg-gray-50 border-2 border-gray-200 rounded-xl p-4 sm:p-6">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+                        {[1, 2, 3, 4].map((i) => (
+                          <div key={i}>
+                            <div className="h-3 w-20 bg-gray-200 rounded mb-2" />
+                            <div className="h-5 w-24 bg-gray-300 rounded" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Items Section Skeleton */}
+                    <div className="space-y-3 sm:space-y-5">
+                      <div className="flex items-center gap-3 sm:gap-5">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-200 rounded-lg sm:rounded-xl" />
+                        <div className="h-5 w-48 bg-gray-200 rounded" />
+                        <div className="h-5 w-16 bg-gray-100 rounded-full" />
+                      </div>
+
+                      <div className="space-y-3 sm:space-y-4">
+                        {[1, 2, 3].map((i) => (
+                          <div
+                            key={i}
+                            className="bg-white border-2 border-gray-200 rounded-xl p-4 sm:p-6"
+                          >
+                            <div className="flex items-start gap-3 mb-4">
+                              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-200 rounded-lg shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="h-4 w-32 bg-gray-200 rounded mb-2" />
+                                <div className="h-3 w-24 bg-gray-100 rounded mb-2" />
+                                <div className="h-5 w-16 bg-gray-100 rounded-full" />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3">
+                              {[1, 2, 3].map((j) => (
+                                <div key={j} className="bg-gray-50 rounded p-2">
+                                  <div className="h-3 w-12 bg-gray-200 rounded mb-1 mx-auto" />
+                                  <div className="h-4 w-8 bg-gray-300 rounded mx-auto" />
+                                </div>
+                              ))}
+                            </div>
+                            <div className="h-1.5 w-full bg-gray-200 rounded-full" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── Real Content ── */
+                  <>
                 {/* Product Summary Card - NOW WITH TOP MARGIN */}
                 <div className="mt-4 bg-linear-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 sm:p-6">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
@@ -1743,6 +1797,8 @@ export function ItemCuttingDialog({
                         ))}
                   </div>
                 </div>
+                  </>
+                )}
               </TabsContent>
 
               {/* History Tab Content */}

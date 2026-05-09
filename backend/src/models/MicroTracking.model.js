@@ -192,5 +192,6 @@ MicroTrackingSchema.pre("validate", function (next) {
 /* ---------------- Indexes ---------------- */
 MicroTrackingSchema.index({ projectId: 1, cardId: 1 }, { unique: true });
 MicroTrackingSchema.index({ isActive: 1, "rows.department": 1 });
+MicroTrackingSchema.index({ cardId: 1, isActive: 1 });
 
 export default mongoose.model("MicroTracking", MicroTrackingSchema);

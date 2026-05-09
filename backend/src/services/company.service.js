@@ -1,4 +1,8 @@
-import Company from "../models/Company.model.js"; // default export recommended
+import Company from "../models/Company.model.js";
+import { cacheWrap, cacheDel } from "../utils/redis.js";
+
+const CACHE_KEY = "master:companies";
+const CACHE_TTL = 300; // 5 minutes
 
 export const createOrReactivateCompanyByName = async (name) => {
   // 1) Reactivate if same name but inactive
@@ -19,15 +23,20 @@ export const createOrReactivateCompanyByName = async (name) => {
 
   // 3) Create fresh
   const created = await Company.create({ name, isActive: true });
+  await cacheDel(CACHE_KEY);
   return { action: "created", data: created.toObject() };
 };
 
 export const createCompany = async (payload) => {
-  return Company.create({ name: payload.name, isActive: true });
+  const doc = await Company.create({ name: payload.name, isActive: true });
+  await cacheDel(CACHE_KEY);
+  return doc;
 };
 
 export const getAllCompanies = async () => {
-  return Company.find({ isActive: true }).sort({ createdAt: -1 }).lean();
+  return cacheWrap(CACHE_KEY, CACHE_TTL, () =>
+    Company.find({ isActive: true }).sort({ createdAt: -1 }).lean()
+  );
 };
 
 export const getCompanyById = async (id) => {
@@ -35,13 +44,17 @@ export const getCompanyById = async (id) => {
 };
 
 export const updateCompanyById = async (id, payload) => {
-  return Company.findByIdAndUpdate(
+  const doc = await Company.findByIdAndUpdate(
     id,
     { $set: { name: payload.name } },
     { new: true, runValidators: true }
   );
+  await cacheDel(CACHE_KEY);
+  return doc;
 };
 
 export const deleteCompanyById = async (id) => {
-  return Company.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true });
+  const doc = await Company.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true });
+  await cacheDel(CACHE_KEY);
+  return doc;
 };

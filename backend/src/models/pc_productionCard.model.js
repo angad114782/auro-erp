@@ -49,4 +49,9 @@ const PCProductionCardSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// ── Performance indexes ──
+PCProductionCardSchema.index({ projectId: 1, stage: 1, isActive: 1 });
+PCProductionCardSchema.index({ stage: 1, isActive: 1, createdAt: -1 });
+PCProductionCardSchema.index({ projectId: 1, isActive: 1, createdAt: -1 });
+
 export const PCProductionCard = mongoose.model("PCProductionCard", PCProductionCardSchema);

@@ -21,15 +21,21 @@ export async function createMicroTrackingCard(req, res) {
 export async function trackingDashboardDepartmentController(req, res) {
   try {
     const dept = String(req.query.dept || "").trim().toLowerCase();
-    const { month, year } = req.query;
+    const { month, year, search, page, limit, sort, order } = req.query;
 
     if (!dept) return res.status(400).json({ error: "dept is required" });
     if (!month || !year)
       return res.status(400).json({ error: "month & year required" });
 
-    const data = await service.getTrackingDashboardByDepartment(dept, month, year);
+    const result = await service.getTrackingDashboardByDepartment(dept, month, year, {
+      search,
+      page,
+      limit,
+      sort,
+      order,
+    });
 
-    return res.json({ success: true, data });
+    return res.json({ success: true, ...result });
   } catch (err) {
     console.error("trackingDashboardDepartment error:", err);
     return res.status(500).json({ error: err.message });

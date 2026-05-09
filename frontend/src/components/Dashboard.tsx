@@ -47,7 +47,7 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { useERPStore } from "../lib/data-store";
 import { useERP } from "../lib/stores/erpContext";
 import { dashboardService } from "../services/dashboard.service";

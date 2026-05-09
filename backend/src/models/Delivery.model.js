@@ -79,5 +79,7 @@ deliverySchema.index(
     partialFilterExpression: { status: { $in: ["pending", "parcel_delivered"] } },
   }
 );
+deliverySchema.index({ status: 1 });
+deliverySchema.index({ project: 1 });
 
 export const Delivery = mongoose.model("Delivery", deliverySchema);

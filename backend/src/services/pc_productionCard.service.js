@@ -640,7 +640,7 @@ export async function createMaterialRequestForCard(
   }
 }
 
-/* ---------- listMaterialRequests ---------- */
+/* ---------- listMaterialRequests (OPTIMIZED: $facet for count+data in 1 query) ---------- */
 export async function listMaterialRequests(
   filter = {},
   options = { page: 1, limit: 50 }
@@ -654,7 +654,7 @@ export async function listMaterialRequests(
     { $match: matchStage },
     {
       $lookup: {
-        from: "projects", // Make sure this matches your Project collection name
+        from: "projects",
         localField: "projectId",
         foreignField: "_id",
         as: "projectDetails",
@@ -666,7 +666,6 @@ export async function listMaterialRequests(
   // Add search filter if provided
   if (filter.search) {
     const regex = new RegExp(filter.search, "i");
-
     pipeline.push({
       $match: {
         $or: [
@@ -682,40 +681,39 @@ export async function listMaterialRequests(
   // Add sorting
   pipeline.push({ $sort: { createdAt: -1 } });
 
-  // Get total count (before pagination)
-  const countPipeline = [...pipeline];
-  countPipeline.push({ $count: "total" });
-
-  const countResult = await PCMaterialRequest.aggregate(countPipeline);
-  const total = countResult.length > 0 ? countResult[0].total : 0;
-
-  // Add pagination
+  // Use $facet to get BOTH count and paginated data in ONE query
   const skip = (options.page - 1) * options.limit;
-  pipeline.push(
-    { $skip: skip },
-    { $limit: Number(options.limit) },
-    // Project the fields you need
-    {
-      $project: {
-        cardNumber: 1,
-        requestedBy: 1,
-        status: 1,
-        createdAt: 1,
-        upper: 1,
-        materials: 1,
-        components: 1,
-        packaging: 1,
-        misc: 1,
-        projectId: {
-          _id: "$projectDetails._id",
-          artName: "$projectDetails.artName",
-          productName: "$projectDetails.productName",
+  pipeline.push({
+    $facet: {
+      data: [
+        { $skip: skip },
+        { $limit: Number(options.limit) },
+        {
+          $project: {
+            cardNumber: 1,
+            requestedBy: 1,
+            status: 1,
+            createdAt: 1,
+            upper: 1,
+            materials: 1,
+            components: 1,
+            packaging: 1,
+            misc: 1,
+            projectId: {
+              _id: "$projectDetails._id",
+              artName: "$projectDetails.artName",
+              productName: "$projectDetails.productName",
+            },
+          },
         },
-      },
-    }
-  );
+      ],
+      totalCount: [{ $count: "count" }],
+    },
+  });
 
-  const docs = await PCMaterialRequest.aggregate(pipeline);
+  const [result] = await PCMaterialRequest.aggregate(pipeline);
+  const docs = result?.data || [];
+  const total = result?.totalCount?.[0]?.count || 0;
 
   return { items: docs, total };
 }
@@ -1008,32 +1006,16 @@ export async function getProjectTrackingOverview(
   if (!project) throw new Error("Project not found");
 
   const projectObjId = new mongoose.Types.ObjectId(String(projectId));
-  const poDetails = await PoDetails.findOne({ project: projectObjId })
-    .lean()
-    .catch(() => null);
 
-  const [trackingCount, totalCards, countsByStage] = await Promise.all([
-    PCProductionCard.countDocuments({
-      projectId: projectObjId,
-      stage: "Tracking",
-      isActive: true,
-    }),
-    PCProductionCard.countDocuments({
-      projectId: projectObjId,
-      isActive: true,
-    }),
+  // OPTIMIZED: single aggregation gives us ALL stage counts (replaces 3 separate queries)
+  const [poDetails, countsByStage, cards] = await Promise.all([
+    PoDetails.findOne({ project: projectObjId }).lean().catch(() => null),
+
     PCProductionCard.aggregate([
       { $match: { projectId: projectObjId, isActive: true } },
       { $group: { _id: "$stage", count: { $sum: 1 } } },
     ]),
-  ]);
 
-  const stageCounts = {};
-  (countsByStage || []).forEach((c) => {
-    stageCounts[c._id || "Unknown"] = c.count;
-  });
-
-  const [cards, cardsTotal] = await Promise.all([
     PCProductionCard.find({
       projectId: projectObjId,
       stage: "Tracking",
@@ -1045,12 +1027,16 @@ export async function getProjectTrackingOverview(
       .skip(skip)
       .limit(limit)
       .lean(),
-    PCProductionCard.countDocuments({
-      projectId: projectObjId,
-      stage: "Tracking",
-      isActive: true,
-    }),
   ]);
+
+  const stageCounts = {};
+  let totalCards = 0;
+  (countsByStage || []).forEach((c) => {
+    stageCounts[c._id || "Unknown"] = c.count;
+    totalCards += c.count;
+  });
+  const trackingCount = stageCounts["Tracking"] || 0;
+  const cardsTotal = trackingCount;
 
   // helper: map itemId -> department from cost rows (so we can fill missing department values)
   async function buildItemDeptMapOnce() {
@@ -1903,7 +1889,7 @@ export async function getProjectsInTracking({ page = 1, limit = 50 }) {
     return { total: 0, items: [] };
   }
 
-  // 2️⃣ Fetch project documents
+  // 2️⃣ Fetch project documents (paginated)
   const projects = await Project.find({ _id: { $in: trackingProjectIds } })
     .populate({ path: "company", select: "name" })
     .populate({ path: "brand", select: "name" })
@@ -1916,56 +1902,70 @@ export async function getProjectsInTracking({ page = 1, limit = 50 }) {
     .limit(limit)
     .lean();
 
-  // 3️⃣ Per-project data
-  const items = await Promise.all(
-    projects.map(async (p) => {
-      const pid = p._id;
+  if (!projects.length) {
+    return { total: trackingProjectIds.length, items: [] };
+  }
 
-      const [trackingCount, totalCards, po, calendar] = await Promise.all([
-        PCProductionCard.countDocuments({
-          projectId: pid,
-          stage: "Tracking",
-          isActive: true,
-        }),
+  const pageProjectIds = projects.map((p) => p._id);
 
-        PCProductionCard.countDocuments({
-          projectId: pid,
-          isActive: true,
-        }),
+  // 3️⃣ BATCH: get card counts per project in ONE aggregation (replaces 2N countDocuments)
+  const [cardCountsAgg, poList, calendarList] = await Promise.all([
+    PCProductionCard.aggregate([
+      { $match: { projectId: { $in: pageProjectIds }, isActive: true } },
+      {
+        $group: {
+          _id: "$projectId",
+          total: { $sum: 1 },
+          tracking: { $sum: { $cond: [{ $eq: ["$stage", "Tracking"] }, 1, 0] } },
+        },
+      },
+    ]),
 
-        PoDetails.findOne({ project: pid }).lean(),
+    // BATCH: all PO details for this page of projects (replaces N findOne calls)
+    PoDetails.find({ project: { $in: pageProjectIds } }).lean(),
 
-        // 🔥 Real correct source of plant assignment
-        ProductionCalendar.findOne({
-          project: pid,
-          isActive: true,
-        })
-          .select("scheduling.assignedPlant")
-          .lean(),
-      ]);
-
-      return {
-        projectId: p._id,
-        autoCode: p.autoCode,
-        productName: p.productName || p.artName || "",
-        company: p.company,
-        brand: p.brand,
-        category: p.category,
-        type: p.type,
-        assignPerson: p.assignPerson,
-        po,
-
-        // ✔ Plant from Production Calendar
-        plant: calendar?.scheduling?.assignedPlant || null,
-
-        trackingCount,
-        totalCards,
-      };
+    // BATCH: all calendars for this page of projects (replaces N findOne calls)
+    ProductionCalendar.find({
+      project: { $in: pageProjectIds },
+      isActive: true,
     })
+      .select("project scheduling.assignedPlant")
+      .lean(),
+  ]);
+
+  // Build lookup maps for O(1) access
+  const cardCountMap = new Map(
+    cardCountsAgg.map((c) => [String(c._id), { total: c.total, tracking: c.tracking }])
   );
+  const poMap = new Map(poList.map((po) => [String(po.project), po]));
+  const calMap = new Map(calendarList.map((cal) => [String(cal.project), cal]));
+
+  // 4️⃣ Assemble items — NO per-project queries!
+  const items = projects.map((p) => {
+    const pid = String(p._id);
+    const counts = cardCountMap.get(pid) || { total: 0, tracking: 0 };
+    const po = poMap.get(pid) || null;
+    const calendar = calMap.get(pid) || null;
+
+    return {
+      projectId: p._id,
+      autoCode: p.autoCode,
+      productName: p.productName || p.artName || "",
+      company: p.company,
+      brand: p.brand,
+      category: p.category,
+      type: p.type,
+      assignPerson: p.assignPerson,
+      po,
+      plant: calendar?.scheduling?.assignedPlant || null,
+      trackingCount: counts.tracking,
+      totalCards: counts.total,
+    };
+  });
 
   return {
-    total: items.length,
+    total: trackingProjectIds.length,
     items,
   };
 }
+
