@@ -235,8 +235,14 @@ export function ProductionCardFormDialog({
     });
 
     const orderQty =
+      toNumber((selectedProject as any)?.orderQuantity) ||
+      toNumber((selectedProject as any)?.quantity) ||
+      toNumber((selectedProject as any)?.qty) ||
       toNumber((selectedProject as any)?.po?.orderQuantity) ||
+      toNumber((selectedProject as any)?.po?.quantity) ||
+      toNumber((selectedProject as any)?.po?.qty) ||
       toNumber((selectedProject as any)?.poTarget) ||
+      toNumber((selectedProject as any)?.quantitySnapshot) ||
       0;
 
     const totalAllocated = allCardsForProject.reduce((sum: number, c: any) => {
@@ -579,11 +585,20 @@ export function ProductionCardFormDialog({
 
   const getProductName = () => {
     if (!selectedProject) return "No Product Selected";
-    return `${selectedProject.brandId || ""} ${
-      selectedProject.categoryId || ""
-    } - ${selectedProject.typeId || ""} ${
-      (selectedProject as any)?.colorId || (selectedProject as any)?.color || ""
-    }`;
+
+    const getVal = (field: string) => {
+      const val = (selectedProject as any)[field];
+      if (!val) return "";
+      if (typeof val === "object") return val.name || val.brandName || val.categoryName || val.typeName || "";
+      return val;
+    };
+
+    const brand = getVal("brandId") || getVal("brand") || "";
+    const category = getVal("categoryId") || getVal("category") || "";
+    const type = getVal("typeId") || getVal("type") || "";
+    const color = (selectedProject as any).colorId || (selectedProject as any).color || (selectedProject as any).artColour || "";
+
+    return `${brand} ${category} - ${type} ${color}`.trim() || "Untitled Product";
   };
 
   const generateProductionCardNumber = () => {

@@ -61,7 +61,8 @@ interface HistoryRecord {
 interface CuttingItem {
   id: string;
   itemName: string;
-  cardQuantity: number; // ✅ required total
+  cardQuantity: number; // ✅ required total (receivedQty)
+  effectiveMax: number; // ✅ actual cap: min(received, issuedPairsPossible) when consumption > 0
   alreadyCut: number;
   cuttingToday: number | string;
   unit: string;
@@ -69,6 +70,8 @@ interface CuttingItem {
   department: string;
   specification: string;
   issuedQty?: number | string;
+  consumptionPerPair?: number;
+  issuedPairsPossible?: number;
 }
 
 interface ItemCuttingDialogProps {
@@ -201,7 +204,8 @@ const MobileItemCard = React.memo(
 
     const clampOnBlur = (item: CuttingItem, value: string) => {
       const alreadyCutNum = parseToNumber(item.alreadyCut);
-      const maxAllowed = Math.max(item.cardQuantity - alreadyCutNum, 0);
+      const cap = item.effectiveMax ?? item.cardQuantity;
+      const maxAllowed = Math.max(cap - alreadyCutNum, 0);
 
       const num = parseFloat(value);
       if (isNaN(num)) return "0";
@@ -803,6 +807,7 @@ export function ItemCuttingDialog({
               row.department.charAt(0).toUpperCase() + row.department.slice(1)
             } Department`,
           cardQuantity: required, // Total received for department
+          effectiveMax: required, // AGG depts don't have consumption, so cap = received
           alreadyCut: completed, // Total completed for department
           cuttingToday: "", // keep string for decimal UX
           unit: row.unit || "units",
@@ -831,17 +836,24 @@ export function ItemCuttingDialog({
         // Handle regular row data (for cutting, printing, upper)
         const required = Number(row.receivedQty ?? 0);
         const completed = Number(row.completedQty ?? 0);
+        const cons = Number(row.consumptionPerPair ?? 0);
+        const pairsPossible = Number(row.issuedPairsPossible ?? 0);
+        // ✅ Match backend logic: when consumption exists, cap = min(received, floor(issued/cons))
+        const effectiveMax = cons > 0 ? Math.min(required, pairsPossible) : required;
 
         return {
           id: row.itemId ?? `row-${index}`,
           itemName: row.name || "Unnamed Item",
           cardQuantity: required,
+          effectiveMax,
           alreadyCut: completed,
           cuttingToday: "",
           unit: row.unit || "unit",
           department: row.department || "cutting",
           specification: row.specification || "",
           issuedQty: row.issuedQty || "",
+          consumptionPerPair: cons,
+          issuedPairsPossible: pairsPossible,
           isAggregated: false,
           status:
             completed >= required
@@ -878,7 +890,8 @@ export function ItemCuttingDialog({
         if (item.id !== itemId) return item;
 
         const alreadyCutNum = parseToNumber(item.alreadyCut);
-        const maxAllowed = Math.max(item.cardQuantity - alreadyCutNum, 0);
+        const cap = item.effectiveMax ?? item.cardQuantity;
+        const maxAllowed = Math.max(cap - alreadyCutNum, 0);
 
         if (value === "" || value === ".") {
           return { ...item, cuttingToday: value };

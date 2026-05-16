@@ -208,47 +208,79 @@ export function CreateProductionCardDialog({
   }, [selectedProject, showAllCards]);
 
   useEffect(() => {
-    let cardToUse = selectedProductionCard;
-    if (!cardToUse && storeProductionCards.length > 0) {
-      cardToUse = storeProductionCards[0];
-    }
+    const syncProject = async () => {
+      if (!open || !selectedProductionCard) return;
 
-    const projectIdFromCard =
-      cardToUse?.projectId ||
-      cardToUse?.rdProjectId ||
-      (cardToUse?.project && (cardToUse.project._id || cardToUse.project.id));
+      let cardToUse = selectedProductionCard;
+      if (!cardToUse && storeProductionCards.length > 0) {
+        cardToUse = storeProductionCards[0];
+      }
 
-    if (cardToUse && rdProjects && rdProjects.length > 0 && projectIdFromCard) {
+      const projectIdFromCard =
+        cardToUse?.projectId ||
+        cardToUse?.rdProjectId ||
+        (cardToUse?.project && (cardToUse.project._id || cardToUse.project.id));
+
+      if (!projectIdFromCard) {
+        setSelectedProject(null);
+        setOrderQuantity(extractOrderQuantity(cardToUse));
+        return;
+      }
+
+      // 1. Try to find in the local list first (for speed)
       const associatedProject = rdProjects.find(
         (project: any) =>
-          project.id === projectIdFromCard || project._id === projectIdFromCard
+          String(project.id || project._id) === String(projectIdFromCard)
       );
+
       if (associatedProject) {
         setSelectedProject(associatedProject);
+        const qty = extractOrderQuantity(cardToUse) || 
+                   (associatedProject as any)?.po?.orderQuantity || 
+                   (associatedProject as any)?.poTarget;
+        setOrderQuantity(qty ? Number(qty) : null);
       } else {
-        setSelectedProject(null);
+        // 2. ROOT CAUSE FIX: Fetch specifically from server if not in the first 20 projects
+        try {
+          const res = await api.get(`/projects/${projectIdFromCard}`);
+          const projectData = res.data?.data || res.data;
+          if (projectData) {
+            setSelectedProject(projectData);
+            const qty = extractOrderQuantity(cardToUse) || 
+                       (projectData as any)?.po?.orderQuantity || 
+                       (projectData as any)?.poTarget;
+            setOrderQuantity(qty ? Number(qty) : null);
+          } else {
+            setSelectedProject(null);
+          }
+        } catch (error) {
+          console.error("Failed to fetch project detail:", error);
+          // Safety fallback to the embedded object if API fails
+          if (cardToUse?.project && typeof cardToUse.project === "object" && cardToUse.project._id) {
+            setSelectedProject(cardToUse.project);
+          } else {
+            setSelectedProject(null);
+          }
+        }
       }
-    } else {
-      setSelectedProject(null);
-    }
+    };
 
-    const qty = extractOrderQuantity(cardToUse);
-    if (qty != null && !Number.isNaN(qty)) {
-      setOrderQuantity(Number(qty));
-    } else {
-      setOrderQuantity(null);
-    }
-  }, [selectedProductionCard, rdProjects, storeProductionCards]);
+    syncProject();
+  }, [open, selectedProductionCard, rdProjects, storeProductionCards]);
 
   const normalizeCardProjectId = (card: any) => {
-    return (
+    const pid =
       card.projectId ||
       card.project ||
       card.rdProjectId ||
       card.rdProject ||
       (card.project && (card.project._id || card.project.id)) ||
-      null
-    );
+      null;
+
+    if (pid && typeof pid === "object") {
+      return pid._id || pid.id || null;
+    }
+    return pid;
   };
 
   const projId = selectedProject?.id || selectedProject?._id;
@@ -264,37 +296,44 @@ export function CreateProductionCardDialog({
     !showAllCards && apiCards && apiCards.length > 0 ? apiCards : storeFiltered;
 
   const displayProductionCards: ProductionCardData[] = sourceCards.map(
-    (card: any) => ({
-      id: card.id || card._id,
-      _id: card._id || card.id, // Add _id for API calls
-      projectId: card.projectId || card.project?._id || card.project || null,
-      cardName: card.cardNumber || card.cardName,
-      productionType: card.description || "Production",
-      priority: "Medium",
-      targetQuantity: card.cardQuantity?.toString?.() ?? "",
-      cardQuantity: card.cardQuantity?.toString?.() ?? "",
-      startDate: card.startDate,
-      endDate: "",
-      supervisor: card.createdBy,
-      workShift: card.workShift,
-      description: card.description,
-      specialInstructions: card.specialInstructions,
-      status: card.status,
-      stage: card.stage || "Planning", // Add stage from API
-      createdAt: card.createdAt,
-      assignPlant: card.assignedPlant,
-    })
+    (card: any) => {
+      const projIdFromCard = normalizeCardProjectId(card);
+      return {
+        id: card.id || card._id,
+        _id: card._id || card.id, // Add _id for API calls
+        projectId: projIdFromCard,
+        cardName: card.cardNumber || card.cardName,
+        productionType: card.description || "Production",
+        priority: "Medium",
+        targetQuantity: card.cardQuantity?.toString?.() ?? "",
+        cardQuantity: card.cardQuantity?.toString?.() ?? "",
+        startDate: card.startDate,
+        endDate: "",
+        supervisor: card.createdBy,
+        workShift: card.workShift,
+        description: card.description,
+        specialInstructions: card.specialInstructions,
+        status: card.status,
+        stage: card.stage || "Planning", // Add stage from API
+        createdAt: card.createdAt,
+        assignPlant: card.assignedPlant,
+      };
+    }
   );
 
   // Calculate total allocation summary
   const calculateTotalAllocation = () => {
-    if (!selectedProject)
-      return { totalOrderQty: 0, totalAllocated: 0, totalAvailable: 0 };
+    // Even if selectedProject is null, use orderQuantity from the production card if available
+    if (!selectedProject) {
+      const fallbackQty = orderQuantity || 0;
+      return { totalOrderQty: fallbackQty, totalAllocated: 0, totalAvailable: fallbackQty };
+    }
 
     const projectId = selectedProject.id || selectedProject._id;
 
     if (!projectId) {
-      return { totalOrderQty: 0, totalAllocated: 0, totalAvailable: 0 };
+      const fallbackQty = orderQuantity || 0;
+      return { totalOrderQty: fallbackQty, totalAllocated: 0, totalAvailable: fallbackQty };
     }
 
     // Sum all production card quantities for this project
@@ -334,7 +373,7 @@ export function CreateProductionCardDialog({
     calculateTotalAllocation();
 
   const handleDeleteCard = async (card: any) => {
-    const projectId = card.projectId;
+    const projectId = normalizeCardProjectId(card);
     if (!projectId) {
       toast.error("Project ID missing for this card");
       return;
@@ -342,7 +381,7 @@ export function CreateProductionCardDialog({
     try {
       await api.delete(`/projects/${projectId}/production-cards/${card.id}`);
       toast.success("Production card deleted");
-      fetchProductionCardsForProject(projectId);
+      fetchProductionCardsForProject(String(projectId));
     } catch (err) {
       toast.error("Failed to delete card");
     }
@@ -355,7 +394,7 @@ export function CreateProductionCardDialog({
     try {
       // Update stage to "Tracking" using the API
       const response = await api.put(
-        `/projects/${card?.projectId?._id}/production-cards/${card._id}/stage`,
+        `/projects/${card.projectId}/production-cards/${card._id}/stage`,
         {
           stage: "Tracking",
           updatedBy: "Production Manager", // You can get this from user context
@@ -390,7 +429,7 @@ export function CreateProductionCardDialog({
 
     try {
       const response = await api.delete(
-        `/projects/${card?.projectId?._id}/production-cards/${card._id}/stop`,
+        `/projects/${card.projectId}/production-cards/${card._id}/stop`,
         {
           data: { updatedBy: "Production Manager" },
         }
@@ -423,7 +462,7 @@ export function CreateProductionCardDialog({
       selectedProject?.project?._id ||
       selectedProject?.id ||
       selectedProject?._id;
-    if (projId) fetchProductionCardsForProject(projId);
+    if (projId) fetchProductionCardsForProject(String(projId));
     if (editingCard) {
       setEditingCard(null);
     }

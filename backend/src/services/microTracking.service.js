@@ -143,23 +143,37 @@ function aggregateDeptForCard(doc, dept) {
   );
   if (!deptRows.length) return null;
 
-  const minOf = (field) => Math.min(...deptRows.map((r) => toNum(r[field])));
+  // ✅ FIX: Bottleneck must be calculated PER ITEM (min of diff), not diff of mins.
+  // This ensures the UI "Available" matches the Backend "Allowed" validation.
+  const availableBottleneck = Math.min(
+    ...deptRows.map((r) => toNum(r.receivedQty) - toNum(r.completedQty))
+  );
+
+  const minReceived = Math.min(...deptRows.map((r) => toNum(r.receivedQty)));
+  const minTransferred = Math.min(...deptRows.map((r) => toNum(r.transferredQty)));
 
   const bottleneckItem = deptRows.reduce(
-    (minR, r) => (toNum(r.receivedQty) < toNum(minR.receivedQty) ? r : minR),
+    (minR, r) => {
+      const diff = toNum(r.receivedQty) - toNum(r.completedQty);
+      const minDiff = toNum(minR.receivedQty) - toNum(minR.completedQty);
+      return diff < minDiff ? r : minR;
+    },
     deptRows[0]
   );
 
   return {
     dept,
-    receivedQty: minOf("receivedQty"),
-    completedQty: minOf("completedQty"),
-    transferredQty: minOf("transferredQty"),
+    // We report receivedQty as the absolute minimum received
+    receivedQty: minReceived,
+    // We adjust completedQty so that (receivedQty - completedQty) == true available pairs
+    completedQty: Math.max(0, minReceived - availableBottleneck),
+    transferredQty: minTransferred,
     itemsCount: deptRows.length,
     bottleneckItem: {
       itemId: bottleneckItem.itemId,
       name: bottleneckItem.name,
       receivedQty: toNum(bottleneckItem.receivedQty),
+      availableQty: toNum(bottleneckItem.receivedQty) - toNum(bottleneckItem.completedQty),
     },
   };
 }
@@ -643,10 +657,15 @@ export async function addWorkAndTransfer({
     const rowsInDept = rowsTracked.filter((r) => String(r.department) === d);
     if (!rowsInDept.length) throw new Error(`No rows found in AGG dept ${d}`);
 
-    const availableToWork = Math.min(...rowsInDept.map((r) => toNum(r.receivedQty) - toNum(r.completedQty)));
-
     if (workPairs > 0) {
-      if (workPairs > availableToWork) throw new Error(`Work qty exceeds limit in ${d}. Allowed=${availableToWork}`);
+      const bottleneck = rowsInDept.reduce((min, r) => {
+        const avail = toNum(r.receivedQty) - toNum(r.completedQty);
+        return avail < min.avail ? { avail, name: r.name } : min;
+      }, { avail: Infinity, name: "" });
+
+      if (workPairs > bottleneck.avail) {
+        throw new Error(`Work qty exceeds limit in ${d}. Allowed=${bottleneck.avail} (Bottleneck: ${bottleneck.name})`);
+      }
 
       for (const r of rowsInDept) {
         r.completedQty = toNum(r.completedQty) + workPairs;
@@ -911,12 +930,13 @@ export async function addWorkOnlyRFD({
   if (!rowsInDept.length) throw new Error("No rows found in RFD");
 
   // available = received - completed  (same as your AGG logic)
-  const availableToWork = Math.min(
-    ...rowsInDept.map((r) => toNum(r.receivedQty) - toNum(r.completedQty))
-  );
+  const bottleneck = rowsInDept.reduce((min, r) => {
+    const avail = toNum(r.receivedQty) - toNum(r.completedQty);
+    return avail < min.avail ? { avail, name: r.name } : min;
+  }, { avail: Infinity, name: "" });
 
-  if (workPairs > availableToWork)
-    throw new Error(`Work qty exceeds limit in RFD. Allowed=${availableToWork}`);
+  if (workPairs > bottleneck.avail)
+    throw new Error(`Work qty exceeds limit in RFD. Allowed=${bottleneck.avail} (Bottleneck: ${bottleneck.name})`);
 
   for (const r of rowsInDept) {
     r.completedQty = toNum(r.completedQty) + workPairs;
